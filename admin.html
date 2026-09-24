@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemach Admin</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #1B3A4B;
+      --teal:   #E8F0F5;
+      --green:  #2E7D32;
+      --red:    #C62828;
+      --amber:  #B45309;
+      --grey:   #F7F9FA;
+      --border: #DDE5EA;
+      --text:   #1A2B35;
+      --muted:  #5A7080;
+      --white:  #FFFFFF;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      color: var(--text);
+      background: var(--grey);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Login screen ── */
+    #login-screen {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: var(--navy);
+    }
+
+    #login-screen h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.75rem;
+      font-weight: 400;
+      color: var(--white);
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
+
+    #login-screen p {
+      color: rgba(255,255,255,0.6);
+      font-size: 0.875rem;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    .login-card {
+      background: var(--white);
+      border-radius: 12px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+
+    .login-card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: var(--text);
+    }
+
+    .login-error {
+      font-size: 0.8rem;
+      color: var(--red);
+      margin-top: 1rem;
+      display: none;
+    }
+
+    /* ── App shell ── */
+    #app { display: none; min-height: 100vh; }
+
+    /* ── Top bar ── */
+    .topbar {
+      background: var(--navy);
+      color: var(--white);
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .topbar-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.1rem;
+      font-weight: 400;
+    }
+
+    .topbar-user {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.65);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .btn-signout {
+      background: rgba(255,255,255,0.12);
+      border: none;
+      color: white;
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .btn-signout:hover { background: rgba(255,255,255,0.2); }
+
+    /* ── Nav tabs ── */
+    .nav-tabs {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .nav-tabs::-webkit-scrollbar { display: none; }
+
+    .nav-tab {
+      padding: 0.75rem 1.1rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--muted);
+      border: none;
+      background: none;
+      cursor: pointer;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      font-family: 'Inter', sans-serif;
+      position: relative;
+      transition: color 0.15s;
+    }
+
+    .nav-tab.active {
+      color: var(--navy);
+      border-bottom-color: var(--navy);
+    }
+
+    .nav-tab .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--red);
+      color: white;
+      font-size: 0.65rem;
+      font-weight: 600;
+      min-width: 16px;
+      height: 16px;
+      border-radius: 8px;
+      padding: 0 4px;
+      margin-left: 0.35rem;
+      vertical-align: middle;
+    }
+
+    /* ── Content ── */
+    .content {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 1.25rem;
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── Dashboard ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .stat-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .stat-card:hover { border-color: var(--navy); }
+
+    .stat-number {
+      font-family: 'DM Serif Display', serif;
+      font-size: 2rem;
+      font-weight: 400;
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .stat-card.red .stat-number { color: var(--red); }
+    .stat-card.amber .stat-number { color: var(--amber); }
+    .stat-card.green .stat-number { color: var(--green); }
+    .stat-card.navy .stat-number { color: var(--navy); }
+
+    /* ── Section heading ── */
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Cards ── */
+    .card-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
+
+    .card.overdue { border-left: 3px solid var(--red); }
+    .card.warning { border-left: 3px solid var(--amber); }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .card-id {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .card-meta {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .card-meta span { display: flex; align-items: center; gap: 0.35rem; }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .tag-red { background: #FEE2E2; color: var(--red); }
+    .tag-amber { background: #FEF3C7; color: var(--amber); }
+    .tag-green { background: #DCFCE7; color: var(--green); }
+    .tag-navy { background: var(--teal); color: var(--navy); }
+
+    /* ── Action buttons ── */
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      text-decoration: none;
+    }
+
+    .btn-primary { background: var(--navy); color: white; }
+    .btn-primary:hover { background: #254d63; }
+
+    .btn-danger { background: #FEE2E2; color: var(--red); }
+    .btn-danger:hover { background: #FECACA; }
+
+    .btn-ghost { background: var(--grey); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--teal); }
+
+    .btn-whatsapp { background: #25D366; color: white; }
+    .btn-whatsapp:hover { background: #20b858; }
+
+    .btn-sm { padding: 0.35rem 0.7rem; font-size: 0.75rem; }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    .empty-state .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+
+    /* ── Loading ── */
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    /* ── Modal / Sheet ── */
+    .sheet-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 100;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .sheet-overlay.open { display: flex; }
+
+    .sheet {
+      background: var(--white);
+      border-radius: 16px 16px 0 0;
+      width: 100%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 1.5rem;
+    }
+
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 0 auto 1.25rem;
+    }
+
+    .sheet h3 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.25rem;
+      font-weight: 400;
+      margin-bottom: 0.25rem;
+    }
+
+    .sheet-subtitle {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+
+    .sheet-close {
+      float: right;
+      background: none;
+      border: none;
+      font-size: 1.4rem;
+      cursor: pointer;
+      color: var(--muted);
+      line-height: 1;
+      margin-top: -0.25rem;
+    }
+
+    /* ── Form elements ── */
+    .form-group { margin-bottom: 1rem; }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-bottom: 0.35rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.875rem;
+      color: var(--text);
+      background: var(--white);
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--navy);
+    }
+
+    .form-group textarea { resize: vertical; min-height: 100px; }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    .checkbox-row input { width: auto; accent-color: var(--navy); }
+
+    .contact-options {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .sheet-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.25rem;
+    }
+
+    .sheet-actions .btn { flex: 1; justify-content: center; }
+
+    /* ── Inventory view ── */
+    .inventory-group { margin-bottom: 1.25rem; }
+
+    .inventory-group-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .inventory-item {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.35rem;
+      font-size: 0.82rem;
+    }
+
+    .inventory-item-id { color: var(--muted); font-size: 0.75rem; }
+
+    @media (min-width: 600px) {
+      .sheet-overlay { align-items: center; padding: 1rem; }
+      .sheet { border-radius: 12px; }
+      .sheet-handle { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <h1>Gemach Admin</h1>
+  <p>West Hempstead Medical Gemach</p>
+  <div class="login-card">
+    <h2>Sign in to continue</h2>
+    <div id="g_id_onload"
+      data-client_id="802083328700-pa13f067g5lsf1uijm4nqp40ptivjbti.apps.googleusercontent.com"
+      data-callback="handleGoogleLogin"
+      data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin"
+      data-type="standard"
+      data-size="large"
+      data-theme="outline"
+      data-text="sign_in_with"
+      data-shape="rectangular"
+      data-logo_alignment="left">
+    </div>
+    <p class="login-error" id="login-error"></p>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-title">Gemach Admin</div>
+    <div class="topbar-user">
+      <span id="admin-name"></span>
+      <button class="btn-signout" onclick="signOut()">Sign out</button>
+    </div>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
+    <button class="nav-tab" onclick="switchTab('requests')" id="tab-requests">
+      Requests
+    </button>
+    <button class="nav-tab" onclick="switchTab('loans')">Loans</button>
+    <button class="nav-tab" onclick="switchTab('reservations')">Reservations</button>
+    <button class="nav-tab" onclick="switchTab('inventory')">Inventory</button>
+  </div>
+
+  <div class="content">
+
+    <!-- Dashboard -->
+    <div class="screen active" id="screen-dashboard">
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card red" onclick="switchTab('requests')">
+          <div class="stat-number" id="stat-new-requests">—</div>
+          <div class="stat-label">New requests</div>
+        </div>
+        <div class="stat-card amber" onclick="switchTab('loans')">
+          <div class="stat-number" id="stat-overdue">—</div>
+          <div class="stat-label">Overdue loans</div>
+        </div>
+        <div class="stat-card navy" onclick="switchTab('loans')">
+          <div class="stat-number" id="stat-active">—</div>
+          <div class="stat-label">Active loans</div>
+        </div>
+        <div class="stat-card green" onclick="switchTab('reservations')">
+          <div class="stat-number" id="stat-reservations">—</div>
+          <div class="stat-label">Reservations</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Requests -->
+    <div class="screen" id="screen-requests">
+      <div class="section-label">New requests</div>
+      <div class="card-list" id="requests-list">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Loans -->
+    <div class="screen" id="screen-loans">
+      <div class="section-label">Active loans</div>
+      <div class="card-list" id="loans-list">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Reservations -->
+    <div class="screen" id="screen-reservations">
+      <div class="section-label">Upcoming reservations</div>
+      <div class="card-list" id="reservations-list">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Inventory -->
+    <div class="screen" id="screen-inventory">
+      <div class="section-label">Inventory status</div>
+      <div id="inventory-list">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Confirm Sheet -->
+<div class="sheet-overlay" id="confirm-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('confirm-sheet')">×</button>
+    <h3 id="confirm-title">Confirm request</h3>
+    <p class="sheet-subtitle" id="confirm-subtitle"></p>
+
+    <div class="form-group">
+      <label>Message to borrower</label>
+      <textarea id="confirm-message" rows="5"></textarea>
+    </div>
+
+    <div class="contact-options" id="confirm-contact-options"></div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm-send" checked />
+      <label for="confirm-send">Send message to borrower</label>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('confirm-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="confirm-submit-btn">Confirm request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Decline Sheet -->
+<div class="sheet-overlay" id="decline-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('decline-sheet')">×</button>
+    <h3>Decline request</h3>
+    <p class="sheet-subtitle" id="decline-subtitle"></p>
+
+    <div class="form-group">
+      <label>Message to borrower</label>
+      <textarea id="decline-message" rows="4"></textarea>
+    </div>
+
+    <div class="contact-options" id="decline-contact-options"></div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="decline-send" checked />
+      <label for="decline-send">Send message to borrower</label>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('decline-sheet')">Cancel</button>
+      <button class="btn btn-danger" id="decline-submit-btn">Decline request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Return Sheet -->
+<div class="sheet-overlay" id="return-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('return-sheet')">×</button>
+    <h3>Mark as returned</h3>
+    <p class="sheet-subtitle" id="return-subtitle"></p>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:1.25rem">
+      This will mark the item as returned today and make it available for other borrowers.
+    </p>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('return-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="return-submit-btn">Confirm return</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const WORKER = "https://wh-gemach.barry253-0f5.workers.dev";
+  const PICKUP_ADDRESS = "507 Walton Court, in the driveway";
+  let token = localStorage.getItem("gemach_token");
+  let adminName = localStorage.getItem("gemach_name");
+  let currentRequest = null;
+  let currentLoan = null;
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  if (token) showApp();
+
+  function showApp() {
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    document.getElementById("admin-name").textContent = adminName || "";
+    loadDashboard();
+  }
+
+  // ── Google Login ──────────────────────────────────────────────────────────
+  async function handleGoogleLogin(response) {
+    try {
+      const res = await fetch(`${WORKER}/admin/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ googleToken: response.credential })
+      });
+      const data = await res.json();
+
+      if (data.token) {
+        token = data.token;
+        adminName = data.name;
+        localStorage.setItem("gemach_token", token);
+        localStorage.setItem("gemach_name", adminName);
+        showApp();
+      } else {
+        showLoginError(data.error || "Access denied.");
+      }
+    } catch(e) {
+      showLoginError("Login failed. Please try again.");
+    }
+  }
+
+  function showLoginError(msg) {
+    const el = document.getElementById("login-error");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function signOut() {
+    localStorage.removeItem("gemach_token");
+    localStorage.removeItem("gemach_name");
+    token = null;
+    location.reload();
+  }
+
+  // ── API ───────────────────────────────────────────────────────────────────
+  async function api(path, method = "GET", body = null) {
+    const opts = {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      }
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(`${WORKER}${path}`, opts);
+    if (res.status === 401) { signOut(); return null; }
+    return res.json();
+  }
+
+  // ── Tab switching ─────────────────────────────────────────────────────────
+  function switchTab(name) {
+    document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add("active");
+    document.getElementById(`screen-${name}`).classList.add("active");
+
+    if (name === "dashboard")    loadDashboard();
+    if (name === "requests")     loadRequests();
+    if (name === "loans")        loadLoans();
+    if (name === "reservations") loadReservations();
+    if (name === "inventory")    loadInventory();
+  }
+
+  // ── Dashboard ─────────────────────────────────────────────────────────────
+  async function loadDashboard() {
+    const data = await api("/admin/dashboard");
+    if (!data) return;
+    document.getElementById("stat-new-requests").textContent = data.newRequests;
+    document.getElementById("stat-overdue").textContent = data.overdueLoans;
+    document.getElementById("stat-active").textContent = data.activeLoans;
+    document.getElementById("stat-reservations").textContent = data.upcomingReservations;
+
+    // Badge on requests tab
+    const tab = document.getElementById("tab-requests");
+    tab.innerHTML = `Requests${data.newRequests > 0 ? `<span class="badge">${data.newRequests}</span>` : ""}`;
+    tab.onclick = () => switchTab('requests');
+  }
+
+  // ── Requests ──────────────────────────────────────────────────────────────
+  async function loadRequests() {
+    const list = document.getElementById("requests-list");
+    list.innerHTML = '<div class="loading">Loading…</div>';
+    const data = await api("/admin/requests");
+    if (!data?.length) {
+      list.innerHTML = '<div class="empty-state"><div class="icon">✓</div>No new requests</div>';
+      return;
+    }
+
+    list.innerHTML = data.map(r => {
+      const contact = r.preferredContact || "any";
+      const dates = r.openEnded
+        ? "Open-ended (surgery/rehab)"
+        : r.neededFrom ? `${fmt(r.neededFrom)} → ${fmt(r.neededUntil || "?")}` : "Dates TBD";
+      const whatsappUrl = r.phone ? `https://wa.me/${r.phone.replace(/\D/g,"")}` : null;
+
+      return `<div class="card" id="req-${r.id}">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${r.name}</div>
+            <div class="card-id">${r.requestId} · ${timeAgo(r.receivedAt)}</div>
+          </div>
+          <span class="tag tag-navy">${contact}</span>
+        </div>
+        <div class="card-meta">
+          <span>📦 ${r.itemNames.join(", ")}</span>
+          <span>📅 ${dates}</span>
+          <span>📞 ${r.phone}</span>
+          ${r.notes ? `<span>💬 ${r.notes}</span>` : ""}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" onclick='openConfirm(${JSON.stringify(r)})'>✓ Confirm</button>
+          <button class="btn btn-danger btn-sm" onclick='openDecline(${JSON.stringify(r)})'>✗ Decline</button>
+          ${whatsappUrl ? `<a class="btn btn-whatsapp btn-sm" href="${whatsappUrl}" target="_blank">WhatsApp</a>` : ""}
+          ${r.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${r.email}">Email</a>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  // ── Confirm sheet ─────────────────────────────────────────────────────────
+  function openConfirm(r) {
+    currentRequest = r;
+    document.getElementById("confirm-title").textContent = `Confirm — ${r.name}`;
+    document.getElementById("confirm-subtitle").textContent =
+      `${r.itemNames.join(", ")} · ${r.requestId}`;
+
+    const itemList = r.itemNames.join(" and ");
+    const msg = `Hi ${r.name.split(" ")[0]}, great news — we have ${itemList} available for you from the West Hempstead Medical Gemach. We'll be in touch shortly with pickup details.\n\nPickup is at ${PICKUP_ADDRESS}.\n\nThank you!`;
+    document.getElementById("confirm-message").value = msg;
+
+    renderContactOptions("confirm-contact-options", r);
+
+    document.getElementById("confirm-submit-btn").onclick = async () => {
+      const message = document.getElementById("confirm-message").value;
+      const sendMessage = document.getElementById("confirm-send").checked;
+      await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage });
+      closeSheet("confirm-sheet");
+      document.getElementById(`req-${r.id}`)?.remove();
+      loadDashboard();
+      showToast("Request confirmed");
+    };
+
+    openSheet("confirm-sheet");
+  }
+
+  // ── Decline sheet ─────────────────────────────────────────────────────────
+  function openDecline(r) {
+    currentRequest = r;
+    document.getElementById("decline-subtitle").textContent =
+      `${r.itemNames.join(", ")} · ${r.requestId}`;
+
+    document.getElementById("decline-message").value =
+      `Hi ${r.name.split(" ")[0]}, thank you for reaching out to the West Hempstead Medical Gemach. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.`;
+
+    renderContactOptions("decline-contact-options", r);
+
+    document.getElementById("decline-submit-btn").onclick = async () => {
+      const message = document.getElementById("decline-message").value;
+      const sendMessage = document.getElementById("decline-send").checked;
+      await api(`/admin/requests/${r.id}/decline`, "POST", { message, sendMessage });
+      closeSheet("decline-sheet");
+      document.getElementById(`req-${r.id}`)?.remove();
+      loadDashboard();
+      showToast("Request declined");
+    };
+
+    openSheet("decline-sheet");
+  }
+
+  function renderContactOptions(containerId, r) {
+    const container = document.getElementById(containerId);
+    const phone = r.phone?.replace(/\D/g, "");
+    const preferred = r.preferredContact?.toLowerCase();
+    const msg = encodeURIComponent(document.getElementById(
+      containerId.includes("confirm") ? "confirm-message" : "decline-message"
+    ).value);
+
+    container.innerHTML = `
+      <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
+      ${phone ? `<a class="btn btn-whatsapp btn-sm" href="https://wa.me/${phone}?text=${msg}" target="_blank">
+        ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>` : ""}
+      ${r.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${r.email}?body=${msg}">
+        ${preferred === "email" ? "★ " : ""}Email</a>` : ""}
+      ${phone ? `<a class="btn btn-ghost btn-sm" href="sms:${phone}&body=${msg}">SMS</a>` : ""}
+    `;
+  }
+
+  // ── Loans ─────────────────────────────────────────────────────────────────
+  async function loadLoans() {
+    const list = document.getElementById("loans-list");
+    list.innerHTML = '<div class="loading">Loading…</div>';
+    const data = await api("/admin/loans");
+    if (!data?.length) {
+      list.innerHTML = '<div class="empty-state"><div class="icon">✓</div>No active loans</div>';
+      return;
+    }
+
+    list.innerHTML = data.map(l => {
+      const cls = l.overdue ? "overdue" : l.daysOut > 7 ? "warning" : "";
+      const tag = l.overdue
+        ? `<span class="tag tag-red">Overdue ${l.daysOut}d</span>`
+        : `<span class="tag tag-navy">${l.daysOut}d out</span>`;
+
+      const borrowerName = Array.isArray(l.borrower) ? l.borrower[0] : l.borrower;
+      const itemType = Array.isArray(l.itemType) ? l.itemType[0] : l.itemType;
+      const item = Array.isArray(l.item) ? l.item[0] : l.item;
+
+      return `<div class="card ${cls}" id="loan-${l.id}">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${borrowerName || "Unknown"}</div>
+            <div class="card-id">${l.loanId || ""} · ${item || itemType || "Item"}</div>
+          </div>
+          ${tag}
+        </div>
+        <div class="card-meta">
+          <span>📅 Borrowed ${fmt(l.dateBorrowed)}</span>
+          ${l.expectedReturn ? `<span>🔜 Expected ${fmt(l.expectedReturn)}</span>` : ""}
+          ${l.notes ? `<span>💬 ${l.notes}</span>` : ""}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" onclick='openReturn(${JSON.stringify(l)})'>✓ Returned</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  // ── Return sheet ──────────────────────────────────────────────────────────
+  function openReturn(l) {
+    currentLoan = l;
+    const borrowerName = Array.isArray(l.borrower) ? l.borrower[0] : l.borrower;
+    const item = Array.isArray(l.item) ? l.item[0] : l.item;
+    const itemType = Array.isArray(l.itemType) ? l.itemType[0] : l.itemType;
+    document.getElementById("return-subtitle").textContent =
+      `${borrowerName} · ${item || itemType}`;
+
+    document.getElementById("return-submit-btn").onclick = async () => {
+      await api(`/admin/loans/${l.id}/return`, "POST", {});
+      closeSheet("return-sheet");
+      document.getElementById(`loan-${l.id}`)?.remove();
+      loadDashboard();
+      showToast("Item marked as returned");
+    };
+
+    openSheet("return-sheet");
+  }
+
+  // ── Reservations ──────────────────────────────────────────────────────────
+  async function loadReservations() {
+    const list = document.getElementById("reservations-list");
+    list.innerHTML = '<div class="loading">Loading…</div>';
+    const data = await api("/admin/reservations");
+    if (!data?.length) {
+      list.innerHTML = '<div class="empty-state"><div class="icon">📅</div>No upcoming reservations</div>';
+      return;
+    }
+
+    list.innerHTML = data.map(r => {
+      const itemType = Array.isArray(r.itemType) ? r.itemType[0] : r.itemType;
+      const dates = r.reservationStart
+        ? `${fmt(r.reservationStart)} → ${fmt(r.reservationEnd || "?")}`
+        : "Dates TBD";
+
+      return `<div class="card" id="res-${r.id}">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${r.borrower || "Unknown"}</div>
+            <div class="card-id">${r.loanId || ""}</div>
+          </div>
+          <span class="tag tag-navy">Reserved</span>
+        </div>
+        <div class="card-meta">
+          <span>📦 ${itemType || "Item TBD"}</span>
+          <span>📅 ${dates}</span>
+          ${r.notes ? `<span>💬 ${r.notes}</span>` : ""}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" onclick='markPickedUp("${r.id}")'>Mark picked up</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  async function markPickedUp(id) {
+    await api(`/admin/loans/${id}/pickup`, "POST", {});
+    loadReservations();
+    loadDashboard();
+    showToast("Marked as picked up");
+  }
+
+  // ── Inventory ─────────────────────────────────────────────────────────────
+  async function loadInventory() {
+    const container = document.getElementById("inventory-list");
+    container.innerHTML = '<div class="loading">Loading…</div>';
+    const data = await api("/admin/inventory");
+    if (!data?.length) {
+      container.innerHTML = '<div class="empty-state">No inventory found</div>';
+      return;
+    }
+
+    // Group by item type
+    const groups = {};
+    data.forEach(item => {
+      const type = item.itemType || "Other";
+      if (!groups[type]) groups[type] = [];
+      groups[type].push(item);
+    });
+
+    container.innerHTML = Object.entries(groups).map(([type, items]) => `
+      <div class="inventory-group">
+        <div class="inventory-group-title">${type}</div>
+        ${items.map(item => `
+          <div class="inventory-item">
+            <div>
+              <strong>${item.itemId}</strong>
+              ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${item.notes}</span>` : ""}
+            </div>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <span class="tag ${item.status === 'Available' ? 'tag-green' : item.status === 'On Loan' ? 'tag-red' : 'tag-amber'}">
+                ${item.status || "Unknown"}
+              </span>
+              <span class="tag ${item.condition === 'Good' ? 'tag-green' : 'tag-amber'}">${item.condition || ""}</span>
+            </div>
+          </div>`).join("")}
+      </div>`).join("");
+  }
+
+  // ── Sheet helpers ─────────────────────────────────────────────────────────
+  function openSheet(id) {
+    document.getElementById(id).classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeSheet(id) {
+    document.getElementById(id).classList.remove("open");
+    document.body.style.overflow = "";
+  }
+
+  document.querySelectorAll(".sheet-overlay").forEach(el => {
+    el.addEventListener("click", e => {
+      if (e.target === el) closeSheet(el.id);
+    });
+  });
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(msg) {
+    const toast = document.createElement("div");
+    toast.textContent = msg;
+    Object.assign(toast.style, {
+      position: "fixed", bottom: "1.5rem", left: "50%",
+      transform: "translateX(-50%)",
+      background: var_navy(), color: "white",
+      padding: "0.6rem 1.25rem", borderRadius: "20px",
+      fontSize: "0.85rem", fontWeight: "500",
+      zIndex: "999", boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
+    });
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+  }
+
+  function var_navy() { return "#1B3A4B"; }
+
+  // ── Formatting ────────────────────────────────────────────────────────────
+  function fmt(dateStr) {
+    if (!dateStr) return "?";
+    const d = new Date(dateStr + "T00:00:00");
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return "";
+    const diff = Date.now() - new Date(iso);
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+</script>
+</body>
+</html>
