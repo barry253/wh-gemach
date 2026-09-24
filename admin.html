@@ -653,12 +653,52 @@
     <button class="sheet-close" onclick="closeSheet('return-sheet')">×</button>
     <h3>Mark as returned</h3>
     <p class="sheet-subtitle" id="return-subtitle"></p>
-    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:1.25rem">
-      This will mark the item as returned today and make it available for other borrowers.
+    <div class="form-group" style="margin-top:0.75rem">
+      <label>Date returned</label>
+      <input type="date" id="return-date" />
+    </div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1.25rem">
+      This will mark the item as returned and make it available for other borrowers.
     </p>
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('return-sheet')">Cancel</button>
       <button class="btn btn-primary" id="return-submit-btn">Confirm return</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pickup Sheet -->
+<div class="sheet-overlay" id="pickup-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('pickup-sheet')">×</button>
+    <h3>Mark as picked up</h3>
+    <p class="sheet-subtitle" id="pickup-subtitle"></p>
+    <div class="form-group" style="margin-top:0.75rem">
+      <label>Date picked up</label>
+      <input type="date" id="pickup-date" />
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('pickup-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="pickup-submit-btn">Confirm pickup</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pickup Instructions Sheet -->
+<div class="sheet-overlay" id="pickup-instructions-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('pickup-instructions-sheet')">×</button>
+    <h3>Send pickup instructions</h3>
+    <p class="sheet-subtitle" id="pickup-instructions-subtitle"></p>
+    <div class="form-group" style="margin-top:0.75rem">
+      <label>Message</label>
+      <textarea id="pickup-instructions-message" rows="6"></textarea>
+    </div>
+    <div class="contact-options" id="pickup-instructions-contact"></div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('pickup-instructions-sheet')">Cancel</button>
     </div>
   </div>
 </div>
@@ -801,6 +841,7 @@
           <button class="btn btn-danger btn-sm" onclick='openDecline(${JSON.stringify(r)})'>✗ Decline</button>
           ${whatsappUrl ? `<a class="btn btn-whatsapp btn-sm" href="${whatsappUrl}" target="_blank">WhatsApp</a>` : ""}
           ${r.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${r.email}">Email</a>` : ""}
+          ${r.phone ? `<a class="btn btn-ghost btn-sm" href="sms:${r.phone.replace(/\D/g,"")}">SMS</a>` : ""}
         </div>
       </div>`;
     }).join("");
@@ -890,25 +931,28 @@
         ? `<span class="tag tag-red">Overdue ${l.daysOut}d</span>`
         : `<span class="tag tag-navy">${l.daysOut}d out</span>`;
 
-      const borrowerName = Array.isArray(l.borrower) ? l.borrower[0] : l.borrower;
-      const itemType = Array.isArray(l.itemType) ? l.itemType[0] : l.itemType;
-      const item = Array.isArray(l.item) ? l.item[0] : l.item;
+      const phone = l.borrowerPhone?.replace(/\D/g,"");
+      const contact = l.borrowerContact?.toLowerCase();
 
       return `<div class="card ${cls}" id="loan-${l.id}">
         <div class="card-header">
           <div>
-            <div class="card-title">${borrowerName || "Unknown"}</div>
-            <div class="card-id">${l.loanId || ""} · ${item || itemType || "Item"}</div>
+            <div class="card-title">${l.borrowerName}</div>
+            <div class="card-id">${l.loanId || ""} · ${l.itemId || ""} ${l.itemTypeName ? "· " + l.itemTypeName : ""}</div>
           </div>
           ${tag}
         </div>
         <div class="card-meta">
           <span>📅 Borrowed ${fmt(l.dateBorrowed)}</span>
           ${l.expectedReturn ? `<span>🔜 Expected ${fmt(l.expectedReturn)}</span>` : ""}
+          ${phone ? `<span>📞 <a href="tel:${phone}" style="color:var(--navy)">${l.borrowerPhone}</a></span>` : ""}
           ${l.notes ? `<span>💬 ${l.notes}</span>` : ""}
         </div>
         <div class="card-actions">
-          <button class="btn btn-primary btn-sm" onclick='openReturn(${JSON.stringify(l)})'>✓ Returned</button>
+          <button class="btn btn-primary btn-sm" onclick='openReturn(${JSON.stringify(l).replace(/'/g,"&#39;")})'>✓ Mark as Returned</button>
+          ${phone && (contact === "whatsapp" || !contact) ? `<a class="btn btn-whatsapp btn-sm" href="https://wa.me/${phone}" target="_blank">WhatsApp</a>` : ""}
+          ${phone ? `<a class="btn btn-ghost btn-sm" href="tel:${phone}">Call</a>` : ""}
+          ${l.borrowerEmail ? `<a class="btn btn-ghost btn-sm" href="mailto:${l.borrowerEmail}">Email</a>` : ""}
         </div>
       </div>`;
     }).join("");
@@ -917,14 +961,13 @@
   // ── Return sheet ──────────────────────────────────────────────────────────
   function openReturn(l) {
     currentLoan = l;
-    const borrowerName = Array.isArray(l.borrower) ? l.borrower[0] : l.borrower;
-    const item = Array.isArray(l.item) ? l.item[0] : l.item;
-    const itemType = Array.isArray(l.itemType) ? l.itemType[0] : l.itemType;
     document.getElementById("return-subtitle").textContent =
-      `${borrowerName} · ${item || itemType}`;
+      `${l.borrowerName} · ${l.itemId || l.itemTypeName}`;
+    document.getElementById("return-date").value = new Date().toISOString().split("T")[0];
 
     document.getElementById("return-submit-btn").onclick = async () => {
-      await api(`/admin/loans/${l.id}/return`, "POST", {});
+      const returnDate = document.getElementById("return-date").value;
+      await api(`/admin/loans/${l.id}/return`, "POST", { returnDate });
       closeSheet("return-sheet");
       document.getElementById(`loan-${l.id}`)?.remove();
       loadDashboard();
@@ -945,39 +988,68 @@
     }
 
     list.innerHTML = data.map(r => {
-      const itemType = Array.isArray(r.itemType) ? r.itemType[0] : r.itemType;
       const dates = r.reservationStart
         ? `${fmt(r.reservationStart)} → ${fmt(r.reservationEnd || "?")}`
         : "Dates TBD";
+      const phone = r.borrowerPhone?.replace(/\D/g,"");
+      const contact = r.borrowerContact?.toLowerCase();
 
       return `<div class="card" id="res-${r.id}">
         <div class="card-header">
           <div>
-            <div class="card-title">${r.borrower || "Unknown"}</div>
+            <div class="card-title">${r.borrowerName}</div>
             <div class="card-id">${r.loanId || ""}</div>
           </div>
           <span class="tag tag-navy">Reserved</span>
         </div>
         <div class="card-meta">
-          <span>📦 ${itemType || "Item TBD"}</span>
+          <span>📦 ${r.itemTypeName || "Item TBD"}</span>
           <span>📅 ${dates}</span>
+          ${phone ? `<span>📞 <a href="tel:${phone}" style="color:var(--navy)">${r.borrowerPhone}</a></span>` : ""}
           ${r.notes ? `<span>💬 ${r.notes}</span>` : ""}
         </div>
         <div class="card-actions">
-          <button class="btn btn-primary btn-sm" onclick='markPickedUp("${r.id}")'>Mark picked up</button>
+          <button class="btn btn-primary btn-sm" onclick='openPickup(${JSON.stringify(r).replace(/'/g,"&#39;")})'>✓ Mark picked up</button>
+          <button class="btn btn-ghost btn-sm" onclick='openPickupInstructions(${JSON.stringify(r).replace(/'/g,"&#39;")})'>📍 Send pickup info</button>
+          ${phone && (contact === "whatsapp" || !contact) ? `<a class="btn btn-whatsapp btn-sm" href="https://wa.me/${phone}" target="_blank">WhatsApp</a>` : ""}
         </div>
       </div>`;
     }).join("");
   }
 
-  async function markPickedUp(id) {
-    await api(`/admin/loans/${id}/pickup`, "POST", {});
-    loadReservations();
-    loadDashboard();
-    showToast("Marked as picked up");
+  function openPickup(r) {
+    document.getElementById("pickup-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
+    document.getElementById("pickup-date").value = new Date().toISOString().split("T")[0];
+    document.getElementById("pickup-submit-btn").onclick = async () => {
+      const pickupDate = document.getElementById("pickup-date").value;
+      await api(`/admin/loans/${r.id}/pickup`, "POST", { pickupDate });
+      closeSheet("pickup-sheet");
+      loadReservations();
+      loadDashboard();
+      showToast("Marked as picked up");
+    };
+    openSheet("pickup-sheet");
+  }
+
+  function openPickupInstructions(r) {
+    document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
+    const msg = `Hi ${r.borrowerName.split(" ")[0]}, your ${r.itemTypeName} is ready for pickup at 507 Walton Court, in the driveway. Please let us know when you plan to come by so we can make sure it's accessible. Thank you!`;
+    document.getElementById("pickup-instructions-message").value = msg;
+    const phone = r.borrowerPhone?.replace(/\D/g,"");
+    const encodedMsg = encodeURIComponent(msg);
+    document.getElementById("pickup-instructions-contact").innerHTML = `
+      <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
+      ${phone ? `<a class="btn btn-whatsapp btn-sm" href="https://wa.me/${phone}?text=${encodedMsg}" target="_blank">WhatsApp</a>` : ""}
+      ${r.borrowerEmail ? `<a class="btn btn-ghost btn-sm" href="mailto:${r.borrowerEmail}?body=${encodedMsg}">Email</a>` : ""}
+      ${phone ? `<a class="btn btn-ghost btn-sm" href="sms:${phone}&body=${encodedMsg}">SMS</a>` : ""}
+    `;
+    openSheet("pickup-instructions-sheet");
   }
 
   // ── Inventory ─────────────────────────────────────────────────────────────
+  let inventoryData = [];
+  let inventoryFilter = "all";
+
   async function loadInventory() {
     const container = document.getElementById("inventory-list");
     container.innerHTML = '<div class="loading">Loading…</div>';
@@ -986,18 +1058,41 @@
       container.innerHTML = '<div class="empty-state">No inventory found</div>';
       return;
     }
+    inventoryData = data;
+    renderInventory();
+  }
+
+  function renderInventory() {
+    const container = document.getElementById("inventory-list");
+    let filtered = inventoryData;
+    if (inventoryFilter === "available") filtered = inventoryData.filter(i => i.status === "Available");
+    if (inventoryFilter === "onloan") filtered = inventoryData.filter(i => i.status === "On Loan");
+    if (inventoryFilter === "repair") filtered = inventoryData.filter(i => i.condition !== "Good");
 
     // Group by item type
     const groups = {};
-    data.forEach(item => {
-      const type = item.itemType || "Other";
+    filtered.forEach(item => {
+      const type = item.itemTypeName || "Other";
       if (!groups[type]) groups[type] = [];
       groups[type].push(item);
     });
 
-    container.innerHTML = Object.entries(groups).map(([type, items]) => `
+    const filterBar = `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+      ${["all","available","onloan","repair"].map(f => `
+        <button class="btn btn-sm ${inventoryFilter===f?"btn-primary":"btn-ghost"}" onclick="setInventoryFilter('${f}')">
+          ${f==="all"?"All":f==="available"?"Available":f==="onloan"?"On Loan":"Needs Repair"}
+        </button>`).join("")}
+      <span style="margin-left:auto;font-size:0.78rem;color:var(--muted);align-self:center">${filtered.length} items</span>
+    </div>`;
+
+    if (!filtered.length) {
+      container.innerHTML = filterBar + '<div class="empty-state">No items match this filter</div>';
+      return;
+    }
+
+    container.innerHTML = filterBar + Object.entries(groups).map(([type, items]) => `
       <div class="inventory-group">
-        <div class="inventory-group-title">${type}</div>
+        <div class="inventory-group-title">${type} <span style="font-weight:400;color:var(--muted)">(${items.filter(i=>i.status==="Available").length}/${items.length} available)</span></div>
         ${items.map(item => `
           <div class="inventory-item">
             <div>
@@ -1005,13 +1100,18 @@
               ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${item.notes}</span>` : ""}
             </div>
             <div style="display:flex;align-items:center;gap:0.5rem">
-              <span class="tag ${item.status === 'Available' ? 'tag-green' : item.status === 'On Loan' ? 'tag-red' : 'tag-amber'}">
-                ${item.status || "Unknown"}
+              <span class="tag ${item.status === "Available" ? "tag-green" : item.status === "On Loan" ? "tag-red" : "tag-amber"}">
+                ${item.status}
               </span>
-              <span class="tag ${item.condition === 'Good' ? 'tag-green' : 'tag-amber'}">${item.condition || ""}</span>
+              <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${item.condition}</span>
             </div>
           </div>`).join("")}
       </div>`).join("");
+  }
+
+  function setInventoryFilter(f) {
+    inventoryFilter = f;
+    renderInventory();
   }
 
   // ── Sheet helpers ─────────────────────────────────────────────────────────
