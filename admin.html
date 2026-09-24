@@ -901,17 +901,27 @@
     const container = document.getElementById(containerId);
     const phone = r.phone?.replace(/\D/g, "");
     const preferred = r.preferredContact?.toLowerCase();
-    const msg = encodeURIComponent(document.getElementById(
-      containerId.includes("confirm") ? "confirm-message" : "decline-message"
-    ).value);
+    const msgEl = containerId.includes("confirm") ? "confirm-message" : "decline-message";
+    const msg = encodeURIComponent(document.getElementById(msgEl).value);
 
     container.innerHTML = `
       <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
-      ${phone ? `<a class="btn btn-whatsapp btn-sm" href="https://wa.me/${phone}?text=${msg}" target="_blank">
-        ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>` : ""}
-      ${r.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${r.email}?body=${msg}">
-        ${preferred === "email" ? "★ " : ""}Email</a>` : ""}
-      ${phone ? `<a class="btn btn-ghost btn-sm" href="sms:${phone}&body=${msg}">SMS</a>` : ""}
+      <a class="btn btn-whatsapp btn-sm"
+        href="${phone ? `https://wa.me/${phone}?text=${msg}` : "#"}"
+        target="_blank"
+        style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!phone ? "No phone on file" : ""}">
+        ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>
+      <a class="btn btn-ghost btn-sm"
+        href="${r.email ? `mailto:${r.email}?body=${msg}` : "#"}"
+        style="${!r.email ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!r.email ? "No email on file" : ""}">
+        ${preferred === "email" ? "★ " : ""}Email</a>
+      <a class="btn btn-ghost btn-sm"
+        href="${phone ? `sms:${phone}&body=${msg}` : "#"}"
+        style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!phone ? "No phone on file" : ""}">
+        ${preferred === "sms" ? "★ " : ""}SMS</a>
     `;
   }
 
@@ -1037,11 +1047,25 @@
     document.getElementById("pickup-instructions-message").value = msg;
     const phone = r.borrowerPhone?.replace(/\D/g,"");
     const encodedMsg = encodeURIComponent(msg);
+    const preferred = r.borrowerContact?.toLowerCase();
     document.getElementById("pickup-instructions-contact").innerHTML = `
       <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
-      ${phone ? `<a class="btn btn-whatsapp btn-sm" href="https://wa.me/${phone}?text=${encodedMsg}" target="_blank">WhatsApp</a>` : ""}
-      ${r.borrowerEmail ? `<a class="btn btn-ghost btn-sm" href="mailto:${r.borrowerEmail}?body=${encodedMsg}">Email</a>` : ""}
-      ${phone ? `<a class="btn btn-ghost btn-sm" href="sms:${phone}&body=${encodedMsg}">SMS</a>` : ""}
+      <a class="btn btn-whatsapp btn-sm ${!phone ? "btn-disabled" : ""}"
+        href="${phone ? `https://wa.me/${phone}?text=${encodedMsg}` : "#"}"
+        target="_blank"
+        style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!phone ? "No phone number on file" : ""}">
+        ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>
+      <a class="btn btn-ghost btn-sm"
+        href="${r.borrowerEmail ? `mailto:${r.borrowerEmail}?body=${encodedMsg}` : "#"}"
+        style="${!r.borrowerEmail ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!r.borrowerEmail ? "No email on file" : ""}">
+        ${preferred === "email" ? "★ " : ""}Email</a>
+      <a class="btn btn-ghost btn-sm"
+        href="${phone ? `sms:${phone}&body=${encodedMsg}` : "#"}"
+        style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!phone ? "No phone number on file" : ""}">
+        ${preferred === "sms" ? "★ " : ""}SMS</a>
     `;
     openSheet("pickup-instructions-sheet");
   }
