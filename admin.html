@@ -684,12 +684,14 @@
   // ── Google Login ──────────────────────────────────────────────────────────
   async function handleGoogleLogin(response) {
     try {
+      console.log("Google credential received, sending to worker...");
       const res = await fetch(`${WORKER}/admin/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ googleToken: response.credential })
       });
       const data = await res.json();
+      console.log("Worker response:", res.status, data);
 
       if (data.token) {
         token = data.token;
@@ -698,10 +700,11 @@
         localStorage.setItem("gemach_name", adminName);
         showApp();
       } else {
-        showLoginError(data.error || "Access denied.");
+        showLoginError(data.error || "Access denied. Check that your email is in the Admins table.");
       }
     } catch(e) {
-      showLoginError("Login failed. Please try again.");
+      console.error("Login error:", e);
+      showLoginError("Login failed: " + e.message);
     }
   }
 
