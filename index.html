@@ -880,7 +880,12 @@
     const neededUntil = document.getElementById("f-until").value;
     const errorEl = document.getElementById("error-msg");
 
-    const checkedItems = [...document.querySelectorAll('input[name="modal-items"]:checked')].map(cb => cb.value);
+    const checkedInputs = [...document.querySelectorAll('input[name="modal-items"]:checked')];
+    const checkedItems = checkedInputs.map(cb => cb.value);
+    const checkedNames = checkedInputs.map(cb => {
+      const item = inventory.find(i => i.id === cb.value);
+      return item ? item.name : cb.value;
+    });
 
     if (!name) { showError("Please enter your name."); return; }
     if (!phone) { showError("Please enter your phone number."); return; }
@@ -898,6 +903,7 @@
         body: JSON.stringify({
           name, phone, email, preferredContact,
           itemsRequested: checkedItems,
+          itemNames: checkedNames,
           neededFrom: neededFrom || null,
           neededUntil: neededUntil || null,
           openEnded, notes
