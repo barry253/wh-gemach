@@ -259,6 +259,24 @@
       font-size: 0.95rem;
     }
 
+    .card-item-type {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--navy);
+      margin-top: 1px;
+    }
+
+    .card-item-code {
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .loan-id-meta {
+      font-size: 0.68rem;
+      color: var(--muted);
+      opacity: 0.6;
+    }
+
     .card-id {
       font-size: 0.72rem;
       color: var(--muted);
@@ -1073,7 +1091,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">${l.borrowerName}</div>
-            <div class="card-id">${l.loanId || ""} · ${l.itemId || ""} ${l.itemTypeName ? "· " + l.itemTypeName : ""}</div>
+            <div class="card-item-type">${l.itemTypeName || ""}${l.itemId ? `<span class="card-item-code"> · ${l.itemId}</span>` : ""}</div>
           </div>
           ${tag}
         </div>
@@ -1082,6 +1100,7 @@
           ${l.expectedReturn ? `<span>🔜 Expected ${fmt(l.expectedReturn)}</span>` : ""}
           ${phone ? `<span>📞 <a href="tel:${phone}" style="color:var(--navy)">${l.borrowerPhone}</a></span>` : ""}
           ${l.notes ? `<span>💬 ${l.notes}</span>` : ""}
+          ${l.loanId ? `<span class="loan-id-meta">${l.loanId}</span>` : ""}
         </div>
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" onclick='openReturn(${JSON.stringify(l).replace(/'/g,"&#39;")})'>✓ Mark as Returned</button>
