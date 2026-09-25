@@ -1775,7 +1775,7 @@
     btn.disabled = false;
     btn.textContent = "Save";
 
-    if (result?.success || result?.loanId) {
+    if (result?.success) {
       closeSheet("assign-item-sheet");
       showToast(assignStatus === "Available" ? "Item marked available"
                : assignStatus === "Needs Repair" ? "Item marked for repair"
@@ -1784,7 +1784,9 @@
       loadInventory();
       loadDashboard();
     } else {
-      showToast("Something went wrong — please try again");
+      const errMsg = result?.error || "Something went wrong — please try again";
+      showToast(errMsg);
+      console.error("Assign error:", result);
     }
   });
 
