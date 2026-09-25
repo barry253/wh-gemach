@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WH Medical Gemach — Request Form</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #1B3A4B;
+      --teal:   #E8F0F5;
+      --green:  #2E7D32;
+      --red:    #C62828;
+      --grey:   #F7F9FA;
+      --border: #DDE5EA;
+      --text:   #1A2B35;
+      --muted:  #5A7080;
+      --white:  #FFFFFF;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      color: var(--text);
+      background: var(--white);
+      line-height: 1.6;
+      padding: 1rem;
+    }
+
+    .list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+
+    .list-header-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .select-all-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.3rem 0.65rem;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.76rem;
+      color: var(--navy);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .select-all-btn:hover { background: var(--teal); }
+
+    .item-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .item-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      background: var(--white);
+    }
+
+    .item-row:hover    { border-color: var(--navy); background: var(--grey); }
+    .item-row.selected { border-color: var(--navy); background: var(--teal); }
+
+    .item-thumb {
+      width: 72px;
+      height: 58px;
+      border-radius: 5px;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: var(--grey);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .item-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .item-content { flex: 1; min-width: 0; }
+
+    .item-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .item-name {
+      font-weight: 600;
+      font-size: 0.92rem;
+      line-height: 1.3;
+    }
+
+    .availability {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .avail-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .availability.available   .avail-dot { background: var(--green); }
+    .availability.unavailable .avail-dot { background: var(--red); }
+
+    .avail-text {
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    .availability.available   .avail-text { color: var(--green); }
+    .availability.unavailable .avail-text { color: var(--red); }
+
+    .item-desc-toggle {
+      margin-top: 0.2rem;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.76rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .item-desc-toggle:hover { color: var(--navy); }
+
+    .item-desc {
+      display: none;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+      line-height: 1.5;
+    }
+
+    .item-desc.open { display: block; }
+
+    .item-checkbox {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      accent-color: var(--navy);
+      cursor: pointer;
+    }
+
+    .state-message {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.5rem 0 1.25rem;
+    }
+
+    .section-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.2rem;
+      font-weight: 400;
+      margin-bottom: 0.25rem;
+    }
+
+    .section-subtitle {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    #request-form { display: none; }
+    #request-form.visible { display: block; }
+
+    .form-group {
+      margin-bottom: 0.85rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 0.3rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.875rem;
+      color: var(--text);
+      background: var(--white);
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--navy);
+    }
+
+    .form-group textarea { resize: vertical; min-height: 80px; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    @media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
+
+    .items-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+    }
+
+    .item-check-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .item-check-label:hover { border-color: var(--navy); background: var(--teal); }
+    .item-check-label.checked { border-color: var(--navy); background: var(--teal); }
+
+    .item-check-label input[type="checkbox"] {
+      width: auto;
+      accent-color: var(--navy);
+      cursor: pointer;
+    }
+
+    .duration-toggle {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .duration-btn {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+
+    .duration-btn.active {
+      background: var(--navy);
+      color: var(--white);
+      border-color: var(--navy);
+    }
+
+    .date-fields.hidden { display: none; }
+    .open-ended-msg { display: none; font-size: 0.82rem; color: var(--muted); padding: 0.4rem 0; }
+    .open-ended-msg.visible { display: block; }
+
+    .btn-request {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--navy);
+      color: var(--white);
+      border: none;
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 0.25rem;
+      transition: background 0.15s;
+    }
+
+    .btn-request:hover { background: #254d63; }
+    .btn-request:disabled { background: var(--muted); cursor: not-allowed; }
+
+    .btn-show-form {
+      display: block;
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--navy);
+      color: var(--white);
+      border: none;
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 1rem;
+      transition: background 0.15s;
+      text-align: center;
+    }
+
+    .btn-show-form:hover { background: #254d63; }
+    .btn-show-form.hidden { display: none; }
+
+    .form-note {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 0.65rem;
+    }
+
+    .error-msg {
+      font-size: 0.82rem;
+      color: var(--red);
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+
+    .success-message {
+      text-align: center;
+      padding: 2rem 0 1rem;
+    }
+
+    .success-message .checkmark {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .success-message h3 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.4rem;
+      font-weight: 400;
+      margin-bottom: 0.5rem;
+      color: var(--green);
+    }
+
+    .success-message p {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1.5rem;
+    }
+
+    .lightbox.open { display: flex; }
+
+    .lightbox img {
+      max-width: 100%;
+      max-height: 75vh;
+      border-radius: 6px;
+      object-fit: contain;
+    }
+
+    .lightbox-caption {
+      color: rgba(255,255,255,0.85);
+      font-size: 0.9rem;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      font-size: 1.5rem;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+
+<div class="list-header">
+  <span class="list-header-label">Available equipment</span>
+  <button class="select-all-btn" id="select-all-btn">Select all available</button>
+</div>
+
+<div class="item-list" id="item-list">
+  <div class="state-message">Loading inventory…</div>
+</div>
+
+<button class="btn-show-form hidden" id="btn-show-form">Request selected items</button>
+
+<hr class="section-divider" id="form-divider" style="display:none" />
+
+<div id="request-form">
+  <div class="section-title">Request equipment</div>
+  <div class="section-subtitle">We'll confirm availability and arrange pickup within 24 hours.</div>
+
+  <div id="form-view">
+    <div class="form-group">
+      <label>Your name <span style="color:var(--red)">*</span></label>
+      <input type="text" id="f-name" placeholder="Full name" autocomplete="name" />
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Phone <span style="color:var(--red)">*</span></label>
+        <input type="tel" id="f-phone" placeholder="516-555-1234" autocomplete="tel" />
+      </div>
+      <div class="form-group">
+        <label>Best way to reach you</label>
+        <select id="f-contact">
+          <option value="">Choose…</option>
+          <option value="WhatsApp">WhatsApp</option>
+          <option value="Phone">Phone call</option>
+          <option value="SMS">Text / SMS</option>
+          <option value="Email">Email</option>
+          <option value="Facebook">Facebook</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Email <span style="color:var(--muted);font-weight:400">(optional, for confirmation)</span></label>
+      <input type="email" id="f-email" placeholder="you@example.com" autocomplete="email" />
+    </div>
+
+    <div class="form-group">
+      <label>Items requested <span style="color:var(--red)">*</span></label>
+      <div class="items-grid" id="form-items-grid"></div>
+    </div>
+
+    <div class="form-group">
+      <label>How long do you need it?</label>
+      <div class="duration-toggle">
+        <button class="duration-btn active" id="btn-dates" type="button">I know the dates</button>
+        <button class="duration-btn" id="btn-open" type="button">Surgery / rehab — not sure yet</button>
+      </div>
+      <div class="date-fields" id="date-fields">
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Needed from</label>
+            <input type="date" id="f-from" />
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Needed until</label>
+            <input type="date" id="f-until" />
+          </div>
+        </div>
+      </div>
+      <p class="open-ended-msg" id="open-msg">No problem — we'll check in with you periodically.</p>
+    </div>
+
+    <div class="form-group">
+      <label>Anything else we should know?</label>
+      <textarea id="f-notes" placeholder="e.g. for my mother-in-law visiting for Sukkos, recovering from knee surgery…"></textarea>
+    </div>
+
+    <button class="btn-request" id="btn-submit">Send request</button>
+    <p class="error-msg" id="error-msg" style="display:none"></p>
+    <p class="form-note">Your information is used only to process your request and is never shared.</p>
+  </div>
+
+  <div id="success-view" style="display:none">
+    <div class="success-message">
+      <div class="checkmark">✓</div>
+      <h3>Request received!</h3>
+      <p>We'll be in touch within 24 hours to confirm and arrange pickup.<br/>Thank you for reaching out to the gemach.</p>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightbox-close">×</button>
+  <img id="lightbox-img" src="" alt="" />
+  <div class="lightbox-caption" id="lightbox-caption"></div>
+</div>
+
+<script>
+  const WORKER_URL = "https://wh-gemach.barry253-0f5.workers.dev";
+  let inventory = [];
+  let selected = new Set();
+  let openEnded = false;
+
+  function reportHeight() {
+    const h = document.body.scrollHeight;
+    window.parent.postMessage({ type: "resize", height: h }, "*");
+  }
+
+  const resizeObserver = new ResizeObserver(reportHeight);
+  resizeObserver.observe(document.body);
+
+  async function loadInventory() {
+    try {
+      const res = await fetch(`${WORKER_URL}/inventory`);
+      inventory = await res.json();
+      renderList();
+    } catch {
+      document.getElementById("item-list").innerHTML =
+        `<div class="state-message">Unable to load inventory. Please <a href="mailto:whmedicalgemach@gmail.com" style="color:var(--navy)">contact us</a> directly.</div>`;
+    }
+    reportHeight();
+  }
+
+  function renderList() {
+    const list = document.getElementById("item-list");
+    if (!inventory.length) {
+      list.innerHTML = `<div class="state-message">No items found.</div>`;
+      updateShowFormBtn();
+      return;
+    }
+
+    list.innerHTML = inventory.map(item => {
+      const avail = item.availableCount > 0;
+      const availText = avail
+        ? (item.availableCount === 1 ? "1 available" : `${item.availableCount} available`)
+        : "Currently unavailable";
+
+      const thumbHtml = item.photoUrl
+        ? `<img src="${item.photoUrl}" alt="${item.name}" onclick="openLightbox('${item.photoUrl}','${item.name.replace(/'/g,"\\'")}');event.stopPropagation()" />`
+        : `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1B3A4B" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+
+      return `
+        <div class="item-row ${selected.has(item.id) ? 'selected' : ''}"
+             id="row-${item.id}"
+             onclick="toggleItem('${item.id}')">
+          <div class="item-thumb" onclick="event.stopPropagation()${item.photoUrl ? `;openLightbox('${item.photoUrl}','${item.name.replace(/'/g,"\\'")}')` : ''}">
+            ${thumbHtml}
+          </div>
+          <div class="item-content">
+            <div class="item-top">
+              <div class="item-name">${item.name}</div>
+              <div class="availability ${avail ? 'available' : 'unavailable'}">
+                <div class="avail-dot"></div>
+                <span class="avail-text">${availText}</span>
+              </div>
+            </div>
+            ${item.description ? `
+              <button class="item-desc-toggle" onclick="toggleDesc('${item.id}');event.stopPropagation()" id="desc-btn-${item.id}">
+                <span id="desc-arrow-${item.id}">▸</span> Details
+              </button>
+              <div class="item-desc" id="desc-${item.id}">${item.description}</div>
+            ` : ''}
+          </div>
+          <input type="checkbox" class="item-checkbox"
+                 id="chk-${item.id}"
+                 ${selected.has(item.id) ? 'checked' : ''}
+                 onclick="event.stopPropagation();toggleItem('${item.id}')"
+                 aria-label="Select ${item.name}" />
+        </div>`;
+    }).join("");
+
+    updateShowFormBtn();
+    reportHeight();
+  }
+
+  function toggleItem(id) {
+    if (selected.has(id)) {
+      selected.delete(id);
+    } else {
+      selected.add(id);
+    }
+    const row = document.getElementById(`row-${id}`);
+    const chk = document.getElementById(`chk-${id}`);
+    if (row) row.classList.toggle("selected", selected.has(id));
+    if (chk) chk.checked = selected.has(id);
+    updateShowFormBtn();
+    syncFormItems();
+    reportHeight();
+  }
+
+  function toggleDesc(id) {
+    const desc = document.getElementById(`desc-${id}`);
+    const arrow = document.getElementById(`desc-arrow-${id}`);
+    const isOpen = desc.classList.toggle("open");
+    if (arrow) arrow.textContent = isOpen ? "▾" : "▸";
+    reportHeight();
+  }
+
+  document.getElementById("select-all-btn").addEventListener("click", () => {
+    const availableIds = inventory.filter(i => i.availableCount > 0).map(i => i.id);
+    const allSelected = availableIds.every(id => selected.has(id));
+    if (allSelected) {
+      availableIds.forEach(id => selected.delete(id));
+      document.getElementById("select-all-btn").textContent = "Select all available";
+    } else {
+      availableIds.forEach(id => selected.add(id));
+      document.getElementById("select-all-btn").textContent = "Clear selection";
+    }
+    renderList();
+    syncFormItems();
+  });
+
+  function updateShowFormBtn() {
+    const btn = document.getElementById("btn-show-form");
+    btn.classList.toggle("hidden", selected.size === 0);
+    const n = selected.size;
+    btn.textContent = n === 0 ? "Request selected items"
+                   : n === 1  ? "Request 1 item"
+                              : `Request ${n} items`;
+  }
+
+  document.getElementById("btn-show-form").addEventListener("click", () => {
+    showForm();
+    document.getElementById("form-divider").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  function showForm() {
+    document.getElementById("form-divider").style.display = "";
+    const form = document.getElementById("request-form");
+    form.classList.add("visible");
+    syncFormItems();
+    reportHeight();
+  }
+
+  function syncFormItems() {
+    const grid = document.getElementById("form-items-grid");
+    if (!grid) return;
+    grid.innerHTML = inventory.map(item => {
+      const isChecked = selected.has(item.id);
+      return `
+        <label class="item-check-label ${isChecked ? 'checked' : ''}">
+          <input type="checkbox" value="${item.id}" name="form-items"
+            ${isChecked ? 'checked' : ''}
+            onchange="this.closest('label').classList.toggle('checked',this.checked);reportHeight()" />
+          ${item.name}
+        </label>`;
+    }).join("");
+  }
+
+  document.getElementById("btn-dates").addEventListener("click", () => setOpenEnded(false));
+  document.getElementById("btn-open").addEventListener("click", () => setOpenEnded(true));
+
+  function setOpenEnded(val) {
+    openEnded = val;
+    document.getElementById("date-fields").classList.toggle("hidden", val);
+    document.getElementById("open-msg").classList.toggle("visible", val);
+    document.getElementById("btn-dates").classList.toggle("active", !val);
+    document.getElementById("btn-open").classList.toggle("active", val);
+    reportHeight();
+  }
+
+  document.getElementById("btn-submit").addEventListener("click", async () => {
+    const name  = document.getElementById("f-name").value.trim();
+    const phone = document.getElementById("f-phone").value.trim();
+    const email = document.getElementById("f-email").value.trim();
+    const preferredContact = document.getElementById("f-contact").value;
+    const notes = document.getElementById("f-notes").value.trim();
+    const neededFrom  = document.getElementById("f-from").value;
+    const neededUntil = document.getElementById("f-until").value;
+    const errorEl = document.getElementById("error-msg");
+
+    const checkedInputs = [...document.querySelectorAll('input[name="form-items"]:checked')];
+    const checkedItems  = checkedInputs.map(cb => cb.value);
+    const checkedNames  = checkedInputs.map(cb => {
+      const item = inventory.find(i => i.id === cb.value);
+      return item ? item.name : cb.value;
+    });
+
+    if (!name)              { showError("Please enter your name."); return; }
+    if (!phone)             { showError("Please enter your phone number."); return; }
+    if (!checkedItems.length) { showError("Please select at least one item."); return; }
+
+    const btn = document.getElementById("btn-submit");
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    errorEl.style.display = "none";
+
+    try {
+      const res = await fetch(`${WORKER_URL}/submit-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name, phone, email, preferredContact,
+          itemsRequested: checkedItems,
+          itemNames: checkedNames,
+          neededFrom:  neededFrom  || null,
+          neededUntil: neededUntil || null,
+          openEnded, notes
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        document.getElementById("form-view").style.display = "none";
+        document.getElementById("success-view").style.display = "block";
+        selected.clear();
+        document.getElementById("btn-show-form").classList.add("hidden");
+        loadInventory();
+        reportHeight();
+      } else {
+        showError(data.error || "Something went wrong. Please try again.");
+        btn.disabled = false;
+        btn.textContent = "Send request";
+      }
+    } catch {
+      showError("Unable to send. Please contact us directly.");
+      btn.disabled = false;
+      btn.textContent = "Send request";
+    }
+  });
+
+  function showError(msg) {
+    const el = document.getElementById("error-msg");
+    el.textContent = msg;
+    el.style.display = "block";
+    reportHeight();
+  }
+
+  function openLightbox(url, name) {
+    document.getElementById("lightbox-img").src = url;
+    document.getElementById("lightbox-caption").textContent = name;
+    document.getElementById("lightbox").classList.add("open");
+  }
+
+  document.getElementById("lightbox-close").addEventListener("click", closeLightbox);
+  document.getElementById("lightbox").addEventListener("click", e => {
+    if (e.target === document.getElementById("lightbox")) closeLightbox();
+  });
+
+  function closeLightbox() {
+    document.getElementById("lightbox").classList.remove("open");
+  }
+
+  loadInventory();
+</script>
+</body>
+</html>
