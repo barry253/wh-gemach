@@ -1374,7 +1374,12 @@
     }
 
     list.innerHTML = loans.map(l => {
-      const cls = l.overdue ? "overdue" : l.daysOut > 7 ? "warning" : "";
+      // Warning: due within 3 days (if expectedReturn set), or out > 7 days (fallback)
+      const todayStr = new Date().toISOString().split("T")[0];
+      const dueSoon = l.expectedReturn
+        ? (l.expectedReturn >= todayStr && (new Date(l.expectedReturn) - new Date(todayStr)) / 86400000 <= 3)
+        : l.daysOut > 7;
+      const cls = l.overdue ? "overdue" : dueSoon ? "warning" : "";
       const tag = l.overdue
         ? `<span class="tag tag-red loan-row-tag">Overdue ${l.daysOut}d</span>`
         : l.daysOut != null
