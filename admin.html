@@ -1696,19 +1696,31 @@
 
   function openAssignItem(item) {
     assignItemRecord = item;
-    assignStatus = item.status;
+    const loan = item.currentLoan || null;
 
     document.getElementById("assign-item-title").textContent = item.itemId;
-    document.getElementById("assign-item-subtitle").textContent = item.itemTypeName || "";
+    document.getElementById("assign-item-subtitle").textContent =
+      (item.itemTypeName || "") + (loan ? ` · ${loan.loanId || ""}` : "");
 
-    document.getElementById("assign-borrower-name").value = "";
-    document.getElementById("assign-borrower-phone").value = "";
-    document.getElementById("assign-borrower-email").value = "";
-    document.getElementById("assign-borrower-contact").value = "";
-    document.getElementById("assign-date-borrowed").value = new Date().toISOString().split("T")[0];
-    document.getElementById("assign-res-start").value = "";
-    document.getElementById("assign-res-end").value = "";
-    document.getElementById("assign-notes").value = item.notes || "";
+    if (loan) {
+      document.getElementById("assign-borrower-name").value    = loan.borrowerName    || "";
+      document.getElementById("assign-borrower-phone").value   = loan.borrowerPhone   || "";
+      document.getElementById("assign-borrower-email").value   = loan.borrowerEmail   || "";
+      document.getElementById("assign-borrower-contact").value = loan.borrowerContact || "";
+      document.getElementById("assign-date-borrowed").value    = loan.dateBorrowed    || new Date().toISOString().split("T")[0];
+      document.getElementById("assign-res-start").value        = loan.reservationStart || "";
+      document.getElementById("assign-res-end").value          = loan.reservationEnd   || "";
+      document.getElementById("assign-notes").value            = loan.notes || item.notes || "";
+    } else {
+      document.getElementById("assign-borrower-name").value    = "";
+      document.getElementById("assign-borrower-phone").value   = "";
+      document.getElementById("assign-borrower-email").value   = "";
+      document.getElementById("assign-borrower-contact").value = "";
+      document.getElementById("assign-date-borrowed").value    = new Date().toISOString().split("T")[0];
+      document.getElementById("assign-res-start").value        = "";
+      document.getElementById("assign-res-end").value          = "";
+      document.getElementById("assign-notes").value            = item.notes || "";
+    }
 
     selectAssignStatus(item.status || "Available");
     openSheet("assign-item-sheet");
@@ -1741,6 +1753,10 @@
       status: assignStatus,
       notes: document.getElementById("assign-notes").value || null
     };
+    // Pass existing loan ID so worker can update rather than create a duplicate
+    const existingLoan = assignItemRecord?.currentLoan;
+    if (existingLoan?.loanRecId) payload.existingLoanId = existingLoan.loanRecId;
+
     if (needsBorrower) {
       payload.borrowerName    = document.getElementById("assign-borrower-name").value.trim();
       payload.borrowerPhone   = document.getElementById("assign-borrower-phone").value.trim() || null;
