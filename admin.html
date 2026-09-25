@@ -859,6 +859,51 @@
   </div>
 </div>
 
+<!-- Edit Reservation Sheet -->
+<div class="sheet-overlay" id="edit-res-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('edit-res-sheet')">×</button>
+    <h3>Edit reservation</h3>
+    <p class="sheet-subtitle" id="edit-res-subtitle"></p>
+    <div class="form-row" style="margin-top:0.75rem">
+      <div class="form-group">
+        <label>Start date</label>
+        <input type="date" id="edit-res-start" />
+      </div>
+      <div class="form-group">
+        <label>End date</label>
+        <input type="date" id="edit-res-end" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea id="edit-res-notes" rows="3" placeholder="Optional notes"></textarea>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('edit-res-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="edit-res-submit-btn">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cancel Reservation Sheet -->
+<div class="sheet-overlay" id="cancel-res-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('cancel-res-sheet')">×</button>
+    <h3>Cancel reservation</h3>
+    <p class="sheet-subtitle" id="cancel-res-subtitle"></p>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0.75rem 0 1.25rem">
+      This will mark the reservation as cancelled. The item will become available for others.
+    </p>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('cancel-res-sheet')">Keep reservation</button>
+      <button class="btn btn-primary" id="cancel-res-submit-btn" style="background:var(--red);border-color:var(--red)">Yes, cancel it</button>
+    </div>
+  </div>
+</div>
+
 <!-- Item Type Sheet -->
 <div class="sheet-overlay" id="item-type-sheet">
   <div class="sheet">
@@ -1368,6 +1413,8 @@
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick='event.stopPropagation();openPickup(${rJson})'>✓ Mark picked up</button>
             <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation();openPickupInstructions(${rJson})'>📍 Send pickup info</button>
+            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation();openEditReservation(${rJson})'>✏️ Edit</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick='event.stopPropagation();openCancelReservation(${rJson})'>✕ Cancel</button>
             <a class="btn btn-whatsapp btn-sm"
               href="${waUrl(r.borrowerPhone) || "#"}"
               target="_blank"
@@ -1404,6 +1451,49 @@
       panel.classList.add("open");
       row.style.borderRadius = "8px 8px 0 0";
     }
+  }
+
+  function openEditReservation(r) {
+    document.getElementById("edit-res-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
+    document.getElementById("edit-res-start").value = r.reservationStart || "";
+    document.getElementById("edit-res-end").value   = r.reservationEnd   || "";
+    document.getElementById("edit-res-notes").value = r.notes            || "";
+    document.getElementById("edit-res-submit-btn").onclick = async () => {
+      const btn = document.getElementById("edit-res-submit-btn");
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      await api(`/admin/reservations/${r.id}`, "PATCH", {
+        reservationStart: document.getElementById("edit-res-start").value || null,
+        reservationEnd:   document.getElementById("edit-res-end").value   || null,
+        notes:            document.getElementById("edit-res-notes").value  || null
+      });
+      btn.disabled = false;
+      btn.textContent = "Save changes";
+      closeSheet("edit-res-sheet");
+      loadReservations();
+      showToast("Reservation updated");
+    };
+    openSheet("edit-res-sheet");
+  }
+
+  function openCancelReservation(r) {
+    document.getElementById("cancel-res-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
+    document.getElementById("cancel-res-submit-btn").onclick = async () => {
+      const btn = document.getElementById("cancel-res-submit-btn");
+      btn.disabled = true;
+      btn.textContent = "Cancelling…";
+      await api(`/admin/reservations/${r.id}/cancel`, "POST");
+      btn.disabled = false;
+      btn.textContent = "Yes, cancel it";
+      closeSheet("cancel-res-sheet");
+      document.getElementById(`res-row-${r.id}`)?.remove();
+      document.getElementById(`res-panel-${r.id}`)?.remove();
+      loadDashboard();
+      showToast("Reservation cancelled");
+      const remaining = document.querySelectorAll("[id^='res-row-']").length;
+      if (!remaining) loadReservations(); // show empty state
+    };
+    openSheet("cancel-res-sheet");
   }
 
   function openPickup(r) {
