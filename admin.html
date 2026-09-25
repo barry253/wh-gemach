@@ -259,6 +259,54 @@
       font-size: 0.95rem;
     }
 
+    /* ── Loans filter bar ── */
+    .loans-filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .filter-chips {
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .filter-chip {
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      font-size: 0.78rem;
+      cursor: pointer;
+      color: var(--text);
+      transition: background 0.12s, color 0.12s;
+    }
+    .filter-chip.active {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+    .filter-overdue-btn {
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      font-size: 0.78rem;
+      cursor: pointer;
+      color: var(--muted);
+      white-space: nowrap;
+      transition: background 0.12s, color 0.12s;
+    }
+    .filter-overdue-btn.active {
+      background: var(--red);
+      color: #fff;
+      border-color: var(--red);
+    }
+
     /* ── Compact loan rows ── */
     .loan-row {
       display: flex;
@@ -657,7 +705,11 @@
 
     <!-- Loans -->
     <div class="screen" id="screen-loans">
-      <div class="section-label">Active loans</div>
+      <div class="loans-filter-bar" id="loans-filter-bar" style="display:none">
+        <div class="filter-chips" id="loans-type-chips"></div>
+        <button class="filter-overdue-btn" id="loans-overdue-btn" onclick="toggleOverdueFilter()">Overdue only</button>
+      </div>
+      <div class="section-label" id="loans-section-label">Active loans</div>
       <div class="card-list" id="loans-list">
         <div class="loading">Loading…</div>
       </div>
@@ -1139,16 +1191,66 @@
   }
 
   // ── Loans ─────────────────────────────────────────────────────────────────
+  let allLoans = [];
+  let loanFilterType = null;
+  let loanFilterOverdue = false;
+
   async function loadLoans() {
     const list = document.getElementById("loans-list");
     list.innerHTML = '<div class="loading">Loading…</div>';
     const data = await api("/admin/loans");
     if (!data?.length) {
       list.innerHTML = '<div class="empty-state"><div class="icon">✓</div>No active loans</div>';
+      document.getElementById("loans-filter-bar").style.display = "none";
+      return;
+    }
+    allLoans = data;
+    loanFilterType = null;
+    loanFilterOverdue = false;
+    buildLoanFilterChips();
+    renderLoans();
+  }
+
+  function buildLoanFilterChips() {
+    const types = [...new Set(allLoans.map(l => l.itemTypeName).filter(Boolean))].sort();
+    const bar = document.getElementById("loans-filter-bar");
+    const chips = document.getElementById("loans-type-chips");
+    chips.innerHTML = `<button class="filter-chip active" onclick="setLoanTypeFilter(null)">All</button>` +
+      types.map(t => `<button class="filter-chip" onclick="setLoanTypeFilter('${t.replace(/'/g,"&#39;")}')">${t}</button>`).join("");
+    bar.style.display = "flex";
+  }
+
+  function setLoanTypeFilter(type) {
+    loanFilterType = type;
+    document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
+    const chips = document.querySelectorAll(".filter-chip");
+    chips.forEach(c => { if (c.textContent.trim() === (type || "All")) c.classList.add("active"); });
+    renderLoans();
+  }
+
+  function toggleOverdueFilter() {
+    loanFilterOverdue = !loanFilterOverdue;
+    document.getElementById("loans-overdue-btn").classList.toggle("active", loanFilterOverdue);
+    renderLoans();
+  }
+
+  function renderLoans() {
+    let loans = allLoans;
+    if (loanFilterType) loans = loans.filter(l => l.itemTypeName === loanFilterType);
+    if (loanFilterOverdue) loans = loans.filter(l => l.overdue);
+
+    const label = document.getElementById("loans-section-label");
+    const total = allLoans.length;
+    const showing = loans.length;
+    label.textContent = showing === total ? `Active loans (${total})` : `Active loans — ${showing} of ${total}`;
+
+    const list = document.getElementById("loans-list");
+    if (!loans.length) {
+      list.innerHTML = '<div class="empty-state" style="padding:1.5rem;text-align:center;color:var(--muted)">No loans match this filter</div>';
       return;
     }
 
-    list.innerHTML = data.map(l => {
+    list.innerHTML = loans.map(l => {
       const cls = l.overdue ? "overdue" : l.daysOut > 7 ? "warning" : "";
       const tag = l.overdue
         ? `<span class="tag tag-red loan-row-tag">Overdue ${l.daysOut}d</span>`
@@ -1202,7 +1304,6 @@
     const panel = document.getElementById(`loan-panel-${id}`);
     const row = document.getElementById(`loan-row-${id}`);
     const isOpen = panel.classList.contains("open");
-    // Close all others
     document.querySelectorAll(".loan-actions-panel.open").forEach(p => p.classList.remove("open"));
     document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
     if (!isOpen) {
