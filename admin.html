@@ -1377,7 +1377,9 @@
       const cls = l.overdue ? "overdue" : l.daysOut > 7 ? "warning" : "";
       const tag = l.overdue
         ? `<span class="tag tag-red loan-row-tag">Overdue ${l.daysOut}d</span>`
-        : `<span class="tag tag-navy loan-row-tag">${l.daysOut}d</span>`;
+        : l.daysOut != null
+          ? `<span class="tag tag-navy loan-row-tag">${l.daysOut}d</span>`
+          : `<span class="tag tag-navy loan-row-tag">?</span>`;
 
       const phone = l.borrowerPhone?.replace(/\D/g,"");
       const contact = l.borrowerContact?.toLowerCase();
