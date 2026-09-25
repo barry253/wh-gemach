@@ -618,6 +618,158 @@
 
     .inventory-item-id { color: var(--muted); font-size: 0.75rem; }
 
+    /* ── History tab ── */
+    .history-controls {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0.6rem 1rem;
+    }
+
+    .history-search-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .history-search {
+      flex: 1;
+      padding: 0.45rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+
+    .history-search:focus { outline: none; border-color: var(--navy); }
+
+    .history-sort-btn {
+      padding: 0.45rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      color: var(--muted);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .history-sort-btn.asc { color: var(--navy); border-color: var(--navy); }
+
+    .history-date-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .history-date-row input[type="date"] {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      color: var(--text);
+      background: var(--white);
+    }
+
+    .history-date-row label { font-size: 0.75rem; color: var(--muted); }
+
+    .history-type-chips {
+      display: flex;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+    }
+
+    .history-chip {
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      font-size: 0.75rem;
+      cursor: pointer;
+      color: var(--text);
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .history-chip.active {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+
+    .history-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 1rem 0 0;
+    }
+
+    .history-entry {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-start;
+    }
+
+    .history-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 0.45rem;
+    }
+
+    .history-entry-body { flex: 1; min-width: 0; }
+
+    .history-event-type {
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.15rem;
+    }
+
+    .history-meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem 0.6rem;
+    }
+
+    .history-time {
+      font-size: 0.72rem;
+      color: var(--muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+      text-align: right;
+    }
+
+    .history-notes {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+      font-style: italic;
+    }
+
+    .load-more-btn {
+      width: 100%;
+      padding: 0.6rem;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.82rem;
+      color: var(--navy);
+      cursor: pointer;
+      margin-top: 0.5rem;
+    }
+
+    .load-more-btn:hover { background: var(--teal); }
+
     @media (min-width: 600px) {
       .sheet-overlay { align-items: center; padding: 1rem; }
       .sheet { border-radius: 12px; }
@@ -669,6 +821,7 @@
     <button class="nav-tab" onclick="switchTab('reservations')">Reservations</button>
     <button class="nav-tab" onclick="switchTab('inventory')">Inventory</button>
     <button class="nav-tab" onclick="switchTab('catalog')">Catalog</button>
+    <button class="nav-tab" onclick="switchTab('history')">History</button>
   </div>
 
   <div class="content">
@@ -728,6 +881,29 @@
       <div class="section-label">Inventory status</div>
       <div id="inventory-list">
         <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="screen" id="screen-history" style="margin: -1.25rem;">
+      <div class="history-controls">
+        <div class="history-search-row">
+          <input class="history-search" id="history-search" type="search" placeholder="Search borrower, item, notes…" oninput="onHistorySearch()" />
+          <button class="history-sort-btn" id="history-sort-btn" onclick="toggleHistorySort()">↓ Newest</button>
+        </div>
+        <div class="history-date-row">
+          <label>From</label>
+          <input type="date" id="history-from" onchange="reloadHistory()" />
+          <label>To</label>
+          <input type="date" id="history-to" onchange="reloadHistory()" />
+        </div>
+        <div class="history-type-chips" id="history-type-chips"></div>
+      </div>
+      <div class="content" style="padding-top:0">
+        <div class="history-feed" id="history-feed">
+          <div class="loading">Loading…</div>
+        </div>
+        <button class="load-more-btn" id="history-load-more" style="display:none" onclick="loadMoreHistory()">Load more</button>
       </div>
     </div>
 
@@ -1172,6 +1348,7 @@
     if (name === "reservations") loadReservations();
     if (name === "inventory")    loadInventory();
     if (name === "catalog")      loadCatalog();
+    if (name === "history")      initHistory();
   }
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -2137,6 +2314,167 @@
     const el = document.getElementById("it-photo-status");
     el.textContent = msg;
     el.style.display = msg ? "block" : "none";
+  }
+
+  // ── History ───────────────────────────────────────────────────────────────
+  const HISTORY_EVENT_TYPES = [
+    "Loan Created", "Item Returned", "Item Reserved",
+    "Reservation Cancelled", "Marked for Repair", "Restored",
+    "Request Received", "Request Confirmed", "Request Declined", "Borrower Created"
+  ];
+
+  const HISTORY_DOT_COLORS = {
+    "Loan Created":           "#2E7D32",
+    "Item Returned":          "#00897B",
+    "Item Reserved":          "#1565C0",
+    "Reservation Cancelled":  "#757575",
+    "Marked for Repair":      "#E65100",
+    "Restored":               "#43A047",
+    "Request Received":       "#6A1B9A",
+    "Request Confirmed":      "#00838F",
+    "Request Declined":       "#C62828",
+    "Borrower Created":       "#F9A825",
+  };
+
+  let historyState = {
+    initialized: false,
+    sortDir: "desc",
+    eventType: null,
+    searchText: "",
+    offset: null,
+    allEntries: [],
+    searchTimer: null,
+  };
+
+  function initHistory() {
+    if (!historyState.initialized) {
+      const chipsEl = document.getElementById("history-type-chips");
+      chipsEl.innerHTML = `<button class="history-chip active" onclick="setHistoryEventType(null)">All</button>` +
+        HISTORY_EVENT_TYPES.map(t =>
+          `<button class="history-chip" onclick="setHistoryEventType('${t.replace(/'/g,"\\'")}')">
+            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${HISTORY_DOT_COLORS[t]||'#999'};margin-right:4px;vertical-align:middle"></span>${t}
+          </button>`
+        ).join("");
+      historyState.initialized = true;
+    }
+    reloadHistory();
+  }
+
+  function setHistoryEventType(type) {
+    historyState.eventType = type;
+    document.querySelectorAll(".history-chip").forEach(c => {
+      const label = c.textContent.trim();
+      c.classList.toggle("active", type === null ? label === "All" : label === type);
+    });
+    reloadHistory();
+  }
+
+  function toggleHistorySort() {
+    historyState.sortDir = historyState.sortDir === "desc" ? "asc" : "desc";
+    const btn = document.getElementById("history-sort-btn");
+    if (historyState.sortDir === "asc") {
+      btn.textContent = "↑ Oldest";
+      btn.classList.add("asc");
+    } else {
+      btn.textContent = "↓ Newest";
+      btn.classList.remove("asc");
+    }
+    reloadHistory();
+  }
+
+  function onHistorySearch() {
+    clearTimeout(historyState.searchTimer);
+    historyState.searchTimer = setTimeout(() => {
+      historyState.searchText = document.getElementById("history-search").value.trim().toLowerCase();
+      reloadHistory();
+    }, 300);
+  }
+
+  function reloadHistory() {
+    historyState.offset = null;
+    historyState.allEntries = [];
+    fetchHistory(true);
+  }
+
+  async function fetchHistory(reset) {
+    const feed = document.getElementById("history-feed");
+    if (reset) feed.innerHTML = '<div class="loading">Loading…</div>';
+
+    const params = new URLSearchParams();
+    if (historyState.eventType) params.set("eventType", historyState.eventType);
+    if (historyState.sortDir)   params.set("sort", historyState.sortDir);
+    if (historyState.offset)    params.set("offset", historyState.offset);
+
+    const fromVal = document.getElementById("history-from").value;
+    const toVal   = document.getElementById("history-to").value;
+    if (fromVal) params.set("dateFrom", fromVal);
+    if (toVal)   params.set("dateTo", toVal);
+
+    if (historyState.searchText) params.set("search", historyState.searchText);
+
+    const data = await api(`/admin/history?${params}`);
+    if (!data) return;
+
+    const newEntries = data.records || [];
+    historyState.allEntries = reset ? newEntries : [...historyState.allEntries, ...newEntries];
+    historyState.offset = data.offset || null;
+
+    renderHistoryFeed();
+  }
+
+  function renderHistoryFeed() {
+    const feed = document.getElementById("history-feed");
+    const loadMore = document.getElementById("history-load-more");
+
+    if (!historyState.allEntries.length) {
+      feed.innerHTML = '<div class="empty-state"><div class="icon">📋</div>No history found</div>';
+      loadMore.style.display = "none";
+      return;
+    }
+
+    feed.innerHTML = historyState.allEntries.map(e => {
+      const color = HISTORY_DOT_COLORS[e.eventType] || "#999";
+      const meta = [
+        e.borrower  ? `👤 ${e.borrower}`  : null,
+        e.itemCode  ? `📦 ${e.itemCode}`  : null,
+        e.itemType  ? e.itemType           : null,
+        e.loanId    ? `#${e.loanId}`       : null,
+        e.admin     ? `by ${e.admin}`      : null,
+      ].filter(Boolean);
+
+      return `
+        <div class="history-entry">
+          <div class="history-dot" style="background:${color}"></div>
+          <div class="history-entry-body">
+            <div class="history-event-type" style="color:${color}">${e.eventType || "Unknown"}</div>
+            ${meta.length ? `<div class="history-meta">${meta.map(m => `<span>${m}</span>`).join("")}</div>` : ""}
+            ${e.notes ? `<div class="history-notes">💬 ${e.notes}</div>` : ""}
+          </div>
+          <div class="history-time">${fmtHistoryTime(e.timestamp)}</div>
+        </div>`;
+    }).join("");
+
+    loadMore.style.display = historyState.offset ? "block" : "none";
+  }
+
+  async function loadMoreHistory() {
+    if (!historyState.offset) return;
+    await fetchHistory(false);
+  }
+
+  function fmtHistoryTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1)  return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHrs = Math.floor(diffMins / 60);
+    if (diffHrs < 24) return `${diffHrs}h ago`;
+    const diffDays = Math.floor(diffHrs / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: diffDays > 365 ? "numeric" : undefined });
   }
 
 </script>
