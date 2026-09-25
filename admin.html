@@ -859,6 +859,84 @@
   </div>
 </div>
 
+<!-- Assign Item Sheet -->
+<div class="sheet-overlay" id="assign-item-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('assign-item-sheet')">×</button>
+    <h3 id="assign-item-title">Item</h3>
+    <p class="sheet-subtitle" id="assign-item-subtitle"></p>
+
+    <div class="form-group" style="margin-top:0.75rem">
+      <label>Status</label>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap" id="assign-status-btns">
+        <button class="btn btn-sm btn-ghost" data-status="Available"    onclick="selectAssignStatus('Available')">Available</button>
+        <button class="btn btn-sm btn-ghost" data-status="On Loan"      onclick="selectAssignStatus('On Loan')">On Loan</button>
+        <button class="btn btn-sm btn-ghost" data-status="Reserved"     onclick="selectAssignStatus('Reserved')">Reserved</button>
+        <button class="btn btn-sm btn-ghost" data-status="Needs Repair" onclick="selectAssignStatus('Needs Repair')">Needs Repair</button>
+      </div>
+    </div>
+
+    <div id="assign-borrower-fields" style="display:none">
+      <div style="border-top:1px solid var(--border);margin:0.75rem 0 0.75rem;padding-top:0.75rem;font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em">Borrower</div>
+      <div class="form-group">
+        <label>Name <span style="color:var(--red)">*</span></label>
+        <input type="text" id="assign-borrower-name" placeholder="Full name" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="tel" id="assign-borrower-phone" placeholder="(555) 555-5555" />
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="assign-borrower-email" placeholder="email@example.com" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Preferred contact</label>
+        <select id="assign-borrower-contact">
+          <option value="">— select —</option>
+          <option value="WhatsApp">WhatsApp</option>
+          <option value="SMS">SMS</option>
+          <option value="Call">Call</option>
+          <option value="Email">Email</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="assign-loan-date-fields" style="display:none">
+      <div class="form-group">
+        <label>Date borrowed</label>
+        <input type="date" id="assign-date-borrowed" />
+      </div>
+    </div>
+
+    <div id="assign-reservation-date-fields" style="display:none">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Reservation start</label>
+          <input type="date" id="assign-res-start" />
+        </div>
+        <div class="form-group">
+          <label>Reservation end</label>
+          <input type="date" id="assign-res-end" />
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea id="assign-notes" rows="2" placeholder="Optional"></textarea>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('assign-item-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="assign-item-submit-btn">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Reservation Sheet -->
 <div class="sheet-overlay" id="edit-res-sheet">
   <div class="sheet">
@@ -1587,8 +1665,10 @@
     container.innerHTML = filterBar + Object.entries(groups).map(([type, items]) => `
       <div class="inventory-group">
         <div class="inventory-group-title">${type} <span style="font-weight:400;color:var(--muted)">(${items.filter(i=>i.status==="Available").length}/${items.length} available)</span></div>
-        ${items.map(item => `
-          <div class="inventory-item">
+        ${items.map(item => {
+          const iJson = JSON.stringify(item).replace(/'/g,"&#39;");
+          return `
+          <div class="inventory-item" style="cursor:pointer" onclick='openAssignItem(${iJson})'>
             <div>
               <strong>${item.itemId}</strong>
               ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${item.notes}</span>` : ""}
@@ -1598,8 +1678,10 @@
                 ${item.status}
               </span>
               <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${item.condition}</span>
+              <span style="color:var(--muted);font-size:1rem">›</span>
             </div>
-          </div>`).join("")}
+          </div>`;
+        }).join("")}
       </div>`).join("");
   }
 
@@ -1607,6 +1689,88 @@
     inventoryFilter = f;
     renderInventory();
   }
+
+  // ── Assign item ───────────────────────────────────────────────────────────
+  let assignItemRecord = null;
+  let assignStatus = null;
+
+  function openAssignItem(item) {
+    assignItemRecord = item;
+    assignStatus = item.status;
+
+    document.getElementById("assign-item-title").textContent = item.itemId;
+    document.getElementById("assign-item-subtitle").textContent = item.itemTypeName || "";
+
+    document.getElementById("assign-borrower-name").value = "";
+    document.getElementById("assign-borrower-phone").value = "";
+    document.getElementById("assign-borrower-email").value = "";
+    document.getElementById("assign-borrower-contact").value = "";
+    document.getElementById("assign-date-borrowed").value = new Date().toISOString().split("T")[0];
+    document.getElementById("assign-res-start").value = "";
+    document.getElementById("assign-res-end").value = "";
+    document.getElementById("assign-notes").value = item.notes || "";
+
+    selectAssignStatus(item.status || "Available");
+    openSheet("assign-item-sheet");
+  }
+
+  function selectAssignStatus(status) {
+    assignStatus = status;
+    document.querySelectorAll("#assign-status-btns button").forEach(btn => {
+      const isSelected = btn.dataset.status === status;
+      btn.className = `btn btn-sm ${isSelected ? "btn-primary" : "btn-ghost"}`;
+    });
+    const needsBorrower = status === "On Loan" || status === "Reserved";
+    document.getElementById("assign-borrower-fields").style.display = needsBorrower ? "" : "none";
+    document.getElementById("assign-loan-date-fields").style.display = status === "On Loan" ? "" : "none";
+    document.getElementById("assign-reservation-date-fields").style.display = status === "Reserved" ? "" : "none";
+  }
+
+  document.getElementById("assign-item-submit-btn").addEventListener("click", async () => {
+    if (!assignItemRecord) return;
+    const needsBorrower = assignStatus === "On Loan" || assignStatus === "Reserved";
+    if (needsBorrower && !document.getElementById("assign-borrower-name").value.trim()) {
+      showToast("Borrower name is required");
+      return;
+    }
+    const btn = document.getElementById("assign-item-submit-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+
+    const payload = {
+      status: assignStatus,
+      notes: document.getElementById("assign-notes").value || null
+    };
+    if (needsBorrower) {
+      payload.borrowerName    = document.getElementById("assign-borrower-name").value.trim();
+      payload.borrowerPhone   = document.getElementById("assign-borrower-phone").value.trim() || null;
+      payload.borrowerEmail   = document.getElementById("assign-borrower-email").value.trim() || null;
+      payload.borrowerContact = document.getElementById("assign-borrower-contact").value || null;
+    }
+    if (assignStatus === "On Loan") {
+      payload.dateBorrowed = document.getElementById("assign-date-borrowed").value || null;
+    }
+    if (assignStatus === "Reserved") {
+      payload.reservationStart = document.getElementById("assign-res-start").value || null;
+      payload.reservationEnd   = document.getElementById("assign-res-end").value   || null;
+    }
+
+    const result = await api(`/admin/inventory/${assignItemRecord.id}/assign`, "POST", payload);
+    btn.disabled = false;
+    btn.textContent = "Save";
+
+    if (result?.success || result?.loanId) {
+      closeSheet("assign-item-sheet");
+      showToast(assignStatus === "Available" ? "Item marked available"
+               : assignStatus === "Needs Repair" ? "Item marked for repair"
+               : assignStatus === "Reserved" ? `Reserved — Loan ${result.loanId}`
+               : `Loan created — ${result.loanId}`);
+      loadInventory();
+      loadDashboard();
+    } else {
+      showToast("Something went wrong — please try again");
+    }
+  });
 
   // ── Sheet helpers ─────────────────────────────────────────────────────────
   function openSheet(id) {
