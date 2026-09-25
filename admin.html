@@ -717,8 +717,8 @@
 
     <!-- Reservations -->
     <div class="screen" id="screen-reservations">
-      <div class="section-label">Upcoming reservations</div>
-      <div class="card-list" id="reservations-list">
+      <div class="section-label" id="reservations-section-label">Upcoming reservations</div>
+      <div id="reservations-list">
         <div class="loading">Loading…</div>
       </div>
     </div>
@@ -1338,8 +1338,12 @@
     const data = await api("/admin/reservations");
     if (!data?.length) {
       list.innerHTML = '<div class="empty-state"><div class="icon">📅</div>No upcoming reservations</div>';
+      document.getElementById("reservations-section-label").textContent = "Upcoming reservations";
       return;
     }
+
+    document.getElementById("reservations-section-label").textContent =
+      `Upcoming reservations (${data.length})`;
 
     list.innerHTML = data.map(r => {
       const dates = r.reservationStart
@@ -1347,32 +1351,59 @@
         : "Dates TBD";
       const phone = r.borrowerPhone?.replace(/\D/g,"");
       const contact = r.borrowerContact?.toLowerCase();
+      const rJson = JSON.stringify(r).replace(/'/g,"&#39;");
 
-      return `<div class="card" id="res-${r.id}">
-        <div class="card-header">
-          <div>
-            <div class="card-title">${r.borrowerName}</div>
-            <div class="card-id">${r.loanId || ""}</div>
+      return `
+        <div class="loan-row" id="res-row-${r.id}" onclick="toggleResActions('${r.id}')">
+          <div class="loan-row-main">
+            <span class="loan-row-name">${r.borrowerName}</span>
+            <span class="loan-row-item">${r.itemTypeName || "Item TBD"}</span>
+            ${r.itemId ? `<span class="loan-row-code">${r.itemId}</span>` : ""}
           </div>
-          <span class="tag tag-navy">Reserved</span>
+          <span class="loan-row-date">${dates}</span>
+          <span class="tag tag-navy loan-row-tag">Reserved</span>
         </div>
-        <div class="card-meta">
-          <span>📦 ${r.itemTypeName || "Item TBD"}</span>
-          <span>📅 ${dates}</span>
-          ${phone ? `<span>📞 <a href="tel:${phone}" style="color:var(--navy)">${r.borrowerPhone}</a></span>` : ""}
-          ${r.notes ? `<span>💬 ${r.notes}</span>` : ""}
-        </div>
-        <div class="card-actions">
-          <button class="btn btn-primary btn-sm" onclick='openPickup(${JSON.stringify(r).replace(/'/g,"&#39;")})'>✓ Mark picked up</button>
-          <button class="btn btn-ghost btn-sm" onclick='openPickupInstructions(${JSON.stringify(r).replace(/'/g,"&#39;")})'>📍 Send pickup info</button>
-          <a class="btn btn-whatsapp btn-sm"
-            href="${waUrl(r.borrowerPhone) || "#"}"
-            target="_blank"
-            style="${!waUrl(r.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}">
-            ${(r.borrowerContact||"").toLowerCase() === "whatsapp" ? "★ " : ""}WhatsApp</a>
-        </div>
-      </div>`;
+        <div class="loan-actions-panel" id="res-panel-${r.id}">
+          ${r.notes ? `<div class="loan-notes">💬 ${r.notes}</div>` : ""}
+          <div class="card-actions">
+            <button class="btn btn-primary btn-sm" onclick='event.stopPropagation();openPickup(${rJson})'>✓ Mark picked up</button>
+            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation();openPickupInstructions(${rJson})'>📍 Send pickup info</button>
+            <a class="btn btn-whatsapp btn-sm"
+              href="${waUrl(r.borrowerPhone) || "#"}"
+              target="_blank"
+              onclick="event.stopPropagation()"
+              style="${!waUrl(r.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}"
+              title="${!waUrl(r.borrowerPhone) ? "No phone on file" : ""}">
+              ${contact === "whatsapp" ? "★ " : ""}WhatsApp</a>
+            <a class="btn btn-ghost btn-sm"
+              href="${r.borrowerEmail ? `mailto:${r.borrowerEmail}` : "#"}"
+              onclick="event.stopPropagation()"
+              style="${!r.borrowerEmail ? "opacity:0.4;pointer-events:none" : ""}"
+              title="${!r.borrowerEmail ? "No email on file" : ""}">
+              ${contact === "email" ? "★ " : ""}Email</a>
+            <a class="btn btn-ghost btn-sm"
+              href="${phone ? `tel:${phone}` : "#"}"
+              onclick="event.stopPropagation()"
+              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">Call</a>
+            <a class="btn btn-ghost btn-sm"
+              href="${phone ? `sms:${phone}` : "#"}"
+              onclick="event.stopPropagation()"
+              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">SMS</a>
+          </div>
+        </div>`;
     }).join("");
+  }
+
+  function toggleResActions(id) {
+    const panel = document.getElementById(`res-panel-${id}`);
+    const row = document.getElementById(`res-row-${id}`);
+    const isOpen = panel.classList.contains("open");
+    document.querySelectorAll(".loan-actions-panel.open").forEach(p => p.classList.remove("open"));
+    document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
+    if (!isOpen) {
+      panel.classList.add("open");
+      row.style.borderRadius = "8px 8px 0 0";
+    }
   }
 
   function openPickup(r) {
