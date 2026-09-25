@@ -531,6 +531,7 @@
     <button class="nav-tab" onclick="switchTab('loans')">Loans</button>
     <button class="nav-tab" onclick="switchTab('reservations')">Reservations</button>
     <button class="nav-tab" onclick="switchTab('inventory')">Inventory</button>
+    <button class="nav-tab" onclick="switchTab('catalog')">Catalog</button>
   </div>
 
   <div class="content">
@@ -585,6 +586,20 @@
     <div class="screen" id="screen-inventory">
       <div class="section-label">Inventory status</div>
       <div id="inventory-list">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Catalog -->
+    <div class="screen" id="screen-catalog">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:1px solid var(--border)">
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn btn-sm ${catalogView==='types'?'btn-primary':'btn-ghost'}" id="cat-tab-types" onclick="setCatalogView('types')">Item Types</button>
+          <button class="btn btn-sm" id="cat-tab-items" onclick="setCatalogView('items')">Physical Items</button>
+        </div>
+        <button class="btn btn-primary btn-sm" id="cat-add-btn" onclick="openAddSheet()">+ Add</button>
+      </div>
+      <div id="catalog-list">
         <div class="loading">Loading…</div>
       </div>
     </div>
@@ -703,6 +718,110 @@
   </div>
 </div>
 
+<!-- Item Type Sheet -->
+<div class="sheet-overlay" id="item-type-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('item-type-sheet')">×</button>
+    <h3 id="item-type-sheet-title">Add Item Type</h3>
+    <p class="sheet-subtitle" id="item-type-sheet-subtitle"></p>
+
+    <div class="form-group">
+      <label>Name <span style="color:var(--red)">*</span></label>
+      <input type="text" id="it-name" placeholder="e.g. Wheelchair" />
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="it-description" rows="3" placeholder="Help borrowers understand what this item is"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Display Order</label>
+        <input type="number" id="it-order" placeholder="1" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Active</label>
+        <select id="it-active">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Photo</label>
+      <div id="it-photo-preview" style="margin-bottom:0.5rem;display:none">
+        <img id="it-photo-img" src="" style="width:100%;max-height:160px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" />
+        <button class="btn btn-ghost btn-sm" style="margin-top:0.35rem;width:100%" onclick="clearPhoto()">Remove photo</button>
+      </div>
+      <div id="it-photo-upload" style="border:2px dashed var(--border);border-radius:6px;padding:1rem;text-align:center">
+        <div style="font-size:0.82rem;color:var(--muted);margin-bottom:0.75rem">Upload a photo or paste a URL</div>
+        <div style="display:flex;gap:0.5rem;flex-direction:column">
+          <input type="file" id="it-photo-file" accept="image/*" style="display:none" onchange="handleFileSelect(event)" />
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('it-photo-file').click()">📁 Choose file</button>
+          <div style="display:flex;gap:0.5rem">
+            <input type="url" id="it-photo-url" placeholder="https://example.com/photo.jpg" style="flex:1;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:6px;font-size:0.8rem;font-family:Inter,sans-serif" />
+            <button class="btn btn-ghost btn-sm" onclick="handleUrlImport()">Import</button>
+          </div>
+        </div>
+      </div>
+      <p id="it-photo-status" style="font-size:0.78rem;color:var(--muted);margin-top:0.35rem;display:none"></p>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('item-type-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="item-type-submit-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Physical Item Sheet -->
+<div class="sheet-overlay" id="physical-item-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('physical-item-sheet')">×</button>
+    <h3 id="physical-item-sheet-title">Add Item</h3>
+
+    <div class="form-group">
+      <label>Item Type <span style="color:var(--red)">*</span></label>
+      <select id="pi-type">
+        <option value="">Select type…</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Item ID <span style="color:var(--muted);font-weight:400">(auto-generated if blank)</span></label>
+      <input type="text" id="pi-id" placeholder="e.g. WC-007" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Condition</label>
+        <select id="pi-condition">
+          <option value="Good">Good</option>
+          <option value="Fair">Fair</option>
+          <option value="Needs Repair">Needs Repair</option>
+          <option value="Out of Service">Out of Service</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Active</label>
+        <select id="pi-active">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <input type="text" id="pi-notes" placeholder="e.g. Broken armrest" />
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('physical-item-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="physical-item-submit-btn">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const WORKER = "https://wh-gemach.barry253-0f5.workers.dev";
   const PICKUP_ADDRESS = "507 Walton Court, in the driveway";
@@ -788,6 +907,7 @@
     if (name === "loans")        loadLoans();
     if (name === "reservations") loadReservations();
     if (name === "inventory")    loadInventory();
+    if (name === "catalog")      loadCatalog();
   }
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -1238,6 +1358,274 @@
     if (hrs < 24) return `${hrs}h ago`;
     return `${Math.floor(hrs / 24)}d ago`;
   }
+
+  // ── Catalog ───────────────────────────────────────────────────────────────
+  let catalogView = "types";
+  let catalogItemTypes = [];
+  let catalogItems = [];
+  let editingItemTypeId = null;
+  let editingItemId = null;
+  let pendingPhotoUrl = null;
+
+  function setCatalogView(view) {
+    catalogView = view;
+    document.getElementById("cat-tab-types").className = `btn btn-sm ${view === "types" ? "btn-primary" : "btn-ghost"}`;
+    document.getElementById("cat-tab-items").className = `btn btn-sm ${view === "items" ? "btn-primary" : "btn-ghost"}`;
+    renderCatalog();
+  }
+
+  async function loadCatalog() {
+    document.getElementById("catalog-list").innerHTML = '<div class="loading">Loading…</div>';
+    const [typesData, itemsData] = await Promise.all([
+      api("/admin/catalog/item-types"),
+      api("/admin/catalog/items")
+    ]);
+    catalogItemTypes = typesData || [];
+    catalogItems = itemsData?.items || [];
+    const select = document.getElementById("pi-type");
+    const types = itemsData?.itemTypes || [];
+    select.innerHTML = '<option value="">Select type…</option>' +
+      types.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+    renderCatalog();
+  }
+
+  function renderCatalog() {
+    const container = document.getElementById("catalog-list");
+    if (catalogView === "types") {
+      if (!catalogItemTypes.length) {
+        container.innerHTML = '<div class="empty-state">No item types yet</div>';
+        return;
+      }
+      container.innerHTML = catalogItemTypes.map(t => `
+        <div class="card" style="display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:0.6rem">
+          <div style="width:64px;height:50px;flex-shrink:0;border-radius:6px;overflow:hidden;background:var(--teal);display:flex;align-items:center;justify-content:center">
+            ${t.r2PhotoUrl || t.photoUrl
+              ? `<img src="${t.r2PhotoUrl || t.photoUrl}" style="width:100%;height:100%;object-fit:cover" />`
+              : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1B3A4B" stroke-width="1.5" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.2rem">
+              <strong style="font-size:0.9rem">${t.name}</strong>
+              <span class="tag ${t.active ? "tag-green" : "tag-amber"}" style="font-size:0.65rem">${t.active ? "Active" : "Inactive"}</span>
+              <span style="font-size:0.72rem;color:var(--muted);margin-left:auto">#${t.displayOrder} · ${t.itemCount} items</span>
+            </div>
+            ${t.description ? `<div style="font-size:0.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.description}</div>` : ""}
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick='openEditItemType(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>
+        </div>`).join("");
+    } else {
+      const groups = {};
+      catalogItems.forEach(item => {
+        const type = item.itemTypeName || "Other";
+        if (!groups[type]) groups[type] = [];
+        groups[type].push(item);
+      });
+      if (!Object.keys(groups).length) {
+        container.innerHTML = '<div class="empty-state">No items yet</div>';
+        return;
+      }
+      container.innerHTML = Object.entries(groups).map(([type, items]) => `
+        <div class="inventory-group">
+          <div class="inventory-group-title">${type}</div>
+          ${items.map(item => `
+            <div class="inventory-item">
+              <div>
+                <strong>${item.itemId}</strong>
+                ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${item.notes}</span>` : ""}
+              </div>
+              <div style="display:flex;align-items:center;gap:0.4rem">
+                <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${item.condition}</span>
+                <span class="tag ${item.active ? "tag-green" : "tag-amber"}">${item.active ? "Active" : "Inactive"}</span>
+                <button class="btn btn-ghost btn-sm" onclick='openEditItem(${JSON.stringify(item).replace(/'/g,"&#39;")})'>Edit</button>
+              </div>
+            </div>`).join("")}
+        </div>`).join("");
+    }
+  }
+
+  function openAddSheet() {
+    if (catalogView === "types") openAddItemType();
+    else openAddItem();
+  }
+
+  function openAddItemType() {
+    editingItemTypeId = null;
+    pendingPhotoUrl = null;
+    document.getElementById("item-type-sheet-title").textContent = "Add Item Type";
+    document.getElementById("item-type-sheet-subtitle").textContent = "";
+    document.getElementById("it-name").value = "";
+    document.getElementById("it-description").value = "";
+    document.getElementById("it-order").value = catalogItemTypes.length + 1;
+    document.getElementById("it-active").value = "true";
+    clearPhotoUI();
+    document.getElementById("item-type-submit-btn").onclick = saveItemType;
+    openSheet("item-type-sheet");
+  }
+
+  function openEditItemType(t) {
+    editingItemTypeId = t.id;
+    pendingPhotoUrl = t.r2PhotoUrl || t.photoUrl || null;
+    document.getElementById("item-type-sheet-title").textContent = "Edit Item Type";
+    document.getElementById("item-type-sheet-subtitle").textContent = t.name;
+    document.getElementById("it-name").value = t.name;
+    document.getElementById("it-description").value = t.description;
+    document.getElementById("it-order").value = t.displayOrder;
+    document.getElementById("it-active").value = t.active ? "true" : "false";
+    if (pendingPhotoUrl) showPhotoPreview(pendingPhotoUrl);
+    else clearPhotoUI();
+    document.getElementById("item-type-submit-btn").onclick = saveItemType;
+    openSheet("item-type-sheet");
+  }
+
+  async function saveItemType() {
+    const name = document.getElementById("it-name").value.trim();
+    if (!name) { alert("Name is required"); return; }
+    const body = {
+      name,
+      description: document.getElementById("it-description").value.trim(),
+      displayOrder: parseInt(document.getElementById("it-order").value) || 99,
+      active: document.getElementById("it-active").value === "true",
+      r2PhotoUrl: pendingPhotoUrl || null
+    };
+    const btn = document.getElementById("item-type-submit-btn");
+    btn.disabled = true; btn.textContent = "Saving…";
+    if (editingItemTypeId) {
+      await api(`/admin/catalog/item-types/${editingItemTypeId}`, "PATCH", body);
+    } else {
+      await api("/admin/catalog/item-types", "POST", body);
+    }
+    closeSheet("item-type-sheet");
+    await loadCatalog();
+    showToast(editingItemTypeId ? "Item type updated" : "Item type added");
+    btn.disabled = false; btn.textContent = "Save";
+  }
+
+  function openAddItem() {
+    editingItemId = null;
+    document.getElementById("physical-item-sheet-title").textContent = "Add Physical Item";
+    document.getElementById("pi-type").value = "";
+    document.getElementById("pi-id").value = "";
+    document.getElementById("pi-condition").value = "Good";
+    document.getElementById("pi-active").value = "true";
+    document.getElementById("pi-notes").value = "";
+    document.getElementById("physical-item-submit-btn").onclick = saveItem;
+    openSheet("physical-item-sheet");
+  }
+
+  function openEditItem(item) {
+    editingItemId = item.id;
+    document.getElementById("physical-item-sheet-title").textContent = "Edit Item";
+    document.getElementById("pi-type").value = item.itemTypeId || "";
+    document.getElementById("pi-id").value = item.itemId;
+    document.getElementById("pi-condition").value = item.condition;
+    document.getElementById("pi-active").value = item.active ? "true" : "false";
+    document.getElementById("pi-notes").value = item.notes || "";
+    document.getElementById("physical-item-submit-btn").onclick = saveItem;
+    openSheet("physical-item-sheet");
+  }
+
+  async function saveItem() {
+    const itemTypeId = document.getElementById("pi-type").value;
+    if (!itemTypeId) { alert("Item type is required"); return; }
+    const body = {
+      itemTypeId,
+      itemId: document.getElementById("pi-id").value.trim() || undefined,
+      condition: document.getElementById("pi-condition").value,
+      active: document.getElementById("pi-active").value === "true",
+      notes: document.getElementById("pi-notes").value.trim()
+    };
+    const btn = document.getElementById("physical-item-submit-btn");
+    btn.disabled = true; btn.textContent = "Saving…";
+    let result;
+    if (editingItemId) {
+      result = await api(`/admin/catalog/items/${editingItemId}`, "PATCH", body);
+    } else {
+      result = await api("/admin/catalog/items", "POST", body);
+    }
+    closeSheet("physical-item-sheet");
+    await loadCatalog();
+    const genId = result?.generatedId;
+    showToast(editingItemId ? "Item updated" : `Item added${genId && !body.itemId ? " — ID: " + genId : ""}`);
+    btn.disabled = false; btn.textContent = "Save";
+  }
+
+  async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    setPhotoStatus("Uploading…");
+    const formData = new FormData();
+    formData.append("photo", file);
+    try {
+      const res = await fetch(`${WORKER}/admin/catalog/upload-photo`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (data.url) {
+        pendingPhotoUrl = data.url;
+        showPhotoPreview(data.url);
+        setPhotoStatus("Photo uploaded ✓");
+      } else {
+        setPhotoStatus("Upload failed: " + (data.error || "Unknown error"));
+      }
+    } catch(e) {
+      setPhotoStatus("Upload failed: " + e.message);
+    }
+  }
+
+  async function handleUrlImport() {
+    const url = document.getElementById("it-photo-url").value.trim();
+    if (!url) return;
+    setPhotoStatus("Importing from URL…");
+    try {
+      const res = await fetch(`${WORKER}/admin/catalog/upload-photo`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (data.url) {
+        pendingPhotoUrl = data.url;
+        showPhotoPreview(data.url);
+        setPhotoStatus("Photo imported ✓");
+        document.getElementById("it-photo-url").value = "";
+      } else {
+        setPhotoStatus("Import failed: " + (data.error || "Unknown error"));
+      }
+    } catch(e) {
+      setPhotoStatus("Import failed: " + e.message);
+    }
+  }
+
+  function showPhotoPreview(url) {
+    document.getElementById("it-photo-img").src = url;
+    document.getElementById("it-photo-preview").style.display = "block";
+    document.getElementById("it-photo-upload").style.display = "none";
+  }
+
+  function clearPhoto() {
+    pendingPhotoUrl = null;
+    clearPhotoUI();
+  }
+
+  function clearPhotoUI() {
+    document.getElementById("it-photo-preview").style.display = "none";
+    document.getElementById("it-photo-upload").style.display = "block";
+    document.getElementById("it-photo-file").value = "";
+    document.getElementById("it-photo-url").value = "";
+    setPhotoStatus("");
+  }
+
+  function setPhotoStatus(msg) {
+    const el = document.getElementById("it-photo-status");
+    el.textContent = msg;
+    el.style.display = msg ? "block" : "none";
+  }
+
 </script>
 </body>
 </html>
