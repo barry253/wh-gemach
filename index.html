@@ -93,34 +93,16 @@
       padding: 1.5rem 1.25rem 2rem;
     }
 
-    .list-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.75rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid var(--border);
-    }
-
     .list-header-label {
       font-size: 0.8rem;
       font-weight: 600;
       color: var(--muted);
       letter-spacing: 0.03em;
+      display: block;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
     }
-
-    .select-all-btn {
-      font-size: 0.78rem;
-      color: var(--navy);
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-family: 'Inter', sans-serif;
-      font-weight: 500;
-      padding: 0;
-    }
-
-    .select-all-btn:hover { text-decoration: underline; }
 
     /* ── Item list ── */
     .item-list { display: flex; flex-direction: column; gap: 0.6rem; }
@@ -584,10 +566,7 @@
 </div>
 
 <main>
-  <div class="list-header">
-    <span class="list-header-label">Available equipment — updated in real time</span>
-    <button class="select-all-btn" id="select-all-btn">Select all available</button>
-  </div>
+  <span class="list-header-label">Available equipment — updated in real time</span>
   <div class="item-list" id="item-list">
     <div class="state-message">Loading inventory…</div>
   </div>
@@ -779,20 +758,6 @@
     const isOpen = desc.classList.toggle("open");
     if (arrow) arrow.textContent = isOpen ? "▾" : "▸";
   }
-
-  // ── Select all available ────────────────────────────────────────────────────
-  document.getElementById("select-all-btn").addEventListener("click", () => {
-    const availableIds = inventory.filter(i => i.availableCount > 0).map(i => i.id);
-    const allSelected = availableIds.every(id => selected.has(id));
-    if (allSelected) {
-      availableIds.forEach(id => selected.delete(id));
-      document.getElementById("select-all-btn").textContent = "Select all available";
-    } else {
-      availableIds.forEach(id => selected.add(id));
-      document.getElementById("select-all-btn").textContent = "Clear selection";
-    }
-    renderList();
-  });
 
   // ── Update sticky CTA ───────────────────────────────────────────────────────
   function updateCTA() {
