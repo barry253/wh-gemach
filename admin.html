@@ -1428,7 +1428,7 @@
     document.getElementById("confirm-submit-btn").onclick = async () => {
       const message = document.getElementById("confirm-message").value;
       const sendMessage = document.getElementById("confirm-send").checked;
-      await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage });
+      await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage, adminName });
       closeSheet("confirm-sheet");
       document.getElementById(`req-${r.id}`)?.remove();
       loadDashboard();
@@ -1452,7 +1452,7 @@
     document.getElementById("decline-submit-btn").onclick = async () => {
       const message = document.getElementById("decline-message").value;
       const sendMessage = document.getElementById("decline-send").checked;
-      await api(`/admin/requests/${r.id}/decline`, "POST", { message, sendMessage });
+      await api(`/admin/requests/${r.id}/decline`, "POST", { message, sendMessage, adminName });
       closeSheet("decline-sheet");
       document.getElementById(`req-${r.id}`)?.remove();
       loadDashboard();
