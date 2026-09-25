@@ -259,6 +259,77 @@
       font-size: 0.95rem;
     }
 
+    /* ── Compact loan rows ── */
+    .loan-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.55rem 0.75rem;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .loan-row:hover { background: #f5f7fa; }
+    .loan-row.overdue { border-left: 3px solid var(--red); }
+    .loan-row.warning { border-left: 3px solid var(--amber); }
+
+    .loan-row-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .loan-row-name {
+      font-weight: 600;
+      font-size: 0.88rem;
+      white-space: nowrap;
+    }
+    .loan-row-item {
+      font-size: 0.82rem;
+      color: var(--navy);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .loan-row-code {
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .loan-row-date {
+      font-size: 0.75rem;
+      color: var(--muted);
+      white-space: nowrap;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .loan-row-tag {
+      flex-shrink: 0;
+    }
+
+    .loan-actions-panel {
+      display: none;
+      padding: 0.5rem 0.75rem 0.65rem;
+      background: #f8f9fb;
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      margin-top: -6px;
+    }
+    .loan-actions-panel.open { display: block; }
+    .loan-actions-panel .card-actions {
+      margin-top: 0;
+      flex-wrap: wrap;
+    }
+    .loan-notes {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
     .card-item-type {
       font-size: 0.9rem;
       font-weight: 600;
@@ -1080,52 +1151,64 @@
     list.innerHTML = data.map(l => {
       const cls = l.overdue ? "overdue" : l.daysOut > 7 ? "warning" : "";
       const tag = l.overdue
-        ? `<span class="tag tag-red">Overdue ${l.daysOut}d</span>`
-        : `<span class="tag tag-navy">${l.daysOut}d out</span>`;
+        ? `<span class="tag tag-red loan-row-tag">Overdue ${l.daysOut}d</span>`
+        : `<span class="tag tag-navy loan-row-tag">${l.daysOut}d</span>`;
 
       const phone = l.borrowerPhone?.replace(/\D/g,"");
-      const wa = waPhone(l.borrowerPhone);
       const contact = l.borrowerContact?.toLowerCase();
+      const lJson = JSON.stringify(l).replace(/'/g,"&#39;");
 
-      return `<div class="card ${cls}" id="loan-${l.id}">
-        <div class="card-header">
-          <div>
-            <div class="card-title">${l.borrowerName}</div>
-            <div class="card-item-type">${l.itemTypeName || ""}${l.itemId ? `<span class="card-item-code"> · ${l.itemId}</span>` : ""}</div>
+      return `
+        <div class="loan-row ${cls}" id="loan-row-${l.id}" onclick="toggleLoanActions('${l.id}')">
+          <div class="loan-row-main">
+            <span class="loan-row-name">${l.borrowerName}</span>
+            <span class="loan-row-item">${l.itemTypeName || ""}</span>
+            ${l.itemId ? `<span class="loan-row-code">${l.itemId}</span>` : ""}
           </div>
+          <span class="loan-row-date">${fmt(l.dateBorrowed)}</span>
           ${tag}
         </div>
-        <div class="card-meta">
-          <span>📅 Borrowed ${fmt(l.dateBorrowed)}</span>
-          ${l.expectedReturn ? `<span>🔜 Expected ${fmt(l.expectedReturn)}</span>` : ""}
-          ${phone ? `<span>📞 <a href="tel:${phone}" style="color:var(--navy)">${l.borrowerPhone}</a></span>` : ""}
-          ${l.notes ? `<span>💬 ${l.notes}</span>` : ""}
-          ${l.loanId ? `<span class="loan-id-meta">${l.loanId}</span>` : ""}
-        </div>
-        <div class="card-actions">
-          <button class="btn btn-primary btn-sm" onclick='openReturn(${JSON.stringify(l).replace(/'/g,"&#39;")})'>✓ Mark as Returned</button>
-          <a class="btn btn-whatsapp btn-sm"
-            href="${waUrl(l.borrowerPhone) || "#"}"
-            target="_blank"
-            style="${!waUrl(l.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}"
-            title="${!waUrl(l.borrowerPhone) ? "No phone on file" : ""}">
-            ${contact === "whatsapp" ? "★ " : ""}WhatsApp</a>
-          <a class="btn btn-ghost btn-sm"
-            href="${l.borrowerEmail ? `mailto:${l.borrowerEmail}` : "#"}"
-            style="${!l.borrowerEmail ? "opacity:0.4;pointer-events:none" : ""}"
-            title="${!l.borrowerEmail ? "No email on file" : ""}">
-            ${contact === "email" ? "★ " : ""}Email</a>
-          <a class="btn btn-ghost btn-sm"
-            href="${phone ? `tel:${phone}` : "#"}"
-            style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
-            title="${!phone ? "No phone on file" : ""}">Call</a>
-          <a class="btn btn-ghost btn-sm"
-            href="${phone ? `sms:${phone}` : "#"}"
-            style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
-            title="${!phone ? "No phone on file" : ""}">SMS</a>
-        </div>
-      </div>`;
+        <div class="loan-actions-panel" id="loan-panel-${l.id}">
+          ${l.notes ? `<div class="loan-notes">💬 ${l.notes}</div>` : ""}
+          <div class="card-actions">
+            <button class="btn btn-primary btn-sm" onclick='event.stopPropagation();openReturn(${lJson})'>✓ Returned</button>
+            <a class="btn btn-whatsapp btn-sm"
+              href="${waUrl(l.borrowerPhone) || "#"}"
+              target="_blank"
+              onclick="event.stopPropagation()"
+              style="${!waUrl(l.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}"
+              title="${!waUrl(l.borrowerPhone) ? "No phone on file" : ""}">
+              ${contact === "whatsapp" ? "★ " : ""}WhatsApp</a>
+            <a class="btn btn-ghost btn-sm"
+              href="${l.borrowerEmail ? `mailto:${l.borrowerEmail}` : "#"}"
+              onclick="event.stopPropagation()"
+              style="${!l.borrowerEmail ? "opacity:0.4;pointer-events:none" : ""}"
+              title="${!l.borrowerEmail ? "No email on file" : ""}">
+              ${contact === "email" ? "★ " : ""}Email</a>
+            <a class="btn btn-ghost btn-sm"
+              href="${phone ? `tel:${phone}` : "#"}"
+              onclick="event.stopPropagation()"
+              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">Call</a>
+            <a class="btn btn-ghost btn-sm"
+              href="${phone ? `sms:${phone}` : "#"}"
+              onclick="event.stopPropagation()"
+              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">SMS</a>
+          </div>
+        </div>`;
     }).join("");
+  }
+
+  function toggleLoanActions(id) {
+    const panel = document.getElementById(`loan-panel-${id}`);
+    const row = document.getElementById(`loan-row-${id}`);
+    const isOpen = panel.classList.contains("open");
+    // Close all others
+    document.querySelectorAll(".loan-actions-panel.open").forEach(p => p.classList.remove("open"));
+    document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
+    if (!isOpen) {
+      panel.classList.add("open");
+      row.style.borderRadius = "8px 8px 0 0";
+    }
   }
 
   // ── Return sheet ──────────────────────────────────────────────────────────
