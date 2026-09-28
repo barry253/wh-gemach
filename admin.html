@@ -125,6 +125,66 @@
 
     .btn-signout:hover { background: rgba(255,255,255,0.2); }
 
+    .topbar-left { display: flex; flex-direction: column; min-width: 0; }
+
+    .topbar-gemach {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.75);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 60vw;
+    }
+
+    .gemach-switcher {
+      background: rgba(255,255,255,0.12);
+      border: none;
+      color: white;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      font-family: 'Inter', sans-serif;
+      max-width: 60vw;
+      margin-top: 0.15rem;
+      cursor: pointer;
+    }
+
+    .gemach-switcher option { color: var(--text); }
+
+    /* ── Settings ── */
+    .settings-help {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: -0.25rem 0 1rem;
+    }
+
+    .settings-help code {
+      font-size: 0.75rem;
+      background: var(--teal);
+      color: var(--navy);
+      padding: 0 0.25rem;
+      border-radius: 3px;
+    }
+
+    .settings-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .settings-label-row label { margin-bottom: 0 !important; }
+
+    .settings-note {
+      font-size: 0.82rem;
+      color: var(--amber);
+      background: #FEF3C7;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 1rem;
+    }
+
     /* ── Nav tabs ── */
     .nav-tabs {
       background: var(--white);
@@ -846,7 +906,7 @@
 <!-- Login Screen -->
 <div id="login-screen">
   <h1>Gemach Admin</h1>
-  <p>West Hempstead Medical Gemach</p>
+  <p>whgemachs.org</p>
   <div class="login-card">
     <h2>Sign in to continue</h2>
     <div id="g_id_onload"
@@ -869,7 +929,10 @@
 <!-- App -->
 <div id="app">
   <div class="topbar">
-    <div class="topbar-title">Gemach Admin</div>
+    <div class="topbar-left">
+      <div class="topbar-title">Gemach Admin</div>
+      <div class="topbar-gemach" id="topbar-gemach"></div>
+    </div>
     <div class="topbar-user">
       <span id="admin-name"></span>
       <button class="btn-signout" onclick="signOut()">Sign out</button>
@@ -885,6 +948,7 @@
     <button class="nav-tab" onclick="switchTab('reservations')">Reservations</button>
     <button class="nav-tab" onclick="switchTab('inventory')">Inventory</button>
     <button class="nav-tab" onclick="switchTab('history')">History</button>
+    <button class="nav-tab" onclick="switchTab('settings')">Settings</button>
   </div>
 
   <div class="content">
@@ -966,6 +1030,13 @@
           <div class="loading">Loading…</div>
         </div>
         <button class="load-more-btn" id="history-load-more" style="display:none" onclick="loadMoreHistory()">Load more</button>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="screen" id="screen-settings">
+      <div id="settings-body">
+        <div class="loading">Loading…</div>
       </div>
     </div>
 
@@ -1312,21 +1383,185 @@
 </div>
 
 <script>
-  const WORKER = "https://wh-gemach.barry253-0f5.workers.dev";
-  const PICKUP_ADDRESS = "507 Walton Court, in the driveway";
+  const WORKER = location.hostname.endsWith("whgemachs.org")
+    ? "https://api.whgemachs.org"
+    : "https://wh-gemach.barry253-0f5.workers.dev";
   let token = localStorage.getItem("gemach_token");
   let adminName = localStorage.getItem("gemach_name");
   let currentRequest = null;
   let currentLoan = null;
 
+  // ── Gemach context ────────────────────────────────────────────────────────
+  let gemachSlug = localStorage.getItem("gemach_slug"); // sent as X-Gemach on every admin call (validated after /admin/me)
+  let MY_GEMACHS = [];     // [{id, slug, name}] from /admin/me
+  let GEMACH = null;       // GET /admin/gemach payload (profile + templates)
+
+  // Client copy of the contract's built-in defaults (fallback if /admin/gemach failed; placeholders in Settings)
+  const DEFAULT_TEMPLATES = {
+    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nThank you!",
+    decline: "Hi {first_name}, thank you for reaching out to the {gemach}. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.",
+    pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
+  };
+  // Used when the gemach has no pickup address (or /admin/gemach could not be loaded)
+  const DEFAULT_TEMPLATES_NO_ADDRESS = {
+    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nThank you!",
+    decline: DEFAULT_TEMPLATES.decline,
+    pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
+  };
+  function defaultTemplate(kind) {
+    return (GEMACH?.pickupAddress ? DEFAULT_TEMPLATES : DEFAULT_TEMPLATES_NO_ADDRESS)[kind];
+  }
+
+  // ── HTML safety helpers ───────────────────────────────────────────────────
+  // Every API-sourced value interpolated into innerHTML goes through esc().
+  // Inline handlers only ever receive safeId() values; full records are looked up by id.
+  function esc(v) {
+    return String(v ?? "").replace(/[&<>"'`]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c]));
+  }
+  function safeId(id) { return String(id ?? "").replace(/[^A-Za-z0-9_-]/g, ""); }
+  const RECORDS = { req: new Map(), loan: new Map(), res: new Map(), item: new Map(), type: new Map() };
+  function keep(kind, obj) { const id = safeId(obj.id); RECORDS[kind].set(id, obj); return id; }
+  function rec(kind, id) { return RECORDS[kind].get(id); }
+  const SAFE_EMAIL_RE = /^[^\s@<>()"',;:\\]+@[^\s@<>()"',;:\\]+\.[^\s@<>()"',;:\\]+$/;
+  function safeEmail(e) { const v = String(e ?? "").trim(); return SAFE_EMAIL_RE.test(v) ? v : null; }
+  function mailtoHref(email, body) {
+    const e = safeEmail(email);
+    if (!e) return null;
+    return `mailto:${encodeURIComponent(e).replace(/%40/g, "@")}${body != null ? `?body=${encodeURIComponent(body)}` : ""}`;
+  }
+  function phoneDigits(p) { return String(p ?? "").replace(/\D/g, ""); }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   if (token) showApp();
 
-  function showApp() {
+  async function showApp() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app").style.display = "block";
     document.getElementById("admin-name").textContent = adminName || "";
+    try {
+      await loadGemachContext();
+    } catch (e) {
+      console.warn("Gemach context failed:", e);
+      renderGemachSwitcher();
+      showToast("Couldn't load gemach settings — using defaults");
+    }
+    if (!token) return;
     loadDashboard();
+  }
+
+  async function loadGemachContext() {
+    const me = await api("/admin/me");
+    if (!me) return;
+    MY_GEMACHS = Array.isArray(me.gemachs) ? me.gemachs : [];
+    if (me.name) { adminName = me.name; document.getElementById("admin-name").textContent = adminName; }
+    const inList = s => s && MY_GEMACHS.some(g => g.slug === s);
+    const params = new URLSearchParams(location.search);
+    const fromUrl = (params.get("g") || "").toLowerCase();
+    const stored = localStorage.getItem("gemach_slug");
+    gemachSlug = inList(fromUrl) ? fromUrl : inList(stored) ? stored : (MY_GEMACHS[0]?.slug || null);
+    if (gemachSlug) localStorage.setItem("gemach_slug", gemachSlug);
+    if (params.has("g")) {
+      params.delete("g");
+      const qs = params.toString();
+      history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+    }
+    renderGemachSwitcher();
+    await loadGemachProfile();
+  }
+
+  async function loadGemachProfile() {
+    const data = await api("/admin/gemach");
+    if (data && !data.error) GEMACH = data;
+    renderGemachSwitcher();
+    return GEMACH;
+  }
+
+  function renderGemachSwitcher() {
+    const el = document.getElementById("topbar-gemach");
+    if (MY_GEMACHS.length > 1) {
+      el.innerHTML = `<select class="gemach-switcher" id="gemach-switcher" aria-label="Gemach" onchange="switchGemach(this.value)"></select>`;
+      const sel = el.querySelector("select");
+      MY_GEMACHS.forEach(g => {
+        const o = document.createElement("option");
+        o.value = g.slug; o.textContent = g.name || g.slug;
+        if (g.slug === gemachSlug) o.selected = true;
+        sel.appendChild(o);
+      });
+    } else {
+      const g = MY_GEMACHS.find(x => x.slug === gemachSlug);
+      el.textContent = GEMACH?.name || g?.name || "";
+    }
+  }
+
+  function switchGemach(slug) {
+    if (!slug || slug === gemachSlug) return;
+    localStorage.setItem("gemach_slug", slug);
+    location.reload(); // reload so no data from the previous gemach lingers in memory
+  }
+
+  function gemachHeaders() {
+    return gemachSlug ? { "X-Gemach": gemachSlug } : {};
+  }
+
+  // ── Message templates ─────────────────────────────────────────────────────
+  // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
+  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email"]);
+
+  function fillTemplate(template, vars) {
+    const has = k => Object.prototype.hasOwnProperty.call(vars, k);
+    const val = k => String(vars[k] ?? "").trim();
+    const isBlank = k => has(k) && !val(k);
+    const out = [];
+    for (const line of String(template || "").replace(/\r\n?/g, "\n").split("\n")) {
+      const hadPlaceholder = /\{\w+\}/.test(line);
+      // Split into sentences; a sentence that starts with a standalone placeholder is split after it.
+      const segments = [];
+      for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+        const m = sentence.match(/^(\{\w+\})\s+(.+)$/);
+        if (m) segments.push(m[1], m[2]); else segments.push(sentence);
+      }
+      const kept = [];
+      for (let seg of segments) {
+        const keys = [...seg.matchAll(/\{(\w+)\}/g)].map(x => x[1]);
+        const blankInfo = keys.filter(k => INFO_PLACEHOLDERS.has(k) && isBlank(k));
+        const filledKeys = keys.filter(k => has(k) && val(k));
+        const words = seg.replace(/\{\w+\}/g, " ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+        // Drop a sentence whose only substance was a blank info placeholder
+        if (blankInfo.length && !filledKeys.length && words.length <= 5) continue;
+        // "… ready for pickup at {pickup_address}." -> "… ready for pickup."
+        seg = seg.replace(/\s*\b(?:at|in|on|from|by|to|via)\s+\{(\w+)\}/gi, (m0, k) => (isBlank(k) ? "" : m0));
+        seg = seg
+          .replace(/\{(\w+)\}/g, (m0, k) => (has(k) ? val(k) : m0))
+          .replace(/[ \t]{2,}/g, " ")
+          .replace(/ +([.,!?;:])/g, (m0, p, i) => (i > 0 ? p : m0))
+          .replace(/([.,!?;:])[.,;:]+/g, "$1")
+          .trim();
+        if (seg) kept.push(seg);
+      }
+      const filled = kept.join(" ");
+      if (hadPlaceholder && !filled) continue; // line emptied by blank values
+      out.push(filled);
+    }
+    return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  function templateVars(firstName, items) {
+    const g = GEMACH || {};
+    return {
+      first_name: firstName || "",
+      items: items || "",
+      gemach: g.name || MY_GEMACHS.find(x => x.slug === gemachSlug)?.name || "gemach",
+      pickup_address: g.pickupAddress || "",
+      pickup_instructions: g.pickupInstructions || "",
+      hours: g.hours || "",
+      phone: g.phone || "",
+      email: g.email || "",
+    };
+  }
+
+  function renderMessage(kind, firstName, items) {
+    const tpl = GEMACH?.templates?.[kind] || defaultTemplate(kind);
+    return fillTemplate(tpl, templateVars(firstName, items));
   }
 
   // ── Google Login ──────────────────────────────────────────────────────────
@@ -1375,7 +1610,8 @@
       method,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
+        "Authorization": `Bearer ${token}`,
+        ...gemachHeaders()
       }
     };
     if (body) opts.body = JSON.stringify(body);
@@ -1399,6 +1635,7 @@
     if (name === "reservations") loadReservations();
     if (name === "inventory")    loadInventory();
     if (name === "history")      initHistory();
+    if (name === "settings")     loadSettings();
   }
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -1412,7 +1649,7 @@
 
     // Badge on requests tab
     const tab = document.getElementById("tab-requests");
-    tab.innerHTML = `Requests${data.newRequests > 0 ? `<span class="badge">${data.newRequests}</span>` : ""}`;
+    tab.innerHTML = `Requests${data.newRequests > 0 ? `<span class="badge">${esc(data.newRequests)}</span>` : ""}`;
     tab.onclick = () => switchTab('requests');
   }
 
@@ -1426,37 +1663,39 @@
       return;
     }
 
+    RECORDS.req.clear();
     list.innerHTML = data.map(r => {
+      const rid = keep("req", r);
       const contact = r.preferredContact || "any";
       const dates = r.openEnded
-        ? "Open-ended (surgery/rehab)"
+        ? "Open-ended"
         : r.neededFrom ? `${fmt(r.neededFrom)} → ${fmt(r.neededUntil || "?")}` : "Dates TBD";
       // whatsappUrl removed — using waUrl() instead
 
-      return `<div class="card" id="req-${r.id}">
+      return `<div class="card" id="req-${rid}">
         <div class="card-header">
           <div>
-            <div class="card-title">${r.name}</div>
-            <div class="card-id">${r.requestId} · ${timeAgo(r.receivedAt)}</div>
+            <div class="card-title">${esc(r.name)}</div>
+            <div class="card-id">${esc(r.requestId)} · ${esc(timeAgo(r.receivedAt))}</div>
           </div>
-          <span class="tag tag-navy">${contact}</span>
+          <span class="tag tag-navy">${esc(contact)}</span>
         </div>
         <div class="card-meta">
-          <span>📦 ${r.itemNames.join(", ")}</span>
-          <span>📅 ${dates}</span>
-          <span>📞 ${r.phone}</span>
-          ${r.notes ? `<span>💬 ${r.notes}</span>` : ""}
+          <span>📦 ${esc((r.itemNames || []).join(", "))}</span>
+          <span>📅 ${esc(dates)}</span>
+          <span>📞 ${esc(r.phone)}</span>
+          ${r.notes ? `<span>💬 ${esc(r.notes)}</span>` : ""}
         </div>
         <div class="card-actions">
-          <button class="btn btn-primary btn-sm" onclick='openConfirm(${JSON.stringify(r)})'>✓ Confirm</button>
-          <button class="btn btn-danger btn-sm" onclick='openDecline(${JSON.stringify(r)})'>✗ Decline</button>
+          <button class="btn btn-primary btn-sm" onclick="openConfirm(rec('req','${rid}'))">✓ Confirm</button>
+          <button class="btn btn-danger btn-sm" onclick="openDecline(rec('req','${rid}'))">✗ Decline</button>
           <a class="btn btn-whatsapp btn-sm"
-            href="${waUrl(r.phone) || "#"}"
+            href="${esc(waUrl(r.phone) || "#")}"
             target="_blank"
             style="${!waUrl(r.phone) ? "opacity:0.4;pointer-events:none" : ""}">
             ${(r.preferredContact||"").toLowerCase() === "whatsapp" ? "★ " : ""}WhatsApp</a>
-          ${r.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${r.email}">Email</a>` : ""}
-          ${r.phone ? `<a class="btn btn-ghost btn-sm" href="sms:${r.phone.replace(/\D/g,"")}">SMS</a>` : ""}
+          ${mailtoHref(r.email) ? `<a class="btn btn-ghost btn-sm" href="${esc(mailtoHref(r.email))}">Email</a>` : ""}
+          ${phoneDigits(r.phone) ? `<a class="btn btn-ghost btn-sm" href="sms:${phoneDigits(r.phone)}">SMS</a>` : ""}
         </div>
       </div>`;
     }).join("");
@@ -1469,8 +1708,8 @@
     document.getElementById("confirm-subtitle").textContent =
       `${r.itemNames.join(", ")} · ${r.requestId}`;
 
-    const itemList = r.itemNames.join(" and ");
-    const msg = `Hi ${r.name.split(" ")[0]}, great news — we have ${itemList} available for you from the West Hempstead Medical Gemach. We'll be in touch shortly with pickup details.\n\nPickup is at ${PICKUP_ADDRESS}.\n\nThank you!`;
+    const itemList = (r.itemNames || []).join(" and ");
+    const msg = renderMessage("confirm", r.name.split(" ")[0], itemList);
     document.getElementById("confirm-message").value = msg;
 
     renderContactOptions("confirm-contact-options", r);
@@ -1480,7 +1719,7 @@
       const sendMessage = document.getElementById("confirm-send").checked;
       await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage, adminName });
       closeSheet("confirm-sheet");
-      document.getElementById(`req-${r.id}`)?.remove();
+      document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
       showToast("Request confirmed");
     };
@@ -1495,7 +1734,7 @@
       `${r.itemNames.join(", ")} · ${r.requestId}`;
 
     document.getElementById("decline-message").value =
-      `Hi ${r.name.split(" ")[0]}, thank you for reaching out to the West Hempstead Medical Gemach. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.`;
+      renderMessage("decline", r.name.split(" ")[0], r.itemNames.join(" and "));
 
     renderContactOptions("decline-contact-options", r);
 
@@ -1504,7 +1743,7 @@
       const sendMessage = document.getElementById("decline-send").checked;
       await api(`/admin/requests/${r.id}/decline`, "POST", { message, sendMessage, adminName });
       closeSheet("decline-sheet");
-      document.getElementById(`req-${r.id}`)?.remove();
+      document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
       showToast("Request declined");
     };
@@ -1514,26 +1753,28 @@
 
   function renderContactOptions(containerId, r) {
     const container = document.getElementById(containerId);
-    const phone = r.phone?.replace(/\D/g, "");
+    const phone = phoneDigits(r.phone);
     const preferred = r.preferredContact?.toLowerCase();
     const msgEl = containerId.includes("confirm") ? "confirm-message" : "decline-message";
-    const msg = encodeURIComponent(document.getElementById(msgEl).value);
+    const rawMsg = document.getElementById(msgEl).value;
+    const msg = encodeURIComponent(rawMsg);
+    const mailto = mailtoHref(r.email, rawMsg);
 
     container.innerHTML = `
       <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
       <a class="btn btn-whatsapp btn-sm"
-        href="${waUrl(r.phone, decodeURIComponent(msg)) || "#"}"
+        href="${esc(waUrl(r.phone, rawMsg) || "#")}"
         target="_blank"
         style="${!waUrl(r.phone) ? "opacity:0.4;pointer-events:none" : ""}"
         title="${!waUrl(r.phone) ? "No phone on file" : ""}">
         ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>
       <a class="btn btn-ghost btn-sm"
-        href="${r.email ? `mailto:${r.email}?body=${msg}` : "#"}"
-        style="${!r.email ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!r.email ? "No email on file" : ""}">
+        href="${esc(mailto || "#")}"
+        style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!mailto ? "No email on file" : ""}">
         ${preferred === "email" ? "★ " : ""}Email</a>
       <a class="btn btn-ghost btn-sm"
-        href="${phone ? `sms:${phone}&body=${msg}` : "#"}"
+        href="${esc(phone ? `sms:${phone}&body=${msg}` : "#")}"
         style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
         title="${!phone ? "No phone on file" : ""}">
         ${preferred === "sms" ? "★ " : ""}SMS</a>
@@ -1566,7 +1807,7 @@
     const bar = document.getElementById("loans-filter-bar");
     const chips = document.getElementById("loans-type-chips");
     chips.innerHTML = `<button class="filter-chip active" onclick="setLoanTypeFilter(null)">All</button>` +
-      types.map(t => `<button class="filter-chip" onclick="setLoanTypeFilter('${t.replace(/'/g,"&#39;")}')">${t}</button>`).join("");
+      types.map(t => `<button class="filter-chip" data-type="${esc(t)}" onclick="setLoanTypeFilter(this.dataset.type)">${esc(t)}</button>`).join("");
     bar.style.display = "flex";
   }
 
@@ -1600,7 +1841,9 @@
       return;
     }
 
+    RECORDS.loan.clear();
     list.innerHTML = loans.map(l => {
+      const lid = keep("loan", l);
       // Warning: due within 3 days (if expectedReturn set), or out > 7 days (fallback)
       const todayStr = new Date().toISOString().split("T")[0];
       const dueSoon = l.expectedReturn
@@ -1608,44 +1851,44 @@
         : l.daysOut > 7;
       const cls = l.overdue ? "overdue" : dueSoon ? "warning" : "";
       const tag = l.overdue
-        ? `<span class="tag tag-red loan-row-tag">Overdue ${l.daysOut}d</span>`
+        ? `<span class="tag tag-red loan-row-tag">Overdue ${esc(l.daysOut)}d</span>`
         : l.daysOut != null
-          ? `<span class="tag tag-navy loan-row-tag">${l.daysOut}d</span>`
+          ? `<span class="tag tag-navy loan-row-tag">${esc(l.daysOut)}d</span>`
           : `<span class="tag tag-navy loan-row-tag">?</span>`;
 
-      const phone = l.borrowerPhone?.replace(/\D/g,"");
+      const phone = phoneDigits(l.borrowerPhone);
       const contact = l.borrowerContact?.toLowerCase();
-      const lJson = JSON.stringify(l).replace(/'/g,"&#39;");
+      const mailto = mailtoHref(l.borrowerEmail);
 
       const hasNote = l.notes || l.requestNote;
       return `
-        <div class="loan-row ${cls}" id="loan-row-${l.id}" onclick="toggleLoanActions('${l.id}')">
+        <div class="loan-row ${cls}" id="loan-row-${lid}" onclick="toggleLoanActions('${lid}')">
           <div class="loan-row-main">
-            <span class="loan-row-name">${l.borrowerName}</span>
-            <span class="loan-row-item">${l.itemTypeName || ""}</span>
-            ${l.itemId ? `<span class="loan-row-code">${l.itemId}</span>` : ""}
+            <span class="loan-row-name">${esc(l.borrowerName)}</span>
+            <span class="loan-row-item">${esc(l.itemTypeName || "")}</span>
+            ${l.itemId ? `<span class="loan-row-code">${esc(l.itemId)}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
           </div>
-          <span class="loan-row-date">${fmt(l.dateBorrowed)}</span>
+          <span class="loan-row-date">${esc(fmt(l.dateBorrowed))}</span>
           ${tag}
         </div>
-        <div class="loan-actions-panel" id="loan-panel-${l.id}">
-          ${l.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${l.requestNote}</div>` : ""}
-          ${l.notes ? `<div class="loan-notes">💬 ${l.notes}</div>` : ""}
+        <div class="loan-actions-panel" id="loan-panel-${lid}">
+          ${l.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(l.requestNote)}</div>` : ""}
+          ${l.notes ? `<div class="loan-notes">💬 ${esc(l.notes)}</div>` : ""}
           <div class="card-actions">
-            <button class="btn btn-primary btn-sm" onclick='event.stopPropagation();openReturn(${lJson})'>✓ Returned</button>
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openReturn(rec('loan','${lid}'))">✓ Returned</button>
             <a class="btn btn-whatsapp btn-sm"
-              href="${waUrl(l.borrowerPhone) || "#"}"
+              href="${esc(waUrl(l.borrowerPhone) || "#")}"
               target="_blank"
               onclick="event.stopPropagation()"
               style="${!waUrl(l.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}"
               title="${!waUrl(l.borrowerPhone) ? "No phone on file" : ""}">
               ${contact === "whatsapp" ? "★ " : ""}WhatsApp</a>
             <a class="btn btn-ghost btn-sm"
-              href="${l.borrowerEmail ? `mailto:${l.borrowerEmail}` : "#"}"
+              href="${esc(mailto || "#")}"
               onclick="event.stopPropagation()"
-              style="${!l.borrowerEmail ? "opacity:0.4;pointer-events:none" : ""}"
-              title="${!l.borrowerEmail ? "No email on file" : ""}">
+              style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
+              title="${!mailto ? "No email on file" : ""}">
               ${contact === "email" ? "★ " : ""}Email</a>
             <a class="btn btn-ghost btn-sm"
               href="${phone ? `tel:${phone}` : "#"}"
@@ -1683,7 +1926,7 @@
       const returnDate = document.getElementById("return-date").value;
       await api(`/admin/loans/${l.id}/return`, "POST", { returnDate });
       closeSheet("return-sheet");
-      document.getElementById(`loan-${l.id}`)?.remove();
+      document.getElementById(`loan-${safeId(l.id)}`)?.remove();
       loadDashboard();
       showToast("Item marked as returned");
     };
@@ -1705,44 +1948,46 @@
     document.getElementById("reservations-section-label").textContent =
       `Upcoming reservations (${data.length})`;
 
+    RECORDS.res.clear();
     list.innerHTML = data.map(r => {
+      const rid = keep("res", r);
       const dates = r.reservationStart
         ? `${fmt(r.reservationStart)} → ${fmt(r.reservationEnd || "?")}`
         : "Dates TBD";
-      const phone = r.borrowerPhone?.replace(/\D/g,"");
+      const phone = phoneDigits(r.borrowerPhone);
       const contact = r.borrowerContact?.toLowerCase();
-      const rJson = JSON.stringify(r).replace(/'/g,"&#39;");
+      const mailto = mailtoHref(r.borrowerEmail);
 
       return `
-        <div class="loan-row" id="res-row-${r.id}" onclick="toggleResActions('${r.id}')">
+        <div class="loan-row" id="res-row-${rid}" onclick="toggleResActions('${rid}')">
           <div class="loan-row-main">
-            <span class="loan-row-name">${r.borrowerName}</span>
-            <span class="loan-row-item">${r.itemTypeName || "Item TBD"}</span>
-            ${r.itemId ? `<span class="loan-row-code">${r.itemId}</span>` : ""}
+            <span class="loan-row-name">${esc(r.borrowerName)}</span>
+            <span class="loan-row-item">${esc(r.itemTypeName || "Item TBD")}</span>
+            ${r.itemId ? `<span class="loan-row-code">${esc(r.itemId)}</span>` : ""}
           </div>
-          <span class="loan-row-date">${dates}</span>
+          <span class="loan-row-date">${esc(dates)}</span>
           <span class="tag tag-navy loan-row-tag">Reserved</span>
         </div>
-        <div class="loan-actions-panel" id="res-panel-${r.id}">
-          ${r.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${r.requestNote}</div>` : ""}
-          ${r.notes ? `<div class="loan-notes">💬 ${r.notes}</div>` : ""}
+        <div class="loan-actions-panel" id="res-panel-${rid}">
+          ${r.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(r.requestNote)}</div>` : ""}
+          ${r.notes ? `<div class="loan-notes">💬 ${esc(r.notes)}</div>` : ""}
           <div class="card-actions">
-            <button class="btn btn-primary btn-sm" onclick='event.stopPropagation();openPickup(${rJson})'>✓ Mark picked up</button>
-            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation();openPickupInstructions(${rJson})'>📍 Send pickup info</button>
-            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation();openEditReservation(${rJson})'>✏️ Edit</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick='event.stopPropagation();openCancelReservation(${rJson})'>✕ Cancel</button>
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPickup(rec('res','${rid}'))">✓ Mark picked up</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPickupInstructions(rec('res','${rid}'))">📍 Send pickup info</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditReservation(rec('res','${rid}'))">✏️ Edit</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="event.stopPropagation();openCancelReservation(rec('res','${rid}'))">✕ Cancel</button>
             <a class="btn btn-whatsapp btn-sm"
-              href="${waUrl(r.borrowerPhone) || "#"}"
+              href="${esc(waUrl(r.borrowerPhone) || "#")}"
               target="_blank"
               onclick="event.stopPropagation()"
               style="${!waUrl(r.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}"
               title="${!waUrl(r.borrowerPhone) ? "No phone on file" : ""}">
               ${contact === "whatsapp" ? "★ " : ""}WhatsApp</a>
             <a class="btn btn-ghost btn-sm"
-              href="${r.borrowerEmail ? `mailto:${r.borrowerEmail}` : "#"}"
+              href="${esc(mailto || "#")}"
               onclick="event.stopPropagation()"
-              style="${!r.borrowerEmail ? "opacity:0.4;pointer-events:none" : ""}"
-              title="${!r.borrowerEmail ? "No email on file" : ""}">
+              style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
+              title="${!mailto ? "No email on file" : ""}">
               ${contact === "email" ? "★ " : ""}Email</a>
             <a class="btn btn-ghost btn-sm"
               href="${phone ? `tel:${phone}` : "#"}"
@@ -1802,8 +2047,8 @@
       btn.disabled = false;
       btn.textContent = "Yes, cancel it";
       closeSheet("cancel-res-sheet");
-      document.getElementById(`res-row-${r.id}`)?.remove();
-      document.getElementById(`res-panel-${r.id}`)?.remove();
+      document.getElementById(`res-row-${safeId(r.id)}`)?.remove();
+      document.getElementById(`res-panel-${safeId(r.id)}`)?.remove();
       loadDashboard();
       showToast("Reservation cancelled");
       const remaining = document.querySelectorAll("[id^='res-row-']").length;
@@ -1828,27 +2073,28 @@
 
   function openPickupInstructions(r) {
     document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
-    const msg = `Hi ${r.borrowerName.split(" ")[0]}, your ${r.itemTypeName} is ready for pickup at 507 Walton Court, in the driveway. Please let us know when you plan to come by so we can make sure it's accessible. Thank you!`;
+    const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.itemTypeName);
     document.getElementById("pickup-instructions-message").value = msg;
-    const phone = r.borrowerPhone?.replace(/\D/g,"");
+    const phone = phoneDigits(r.borrowerPhone);
     const encodedMsg = encodeURIComponent(msg);
+    const mailto = mailtoHref(r.borrowerEmail, msg);
     const preferred = r.borrowerContact?.toLowerCase();
     const wa = waPhone(r.borrowerPhone);
     document.getElementById("pickup-instructions-contact").innerHTML = `
       <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
       <a class="btn btn-whatsapp btn-sm ${!phone ? "btn-disabled" : ""}"
-        href="${waUrl(r.borrowerPhone, msg) || "#"}"
+        href="${esc(waUrl(r.borrowerPhone, msg) || "#")}"
         target="_blank"
         style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
         title="${!phone ? "No phone number on file" : ""}">
         ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>
       <a class="btn btn-ghost btn-sm"
-        href="${r.borrowerEmail ? `mailto:${r.borrowerEmail}?body=${encodedMsg}` : "#"}"
-        style="${!r.borrowerEmail ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!r.borrowerEmail ? "No email on file" : ""}">
+        href="${esc(mailto || "#")}"
+        style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
+        title="${!mailto ? "No email on file" : ""}">
         ${preferred === "email" ? "★ " : ""}Email</a>
       <a class="btn btn-ghost btn-sm"
-        href="${phone ? `sms:${phone}&body=${encodedMsg}` : "#"}"
+        href="${esc(phone ? `sms:${phone}&body=${encodedMsg}` : "#")}"
         style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
         title="${!phone ? "No phone number on file" : ""}">
         ${preferred === "sms" ? "★ " : ""}SMS</a>
@@ -1875,7 +2121,7 @@
     const select = document.getElementById("pi-type");
     const types = itemsData?.itemTypes || [];
     select.innerHTML = '<option value="">Select type…</option>' +
-      types.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+      types.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
     renderInventory();
   }
 
@@ -1923,39 +2169,40 @@
       return;
     }
 
+    RECORDS.type.clear();
+    RECORDS.item.clear();
     container.innerHTML = header + typesToShow.map(type => {
       const items = groups[type.id] || groups[type.name] || [];
-      const typeName = type.name.replace(/'/g, "&#39;");
-      const typeJson = JSON.stringify(type).replace(/'/g,"&#39;");
+      const tid = keep("type", type);
       const inactive = !type.active;
       const itemsHtml = items.length ? items.map(item => {
-          const iJson = JSON.stringify(item).replace(/'/g,"&#39;");
+          const iid = keep("item", item);
           return `
-          <div class="inventory-item" style="cursor:pointer" onclick='openAssignItem(${iJson})'>
+          <div class="inventory-item" style="cursor:pointer" onclick="openAssignItem(rec('item','${iid}'))">
             <div>
-              <strong>${item.itemId}</strong>
-              ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${item.notes}</span>` : ""}
+              <strong>${esc(item.itemId)}</strong>
+              ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${esc(item.notes)}</span>` : ""}
             </div>
             <div style="display:flex;align-items:center;gap:0.5rem">
               <span class="tag ${item.status === "Available" ? "tag-green" : item.status === "On Loan" ? "tag-red" : "tag-amber"}">
-                ${item.status}
+                ${esc(item.status)}
               </span>
-              <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${item.condition}</span>
+              <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${esc(item.condition)}</span>
               <span style="color:var(--muted);font-size:1rem">›</span>
             </div>
           </div>`;
         }).join("") : '<div style="color:var(--muted);font-size:0.8rem;padding:0.5rem 0">No items yet</div>';
       return `
-      <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${type.id}">
-        <div class="inventory-group-header" onclick="toggleGroup('${type.id}')" style="cursor:pointer">
+      <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${tid}">
+        <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
           <div style="display:flex;align-items:center;gap:0.5rem">
             <span class="inventory-group-chevron">▾</span>
-            <span class="inventory-group-title">${type.name}</span>
+            <span class="inventory-group-title">${esc(type.name)}</span>
             <span class="badge">${items.length}</span>
             ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
-            <button class="btn btn-ghost btn-sm" style="padding:0.1rem 0.35rem;font-size:0.75rem;opacity:0.6" onclick='event.stopPropagation();openEditItemType(${typeJson})' title="Edit item type">✎</button>
+            <button class="btn btn-ghost btn-sm" style="padding:0.1rem 0.35rem;font-size:0.75rem;opacity:0.6" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))" title="Edit item type">✎</button>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddItem('${type.id}', '${typeName}')">+ Add Item</button>
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddItem('${tid}', rec('type','${tid}').name)">+ Add Item</button>
         </div>
         <div class="inventory-group-body">${itemsHtml}</div>
       </div>`;
@@ -2088,6 +2335,150 @@
       console.error("Assign error:", result);
     }
   });
+
+  // ── Settings (gemach profile + message templates) ────────────────────────
+  const SETTINGS_FIELDS = [
+    { key: "tagline",            label: "Tagline",             type: "text",  max: 200,  hint: "One line shown on the gemach's card and page header." },
+    { key: "description",        label: "Description",         type: "area",  max: 2000, rows: 4 },
+    { key: "phone",              label: "Phone",               type: "tel",   max: 200 },
+    { key: "whatsapp",           label: "WhatsApp",            type: "tel",   max: 200 },
+    { key: "email",              label: "Email",               type: "email", max: 200, hint: "Request notifications go here; borrowers' replies too." },
+    { key: "website",            label: "Website",             type: "url",   max: 200, placeholder: "https://" },
+    { key: "donationUrl",        label: "Donation link",       type: "url",   max: 200, placeholder: "https://" },
+    { key: "hours",              label: "Hours",               type: "area",  max: 2000, rows: 2, placeholder: "e.g. Sun–Thu evenings, by appointment" },
+    { key: "pickupAddress",      label: "Pickup address",      type: "text",  max: 200, hint: "Private — only included in messages to borrowers." },
+    { key: "pickupInstructions", label: "Pickup instructions", type: "area",  max: 2000, rows: 2, placeholder: "e.g. In the driveway, ring the bell", hint: "Private — only included in messages to borrowers." },
+  ];
+  const SETTINGS_TEMPLATES = [
+    { kind: "confirm", key: "confirmMessage", label: "Request confirmed" },
+    { kind: "decline", key: "declineMessage", label: "Request declined" },
+    { kind: "pickup",  key: "pickupMessage",  label: "Ready for pickup" },
+  ];
+  let settingsOriginal = {};
+
+  async function loadSettings() {
+    const body = document.getElementById("settings-body");
+    body.innerHTML = '<div class="loading">Loading…</div>';
+    let g = null;
+    try { g = await loadGemachProfile(); } catch (e) { console.warn("Settings load failed:", e); }
+    if (!g) {
+      body.innerHTML = '<div class="empty-state">Could not load settings</div>';
+      return;
+    }
+    renderSettings();
+  }
+
+  function renderSettings() {
+    const g = GEMACH;
+    const body = document.getElementById("settings-body");
+    const ro = !g.canEdit;
+    const placeholders = (g.placeholders || []).map(p => `<code>{${esc(p)}}</code>`).join(" ");
+    const fieldHtml = f => {
+      const input = f.type === "area"
+        ? `<textarea id="set-${f.key}" rows="${f.rows || 3}" maxlength="${f.max}" style="min-height:0"></textarea>`
+        : `<input type="${f.type}" id="set-${f.key}" maxlength="${f.max}" />`;
+      return `<div class="form-group">
+          <label for="set-${f.key}">${f.label}</label>
+          ${input}
+          ${f.hint ? `<div class="settings-help" style="margin:0.3rem 0 0">${f.hint}</div>` : ""}
+        </div>`;
+    };
+    body.innerHTML = `
+      ${ro ? `<div class="settings-note">View only — only an Owner or Manager can change these settings.</div>` : ""}
+      <div class="section-label">Gemach profile</div>
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="set-name"></div>
+            <div class="card-id" id="set-slug"></div>
+          </div>
+          <span class="tag tag-navy" id="set-mode"></span>
+        </div>
+        ${SETTINGS_FIELDS.map(fieldHtml).join("")}
+      </div>
+      <div class="section-label">Message templates</div>
+      <p class="settings-help">Placeholders: ${placeholders}. Blank values are left out.</p>
+      <div class="card">
+        ${SETTINGS_TEMPLATES.map(t => `<div class="form-group">
+          <div class="settings-label-row">
+            <label for="set-${t.key}">${t.label} <span style="color:var(--muted);font-weight:400" id="set-${t.key}-state"></span></label>
+            ${ro ? "" : `<button class="btn btn-ghost btn-sm" type="button" onclick="resetTemplate('${t.kind}')">Reset to default</button>`}
+          </div>
+          <textarea id="set-${t.key}" rows="5" maxlength="2000"></textarea>
+        </div>`).join("")}
+      </div>
+      ${ro ? "" : `<div class="sheet-actions" style="margin-bottom:1.5rem">
+        <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()">Save settings</button>
+      </div>`}`;
+
+    // Values are assigned via properties (never interpolated into HTML).
+    document.getElementById("set-name").textContent = g.name || "";
+    document.getElementById("set-slug").textContent = `${g.slug || ""}${g.communityName ? " · " + g.communityName : ""}`;
+    document.getElementById("set-mode").textContent = g.mode || "Full";
+    settingsOriginal = {};
+    SETTINGS_FIELDS.forEach(f => {
+      const el = document.getElementById(`set-${f.key}`);
+      el.value = g[f.key] || "";
+      if (f.placeholder) el.placeholder = f.placeholder;
+      el.disabled = ro;
+      settingsOriginal[f.key] = el.value;
+    });
+    SETTINGS_TEMPLATES.forEach(t => {
+      const el = document.getElementById(`set-${t.key}`);
+      el.value = g.templates?.[t.kind] || "";
+      el.placeholder = defaultTemplate(t.kind);
+      el.disabled = ro;
+      el.oninput = () => updateTemplateState(t);
+      settingsOriginal[t.key] = el.value;
+      updateTemplateState(t);
+    });
+  }
+
+  function updateTemplateState(t) {
+    const el = document.getElementById(`set-${t.key}`);
+    const state = document.getElementById(`set-${t.key}-state`);
+    const unchanged = el.value === settingsOriginal[t.key];
+    const isDefault = el.value.trim() === "" || (unchanged && !GEMACH?.rawTemplates?.[t.kind]);
+    state.textContent = isDefault ? "· default" : "· custom";
+  }
+
+  function resetTemplate(kind) {
+    const t = SETTINGS_TEMPLATES.find(x => x.kind === kind);
+    const el = document.getElementById(`set-${t.key}`);
+    el.value = ""; // cleared -> the built-in default is used (shown as placeholder)
+    updateTemplateState(t);
+  }
+
+  async function saveSettings() {
+    if (!GEMACH?.canEdit) return;
+    const patch = {};
+    SETTINGS_FIELDS.forEach(f => {
+      const v = document.getElementById(`set-${f.key}`).value.trim();
+      if (v !== settingsOriginal[f.key].trim()) patch[f.key] = v;
+    });
+    SETTINGS_TEMPLATES.forEach(t => {
+      const raw = document.getElementById(`set-${t.key}`).value;
+      const v = raw.trim();
+      if (raw !== settingsOriginal[t.key]) patch[t.key] = v;
+    });
+    if (!Object.keys(patch).length) { showToast("No changes to save"); return; }
+    const btn = document.getElementById("settings-save-btn");
+    btn.disabled = true; btn.textContent = "Saving…";
+    try {
+      const data = await api("/admin/gemach", "PATCH", patch);
+      if (!data) return;
+      if (data.error) { showToast(data.error); return; }
+      GEMACH = data;
+      renderGemachSwitcher();
+      renderSettings();
+      showToast("Settings saved");
+    } catch (e) {
+      showToast("Save failed: " + e.message);
+    } finally {
+      const b = document.getElementById("settings-save-btn");
+      if (b) { b.disabled = false; b.textContent = "Save settings"; }
+    }
+  }
 
   // ── Sheet helpers ─────────────────────────────────────────────────────────
   function openSheet(id) {
@@ -2296,7 +2687,7 @@
     try {
       const res = await fetch(`${WORKER}/admin/catalog/upload-photo`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` },
+        headers: { "Authorization": `Bearer ${token}`, ...gemachHeaders() },
         body: formData
       });
       const fresh = res.headers.get("X-Session-Token");
@@ -2323,7 +2714,8 @@
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...gemachHeaders()
         },
         body: JSON.stringify({ url })
       });
@@ -2498,11 +2890,11 @@
         <div class="history-entry">
           <div class="history-dot" style="background:${color}"></div>
           <div class="history-entry-body">
-            <div class="history-event-type" style="color:${color}">${e.eventType || "Unknown"}</div>
-            ${meta.length ? `<div class="history-meta">${meta.map(m => `<span>${m}</span>`).join("")}</div>` : ""}
-            ${e.notes ? `<div class="history-notes">💬 ${e.notes}</div>` : ""}
+            <div class="history-event-type" style="color:${color}">${esc(e.eventType || "Unknown")}</div>
+            ${meta.length ? `<div class="history-meta">${meta.map(m => `<span>${esc(m)}</span>`).join("")}</div>` : ""}
+            ${e.notes ? `<div class="history-notes">💬 ${esc(e.notes)}</div>` : ""}
           </div>
-          <div class="history-time">${fmtHistoryTime(e.timestamp)}</div>
+          <div class="history-time">${esc(fmtHistoryTime(e.timestamp))}</div>
         </div>`;
     }).join("");
 

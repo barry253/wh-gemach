@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Gemach — West Hempstead Gemachs</title>
+  <meta name="description" content="See what's available at this West Hempstead gemach and send a request to borrow — free of charge." />
+  <meta name="theme-color" content="#1B3A4B" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="West Hempstead Gemachs" />
+  <meta property="og:title" content="West Hempstead Gemachs" />
+  <meta property="og:description" content="Free, volunteer-run lending libraries in West Hempstead — see what's available and send a request." />
+  <meta name="twitter:card" content="summary" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="/assets/site.css" />
+  <script src="/assets/site.js" defer></script>
+  <script src="/assets/gemach.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26" />West Hempstead Gemachs</a>
+  </div>
+</div>
+
+<header class="hero hero-gemach" id="g-header">
+  <div class="wrap">
+    <a class="back-link" href="/"><span aria-hidden="true">←</span> All gemachs</a>
+    <div id="g-head">
+      <div class="sk sk-dark sk-line sk-title"></div>
+      <div class="sk sk-dark sk-line sk-w40"></div>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div id="g-body">
+    <div class="info-panel"><div class="sk sk-line"></div><div class="sk sk-line"></div></div>
+    <ul class="item-list" id="sk-list">
+      <li class="sk sk-row"></li><li class="sk sk-row"></li><li class="sk sk-row"></li>
+    </ul>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <nav class="footer-nav" aria-label="Site">
+      <a href="/about">About</a><span class="dot" aria-hidden="true">·</span>
+      <a href="/disclaimer">Disclaimer</a><span class="dot" aria-hidden="true">·</span>
+      <a href="/admin">Admin login</a><span class="dot" aria-hidden="true">·</span>
+      <span>© <span data-year>2026</span></span>
+    </nav>
+    <p class="footer-credit">Site maintained as a community service by Binyamin Rosenstock. Questions or want to list your gemach? <a href="mailto:whmedicalgemach@gmail.com">whmedicalgemach@gmail.com</a></p>
+  </div>
+</footer>
+
+<!-- Sticky CTA -->
+<div class="sticky-cta" id="sticky-cta" role="region" aria-label="Selected items">
+  <div class="wrap">
+    <div class="cta-label"><strong id="cta-count">0 items</strong> selected
+      <button type="button" class="btn-link cta-clear" id="cta-clear">Clear</button>
+    </div>
+    <button type="button" class="btn btn-primary" id="btn-open-modal">Request selected items</button>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo" hidden>
+  <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Close photo">×</button>
+  <img id="lightbox-img" src="data:," alt="" />
+  <div class="lightbox-caption" id="lightbox-caption"></div>
+</div>
+
+<!-- Request modal -->
+<div class="modal-overlay" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <button type="button" class="modal-close" id="modal-close" aria-label="Close">×</button>
+
+    <form id="form-view" novalidate>
+      <h2 id="modal-title">Request to borrow</h2>
+      <p class="modal-subtitle" id="modal-subtitle">The gemach will contact you to confirm and arrange pickup.</p>
+
+      <div class="form-group">
+        <label for="f-name">Your name <span class="req" aria-hidden="true">*</span></label>
+        <input type="text" id="f-name" name="name" placeholder="Full name" autocomplete="name" required maxlength="120" />
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-phone">Phone <span class="req" aria-hidden="true">*</span></label>
+          <input type="tel" id="f-phone" name="phone" placeholder="516-555-1234" autocomplete="tel" inputmode="tel" required maxlength="40" />
+        </div>
+        <div class="form-group">
+          <label for="f-contact">Best way to reach you</label>
+          <select id="f-contact" name="preferredContact">
+            <option value="">Choose…</option>
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="Phone">Phone call</option>
+            <option value="SMS">Text / SMS</option>
+            <option value="Email">Email</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="f-email">Email <span class="opt">(optional)</span></label>
+        <input type="email" id="f-email" name="email" placeholder="you@example.com" autocomplete="email" maxlength="200" />
+      </div>
+
+      <fieldset class="form-group">
+        <legend>Items requested <span class="req" aria-hidden="true">*</span></legend>
+        <div id="modal-items-grid"></div>
+      </fieldset>
+
+      <fieldset class="form-group">
+        <legend>How long do you need it?</legend>
+        <div class="duration-toggle">
+          <button class="duration-btn" id="btn-dates" type="button" aria-pressed="true">I know the dates</button>
+          <button class="duration-btn" id="btn-open" type="button" aria-pressed="false">Not sure yet</button>
+        </div>
+        <div class="form-row" id="date-fields">
+          <div class="form-group">
+            <label for="f-from">Needed from</label>
+            <input type="date" id="f-from" name="neededFrom" />
+          </div>
+          <div class="form-group">
+            <label for="f-until">Needed until</label>
+            <input type="date" id="f-until" name="neededUntil" />
+          </div>
+        </div>
+        <p class="open-ended-msg" id="open-msg" hidden>No problem — the gemach will check in with you periodically.</p>
+      </fieldset>
+
+      <div class="form-group">
+        <label for="f-notes">Anything else they should know?</label>
+        <textarea id="f-notes" name="notes" maxlength="2000" placeholder="e.g. for my mother-in-law visiting for Sukkos, recovering from knee surgery…"></textarea>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-submit" id="btn-submit">Send request</button>
+      <p class="error-msg" id="error-msg" role="alert" hidden></p>
+      <p class="form-note">By sending a request you agree to the <a href="/disclaimer" target="_blank" rel="noopener">Disclaimer</a>.
+        Your information goes only to this gemach and is used only to arrange the loan.</p>
+    </form>
+
+    <div id="success-view" hidden>
+      <div class="success-message">
+        <div class="checkmark" aria-hidden="true">✓</div>
+        <h2 id="success-title" tabindex="-1">Request sent</h2>
+        <p id="success-text">The gemach will be in touch to confirm and arrange pickup. Thank you!</p>
+        <button type="button" class="btn btn-primary" id="success-done">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

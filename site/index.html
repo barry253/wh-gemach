@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>West Hempstead Gemachs — borrow what you need, free</title>
+  <meta name="description" content="Find free, volunteer-run gemachs (lending libraries) in West Hempstead. Search for medical equipment, baby gear and more, see what's available, and send a request." />
+  <meta name="theme-color" content="#1B3A4B" />
+  <link rel="canonical" href="https://whgemachs.org/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="West Hempstead Gemachs" />
+  <meta property="og:title" content="West Hempstead Gemachs" />
+  <meta property="og:description" content="Free, volunteer-run lending libraries in West Hempstead — find who has what you need." />
+  <meta property="og:url" content="https://whgemachs.org/" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="/assets/site.css" />
+  <script src="/assets/site.js" defer></script>
+  <script src="/assets/home.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="hero hero-home">
+  <div class="wrap">
+    <img class="hero-mark" src="/favicon.svg" alt="" width="44" height="44" />
+    <h1>West Hempstead Gemachs</h1>
+    <p class="lede">Free, volunteer-run lending libraries in our community — find who has what you need.</p>
+
+    <form class="search-form" id="search-form" role="search" action="/" method="get">
+      <label for="q">What do you need to borrow?</label>
+      <div class="search-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="q" name="q" placeholder="e.g. wheelchair, stroller, shower chair" autocomplete="off" enterkeyhint="search" aria-controls="results" />
+        <button type="button" class="search-clear" id="search-clear" aria-label="Clear search" hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="search-hint" id="search-hint">Popular:
+        <button type="button" data-q="wheelchair">Wheelchair</button>
+        <button type="button" data-q="walker">Walker</button>
+        <button type="button" data-q="knee scooter">Knee scooter</button>
+        <button type="button" data-q="shower chair">Shower chair</button>
+      </p>
+    </form>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <section class="section" id="cats-section" aria-labelledby="cats-title">
+    <div class="section-head">
+      <h2 class="section-title" id="cats-title">Browse by category</h2>
+    </div>
+    <ul class="cat-grid" id="cat-grid">
+      <li><div class="sk sk-tile"></div></li><li><div class="sk sk-tile"></div></li>
+      <li><div class="sk sk-tile"></div></li><li><div class="sk sk-tile"></div></li>
+    </ul>
+  </section>
+
+  <section class="section" id="results-section" aria-labelledby="results-title" hidden>
+    <h2 class="sr-only" id="results-title">Search results</h2>
+    <div class="results-bar">
+      <p class="results-count" id="results-count" role="status" aria-live="polite"></p>
+      <button type="button" class="btn-link" id="clear-filters">Clear search</button>
+    </div>
+    <div id="results"></div>
+  </section>
+
+  <section class="section" id="gemachs-section" aria-labelledby="gemachs-title">
+    <div class="section-head">
+      <h2 class="section-title" id="gemachs-title">Gemachs in West Hempstead</h2>
+    </div>
+    <ul class="gemach-list" id="gemach-list">
+      <li><div class="sk sk-card"></div></li><li><div class="sk sk-card"></div></li>
+    </ul>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <nav class="footer-nav" aria-label="Site">
+      <a href="/about">About</a><span class="dot" aria-hidden="true">·</span>
+      <a href="/disclaimer">Disclaimer</a><span class="dot" aria-hidden="true">·</span>
+      <a href="/admin">Admin login</a><span class="dot" aria-hidden="true">·</span>
+      <span>© <span data-year>2026</span></span>
+    </nav>
+    <p class="footer-credit">Site maintained as a community service by Binyamin Rosenstock. Questions or want to list your gemach? <a href="mailto:whmedicalgemach@gmail.com">whmedicalgemach@gmail.com</a></p>
+  </div>
+</footer>
+</body>
+</html>

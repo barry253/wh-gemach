@@ -1,0 +1,5 @@
+# Gemach pages: /g/<slug> is served by gemach.html (rewrite; URL stays /g/<slug>)
+/g          /   302
+/g/         /   302
+/g/:slug    /gemach   200
+/g/:slug/   /gemach   200
