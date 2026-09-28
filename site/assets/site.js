@@ -144,6 +144,191 @@
     photo: '<svg class="ph" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>'
   };
 
+  // ── v3: contact buttons (contract: primary then secondary) ──
+  // Returns null when the payload predates v3 (no primaryContact key) so callers keep legacy rendering.
+  function us10(s) {
+    var d = digits(s);
+    if (d.length === 11 && d.charAt(0) === "1") d = d.slice(1);
+    return d.length === 10 ? d : (d || "");
+  }
+  // International form without "+": US 10-digit numbers get the 1 prefix; anything else is used as entered.
+  function intl(d) { return d.length === 10 ? "1" + d : d; }
+  function contactAction(g, type, opts) {
+    var ph = us10(g.phone), waOwn = us10(g.whatsapp);
+    var wa = waOwn || ((opts && opts.strictWhatsApp) ? "" : ph);
+    switch (type) {
+      case "Call": return ph ? { type: type, label: "Call", icon: "phone", href: "tel:+" + intl(ph) } : null;
+      case "Text": return ph ? { type: type, label: "Text", icon: "sms", href: "sms:+" + intl(ph) } : null;
+      case "WhatsApp": return wa ? { type: type, label: "WhatsApp", icon: "whatsapp", href: "https://wa.me/" + intl(wa), ext: true } : null;
+      case "Email": return g.email ? { type: type, label: "Email", icon: "mail", href: "mailto:" + String(g.email).trim() } : null;
+    }
+    return null;
+  }
+  var CONTACT_TYPES = ["Call", "Text", "WhatsApp", "Email"];
+  function contactActions(g) {
+    if (!g || !("primaryContact" in g)) return null; // v2 payload → legacy
+    var out = [];
+    var p = CONTACT_TYPES.indexOf(g.primaryContact) >= 0 ? g.primaryContact : null;
+    var s = CONTACT_TYPES.indexOf(g.secondaryContact) >= 0 ? g.secondaryContact : null;
+    var want = [];
+    if (p) want.push(p);
+    else {
+      // Fallback: first available of WhatsApp, Call, Email (and, when no secondary is set either, the next one)
+      // WhatsApp only counts here when a WhatsApp number is actually set (a plain phone may be a landline).
+      var avail = ["WhatsApp", "Call", "Email"].filter(function (t) { return contactAction(g, t, { strictWhatsApp: true }); });
+      if (avail[0]) want.push(avail[0]);
+      if (!s && avail[1]) want.push(avail[1]);
+    }
+    if (s && want.indexOf(s) < 0) want.push(s);
+    want.forEach(function (t) { var a = contactAction(g, t); if (a && out.length < 2) out.push(a); });
+    if (out[0]) out[0].primary = true;
+    return out;
+  }
+
+  // ── v3: request style / event date math ──
+  function requestStyle(g) {
+    if (isDirectory(g)) return "Directory";
+    var s = g && g.requestStyle;
+    return s === "Event" || s === "Appointment" ? s : "Dates";
+  }
+  function clampDays(v) {
+    var n = parseInt(v, 10);
+    if (isNaN(n)) n = 1;
+    return Math.max(0, Math.min(14, n));
+  }
+  function parseYMD(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
+    if (!m) return null;
+    var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return d.getUTCMonth() === +m[2] - 1 ? d : null;
+  }
+  function ymd(d) { return d.toISOString().slice(0, 10); }
+  function addDays(d, n) { return new Date(d.getTime() + n * 86400000); }
+  /** Contract rule: pickup = event − before; return = event + after; shabbosAdjust: Sat pickup → Fri, Sat return → Sun. */
+  function eventWindow(dateStr, g) {
+    var ev = parseYMD(dateStr);
+    if (!ev) return null;
+    var pick = addDays(ev, -clampDays(g.pickupDaysBefore));
+    var ret = addDays(ev, clampDays(g.returnDaysAfter));
+    if (g.shabbosAdjust) {
+      if (pick.getUTCDay() === 6) pick = addDays(pick, -1);
+      if (ret.getUTCDay() === 6) ret = addDays(ret, 1);
+    }
+    return { pickup: ymd(pick), ret: ymd(ret) };
+  }
+  function fmtDay(s, withYear) {
+    var d = parseYMD(s);
+    if (!d) return s;
+    var o = { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" };
+    if (withYear) o.year = "numeric";
+    return d.toLocaleDateString("en-US", o);
+  }
+  function todayNY() {
+    try {
+      var p = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+      var get = function (t) { return p.filter(function (x) { return x.type === t; })[0].value; };
+      return get("year") + "-" + get("month") + "-" + get("day");
+    } catch (e) {
+      var n = new Date();
+      return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
+    }
+  }
+  function maxEventDate() {
+    var t = parseYMD(todayNY());
+    var d = new Date(Date.UTC(t.getUTCFullYear() + 2, t.getUTCMonth(), t.getUTCDate()));
+    if (d.getUTCDate() !== t.getUTCDate()) d = addDays(d, -d.getUTCDate()); // Feb 29 → Feb 28
+    return ymd(d);
+  }
+
+  // ── v3: theme colors ──
+  var DEFAULT_THEME = "#1B3A4B";
+  function validHex(h) { return typeof h === "string" && /^#[0-9a-f]{6}$/i.test(h.trim()) ? h.trim().toUpperCase() : null; }
+  function rgb(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function toHex(c) { return "#" + c.map(function (v) { return ("0" + Math.round(Math.max(0, Math.min(255, v))).toString(16)).slice(-2); }).join("").toUpperCase(); }
+  function lum(h) {
+    var c = rgb(h).map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function contrast(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  var INK = "#1A1A1A";
+  /** White if it reaches 4.5:1, otherwise whichever of white / near-black contrasts more. */
+  function onColor(bg) {
+    var w = contrast(bg, "#FFFFFF"), k = contrast(bg, INK);
+    return w >= 4.5 || w >= k ? "#FFFFFF" : INK;
+  }
+  function toHsl(h) {
+    var c = rgb(h).map(function (v) { return v / 255; });
+    var mx = Math.max.apply(null, c), mn = Math.min.apply(null, c), l = (mx + mn) / 2, s = 0, hh = 0, d = mx - mn;
+    if (d) {
+      s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+      hh = mx === c[0] ? (c[1] - c[2]) / d + (c[1] < c[2] ? 6 : 0) : mx === c[1] ? (c[2] - c[0]) / d + 2 : (c[0] - c[1]) / d + 4;
+      hh /= 6;
+    }
+    return [hh, s, l];
+  }
+  function fromHsl(hh, s, l) {
+    function f(n) { var k = (n + hh * 12) % 12, a = s * Math.min(l, 1 - l); return 255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))); }
+    return toHex([f(0), f(8), f(4)]);
+  }
+  /** Same hue, darkened until white text reaches 4.5:1 (for buttons / borders / links on white). */
+  function strongOf(h) {
+    if (contrast(h, "#FFFFFF") >= 4.5) return h;
+    var x = toHsl(h), s = Math.max(x[1], 0.35), l = x[2], out = h;
+    while (l > 0.05) { l -= 0.02; out = fromHsl(x[0], x[1] < 0.08 ? x[1] : s, l); if (contrast(out, "#FFFFFF") >= 4.5) break; }
+    return out;
+  }
+  function mix(a, b, t) { var x = rgb(a), y = rgb(b); return toHex([0, 1, 2].map(function (i) { return x[i] * t + y[i] * (1 - t); })); }
+  function shade(h, amt) { var x = toHsl(h); return fromHsl(x[0], x[1], Math.max(0, Math.min(1, x[2] + amt))); }
+  /** CSS custom properties for a gemach's theme; null when default (keeps today's look exactly). */
+  function themeVars(g) {
+    var t = validHex(g && g.themeColor) || DEFAULT_THEME;
+    var acc = validHex(g && g.accentColor);
+    if (t === DEFAULT_THEME && !acc) return null;
+    var v = {};
+    if (t !== DEFAULT_THEME) {
+      var on = onColor(t), light = on !== "#FFFFFF";
+      var strong = strongOf(t);
+      v["--t"] = t;
+      v["--t-on"] = on;
+      v["--t-on-muted"] = light ? "rgba(0,0,0,.72)" : "rgba(255,255,255,.85)";
+      v["--t-glass"] = light ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.12)";
+      v["--t-chip"] = light ? "rgba(0,0,0,.07)" : "rgba(255,255,255,.14)";
+      v["--t-glass-2"] = light ? "rgba(255,255,255,.8)" : "rgba(255,255,255,.22)";
+      v["--t-glass-b"] = light ? "rgba(0,0,0,.18)" : "rgba(255,255,255,.28)";
+      v["--t-glass-b2"] = light ? "rgba(0,0,0,.3)" : "rgba(255,255,255,.45)";
+      v["--t-solid-bg"] = light ? strong : "#FFFFFF";
+      v["--t-solid-fg"] = light ? "#FFFFFF" : t;
+      v["--t-solid-hover"] = light ? shade(strong, -0.06) : mix(t, "#FFFFFF", 0.1);
+      v["--t-strong"] = strong;
+      v["--t-strong-2"] = shade(strong, lum(strong) < 0.02 ? 0.08 : -0.07);
+      v["--t-tint"] = mix(strong, "#FFFFFF", 0.07);
+      v["--t-tint-2"] = mix(strong, "#FFFFFF", 0.12);
+      v["--t-border"] = mix(strong, "#FFFFFF", 0.4);
+      v["--focus-c"] = strong;
+      v["--t-ring"] = "rgba(" + rgb(strong).join(",") + ",.25)";
+    }
+    if (acc) v["--t-accent"] = acc;
+    return v;
+  }
+  /** Stripe color for a home card (visible on white). */
+  function stripeColor(g) {
+    var t = validHex(g && g.themeColor) || DEFAULT_THEME;
+    return contrast(t, "#FFFFFF") >= 1.6 ? t : strongOf(t);
+  }
+  function initials(g) {
+    var stop = { the: 1, of: 1, and: 1, gemach: 1, gmach: 1, "g'mach": 1, "&": 1 };
+    var comm = String((g && g.communityName) || "West Hempstead").toLowerCase().split(/\s+/);
+    var words = String((g && g.name) || "").split(/\s+/).filter(function (w) { return w && !stop[w.toLowerCase()]; });
+    var core = words.filter(function (w) { return comm.indexOf(w.toLowerCase()) < 0; });
+    if (core.length) words = core;
+    var s = words.slice(0, 2).map(function (w) { return (w.match(/[A-Za-z0-9֐-׿]/) || [""])[0].toUpperCase(); }).join("");
+    return s || "G";
+  }
+
+  ICONS.sms = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  ICONS.info = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+  ICONS.clock = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
+
   // ── Footer year ──
   function initFooter() {
     var y = document.querySelectorAll("[data-year]");
@@ -169,6 +354,21 @@
     plural: plural,
     isDirectory: isDirectory,
     gemachUrl: gemachUrl,
+    contactActions: contactActions,
+    requestStyle: requestStyle,
+    eventWindow: eventWindow,
+    parseYMD: parseYMD,
+    fmtDay: fmtDay,
+    todayNY: todayNY,
+    maxEventDate: maxEventDate,
+    validHex: validHex,
+    contrast: contrast,
+    onColor: onColor,
+    strongOf: strongOf,
+    themeVars: themeVars,
+    stripeColor: stripeColor,
+    initials: initials,
+    DEFAULT_THEME: DEFAULT_THEME,
     ICONS: ICONS
   };
 })();

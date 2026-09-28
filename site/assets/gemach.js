@@ -25,6 +25,14 @@
 
   // ── Render ──
   function contactButtons(g) {
+    var acts = W.contactActions(g);
+    if (acts) {
+      if (!acts.length) return "";
+      return '<div class="contact-row">' + acts.map(function (a) {
+        return '<a class="btn btn-on-dark' + (a.primary ? " btn-solid" : "") + '" href="' + esc(a.href) + '"' +
+          (a.ext ? ' target="_blank" rel="noopener"' : "") + ' data-contact="' + a.type + '">' + W.ICONS[a.icon] + a.label + "</a>";
+      }).join("") + "</div>";
+    }
     var out = [];
     var tel = W.telHref(g.phone), wa = W.waHref(g.whatsapp);
     if (tel) out.push('<a class="btn btn-on-dark btn-solid" href="' + tel + '">' + W.ICONS.phone + "Call</a>");
@@ -33,11 +41,33 @@
     return out.length ? '<div class="contact-row">' + out.join("") + "</div>" : "";
   }
 
+  var appliedVars = [];
+  function applyTheme(g) {
+    var root = document.documentElement;
+    appliedVars.forEach(function (k) { root.style.removeProperty(k); });
+    appliedVars = [];
+    var v = W.themeVars(g);
+    if (v) Object.keys(v).forEach(function (k) { root.style.setProperty(k, v[k]); appliedVars.push(k); });
+    var mt = document.querySelector('meta[name="theme-color"]');
+    if (mt) mt.setAttribute("content", W.validHex(g.themeColor) || W.DEFAULT_THEME);
+  }
+  function applyFavicon(g) {
+    var link = document.querySelector('link[rel="icon"]');
+    if (!link) return;
+    var logo = W.safeUrl(g && g.logoUrl);
+    if (logo) { link.setAttribute("href", logo); link.removeAttribute("type"); }
+    else { link.setAttribute("href", "/favicon.svg"); link.setAttribute("type", "image/svg+xml"); }
+  }
+
   function renderHeader() {
     var g = gemach;
+    applyTheme(g);
+    applyFavicon(g);
+    var logo = W.safeUrl(g.logoUrl);
+    var h1 = "<h1>" + esc(g.name) + "</h1>";
     $("g-head").innerHTML =
       (g.category ? '<span class="chip">' + esc(g.category) + "</span>" : "") +
-      "<h1>" + esc(g.name) + "</h1>" +
+      (logo ? '<div class="g-title"><img class="g-logo" src="' + esc(logo) + '" alt="' + esc(g.name) + '" width="80" height="80" decoding="async" />' + h1 + "</div>" : h1) +
       (g.tagline ? '<p class="tagline">' + esc(g.tagline) + "</p>" : "") +
       contactButtons(g);
     document.title = g.name + " — West Hempstead Gemachs";
@@ -51,13 +81,20 @@
     var g = gemach;
     var desc = W.formatText(g.description);
     var side = [];
-    if (g.hours) side.push('<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div>");
+    var v3 = isV3(g);
+    if (g.hours && !v3) side.push('<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div>");
     var contact = [];
-    if (g.phone) { var tel = W.telHref(g.phone); contact.push(tel ? '<a href="' + tel + '">' + esc(g.phone) + "</a>" : esc(g.phone)); }
-    if (g.whatsapp && W.waHref(g.whatsapp) && W.telHref(g.whatsapp) !== W.telHref(g.phone)) {
+    var acts = W.contactActions(g);
+    if (acts) {
+      acts.forEach(function (a) {
+        var shown = a.type === "Email" ? g.email : (a.type === "WhatsApp" ? (g.whatsapp || g.phone) : g.phone);
+        contact.push('<span class="info-sub">' + esc(a.label) + ':</span> <a href="' + esc(a.href) + '"' + (a.ext ? ' target="_blank" rel="noopener"' : "") + ">" + esc(shown) + "</a>");
+      });
+    } else if (g.phone) { var tel = W.telHref(g.phone); contact.push(tel ? '<a href="' + tel + '">' + esc(g.phone) + "</a>" : esc(g.phone)); }
+    if (!acts && g.whatsapp && W.waHref(g.whatsapp) && W.telHref(g.whatsapp) !== W.telHref(g.phone)) {
       contact.push('WhatsApp: <a href="' + W.waHref(g.whatsapp) + '" target="_blank" rel="noopener">' + esc(g.whatsapp) + "</a>");
     }
-    if (g.email) contact.push('<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + "</a>");
+    if (!acts && g.email) contact.push('<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + "</a>");
     if (contact.length) side.push('<div><div class="info-label">Contact</div><div>' + contact.join("<br>") + "</div></div>");
     var web = W.safeUrl(g.website);
     if (web) side.push('<div><div class="info-label">Website</div><a href="' + esc(web) + '" target="_blank" rel="noopener">' + esc(W.prettyUrl(web)) + "</a></div>");
@@ -69,8 +106,28 @@
       (side.length ? '<div class="info-side">' + side.join("") + "</div>" : "") + "</section>";
   }
 
+  function isV3(g) { return !!g && ("requestStyle" in g || "depositRequired" in g || "gemachInfo" in g); }
+  function style() { return W.requestStyle(gemach); }
+
+  function depositHtml(g) {
+    return "<strong>" + W.ICONS.info + "Deposit required</strong>" +
+      (g.depositInfo ? '<div class="prose">' + W.formatText(g.depositInfo) + "</div>" : "");
+  }
+  function gemachInfoSection() {
+    var g = gemach;
+    if (!isV3(g)) return "";
+    var parts = [];
+    if (g.depositRequired) parts.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
+    if (g.hours) parts.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");
+    var info = W.formatText(g.gemachInfo);
+    if (info) parts.push('<div class="prose">' + info + "</div>");
+    if (!parts.length) return "";
+    return '<section class="ginfo" aria-labelledby="ginfo-title"><h2 id="ginfo-title">Gemach Info</h2>' + parts.join("") + "</section>";
+  }
+
   function availBadge(it) {
     if (W.isDirectory(gemach)) return '<span class="badge badge-dir">Contact to check</span>';
+    if (style() === "Appointment") return "";
     var n = Math.max(0, it.availableCount || 0);
     return n > 0 ? '<span class="badge badge-ok">' + n + " available</span>"
                  : '<span class="badge badge-out">All on loan</span>';
@@ -120,11 +177,17 @@
     if (other.items.length) order.push(other);
     var showHeads = order.length > 1 || order[0] !== other;
 
-    html += '<div class="inv-head"><h2 class="section-title">' + (dir ? "Items" : "Equipment") + "</h2>" +
-      (dir ? "" : '<span class="section-sub">Availability updates in real time</span>') + "</div>";
+    var st = style();
+    html += '<div class="inv-head"><h2 class="section-title">' + (dir || st !== "Dates" ? "Items" : "Equipment") + "</h2>" +
+      (dir || st === "Appointment" ? "" : '<span class="section-sub">Availability updates in real time</span>') + "</div>";
+    var help = {
+      Dates: "Tap the items you need, then send one request. Items on loan can still be requested — the gemach will let you know.",
+      Event: "Tap the items you need, then send one request with your " + esc(eventLabel().toLowerCase()) + ". Items on loan can still be requested — the gemach will let you know.",
+      Appointment: "Browse the collection, then request an appointment to come see it in person. Selecting items you’d like to see is optional."
+    };
     html += dir
       ? '<div class="notice">This gemach is listed in our directory. To borrow, contact them directly using the buttons above.</div>'
-      : '<p class="inv-help">Tap the items you need, then send one request. Items on loan can still be requested — the gemach will let you know.</p>';
+      : '<p class="inv-help">' + help[st] + "</p>";
     html += order.map(function (b) {
       return '<section class="cat-block" aria-label="' + esc(b.c.name) + '">' +
         (showHeads ? '<h3><span class="ci" aria-hidden="true">' + esc(b.c.icon || "•") + "</span>" + esc(b.c.name) + "</h3>" : "") +
@@ -138,7 +201,7 @@
     // drop selections that no longer exist / directory mode
     var ids = new Set(items.map(function (i) { return i.id; }));
     selected.forEach(function (id) { if (!ids.has(id) || W.isDirectory(gemach)) selected.delete(id); });
-    $("g-body").innerHTML = infoPanel() + renderInventory();
+    $("g-body").innerHTML = infoPanel() + gemachInfoSection() + renderInventory();
     updateCTA();
     handleType();
   }
@@ -197,10 +260,20 @@
   }
   function updateCTA() {
     var n = selected.size;
-    $("cta-count").textContent = n === 1 ? "1 item" : n + " items";
+    var appt = !!gemach && style() === "Appointment";
+    $("cta-count").textContent = appt && !n ? "Visit by appointment" : (n === 1 ? "1 item" : n + " items");
+    $("cta-suffix").hidden = appt && !n;
+    $("cta-clear").hidden = n === 0;
     var cta = $("sticky-cta");
-    cta.classList.toggle("visible", n > 0);
-    document.body.classList.toggle("has-cta", n > 0);
+    var show = n > 0 || appt;
+    cta.classList.toggle("visible", show);
+    cta.classList.toggle("always", appt && n === 0);
+    document.body.classList.toggle("has-cta", show);
+    $("btn-open-modal").textContent = appt ? "Request an appointment" : "Request selected items";
+  }
+  function eventLabel() {
+    var l = gemach && typeof gemach.eventLabel === "string" ? gemach.eventLabel.trim() : "";
+    return l || "Event date";
   }
 
   $("g-body").addEventListener("click", function (e) {
@@ -270,10 +343,16 @@
   var modal = $("modal");
   function openModal() {
     lastFocus = document.activeElement;
-    $("modal-title").textContent = "Request from " + gemach.name;
+    var st = style();
+    var appt = st === "Appointment";
+    $("modal-title").textContent = appt ? "Request an appointment" : "Request from " + gemach.name;
+    $("modal-subtitle").textContent = appt
+      ? "Tell " + gemach.name + " when you’d like to come. They’ll contact you to confirm a time."
+      : "The gemach will contact you to confirm and arrange pickup.";
+    configureForm(st);
     var label = function (it) {
       var on = selected.has(it.id);
-      var out = !(it.availableCount > 0);
+      var out = !appt && !(it.availableCount > 0);
       return '<label class="item-check-label' + (on ? " checked" : "") + '">' +
         '<input type="checkbox" name="modal-items" value="' + esc(it.id) + '"' + (on ? " checked" : "") + " />" +
         "<span>" + esc(it.name) + (out ? "<small>Currently on loan</small>" : "") + "</span></label>";
@@ -282,13 +361,13 @@
     var rest = items.filter(function (it) { return !selected.has(it.id); });
     $("modal-items-grid").innerHTML =
       (chosen.length ? '<div class="items-grid">' + chosen.map(label).join("") + "</div>" : "") +
-      (rest.length ? (chosen.length
-        ? '<details class="items-more"><summary>Add more items</summary><div class="items-grid">' + rest.map(label).join("") + "</div></details>"
+      (rest.length ? (chosen.length || appt
+        ? '<details class="items-more"><summary>' + (chosen.length ? "Add more items" : "Choose items you’d like to see") + '</summary><div class="items-grid">' + rest.map(label).join("") + "</div></details>"
         : '<div class="items-grid">' + rest.map(label).join("") + "</div>") : "");
     $("form-view").hidden = false;
     $("success-view").hidden = true;
     hideError();
-    var btn = $("btn-submit"); btn.disabled = false; btn.textContent = "Send request";
+    var btn = $("btn-submit"); btn.disabled = false; btn.textContent = submitLabel();
     modal.hidden = false; modal.classList.add("open"); lockScroll(true);
     setTimeout(function () { $("f-name").focus(); }, 30);
   }
@@ -318,6 +397,53 @@
   $("btn-dates").addEventListener("click", function () { setOpenEnded(false); });
   $("btn-open").addEventListener("click", function () { setOpenEnded(true); });
 
+  function submitLabel() { return style() === "Appointment" ? "Send appointment request" : "Send request"; }
+  var NOTES_PH = $("f-notes").getAttribute("placeholder");
+  function configureForm(st) {
+    var appt = st === "Appointment", ev = st === "Event";
+    $("items-legend").innerHTML = appt
+      ? 'Items I’d like to see <span class="opt">(optional)</span>'
+      : 'Items requested <span class="req" aria-hidden="true">*</span>';
+    $("dates-group").hidden = st !== "Dates";
+    $("appt-group").hidden = !appt;
+    $("event-group").hidden = !(ev || appt);
+    $("event-label").textContent = eventLabel();
+    $("event-req").hidden = !ev;
+    $("event-opt").hidden = !appt;
+    var fe = $("f-event");
+    fe.min = W.todayNY(); fe.max = W.maxEventDate();
+    fe.required = ev;
+    $("f-times").required = appt;
+    var dep = !!gemach.depositRequired;
+    $("deposit-group").hidden = !dep;
+    $("f-deposit").required = dep;
+    if (dep) $("deposit-form-info").innerHTML = depositHtml(gemach);
+    $("form-note-purpose").textContent = appt ? "your appointment" : "the loan";
+    $("f-notes").setAttribute("placeholder", appt ? "e.g. sizes, colors or styles you’re interested in"
+      : ev ? "e.g. anything specific you’re looking for" : NOTES_PH);
+    updateEventSummary();
+  }
+  function updateEventSummary() {
+    var box = $("event-summary");
+    var v = $("f-event").value;
+    var w = style() === "Event" && v ? W.eventWindow(v, gemach) : null;
+    if (!w) { box.hidden = true; box.textContent = ""; return; }
+    box.innerHTML = "<span>Pick up <b>" + esc(W.fmtDay(w.pickup)) + "</b></span> <span aria-hidden=\"true\">·</span> <span>Return <b>" + esc(W.fmtDay(w.ret)) + "</b></span>";
+    box.hidden = false;
+  }
+  $("f-event").addEventListener("input", updateEventSummary);
+  $("f-event").addEventListener("change", updateEventSummary);
+  $("f-deposit").addEventListener("change", function () {
+    $("deposit-line").classList.remove("invalid"); this.removeAttribute("aria-invalid");
+  });
+  function checkEventDate(v, required) {
+    if (!v) return required ? "Please enter your " + eventLabel().toLowerCase() + "." : "";
+    if (!W.parseYMD(v)) return "Please enter a valid date.";
+    if (v < W.todayNY()) return "The " + eventLabel().toLowerCase() + " can’t be in the past.";
+    if (v > W.maxEventDate()) return "The " + eventLabel().toLowerCase() + " must be within the next 2 years.";
+    return "";
+  }
+
   function showError(msg, field) {
     var el = $("error-msg"); el.textContent = msg; el.hidden = false;
     if (!field && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
@@ -325,6 +451,7 @@
   }
   function hideError() {
     $("error-msg").hidden = true;
+    $("deposit-line").classList.remove("invalid");
     var inv = modal.querySelectorAll('[aria-invalid="true"]');
     for (var i = 0; i < inv.length; i++) inv[i].removeAttribute("aria-invalid");
   }
@@ -356,14 +483,41 @@
     if (phone.replace(/\D/g, "").length < 10) return showError("Please enter a phone number with area code.", $("f-phone"));
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError("That email address doesn’t look right.", $("f-email"));
     if (preferredContact === "Email" && !email) return showError("Please add your email, since that’s the best way to reach you.", $("f-email"));
-    if (!ids.length) return showError("Please select at least one item.");
-    if (neededFrom && neededUntil && neededUntil < neededFrom) return showError("The “until” date is before the “from” date.", $("f-until"));
-
-    var body = { gemach: gemach.slug || slug, name: name, phone: phone, itemsRequested: ids, openEnded: openEnded };
+    var st = style();
+    var body = { gemach: gemach.slug || slug, name: name, phone: phone, itemsRequested: ids };
+    if (st === "Appointment") {
+      var times = $("f-times").value.trim();
+      var party = $("f-party").value.trim();
+      var evA = $("f-event").value;
+      if (!times) return showError("Please let the gemach know when you’d like to come.", $("f-times"));
+      if (party && !(/^\d+$/.test(party) && +party >= 1 && +party <= 20)) return showError("Number of people should be between 1 and 20.", $("f-party"));
+      var errA = checkEventDate(evA, false);
+      if (errA) return showError(errA, $("f-event"));
+      body.preferredTimes = times;
+      if (party) body.partySize = +party;
+      if (evA) body.eventDate = evA;
+    } else if (st === "Event") {
+      if (!ids.length) return showError("Please select at least one item.");
+      var evE = $("f-event").value;
+      var errE = checkEventDate(evE, true);
+      if (errE) return showError(errE, $("f-event"));
+      body.eventDate = evE;
+    } else {
+      if (!ids.length) return showError("Please select at least one item.");
+      if (neededFrom && neededUntil && neededUntil < neededFrom) return showError("The “until” date is before the “from” date.", $("f-until"));
+      body.openEnded = openEnded;
+      if (neededFrom) body.neededFrom = neededFrom;
+      if (neededUntil) body.neededUntil = neededUntil;
+    }
+    if (gemach.depositRequired) {
+      if (!$("f-deposit").checked) {
+        $("deposit-line").classList.add("invalid");
+        return showError("Please confirm you understand a deposit is required.", $("f-deposit"));
+      }
+      body.depositAck = true;
+    }
     if (email) body.email = email;
     if (preferredContact) body.preferredContact = preferredContact;
-    if (neededFrom) body.neededFrom = neededFrom;
-    if (neededUntil) body.neededUntil = neededUntil;
     if (notes) body.notes = notes;
 
     var btn = $("btn-submit");
@@ -373,14 +527,20 @@
       if (!data || !data.success) throw new Error((data && data.error) || "failed");
       $("form-view").hidden = true;
       $("success-view").hidden = false;
-      $("success-text").textContent = "Thank you! " + gemach.name + " will be in touch to confirm and arrange pickup.";
+      if (st === "Appointment") {
+        $("success-title").textContent = "Appointment request sent";
+        $("success-text").textContent = "Thank you! " + gemach.name + " will contact you to confirm a time.";
+      } else {
+        $("success-title").textContent = "Request sent";
+        $("success-text").textContent = "Thank you! " + gemach.name + " will be in touch to confirm and arrange pickup.";
+      }
       $("success-title").focus();
       var had = Array.from(selected); selected.clear(); had.forEach(syncRow); updateCTA();
-      $("form-view").reset(); setOpenEnded(false);
+      $("form-view").reset(); setOpenEnded(false); updateEventSummary();
       W.clearDirCache();
       refresh();
     }).catch(function (err) {
-      btn.disabled = false; btn.textContent = "Send request";
+      btn.disabled = false; btn.textContent = submitLabel();
       if (err && err.status >= 400 && err.status < 500 && err.message) showError(err.message + gemachContactLine());
       else showError("We couldn’t send your request." + gemachContactLine());
     });

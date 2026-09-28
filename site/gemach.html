@@ -15,9 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" />
-  <link rel="stylesheet" href="/assets/site.css" />
-  <script src="/assets/site.js" defer></script>
-  <script src="/assets/gemach.js" defer></script>
+  <link rel="stylesheet" href="/assets/site.css?v=3" />
+  <script src="/assets/site.js?v=3" defer></script>
+  <script src="/assets/gemach.js?v=3" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -62,7 +62,7 @@
 <!-- Sticky CTA -->
 <div class="sticky-cta" id="sticky-cta" role="region" aria-label="Selected items">
   <div class="wrap">
-    <div class="cta-label"><strong id="cta-count">0 items</strong> selected
+    <div class="cta-label"><strong id="cta-count">0 items</strong> <span id="cta-suffix">selected</span>
       <button type="button" class="btn-link cta-clear" id="cta-clear">Clear</button>
     </div>
     <button type="button" class="btn btn-primary" id="btn-open-modal">Request selected items</button>
@@ -112,12 +112,12 @@
         <input type="email" id="f-email" name="email" placeholder="you@example.com" autocomplete="email" maxlength="200" />
       </div>
 
-      <fieldset class="form-group">
-        <legend>Items requested <span class="req" aria-hidden="true">*</span></legend>
+      <fieldset class="form-group" id="items-group">
+        <legend id="items-legend">Items requested <span class="req" aria-hidden="true">*</span></legend>
         <div id="modal-items-grid"></div>
       </fieldset>
 
-      <fieldset class="form-group">
+      <fieldset class="form-group" id="dates-group">
         <legend>How long do you need it?</legend>
         <div class="duration-toggle">
           <button class="duration-btn" id="btn-dates" type="button" aria-pressed="true">I know the dates</button>
@@ -136,6 +136,28 @@
         <p class="open-ended-msg" id="open-msg" hidden>No problem — the gemach will check in with you periodically.</p>
       </fieldset>
 
+      <div id="appt-group" hidden>
+        <div class="form-group">
+          <label for="f-times">Preferred times <span class="req" aria-hidden="true">*</span></label>
+          <textarea id="f-times" name="preferredTimes" maxlength="1000" placeholder="e.g. Sunday evening or Tuesday after 7pm"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="f-party">Number of people coming <span class="opt">(optional)</span></label>
+          <input type="number" id="f-party" name="partySize" min="1" max="20" step="1" inputmode="numeric" />
+        </div>
+      </div>
+
+      <div class="form-group" id="event-group" hidden>
+        <label for="f-event"><span id="event-label">Event date</span> <span class="req" id="event-req" aria-hidden="true">*</span><span class="opt" id="event-opt" hidden> (optional)</span></label>
+        <input type="date" id="f-event" name="eventDate" aria-describedby="event-summary" />
+        <p class="event-summary" id="event-summary" aria-live="polite" hidden></p>
+      </div>
+
+      <div class="deposit-form" id="deposit-group" hidden>
+        <div class="deposit-callout" id="deposit-form-info"></div>
+        <label class="check-line" id="deposit-line"><input type="checkbox" id="f-deposit" name="depositAck" /> <span>I understand a deposit is required <span class="req" aria-hidden="true">*</span></span></label>
+      </div>
+
       <div class="form-group">
         <label for="f-notes">Anything else they should know?</label>
         <textarea id="f-notes" name="notes" maxlength="2000" placeholder="e.g. for my mother-in-law visiting for Sukkos, recovering from knee surgery…"></textarea>
@@ -144,7 +166,7 @@
       <button type="submit" class="btn btn-primary btn-submit" id="btn-submit">Send request</button>
       <p class="error-msg" id="error-msg" role="alert" hidden></p>
       <p class="form-note">By sending a request you agree to the <a href="/disclaimer" target="_blank" rel="noopener">Disclaimer</a>.
-        Your information goes only to this gemach and is used only to arrange the loan.</p>
+        Your information goes only to this gemach and is used only to arrange <span id="form-note-purpose">the loan</span>.</p>
     </form>
 
     <div id="success-view" hidden>

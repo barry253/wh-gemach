@@ -83,6 +83,8 @@
     data.gemachs.forEach(function (g, gi) {
       g._order = gi;
       g._dir = W.isDirectory(g);
+      g._style = W.requestStyle(g);
+      g._appt = g._style === "Appointment";
       g.items = Array.isArray(g.items) ? g.items : [];
       g._hay = makeHay([g.name, g.tagline, g.category, g.description, g.communityName]);
       g.items.forEach(function (it, ii) {
@@ -104,7 +106,7 @@
       var s = stats[e.cat.id] || (stats[e.cat.id] = { gemachs: {}, avail: 0, items: 0 });
       s.gemachs[e.g.id] = 1;
       s.items++;
-      if (!e.g._dir) s.avail += Math.max(0, e.item.availableCount || 0);
+      if (!e.g._dir && !e.g._appt) s.avail += Math.max(0, e.item.availableCount || 0);
     });
     var cats = data.categories.filter(function (c) { return stats[c.id]; });
     $("cats-section").hidden = cats.length === 0;
@@ -129,6 +131,14 @@
     return { total: total, avail: avail };
   }
   function quickLinks(g) {
+    var acts = W.contactActions(g);
+    if (acts) {
+      return acts.map(function (a) {
+        return '<a class="btn btn-sm' + (a.primary ? " btn-primary" : (a.type === "WhatsApp" ? " btn-wa" : "")) + '" href="' + esc(a.href) + '"' +
+          (a.ext ? ' target="_blank" rel="noopener"' : "") + ' aria-label="' + esc(a.label + " " + g.name) + '" data-contact="' + a.type + '">' +
+          W.ICONS[a.icon] + a.label + "</a>";
+      }).join("");
+    }
     var out = [];
     var tel = W.telHref(g.phone), wa = W.waHref(g.whatsapp);
     if (tel) out.push('<a class="btn btn-sm" href="' + tel + '" aria-label="Call ' + esc(g.name) + '">' + W.ICONS.phone + "Call</a>");
@@ -144,21 +154,38 @@
     gemachList.innerHTML = data.gemachs.map(function (g) {
       var meta = [];
       if (g.category) meta.push('<span class="chip">' + esc(g.category) + "</span>");
-      if (g._dir) {
+      if (g._appt && !g._dir) {
+        meta.push('<span class="stat">' + (g.items.length ? "<strong>" + W.plural(g.items.length, "item") + "</strong> · " : "") + "By appointment</span>");
+      } else if (g._dir) {
         meta.push('<span class="stat">' + (g.items.length ? W.plural(g.items.length, "item") + " listed · " : "") + "Contact directly for availability</span>");
       } else if (g.items.length) {
         var s = sums(g);
         meta.push('<span class="stat"><strong>' + W.plural(s.total, "item") + "</strong> · " +
           (s.avail ? '<span class="ok">' + s.avail + " available</span>" : "all on loan right now") + "</span>");
       }
+      if (g._style === "Event") meta.push('<span class="tag">For events</span>');
       var phoneLine = "";
-      return '<li><article class="gemach-card">' +
-        '<h3><a href="' + W.gemachUrl(g.slug) + '">' + esc(g.name) + "</a></h3>" +
+      var logo = W.safeUrl(g.logoUrl);
+      var avatar = logo
+        ? '<img class="g-avatar" src="' + esc(logo) + '" alt="' + esc(g.name) + '" width="48" height="48" loading="lazy" decoding="async" />'
+        : '<span class="g-avatar g-initials" aria-hidden="true">' + esc(W.initials(g)) + "</span>";
+      return '<li><article class="gemach-card" data-slug="' + esc(g.slug) + '">' +
+        '<div class="gemach-head">' + avatar + '<h3><a href="' + W.gemachUrl(g.slug) + '">' + esc(g.name) + "</a></h3></div>" +
         (g.tagline ? '<p class="gemach-tagline">' + esc(g.tagline) + "</p>" : "") +
         '<div class="gemach-meta">' + meta.join("") + phoneLine + "</div>" +
         '<div class="gemach-actions">' + quickLinks(g) + "</div>" +
         "</article></li>";
     }).join("");
+    // Per-card theme colors via CSSOM (CSP forbids inline style attributes)
+    var cards = gemachList.querySelectorAll(".gemach-card");
+    for (var i = 0; i < cards.length; i++) {
+      var g = data.gemachs[i];
+      var t = W.validHex(g.themeColor) || W.DEFAULT_THEME;
+      cards[i].style.setProperty("--card-t", W.stripeColor(g));
+      if (t !== W.DEFAULT_THEME) {
+        cards[i].style.setProperty("--card-on", W.onColor(W.stripeColor(g)));
+      }
+    }
   }
 
   // ── Search ──
@@ -205,7 +232,7 @@
 
     var list = Object.keys(groups).map(function (k) { return groups[k]; });
     list.forEach(function (grp) {
-      grp.hasAvail = !grp.g._dir && grp.rows.some(function (h) { return h.e.item.availableCount > 0; });
+      grp.hasAvail = !grp.g._dir && !grp.g._appt && grp.rows.some(function (h) { return h.e.item.availableCount > 0; });
       grp.rows.sort(function (a, b) {
         var aa = a.e.item.availableCount > 0 ? 1 : 0, bb = b.e.item.availableCount > 0 ? 1 : 0;
         return (bb - aa) || (b.score - a.score) || (a.e.order - b.e.order);
@@ -221,6 +248,7 @@
 
   function badge(g, it) {
     if (g._dir) return '<span class="badge badge-dir">Contact to check</span>';
+    if (g._appt) return '<span class="badge badge-appt">By appointment</span>';
     var n = Math.max(0, it.availableCount || 0);
     return n > 0 ? '<span class="badge badge-ok">' + n + " available</span>"
                  : '<span class="badge badge-out">All on loan</span>';

@@ -187,6 +187,46 @@
 
     .settings-label-row label { margin-bottom: 0 !important; }
 
+    .topbar-brand { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+    .topbar-logo { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; background: var(--white); flex: none; }
+
+    .settings-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .settings-need { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
+    .settings-need.warn { color: var(--red); }
+    .logo-row { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.5rem; }
+    .logo-preview {
+      width: 72px; height: 72px; border-radius: 14px; border: 1px solid var(--border);
+      background: var(--grey); object-fit: cover; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'DM Serif Display', serif; font-size: 1.6rem; color: var(--muted);
+    }
+    .swatches { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }
+    .swatch {
+      width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--white);
+      box-shadow: 0 0 0 1px var(--border); cursor: pointer; padding: 0;
+    }
+    .swatch.selected { box-shadow: 0 0 0 2px var(--navy); }
+    .color-row { display: flex; align-items: center; gap: 0.5rem; }
+    .color-row input[type="color"] { width: 44px; height: 38px; padding: 2px; flex: none; }
+    .color-row input[type="text"] { font-family: monospace; text-transform: uppercase; }
+    .color-row input[type="text"]::placeholder { text-transform: none; }
+    .theme-preview {
+      border-radius: 8px; padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.6rem;
+      margin-top: 0.5rem; border: 1px solid var(--border);
+    }
+    .theme-preview .tp-logo { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; background: var(--white); }
+    .theme-preview .tp-name { font-family: 'DM Serif Display', serif; font-size: 1.05rem; }
+    .theme-preview .tp-accent { margin-left: auto; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 4px; }
+    .radio-card {
+      display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .radio-card input { width: auto !important; margin-top: 0.2rem; accent-color: var(--navy); }
+    .radio-card.selected { border-color: var(--navy); background: var(--teal); }
+    .radio-card small { display: block; color: var(--muted); font-size: 0.75rem; }
+    .example-line { font-size: 0.82rem; background: var(--teal); color: var(--navy); border-radius: 6px; padding: 0.5rem 0.75rem; }
+
     .settings-note {
       font-size: 0.82rem;
       color: var(--amber);
@@ -940,9 +980,12 @@
 <!-- App -->
 <div id="app">
   <div class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-title">Gemach Admin</div>
-      <div class="topbar-gemach" id="topbar-gemach"></div>
+    <div class="topbar-brand">
+      <img class="topbar-logo" id="topbar-logo" alt="" hidden />
+      <div class="topbar-left">
+        <div class="topbar-title">Gemach Admin</div>
+        <div class="topbar-gemach" id="topbar-gemach"></div>
+      </div>
     </div>
     <div class="topbar-user">
       <span id="admin-name"></span>
@@ -1008,6 +1051,10 @@
 
     <!-- Reservations -->
     <div class="screen" id="screen-reservations">
+      <div id="appointments-block" style="display:none;margin-bottom:1.25rem">
+        <div class="section-label" id="appointments-section-label">Upcoming appointments</div>
+        <div class="card-list" id="appointments-list"></div>
+      </div>
       <div class="section-label" id="reservations-section-label">Upcoming reservations</div>
       <div id="reservations-list">
         <div class="loading">Loading…</div>
@@ -1077,6 +1124,44 @@
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('confirm-sheet')">Cancel</button>
       <button class="btn btn-primary" id="confirm-submit-btn">Confirm request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Appointment Confirm Sheet -->
+<div class="sheet-overlay" id="appointment-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('appointment-sheet')">×</button>
+    <h3 id="appointment-title">Confirm appointment</h3>
+    <p class="sheet-subtitle" id="appointment-subtitle"></p>
+
+    <div class="settings-grid2">
+      <div class="form-group">
+        <label for="appointment-date">Date <span style="color:var(--red)">*</span></label>
+        <input type="date" id="appointment-date" required />
+      </div>
+      <div class="form-group">
+        <label for="appointment-time">Time <span style="color:var(--red)">*</span></label>
+        <input type="time" id="appointment-time" step="300" required />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="appointment-message">Message to borrower</label>
+      <textarea id="appointment-message" rows="5"></textarea>
+    </div>
+
+    <div class="contact-options" id="appointment-contact-options"></div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="appointment-send" checked />
+      <label for="appointment-send">Send message to borrower (with calendar invite)</label>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('appointment-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="appointment-submit-btn">Confirm appointment</button>
     </div>
   </div>
 </div>
@@ -1417,12 +1502,14 @@
     confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nThank you!",
     decline: "Hi {first_name}, thank you for reaching out to the {gemach}. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.",
     pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
+    appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!",
   };
   // Used when the gemach has no pickup address (or /admin/gemach could not be loaded)
   const DEFAULT_TEMPLATES_NO_ADDRESS = {
     confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nThank you!",
     decline: DEFAULT_TEMPLATES.decline,
     pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
+    appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!",
   };
   function defaultTemplate(kind) {
     return (GEMACH?.pickupAddress ? DEFAULT_TEMPLATES : DEFAULT_TEMPLATES_NO_ADDRESS)[kind];
@@ -1446,6 +1533,58 @@
     return `mailto:${encodeURIComponent(e).replace(/%40/g, "@")}${body != null ? `?body=${encodeURIComponent(body)}` : ""}`;
   }
   function phoneDigits(p) { return String(p ?? "").replace(/\D/g, ""); }
+  function safeHttpsUrl(u) { try { const x = new URL(String(u || "")); return x.protocol === "https:" ? x.href : null; } catch { return null; } }
+
+  // ── Dates & colors (shared with the public site's rules) ────────────────
+  const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+  const DEFAULT_THEME = "#1B3A4B";
+  const DAY_MS = 86400000;
+  const dateMs = s => { const [y, m, d] = String(s).split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const msDate = ms => new Date(ms).toISOString().slice(0, 10);
+  const isValidDate = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && msDate(dateMs(s)) === s;
+  const clampDays = (v, dflt = 1) => { const n = Number(v); return v === "" || v == null || !Number.isFinite(n) ? dflt : Math.min(14, Math.max(0, Math.round(n))); };
+  /** Event date rule (contract v3): pure calendar math; Shabbos pickup → Friday, Shabbos return → Sunday. */
+  function eventDates(eventDate, { pickupDaysBefore = 1, returnDaysAfter = 1, shabbosAdjust = false } = {}) {
+    if (!isValidDate(eventDate)) return null;
+    const base = dateMs(eventDate);
+    let p = base - clampDays(pickupDaysBefore) * DAY_MS, r = base + clampDays(returnDaysAfter) * DAY_MS;
+    if (shabbosAdjust) {
+      if (new Date(p).getUTCDay() === 6) p -= DAY_MS;
+      if (new Date(r).getUTCDay() === 6) r += DAY_MS;
+    }
+    return { pickup: msDate(p), return: msDate(r) };
+  }
+  /** "Sun Oct 18" (calendar date, no timezone shift). */
+  function fmtDay(s, withComma = false) {
+    if (!isValidDate(s)) return "";
+    const o = { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" };
+    const t = new Date(dateMs(s)).toLocaleDateString("en-US", o);
+    return withComma ? t : t.replace(",", "");
+  }
+  /** "Sun, Oct 12 at 8:00 PM" from local date + "HH:MM" inputs. */
+  function fmtAppointment(date, time) {
+    if (!isValidDate(date) || !/^\d{2}:\d{2}$/.test(time || "")) return "";
+    const [h, m] = time.split(":").map(Number);
+    return `${fmtDay(date, true)} at ${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  }
+  /** Same, from an ISO instant, shown in New York time. */
+  function fmtAppointmentIso(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    const day = d.toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" });
+    const time = d.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
+    return `${day} at ${time}`;
+  }
+  function relLum(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function contrastRatio(a, b) { const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); }
+  function textColorFor(bg) {
+    const hex = HEX_RE.test(bg || "") ? bg : DEFAULT_THEME;
+    return contrastRatio(hex, "#FFFFFF") >= contrastRatio(hex, "#111111") ? "#FFFFFF" : "#111111";
+  }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   if (token) showApp();
@@ -1492,7 +1631,14 @@
     return GEMACH;
   }
 
+  function renderTopbarLogo() {
+    const img = document.getElementById("topbar-logo");
+    const src = safeHttpsUrl(GEMACH?.logoUrl);
+    if (src) { img.src = src; img.hidden = false; } else { img.removeAttribute("src"); img.hidden = true; }
+  }
+
   function renderGemachSwitcher() {
+    renderTopbarLogo();
     const el = document.getElementById("topbar-gemach");
     if (MY_GEMACHS.length > 1) {
       el.innerHTML = `<select class="gemach-switcher" id="gemach-switcher" aria-label="Gemach" onchange="switchGemach(this.value)"></select>`;
@@ -1521,7 +1667,7 @@
 
   // ── Message templates ─────────────────────────────────────────────────────
   // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
-  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email"]);
+  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time"]);
 
   function fillTemplate(template, vars) {
     const has = k => Object.prototype.hasOwnProperty.call(vars, k);
@@ -1561,9 +1707,12 @@
     return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
-  function templateVars(firstName, items) {
+  function templateVars(firstName, items, extra = {}) {
     const g = GEMACH || {};
     return {
+      appointment_time: extra.appointmentTime || "",
+      deposit_info: g.depositRequired ? (g.depositInfo || "") : "",
+      event_date: extra.eventDate ? fmtDay(extra.eventDate, true) : "",
       first_name: firstName || "",
       items: items || "",
       gemach: g.name || MY_GEMACHS.find(x => x.slug === gemachSlug)?.name || "gemach",
@@ -1575,9 +1724,9 @@
     };
   }
 
-  function renderMessage(kind, firstName, items) {
+  function renderMessage(kind, firstName, items, extra) {
     const tpl = GEMACH?.templates?.[kind] || defaultTemplate(kind);
-    return fillTemplate(tpl, templateVars(firstName, items));
+    return fillTemplate(tpl, templateVars(firstName, items, extra));
   }
 
   // ── Google Login ──────────────────────────────────────────────────────────
@@ -1683,9 +1832,11 @@
     list.innerHTML = data.map(r => {
       const rid = keep("req", r);
       const contact = r.preferredContact || "any";
+      const isAppt = r.requestType === "Appointment";
       const dates = r.openEnded
         ? "Open-ended"
         : r.neededFrom ? `${fmt(r.neededFrom)} → ${fmt(r.neededUntil || "?")}` : "Dates TBD";
+      const items = (r.itemNames || []).join(", ");
       // whatsappUrl removed — using waUrl() instead
 
       return `<div class="card" id="req-${rid}">
@@ -1694,11 +1845,18 @@
             <div class="card-title">${esc(r.name)}</div>
             <div class="card-id">${esc(r.requestId)} · ${esc(timeAgo(r.receivedAt))}</div>
           </div>
-          <span class="tag tag-navy">${esc(contact)}</span>
+          <div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:flex-end">
+            <span class="tag ${isAppt ? "tag-amber" : "tag-green"}">${isAppt ? "Appointment" : "Loan"}</span>
+            <span class="tag tag-navy">${esc(contact)}</span>
+          </div>
         </div>
         <div class="card-meta">
-          <span>📦 ${esc((r.itemNames || []).join(", "))}</span>
-          <span>📅 ${esc(dates)}</span>
+          ${items ? `<span>📦 ${esc(items)}</span>` : ""}
+          ${r.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(r.eventDate, true))}</span>` : ""}
+          ${isAppt ? "" : `<span>📅 ${esc(dates)}</span>`}
+          ${isAppt && r.preferredTimes ? `<span>🕒 ${esc(r.preferredTimes)}</span>` : ""}
+          ${r.partySize ? `<span>👥 Party of ${esc(r.partySize)}</span>` : ""}
+          ${r.depositAcknowledged ? `<span>✓ Deposit acknowledged</span>` : ""}
           <span>📞 ${esc(r.phone)}</span>
           ${r.notes ? `<span>💬 ${esc(r.notes)}</span>` : ""}
         </div>
@@ -1719,13 +1877,14 @@
 
   // ── Confirm sheet ─────────────────────────────────────────────────────────
   function openConfirm(r) {
+    if (r.requestType === "Appointment") return openAppointmentConfirm(r);
     currentRequest = r;
     document.getElementById("confirm-title").textContent = `Confirm — ${r.name}`;
     document.getElementById("confirm-subtitle").textContent =
-      `${r.itemNames.join(", ")} · ${r.requestId}`;
+      `${(r.itemNames || []).join(", ")} · ${r.requestId}`;
 
     const itemList = (r.itemNames || []).join(" and ");
-    const msg = renderMessage("confirm", r.name.split(" ")[0], itemList);
+    const msg = renderMessage("confirm", r.name.split(" ")[0], itemList, { eventDate: r.eventDate });
     document.getElementById("confirm-message").value = msg;
 
     renderContactOptions("confirm-contact-options", r);
@@ -1745,14 +1904,66 @@
     openSheet("confirm-sheet");
   }
 
+  // ── Appointment confirm sheet ─────────────────────────────────────────────
+  function openAppointmentConfirm(r) {
+    currentRequest = r;
+    const first = String(r.name || "").split(" ")[0];
+    const items = (r.itemNames || []).join(" and ");
+    document.getElementById("appointment-title").textContent = `Appointment — ${r.name || ""}`;
+    document.getElementById("appointment-subtitle").textContent = [
+      r.preferredTimes ? `Prefers: ${r.preferredTimes}` : "",
+      r.partySize ? `Party of ${r.partySize}` : "",
+      r.requestId || "",
+    ].filter(Boolean).join(" · ");
+    const dateEl = document.getElementById("appointment-date");
+    const timeEl = document.getElementById("appointment-time");
+    const msgEl = document.getElementById("appointment-message");
+    dateEl.value = ""; timeEl.value = "";
+    dateEl.min = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+    let lastAuto = "";
+    const refresh = () => {
+      const when = fmtAppointment(dateEl.value, timeEl.value);
+      const auto = renderMessage("appointment", first, items, { appointmentTime: when || "[date & time]", eventDate: r.eventDate });
+      // Only rewrite while the admin hasn't hand-edited the message.
+      if (msgEl.value === lastAuto) msgEl.value = auto;
+      lastAuto = auto;
+      renderContactOptions("appointment-contact-options", r, "appointment-message");
+    };
+    msgEl.value = "";
+    refresh();
+    dateEl.oninput = dateEl.onchange = refresh;
+    timeEl.oninput = timeEl.onchange = refresh;
+    msgEl.oninput = () => renderContactOptions("appointment-contact-options", r, "appointment-message");
+
+    const btn = document.getElementById("appointment-submit-btn");
+    btn.onclick = async () => {
+      if (!isValidDate(dateEl.value) || !/^\d{2}:\d{2}$/.test(timeEl.value)) { showToast("Choose a date and time for the appointment"); return; }
+      const message = msgEl.value;
+      if (/\[date & time\]/.test(message)) { showToast("Choose a date and time for the appointment"); return; }
+      btn.disabled = true;
+      try {
+        const res = await api(`/admin/requests/${safeId(r.id)}/confirm`, "POST", {
+          appointmentAt: `${dateEl.value}T${timeEl.value}`, message, sendMessage: document.getElementById("appointment-send").checked, adminName,
+        });
+        if (!res) return;
+        if (res.error) { showToast(res.error); return; }
+        closeSheet("appointment-sheet");
+        document.getElementById(`req-${safeId(r.id)}`)?.remove();
+        loadDashboard();
+        showToast(`Appointment set · ${fmtAppointment(dateEl.value, timeEl.value)}`);
+      } finally { btn.disabled = false; }
+    };
+    openSheet("appointment-sheet");
+  }
+
   // ── Decline sheet ─────────────────────────────────────────────────────────
   function openDecline(r) {
     currentRequest = r;
     document.getElementById("decline-subtitle").textContent =
-      `${r.itemNames.join(", ")} · ${r.requestId}`;
+      [(r.itemNames || []).join(", ") || (r.requestType === "Appointment" ? "Appointment" : ""), r.requestId].filter(Boolean).join(" · ");
 
     document.getElementById("decline-message").value =
-      renderMessage("decline", r.name.split(" ")[0], r.itemNames.join(" and "));
+      renderMessage("decline", String(r.name || "").split(" ")[0], (r.itemNames || []).join(" and "), { eventDate: r.eventDate });
 
     renderContactOptions("decline-contact-options", r);
 
@@ -1769,11 +1980,11 @@
     openSheet("decline-sheet");
   }
 
-  function renderContactOptions(containerId, r) {
+  function renderContactOptions(containerId, r, msgElId) {
     const container = document.getElementById(containerId);
     const phone = phoneDigits(r.phone);
     const preferred = r.preferredContact?.toLowerCase();
-    const msgEl = containerId.includes("confirm") ? "confirm-message" : "decline-message";
+    const msgEl = msgElId || (containerId.includes("confirm") ? "confirm-message" : "decline-message");
     const rawMsg = document.getElementById(msgEl).value;
     const msg = encodeURIComponent(rawMsg);
     const mailto = mailtoHref(r.email, rawMsg);
@@ -1953,7 +2164,42 @@
   }
 
   // ── Reservations ──────────────────────────────────────────────────────────
+  async function loadAppointments() {
+    const block = document.getElementById("appointments-block");
+    let data = null;
+    try { data = await api("/admin/appointments"); } catch (e) { console.warn("Appointments failed:", e); }
+    if (!Array.isArray(data) || !data.length) { block.style.display = "none"; return; }
+    document.getElementById("appointments-section-label").textContent = `Upcoming appointments (${data.length})`;
+    document.getElementById("appointments-list").innerHTML = data.map(a => {
+      const phone = phoneDigits(a.phone);
+      const mailto = mailtoHref(a.email);
+      const items = (a.itemNames || []).join(", ");
+      return `<div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${esc(a.name || "")}</div>
+            <div class="card-id">${esc(fmtAppointmentIso(a.appointmentAt))}${a.requestId ? " · " + esc(a.requestId) : ""}</div>
+          </div>
+          <span class="tag tag-amber">Appointment</span>
+        </div>
+        <div class="card-meta">
+          ${a.partySize ? `<span>👥 Party of ${esc(a.partySize)}</span>` : ""}
+          ${a.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(a.eventDate, true))}</span>` : ""}
+          ${items ? `<span>📦 ${esc(items)}</span>` : ""}
+          ${a.notes ? `<span>💬 ${esc(a.notes)}</span>` : ""}
+        </div>
+        <div class="card-actions">
+          <a class="btn btn-whatsapp btn-sm" href="${esc(waUrl(a.phone) || "#")}" target="_blank" style="${!waUrl(a.phone) ? "opacity:0.4;pointer-events:none" : ""}">WhatsApp</a>
+          ${phone ? `<a class="btn btn-ghost btn-sm" href="tel:${phone}">Call</a><a class="btn btn-ghost btn-sm" href="sms:${phone}">SMS</a>` : ""}
+          ${mailto ? `<a class="btn btn-ghost btn-sm" href="${esc(mailto)}">Email</a>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+    block.style.display = "";
+  }
+
   async function loadReservations() {
+    loadAppointments();
     const list = document.getElementById("reservations-list");
     list.innerHTML = '<div class="loading">Loading…</div>';
     const data = await api("/admin/reservations");
@@ -2405,24 +2651,40 @@
     }
   });
 
-  // ── Settings (gemach profile + message templates) ────────────────────────
-  const SETTINGS_FIELDS = [
-    { key: "tagline",            label: "Tagline",             type: "text",  max: 200,  hint: "One line shown on the gemach's card and page header." },
-    { key: "description",        label: "Description",         type: "area",  max: 2000, rows: 4 },
-    { key: "phone",              label: "Phone",               type: "tel",   max: 200 },
-    { key: "whatsapp",           label: "WhatsApp",            type: "tel",   max: 200 },
-    { key: "email",              label: "Email",               type: "email", max: 200, hint: "Request notifications go here; borrowers' replies too." },
-    { key: "website",            label: "Website",             type: "url",   max: 200, placeholder: "https://" },
-    { key: "donationUrl",        label: "Donation link",       type: "url",   max: 200, placeholder: "https://" },
-    { key: "hours",              label: "Hours",               type: "area",  max: 2000, rows: 2, placeholder: "e.g. Sun–Thu evenings, by appointment" },
-    { key: "pickupAddress",      label: "Pickup address",      type: "text",  max: 200, hint: "Private — only included in messages to borrowers." },
-    { key: "pickupInstructions", label: "Pickup instructions", type: "area",  max: 2000, rows: 2, placeholder: "e.g. In the driveway, ring the bell", hint: "Private — only included in messages to borrowers." },
+  // ── Settings (grouped: profile, contact, branding, info, requests, templates) ──
+  const SETTINGS_FIELDS = {
+    tagline:            { label: "Tagline",             type: "text",  max: 200,  hint: "One line shown on the gemach's card and page header." },
+    description:        { label: "Description",         type: "area",  max: 2000, rows: 4 },
+    website:            { label: "Website",             type: "url",   max: 200, placeholder: "https://" },
+    donationUrl:        { label: "Donation link",       type: "url",   max: 200, placeholder: "https://" },
+    hours:              { label: "Hours",               type: "area",  max: 2000, rows: 2, placeholder: "e.g. Sun–Thu evenings, by appointment" },
+    pickupAddress:      { label: "Pickup address",      type: "text",  max: 200, hint: "Private — only included in messages to borrowers." },
+    pickupInstructions: { label: "Pickup instructions", type: "area",  max: 2000, rows: 2, placeholder: "e.g. In the driveway, ring the bell", hint: "Private — only included in messages to borrowers." },
+    phone:              { label: "Phone",               type: "tel",   max: 200 },
+    whatsapp:           { label: "WhatsApp",            type: "tel",   max: 200, hint: "Leave blank to use the phone number for WhatsApp." },
+    email:              { label: "Email",               type: "email", max: 200, hint: "Request notifications go here; borrowers' replies too." },
+    depositInfo:        { label: "Deposit info",        type: "area",  max: 2000, rows: 2, placeholder: "e.g. $100 refundable check, returned when the item comes back" },
+    gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
+    eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
+  };
+  const SETTINGS_GROUPS = [
+    { title: "Profile", fields: ["tagline", "description", "website", "donationUrl", "hours", "pickupAddress", "pickupInstructions"] },
+    { title: "Contact", fields: ["phone", "whatsapp", "email"], extra: "contact" },
+    { title: "Branding", extra: "branding" },
+    { title: "Gemach info", extra: "info" },
+    { title: "Requests", extra: "requests" },
   ];
   const SETTINGS_TEMPLATES = [
-    { kind: "confirm", key: "confirmMessage", label: "Request confirmed" },
-    { kind: "decline", key: "declineMessage", label: "Request declined" },
-    { kind: "pickup",  key: "pickupMessage",  label: "Ready for pickup" },
+    { kind: "confirm",     key: "confirmMessage",     label: "Request confirmed" },
+    { kind: "decline",     key: "declineMessage",     label: "Request declined" },
+    { kind: "pickup",      key: "pickupMessage",      label: "Ready for pickup" },
+    { kind: "appointment", key: "appointmentMessage", label: "Appointment confirmed" },
   ];
+  const CONTACT_METHODS = ["Call", "Text", "WhatsApp", "Email"];
+  const CONTACT_NEEDS = { Call: "Phone", Text: "Phone", WhatsApp: "WhatsApp (or Phone)", Email: "Email" };
+  const THEME_PRESETS = ["#1B3A4B", "#1E3A8A", "#0F766E", "#166534", "#7C2D12", "#9D174D", "#5B21B6", "#374151"];
+  const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+  const LOGO_MAX_BYTES = 5 * 1024 * 1024, LOGO_MIN_PX = 256, LOGO_OUT_PX = 512;
   let settingsOriginal = {};
 
   async function loadSettings() {
@@ -2437,35 +2699,141 @@
     renderSettings();
   }
 
+  const setEl = key => document.getElementById(`set-${key}`);
+
+  function fieldHtml(key) {
+    const f = SETTINGS_FIELDS[key];
+    const input = f.type === "area"
+      ? `<textarea id="set-${key}" rows="${f.rows || 3}" maxlength="${f.max}" style="min-height:0"></textarea>`
+      : `<input type="${f.type}" id="set-${key}" maxlength="${f.max}" />`;
+    return `<div class="form-group" id="grp-${key}">
+        <label for="set-${key}">${f.label}</label>
+        ${input}
+        ${f.hint ? `<div class="settings-help" style="margin:0.3rem 0 0">${f.hint}</div>` : ""}
+      </div>`;
+  }
+
+  function settingsGroupHtml(group, ro) {
+    let inner = (group.fields || []).map(fieldHtml).join("");
+    if (group.extra === "contact") {
+      const opts = sel => CONTACT_METHODS.map(m => `<option value="${m}">${m}</option>`).join("");
+      inner += `
+        <div class="settings-grid2">
+          <div class="form-group">
+            <label for="set-primaryContact">Primary contact <span style="color:var(--red)">*</span></label>
+            <select id="set-primaryContact"><option value="" disabled>Choose…</option>${opts()}</select>
+            <div class="settings-need" id="need-primaryContact"></div>
+          </div>
+          <div class="form-group">
+            <label for="set-secondaryContact">Secondary contact</label>
+            <select id="set-secondaryContact"><option value="">None</option>${opts()}</select>
+            <div class="settings-need" id="need-secondaryContact"></div>
+          </div>
+        </div>
+        <p class="settings-help" style="margin:0">These are the buttons borrowers see on your public page, in this order.</p>`;
+    }
+    if (group.extra === "branding") {
+      inner += `
+        <div class="form-group">
+          <label>Logo</label>
+          <div class="logo-row">
+            <div id="logo-preview-box"></div>
+            <div style="display:flex;flex-direction:column;gap:0.4rem">
+              <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handleLogoFile(event)" />
+              ${ro ? "" : `<button class="btn btn-ghost btn-sm" type="button" id="logo-upload-btn" onclick="document.getElementById('logo-file').click()">Upload logo</button>
+              <button class="btn btn-ghost btn-sm" type="button" id="logo-remove-btn" style="color:var(--red)" onclick="removeLogo()">Remove logo</button>`}
+            </div>
+          </div>
+          <div class="settings-help" style="margin:0">PNG, JPG or WebP · square works best · at least 256×256 · up to 5 MB</div>
+          <div class="settings-need" id="logo-status" role="status"></div>
+        </div>
+        <div class="form-group">
+          <label for="set-themeHex">Theme color</label>
+          <div class="swatches" id="theme-swatches">${THEME_PRESETS.map(c => `<button type="button" class="swatch" data-color="${c}" title="${c}" aria-label="Theme ${c}" style="background:${c}" onclick="setThemeColor('${c}')"></button>`).join("")}</div>
+          <div class="color-row">
+            <input type="color" id="set-themePicker" aria-label="Pick theme color" />
+            <input type="text" id="set-themeHex" maxlength="7" placeholder="#1B3A4B" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="set-accentHex">Accent color <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+          <div class="color-row">
+            <input type="color" id="set-accentPicker" aria-label="Pick accent color" />
+            <input type="text" id="set-accentHex" maxlength="7" placeholder="None" />
+            ${ro ? "" : `<button class="btn btn-ghost btn-sm" type="button" onclick="clearAccent()">None</button>`}
+          </div>
+        </div>
+        <div class="theme-preview" id="theme-preview">
+          <img class="tp-logo" id="tp-logo" alt="" hidden />
+          <span class="tp-name" id="tp-name"></span>
+          <span class="tp-accent" id="tp-accent" hidden>Request</span>
+        </div>
+        <div class="settings-need warn" id="theme-warning" hidden></div>`;
+    }
+    if (group.extra === "info") {
+      inner += `
+        <div class="checkbox-row">
+          <input type="checkbox" id="set-depositRequired" />
+          <label for="set-depositRequired">Deposit required</label>
+        </div>
+        <div id="deposit-info-wrap">${fieldHtml("depositInfo")}</div>
+        ${fieldHtml("gemachInfo")}`;
+    }
+    if (group.extra === "requests") {
+      const styles = [
+        ["Dates", "Borrow for dates", "Borrowers choose the dates they need the items."],
+        ["Event", "Borrow for an event", "Borrowers give an event date; pickup and return dates are calculated."],
+        ["Appointment", "Book an appointment", "Borrowers ask for an appointment and suggest times; you confirm a time."],
+      ];
+      inner += `
+        <div class="form-group" role="radiogroup" aria-label="Request style">
+          <label>Request style</label>
+          ${styles.map(([v, t, d]) => `<label class="radio-card" id="rs-card-${v}">
+            <input type="radio" name="set-requestStyle" value="${v}" onchange="updateRequestStyleUi()" />
+            <span>${t}<small>${d}</small></span>
+          </label>`).join("")}
+        </div>
+        <div id="event-options">
+          ${fieldHtml("eventLabel")}
+          <div class="settings-grid2">
+            <div class="form-group">
+              <label for="set-pickupDaysBefore">Pickup days before</label>
+              <input type="number" id="set-pickupDaysBefore" min="0" max="14" step="1" inputmode="numeric" />
+            </div>
+            <div class="form-group">
+              <label for="set-returnDaysAfter">Return days after</label>
+              <input type="number" id="set-returnDaysAfter" min="0" max="14" step="1" inputmode="numeric" />
+            </div>
+          </div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="set-shabbosAdjust" />
+            <label for="set-shabbosAdjust">Shabbos adjust (Saturday pickup → Friday, Saturday return → Sunday)</label>
+          </div>
+          <div class="example-line" id="event-example"></div>
+        </div>`;
+    }
+    return `<div class="section-label" id="settings-sec-${group.title.toLowerCase().replace(/\s+/g, "-")}">${group.title}</div>
+      <div class="card" style="margin-bottom:1.25rem">${inner}</div>`;
+  }
+
   function renderSettings() {
     const g = GEMACH;
     const body = document.getElementById("settings-body");
     const ro = !g.canEdit;
     const placeholders = (g.placeholders || []).map(p => `<code>{${esc(p)}}</code>`).join(" ");
-    const fieldHtml = f => {
-      const input = f.type === "area"
-        ? `<textarea id="set-${f.key}" rows="${f.rows || 3}" maxlength="${f.max}" style="min-height:0"></textarea>`
-        : `<input type="${f.type}" id="set-${f.key}" maxlength="${f.max}" />`;
-      return `<div class="form-group">
-          <label for="set-${f.key}">${f.label}</label>
-          ${input}
-          ${f.hint ? `<div class="settings-help" style="margin:0.3rem 0 0">${f.hint}</div>` : ""}
-        </div>`;
-    };
     body.innerHTML = `
       ${ro ? `<div class="settings-note">View only — only an Owner or Manager can change these settings.</div>` : ""}
-      <div class="section-label">Gemach profile</div>
       <div class="card" style="margin-bottom:1.25rem">
-        <div class="card-header">
+        <div class="card-header" style="margin-bottom:0">
           <div>
             <div class="card-title" id="set-name"></div>
             <div class="card-id" id="set-slug"></div>
           </div>
           <span class="tag tag-navy" id="set-mode"></span>
         </div>
-        ${SETTINGS_FIELDS.map(fieldHtml).join("")}
       </div>
-      <div class="section-label">Message templates</div>
+      ${SETTINGS_GROUPS.map(gr => settingsGroupHtml(gr, ro)).join("")}
+      <div class="section-label" id="settings-sec-templates">Message templates</div>
       <p class="settings-help">Placeholders: ${placeholders}. Blank values are left out.</p>
       <div class="card">
         ${SETTINGS_TEMPLATES.map(t => `<div class="form-group">
@@ -2481,19 +2849,56 @@
       </div>`}`;
 
     // Values are assigned via properties (never interpolated into HTML).
-    document.getElementById("set-name").textContent = g.name || "";
-    document.getElementById("set-slug").textContent = `${g.slug || ""}${g.communityName ? " · " + g.communityName : ""}`;
-    document.getElementById("set-mode").textContent = g.mode || "Full";
+    setEl("name").textContent = g.name || "";
+    setEl("slug").textContent = `${g.slug || ""}${g.communityName ? " · " + g.communityName : ""}`;
+    setEl("mode").textContent = g.mode || "Full";
     settingsOriginal = {};
-    SETTINGS_FIELDS.forEach(f => {
-      const el = document.getElementById(`set-${f.key}`);
-      el.value = g[f.key] || "";
+    const remember = (key, v) => { settingsOriginal[key] = v; };
+
+    Object.entries(SETTINGS_FIELDS).forEach(([key, f]) => {
+      const el = setEl(key);
+      el.value = g[key] || "";
       if (f.placeholder) el.placeholder = f.placeholder;
       el.disabled = ro;
-      settingsOriginal[f.key] = el.value;
+      el.addEventListener("input", onSettingsInput);
+      remember(key, el.value);
     });
+    setEl("primaryContact").value = g.primaryContact || "";
+    setEl("secondaryContact").value = g.secondaryContact || "";
+    remember("primaryContact", g.primaryContact || "");
+    remember("secondaryContact", g.secondaryContact || "");
+
+    const theme = HEX_RE.test(g.themeColor || "") ? g.themeColor.toUpperCase() : DEFAULT_THEME;
+    setEl("themeHex").value = theme; setEl("themePicker").value = theme.toLowerCase();
+    remember("themeColor", theme);
+    const accent = HEX_RE.test(g.accentColor || "") ? g.accentColor.toUpperCase() : "";
+    setEl("accentHex").value = accent; setEl("accentPicker").value = (accent || "#C9A227").toLowerCase();
+    remember("accentColor", accent);
+
+    setEl("depositRequired").checked = !!g.depositRequired;
+    remember("depositRequired", !!g.depositRequired);
+    const style = ["Dates", "Event", "Appointment"].includes(g.requestStyle) ? g.requestStyle : "Dates";
+    document.querySelectorAll('input[name="set-requestStyle"]').forEach(r => { r.checked = r.value === style; r.disabled = ro; });
+    remember("requestStyle", style);
+    setEl("pickupDaysBefore").value = g.pickupDaysBefore ?? 1;
+    setEl("returnDaysAfter").value = g.returnDaysAfter ?? 1;
+    setEl("shabbosAdjust").checked = !!g.shabbosAdjust;
+    remember("pickupDaysBefore", Number(g.pickupDaysBefore ?? 1));
+    remember("returnDaysAfter", Number(g.returnDaysAfter ?? 1));
+    remember("shabbosAdjust", !!g.shabbosAdjust);
+
+    ["primaryContact", "secondaryContact", "themePicker", "themeHex", "accentPicker", "accentHex", "depositRequired",
+     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust"].forEach(k => {
+      const el = setEl(k);
+      el.disabled = ro;
+      el.addEventListener("input", onSettingsInput);
+      el.addEventListener("change", onSettingsInput);
+    });
+    setEl("themePicker").addEventListener("input", () => { setEl("themeHex").value = setEl("themePicker").value.toUpperCase(); updateThemePreview(); });
+    setEl("accentPicker").addEventListener("input", () => { setEl("accentHex").value = setEl("accentPicker").value.toUpperCase(); updateThemePreview(); });
+
     SETTINGS_TEMPLATES.forEach(t => {
-      const el = document.getElementById(`set-${t.key}`);
+      const el = setEl(t.key);
       el.value = g.templates?.[t.kind] || "";
       el.placeholder = defaultTemplate(t.kind);
       el.disabled = ro;
@@ -2501,6 +2906,192 @@
       settingsOriginal[t.key] = el.value;
       updateTemplateState(t);
     });
+    renderLogoPreview();
+    onSettingsInput();
+  }
+
+  function onSettingsInput() {
+    updateContactNeeds();
+    updateThemePreview();
+    document.getElementById("deposit-info-wrap").style.display = setEl("depositRequired").checked ? "" : "none";
+    updateRequestStyleUi();
+  }
+
+  function updateContactNeeds() {
+    const has = {
+      Phone: !!setEl("phone").value.trim(),
+      WhatsApp: !!(setEl("whatsapp").value.trim() || setEl("phone").value.trim()),
+      Email: !!setEl("email").value.trim(),
+    };
+    for (const key of ["primaryContact", "secondaryContact"]) {
+      const m = setEl(key).value;
+      const el = document.getElementById(`need-${key}`);
+      if (!m) { el.textContent = key === "primaryContact" ? "Required" : ""; el.classList.toggle("warn", key === "primaryContact"); continue; }
+      const need = CONTACT_NEEDS[m];
+      const ok = m === "Email" ? has.Email : m === "WhatsApp" ? has.WhatsApp : has.Phone;
+      el.textContent = ok ? `Uses: ${need}` : `Needs: ${need} — add it above`;
+      el.classList.toggle("warn", !ok);
+    }
+    const p = setEl("primaryContact").value, s2 = setEl("secondaryContact").value;
+    if (p && s2 && p === s2) {
+      const el = document.getElementById("need-secondaryContact");
+      el.textContent = "Must be different from the primary contact"; el.classList.add("warn");
+    }
+  }
+
+  function normHex(v) {
+    v = String(v || "").trim();
+    if (/^[0-9A-Fa-f]{6}$/.test(v)) v = "#" + v;
+    return HEX_RE.test(v) ? v.toUpperCase() : null;
+  }
+
+  function setThemeColor(c) {
+    setEl("themeHex").value = c; setEl("themePicker").value = c.toLowerCase();
+    updateThemePreview();
+  }
+  function clearAccent() { setEl("accentHex").value = ""; updateThemePreview(); }
+
+  function updateThemePreview() {
+    const theme = normHex(setEl("themeHex").value);
+    const accent = normHex(setEl("accentHex").value);
+    if (theme) setEl("themePicker").value = theme.toLowerCase();
+    if (accent) setEl("accentPicker").value = accent.toLowerCase();
+    const bg = theme || DEFAULT_THEME;
+    const fg = textColorFor(bg);
+    const box = document.getElementById("theme-preview");
+    box.style.background = bg; box.style.color = fg;
+    document.getElementById("tp-name").textContent = GEMACH?.name || "Your gemach";
+    const lg = document.getElementById("tp-logo");
+    const src = safeHttpsUrl(GEMACH?.logoUrl);
+    if (src) { lg.src = src; lg.hidden = false; } else { lg.hidden = true; }
+    const chip = document.getElementById("tp-accent");
+    if (accent) { chip.hidden = false; chip.style.background = accent; chip.style.color = textColorFor(accent); } else chip.hidden = true;
+    document.querySelectorAll("#theme-swatches .swatch").forEach(sw => sw.classList.toggle("selected", sw.dataset.color === bg));
+    const warn = document.getElementById("theme-warning");
+    const msgs = [];
+    if (setEl("themeHex").value.trim() && !theme) msgs.push("Theme color must look like #1B3A4B.");
+    if (setEl("accentHex").value.trim() && !accent) msgs.push("Accent color must look like #C9A227.");
+    const ratio = contrastRatio(bg, fg);
+    if (ratio < 4.5) msgs.push(`Low contrast (${ratio.toFixed(1)}:1) — header text may be hard to read. Pick a darker or lighter color.`);
+    warn.textContent = msgs.join(" ");
+    warn.hidden = !msgs.length;
+  }
+
+  function updateRequestStyleUi() {
+    const style = document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates";
+    document.querySelectorAll(".radio-card").forEach(c => c.classList.toggle("selected", c.id === `rs-card-${style}`));
+    document.getElementById("event-options").style.display = style === "Event" ? "" : "none";
+    // Live example: the next Sunday at least two weeks out, using the same rule as the server.
+    const now = new Date();
+    let ms = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) + 14 * DAY_MS;
+    while (new Date(ms).getUTCDay() !== 0) ms += DAY_MS;
+    const ev = msDate(ms);
+    const d = eventDates(ev, {
+      pickupDaysBefore: clampDays(setEl("pickupDaysBefore").value),
+      returnDaysAfter: clampDays(setEl("returnDaysAfter").value),
+      shabbosAdjust: setEl("shabbosAdjust").checked,
+    });
+    const label = (setEl("eventLabel").value.trim() || "Event date").replace(/\s+date$/i, "") || "Event";
+    document.getElementById("event-example").textContent = `${label} on ${fmtDay(ev)} → pick up ${fmtDay(d.pickup)}, return ${fmtDay(d.return)}`;
+  }
+
+  // ── Logo: validate, center-crop + resize to 512×512 client-side, upload ──
+  function renderLogoPreview() {
+    const box = document.getElementById("logo-preview-box");
+    const src = safeHttpsUrl(GEMACH?.logoUrl);
+    box.innerHTML = "";
+    let el;
+    if (src) { el = document.createElement("img"); el.src = src; el.alt = "Current logo"; }
+    else { el = document.createElement("div"); el.textContent = (GEMACH?.name || "?").trim().charAt(0).toUpperCase(); }
+    el.className = "logo-preview"; el.id = "logo-preview";
+    box.appendChild(el);
+    const rm = document.getElementById("logo-remove-btn");
+    if (rm) rm.style.display = src ? "" : "none";
+    renderTopbarLogo();
+  }
+
+  function setLogoStatus(msg, warn = false) {
+    const el = document.getElementById("logo-status");
+    el.textContent = msg || ""; el.classList.toggle("warn", !!warn);
+  }
+
+  function loadImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("unreadable")); };
+      img.src = url;
+    });
+  }
+  const canvasBlob = (canvas, type, q) => new Promise(res => canvas.toBlob(b => res(b), type, q));
+
+  /** Returns { blob } or { error } — square 512×512 WebP (PNG/JPEG fallback). */
+  async function prepareLogo(file) {
+    if (!file) return { error: "No file chosen." };
+    if (!LOGO_TYPES.includes(file.type)) return { error: "Logo must be a PNG, JPG or WebP image." };
+    if (file.size > LOGO_MAX_BYTES) return { error: `That file is ${(file.size / 1048576).toFixed(1)} MB — the logo must be 5 MB or smaller.` };
+    let img;
+    try { img = await loadImage(file); } catch { return { error: "That image couldn't be opened. Try a different PNG, JPG or WebP file." }; }
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (Math.min(w, h) < LOGO_MIN_PX) return { error: `That image is ${w}×${h} — the logo needs to be at least ${LOGO_MIN_PX}×${LOGO_MIN_PX} pixels.` };
+    const side = Math.min(w, h);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = LOGO_OUT_PX;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, LOGO_OUT_PX, LOGO_OUT_PX);
+    let blob = await canvasBlob(canvas, "image/webp", 0.9);
+    if (!blob || blob.type !== "image/webp") blob = await canvasBlob(canvas, "image/png");
+    if (blob && blob.size > 2 * 1024 * 1024) blob = await canvasBlob(canvas, "image/jpeg", 0.88);
+    if (!blob) return { error: "Couldn't process the image in this browser." };
+    return { blob };
+  }
+
+  async function handleLogoFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setLogoStatus("Preparing…");
+    const { blob, error } = await prepareLogo(file);
+    if (error) { setLogoStatus(error, true); return; }
+    const ext = blob.type === "image/webp" ? "webp" : blob.type === "image/png" ? "png" : "jpg";
+    const fd = new FormData();
+    fd.append("logo", blob, `logo.${ext}`);
+    setLogoStatus("Uploading…");
+    const btn = document.getElementById("logo-upload-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(`${WORKER}/admin/gemach/logo`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, ...gemachHeaders() },
+        body: fd,
+      });
+      const fresh = res.headers.get("X-Session-Token");
+      if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
+      if (res.status === 401) { signOut(); return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) { setLogoStatus(data.error || "Upload failed — please try again.", true); return; }
+      GEMACH = { ...GEMACH, logoUrl: data.logoUrl };
+      renderLogoPreview(); updateThemePreview();
+      setLogoStatus("Logo updated ✓");
+      showToast("Logo updated");
+    } catch (e) {
+      setLogoStatus("Upload failed: " + e.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function removeLogo() {
+    if (!GEMACH?.canEdit) return;
+    const data = await api("/admin/gemach", "PATCH", { logoUrl: "" });
+    if (!data) return;
+    if (data.error) { setLogoStatus(data.error, true); return; }
+    GEMACH = { ...GEMACH, logoUrl: data.logoUrl };
+    renderLogoPreview(); updateThemePreview();
+    setLogoStatus(data.logoUrl ? "Uploaded logo removed (the logo attached in Airtable is still shown)." : "Logo removed");
+    showToast("Logo removed");
   }
 
   function updateTemplateState(t) {
@@ -2518,18 +3109,43 @@
     updateTemplateState(t);
   }
 
+  function collectSettingsPatch() {
+    const patch = {};
+    const put = (key, v) => { if (v !== settingsOriginal[key]) patch[key] = v; };
+    Object.keys(SETTINGS_FIELDS).forEach(key => {
+      const v = setEl(key).value.trim();
+      if (v !== String(settingsOriginal[key]).trim()) patch[key] = v;
+    });
+    put("primaryContact", setEl("primaryContact").value);
+    put("secondaryContact", setEl("secondaryContact").value);
+    const theme = normHex(setEl("themeHex").value);
+    const accentRaw = setEl("accentHex").value.trim();
+    const accent = accentRaw ? normHex(accentRaw) : "";
+    if (!theme) return { error: "Theme color must look like #1B3A4B." };
+    if (accent === null) return { error: "Accent color must look like #C9A227 (or leave it empty)." };
+    put("themeColor", theme);
+    put("accentColor", accent);
+    put("depositRequired", setEl("depositRequired").checked);
+    put("requestStyle", document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates");
+    for (const k of ["pickupDaysBefore", "returnDaysAfter"]) {
+      const raw = setEl(k).value.trim();
+      const n = Number(raw);
+      if (raw === "" || !Number.isInteger(n) || n < 0 || n > 14) return { error: `${k === "pickupDaysBefore" ? "Pickup days before" : "Return days after"} must be a whole number from 0 to 14.` };
+      put(k, n);
+    }
+    put("shabbosAdjust", setEl("shabbosAdjust").checked);
+    SETTINGS_TEMPLATES.forEach(t => {
+      const raw = setEl(t.key).value;
+      if (raw !== settingsOriginal[t.key]) patch[t.key] = raw.trim();
+    });
+    if (!setEl("primaryContact").value) return { error: "Choose a primary contact method." };
+    return { patch };
+  }
+
   async function saveSettings() {
     if (!GEMACH?.canEdit) return;
-    const patch = {};
-    SETTINGS_FIELDS.forEach(f => {
-      const v = document.getElementById(`set-${f.key}`).value.trim();
-      if (v !== settingsOriginal[f.key].trim()) patch[f.key] = v;
-    });
-    SETTINGS_TEMPLATES.forEach(t => {
-      const raw = document.getElementById(`set-${t.key}`).value;
-      const v = raw.trim();
-      if (raw !== settingsOriginal[t.key]) patch[t.key] = v;
-    });
+    const { patch, error } = collectSettingsPatch();
+    if (error) { showToast(error); return; }
     if (!Object.keys(patch).length) { showToast("No changes to save"); return; }
     const btn = document.getElementById("settings-save-btn");
     btn.disabled = true; btn.textContent = "Saving…";
