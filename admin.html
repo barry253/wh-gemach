@@ -1970,7 +1970,7 @@
     list.innerHTML = data.map(r => {
       const rid = keep("res", r);
       const dates = r.reservationStart
-        ? `${fmt(r.reservationStart)} → ${fmt(r.reservationEnd || "?")}`
+        ? `${fmt(r.reservationStart)} → ${r.reservationEnd ? fmt(r.reservationEnd) : "Open return date"}`
         : "Dates TBD";
       const phone = phoneDigits(r.borrowerPhone);
       const contact = r.borrowerContact?.toLowerCase();
