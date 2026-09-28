@@ -614,11 +614,32 @@
     /* ── Inventory view ── */
     .inventory-group { margin-bottom: 1.25rem; }
 
+    .inventory-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+    }
+
     .inventory-group-title {
       font-size: 0.82rem;
       font-weight: 600;
       color: var(--muted);
       margin-bottom: 0.4rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--border);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 9px;
+      padding: 0 6px;
     }
 
     .inventory-item {
@@ -894,22 +915,8 @@
 
     <!-- Inventory -->
     <div class="screen" id="screen-inventory">
-      <div class="section-label" style="display:flex;align-items:center;justify-content:space-between">
-        <span>Inventory status</span>
-        <button class="btn btn-primary btn-sm" onclick="openAddItem()">+ Add Item</button>
-      </div>
       <div id="inventory-list">
         <div class="loading">Loading…</div>
-      </div>
-
-      <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border)">
-        <div class="section-label" style="display:flex;align-items:center;justify-content:space-between">
-          <span>Item types</span>
-          <button class="btn btn-ghost btn-sm" onclick="openAddItemType()">+ Add Type</button>
-        </div>
-        <div id="item-types-list">
-          <div class="loading">Loading…</div>
-        </div>
       </div>
     </div>
 
@@ -1823,20 +1830,24 @@
 
   // ── Inventory ─────────────────────────────────────────────────────────────
   let inventoryData = [];
+  let catalogItemTypes = [];
   let inventoryFilter = "all";
 
   async function loadInventory() {
     const container = document.getElementById("inventory-list");
     container.innerHTML = '<div class="loading">Loading…</div>';
-    const [data] = await Promise.all([
+    const [invData, typesData, itemsData] = await Promise.all([
       api("/admin/inventory"),
-      loadItemTypes()
+      api("/admin/catalog/item-types"),
+      api("/admin/catalog/items")
     ]);
-    if (!data?.length) {
-      container.innerHTML = '<div class="empty-state">No inventory found</div>';
-      return;
-    }
-    inventoryData = data;
+    inventoryData = invData || [];
+    catalogItemTypes = (typesData || []).slice().sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    // Populate pi-type dropdown for Add/Edit Item sheet
+    const select = document.getElementById("pi-type");
+    const types = itemsData?.itemTypes || [];
+    select.innerHTML = '<option value="">Select type…</option>' +
+      types.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
     renderInventory();
   }
 
@@ -1847,31 +1858,51 @@
     if (inventoryFilter === "onloan") filtered = inventoryData.filter(i => i.status === "On Loan");
     if (inventoryFilter === "repair") filtered = inventoryData.filter(i => i.condition !== "Good");
 
-    // Group by item type
+    // Group filtered items by item type
     const groups = {};
     filtered.forEach(item => {
-      const type = item.itemTypeName || "Other";
-      if (!groups[type]) groups[type] = [];
-      groups[type].push(item);
+      const key = item.itemTypeId || item.itemTypeName || "other";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
     });
 
-    const filterBar = `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
-      ${["all","available","onloan","repair"].map(f => `
-        <button class="btn btn-sm ${inventoryFilter===f?"btn-primary":"btn-ghost"}" onclick="setInventoryFilter('${f}')">
-          ${f==="all"?"All":f==="available"?"Available":f==="onloan"?"On Loan":"Needs Repair"}
-        </button>`).join("")}
-      <span style="margin-left:auto;font-size:0.78rem;color:var(--muted);align-self:center">${filtered.length} items</span>
+    const header = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        ${["all","available","onloan","repair"].map(f => `
+          <button class="btn btn-sm ${inventoryFilter===f?"btn-primary":"btn-ghost"}" onclick="setInventoryFilter('${f}')">
+            ${f==="all"?"All":f==="available"?"Available":f==="onloan"?"On Loan":"Needs Repair"}
+          </button>`).join("")}
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openAddItemType()">+ New Item Type</button>
     </div>`;
 
-    if (!filtered.length) {
-      container.innerHTML = filterBar + '<div class="empty-state">No items match this filter</div>';
+    if (!catalogItemTypes.length) {
+      container.innerHTML = header + '<div class="empty-state">No item types yet</div>';
       return;
     }
 
-    container.innerHTML = filterBar + Object.entries(groups).map(([type, items]) => `
+    const typesToShow = inventoryFilter === "all"
+      ? catalogItemTypes
+      : catalogItemTypes.filter(t => (groups[t.id] || groups[t.name] || []).length > 0);
+
+    if (!typesToShow.length) {
+      container.innerHTML = header + '<div class="empty-state">No items match this filter</div>';
+      return;
+    }
+
+    container.innerHTML = header + typesToShow.map(type => {
+      const items = groups[type.id] || groups[type.name] || [];
+      const typeName = type.name.replace(/'/g, "&#39;");
+      return `
       <div class="inventory-group">
-        <div class="inventory-group-title">${type} <span style="font-weight:400;color:var(--muted)">(${items.filter(i=>i.status==="Available").length}/${items.length} available)</span></div>
-        ${items.map(item => {
+        <div class="inventory-group-header">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="inventory-group-title">${type.name}</span>
+            <span class="badge">${items.length}</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="openAddItem('${type.id}', '${typeName}')">+ Add Item</button>
+        </div>
+        ${items.length ? items.map(item => {
           const iJson = JSON.stringify(item).replace(/'/g,"&#39;");
           return `
           <div class="inventory-item" style="cursor:pointer" onclick='openAssignItem(${iJson})'>
@@ -1887,8 +1918,9 @@
               <span style="color:var(--muted);font-size:1rem">›</span>
             </div>
           </div>`;
-        }).join("")}
-      </div>`).join("");
+        }).join("") : '<div style="color:var(--muted);font-size:0.8rem;padding:0.5rem 0">No items yet</div>'}
+      </div>`;
+    }).join("");
   }
 
   function setInventoryFilter(f) {
@@ -2072,52 +2104,9 @@
   }
 
   // ── Catalog ───────────────────────────────────────────────────────────────
-  let catalogItemTypes = [];
   let editingItemTypeId = null;
   let editingItemId = null;
   let pendingPhotoUrl = null;
-
-  async function loadItemTypes() {
-    const container = document.getElementById("item-types-list");
-    if (container) container.innerHTML = '<div class="loading">Loading…</div>';
-    const [typesData, itemsData] = await Promise.all([
-      api("/admin/catalog/item-types"),
-      api("/admin/catalog/items")
-    ]);
-    catalogItemTypes = typesData || [];
-    // Populate pi-type dropdown for Add/Edit Item sheet
-    const select = document.getElementById("pi-type");
-    const types = itemsData?.itemTypes || [];
-    select.innerHTML = '<option value="">Select type…</option>' +
-      types.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
-    renderItemTypes();
-  }
-
-  function renderItemTypes() {
-    const container = document.getElementById("item-types-list");
-    if (!container) return;
-    if (!catalogItemTypes.length) {
-      container.innerHTML = '<div class="empty-state">No item types yet</div>';
-      return;
-    }
-    container.innerHTML = catalogItemTypes.map(t => `
-      <div class="card" style="display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:0.6rem">
-        <div style="width:64px;height:50px;flex-shrink:0;border-radius:6px;overflow:hidden;background:var(--teal);display:flex;align-items:center;justify-content:center">
-          ${t.r2PhotoUrl || t.photoUrl
-            ? `<img src="${t.r2PhotoUrl || t.photoUrl}" style="width:100%;height:100%;object-fit:cover" />`
-            : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1B3A4B" stroke-width="1.5" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.2rem">
-            <strong style="font-size:0.9rem">${t.name}</strong>
-            <span class="tag ${t.active ? "tag-green" : "tag-amber"}" style="font-size:0.65rem">${t.active ? "Active" : "Inactive"}</span>
-            <span style="font-size:0.72rem;color:var(--muted);margin-left:auto">#${t.displayOrder} · ${t.itemCount} items</span>
-          </div>
-          ${t.description ? `<div style="font-size:0.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.description}</div>` : ""}
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick='openEditItemType(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>
-      </div>`).join("");
-  }
 
   function openAddItemType() {
     editingItemTypeId = null;
@@ -2166,15 +2155,15 @@
       await api("/admin/catalog/item-types", "POST", body);
     }
     closeSheet("item-type-sheet");
-    await loadItemTypes();
+    await loadInventory();
     showToast(editingItemTypeId ? "Item type updated" : "Item type added");
     btn.disabled = false; btn.textContent = "Save";
   }
 
-  function openAddItem() {
+  function openAddItem(typeId = "", typeName = "") {
     editingItemId = null;
-    document.getElementById("physical-item-sheet-title").textContent = "Add Physical Item";
-    document.getElementById("pi-type").value = "";
+    document.getElementById("physical-item-sheet-title").textContent = "Add Item";
+    document.getElementById("pi-type").value = typeId;
     document.getElementById("pi-id").value = "";
     document.getElementById("pi-condition").value = "Good";
     document.getElementById("pi-active").value = "true";
