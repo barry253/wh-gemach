@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>West Hempstead Medical Gemach</title>
+  <script>
+    // The public page moved to whgemachs.org — redirect direct visits (not the embedded iframe).
+    if (location.hostname === "barry253.github.io" && window.top === window.self) {
+      location.replace("https://whgemachs.org/g/wh-medical");
+    }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />

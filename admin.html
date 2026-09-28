@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gemach Admin</title>
+  <script>
+    // The admin moved to whgemachs.org — send old GitHub Pages bookmarks there.
+    if (location.hostname === "barry253.github.io" && window.top === window.self) {
+      location.replace("https://whgemachs.org/admin" + location.search + location.hash);
+    }
+  </script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -66,6 +72,11 @@
       width: 100%;
       max-width: 360px;
       text-align: center;
+    }
+
+    .login-card .g_id_signin {
+      display: flex;
+      justify-content: center;
     }
 
     .login-card h2 {
@@ -1125,6 +1136,11 @@
     <button class="sheet-close" onclick="closeSheet('pickup-sheet')">×</button>
     <h3>Mark as picked up</h3>
     <p class="sheet-subtitle" id="pickup-subtitle"></p>
+    <div class="form-group" id="pickup-item-group" style="margin-top:0.75rem;display:none">
+      <label for="pickup-item">Which item is going out?</label>
+      <select id="pickup-item"></select>
+      <p class="login-error" id="pickup-item-error" style="text-align:left"></p>
+    </div>
     <div class="form-group" style="margin-top:0.75rem">
       <label>Date picked up</label>
       <input type="date" id="pickup-date" />
@@ -1717,11 +1733,13 @@
     document.getElementById("confirm-submit-btn").onclick = async () => {
       const message = document.getElementById("confirm-message").value;
       const sendMessage = document.getElementById("confirm-send").checked;
-      await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage, adminName });
+      const res = await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage, adminName });
+      if (res && res.error) { showToast(res.error); return; }
       closeSheet("confirm-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
-      showToast("Request confirmed");
+      const n = res?.reservations?.length || 0;
+      showToast(n ? `Request confirmed · ${n} reservation${n > 1 ? "s" : ""} added` : "Request confirmed");
     };
 
     openSheet("confirm-sheet");
@@ -2057,12 +2075,63 @@
     openSheet("cancel-res-sheet");
   }
 
-  function openPickup(r) {
+  async function openPickup(r) {
     document.getElementById("pickup-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
     document.getElementById("pickup-date").value = new Date().toISOString().split("T")[0];
+    const group = document.getElementById("pickup-item-group");
+    const select = document.getElementById("pickup-item");
+    const errEl = document.getElementById("pickup-item-error");
+    errEl.style.display = "none";
+    const needsUnit = !r.itemRecId;
+    group.style.display = needsUnit ? "block" : "none";
+    select.innerHTML = "";
+    let units = [];
+    if (needsUnit) {
+      const loading = document.createElement("option");
+      loading.textContent = "Loading…";
+      select.appendChild(loading);
+      try {
+        const data = await api("/admin/catalog/items");
+        units = (data?.items || []).filter(i => i.active && i.itemTypeId === r.itemTypeId);
+      } catch (e) { units = []; }
+      select.innerHTML = "";
+      const available = units.filter(i => i.status === "Available");
+      const others = units.filter(i => i.status !== "Available");
+      const addOpt = (i, suffix) => {
+        const o = document.createElement("option");
+        o.value = i.id;
+        o.textContent = `${i.itemId}${suffix}`;
+        select.appendChild(o);
+      };
+      available.forEach(i => addOpt(i, ""));
+      others.forEach(i => addOpt(i, ` (${i.status})`));
+      if (!units.length) {
+        const o = document.createElement("option");
+        o.value = "";
+        o.textContent = `No ${r.itemTypeName} items in inventory`;
+        select.appendChild(o);
+      }
+    }
     document.getElementById("pickup-submit-btn").onclick = async () => {
       const pickupDate = document.getElementById("pickup-date").value;
-      await api(`/admin/loans/${r.id}/pickup`, "POST", { pickupDate });
+      const body = { pickupDate, borrower: r.borrowerName, loanId: r.loanId, itemType: r.itemTypeName };
+      if (needsUnit) {
+        const chosen = units.find(i => i.id === select.value);
+        if (!chosen) {
+          errEl.textContent = "Choose which item is being picked up.";
+          errEl.style.display = "block";
+          return;
+        }
+        body.itemId = chosen.id;
+        body.itemCode = chosen.itemId;
+      }
+      const res = await api(`/admin/loans/${r.id}/pickup`, "POST", body);
+      if (res && res.error) {
+        errEl.textContent = res.error;
+        errEl.style.display = "block";
+        group.style.display = "block";
+        return;
+      }
       closeSheet("pickup-sheet");
       loadReservations();
       loadDashboard();
