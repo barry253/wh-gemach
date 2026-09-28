@@ -1380,6 +1380,8 @@
     };
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(`${WORKER}${path}`, opts);
+    const fresh = res.headers.get("X-Session-Token");
+    if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
     if (res.status === 401) { signOut(); return null; }
     return res.json();
   }
@@ -2297,6 +2299,8 @@
         headers: { "Authorization": `Bearer ${token}` },
         body: formData
       });
+      const fresh = res.headers.get("X-Session-Token");
+      if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
       const data = await res.json();
       if (data.url) {
         pendingPhotoUrl = data.url;
@@ -2323,6 +2327,8 @@
         },
         body: JSON.stringify({ url })
       });
+      const fresh = res.headers.get("X-Session-Token");
+      if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
       const data = await res.json();
       if (data.url) {
         pendingPhotoUrl = data.url;
