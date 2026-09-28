@@ -837,7 +837,6 @@
     <button class="nav-tab" onclick="switchTab('loans')">Loans</button>
     <button class="nav-tab" onclick="switchTab('reservations')">Reservations</button>
     <button class="nav-tab" onclick="switchTab('inventory')">Inventory</button>
-    <button class="nav-tab" onclick="switchTab('catalog')">Catalog</button>
     <button class="nav-tab" onclick="switchTab('history')">History</button>
   </div>
 
@@ -902,6 +901,16 @@
       <div id="inventory-list">
         <div class="loading">Loading…</div>
       </div>
+
+      <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div class="section-label" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Item types</span>
+          <button class="btn btn-ghost btn-sm" onclick="openAddItemType()">+ Add Type</button>
+        </div>
+        <div id="item-types-list">
+          <div class="loading">Loading…</div>
+        </div>
+      </div>
     </div>
 
     <!-- History -->
@@ -924,20 +933,6 @@
           <div class="loading">Loading…</div>
         </div>
         <button class="load-more-btn" id="history-load-more" style="display:none" onclick="loadMoreHistory()">Load more</button>
-      </div>
-    </div>
-
-    <!-- Catalog -->
-    <div class="screen" id="screen-catalog">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:1px solid var(--border)">
-        <div style="display:flex;gap:0.5rem">
-          <button class="btn btn-sm ${catalogView==='types'?'btn-primary':'btn-ghost'}" id="cat-tab-types" onclick="setCatalogView('types')">Item Types</button>
-          <button class="btn btn-sm" id="cat-tab-items" onclick="setCatalogView('items')">Physical Items</button>
-        </div>
-        <button class="btn btn-primary btn-sm" id="cat-add-btn" onclick="openAddSheet()">+ Add</button>
-      </div>
-      <div id="catalog-list">
-        <div class="loading">Loading…</div>
       </div>
     </div>
 
@@ -1368,7 +1363,6 @@
     if (name === "loans")        loadLoans();
     if (name === "reservations") loadReservations();
     if (name === "inventory")    loadInventory();
-    if (name === "catalog")      loadCatalog();
     if (name === "history")      initHistory();
   }
 
@@ -1834,7 +1828,10 @@
   async function loadInventory() {
     const container = document.getElementById("inventory-list");
     container.innerHTML = '<div class="loading">Loading…</div>';
-    const data = await api("/admin/inventory");
+    const [data] = await Promise.all([
+      api("/admin/inventory"),
+      loadItemTypes()
+    ]);
     if (!data?.length) {
       container.innerHTML = '<div class="empty-state">No inventory found</div>';
       return;
@@ -2075,92 +2072,51 @@
   }
 
   // ── Catalog ───────────────────────────────────────────────────────────────
-  let catalogView = "types";
   let catalogItemTypes = [];
-  let catalogItems = [];
   let editingItemTypeId = null;
   let editingItemId = null;
   let pendingPhotoUrl = null;
 
-  function setCatalogView(view) {
-    catalogView = view;
-    document.getElementById("cat-tab-types").className = `btn btn-sm ${view === "types" ? "btn-primary" : "btn-ghost"}`;
-    document.getElementById("cat-tab-items").className = `btn btn-sm ${view === "items" ? "btn-primary" : "btn-ghost"}`;
-    renderCatalog();
-  }
-
-  async function loadCatalog() {
-    document.getElementById("catalog-list").innerHTML = '<div class="loading">Loading…</div>';
+  async function loadItemTypes() {
+    const container = document.getElementById("item-types-list");
+    if (container) container.innerHTML = '<div class="loading">Loading…</div>';
     const [typesData, itemsData] = await Promise.all([
       api("/admin/catalog/item-types"),
       api("/admin/catalog/items")
     ]);
     catalogItemTypes = typesData || [];
-    catalogItems = itemsData?.items || [];
+    // Populate pi-type dropdown for Add/Edit Item sheet
     const select = document.getElementById("pi-type");
     const types = itemsData?.itemTypes || [];
     select.innerHTML = '<option value="">Select type…</option>' +
       types.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
-    renderCatalog();
+    renderItemTypes();
   }
 
-  function renderCatalog() {
-    const container = document.getElementById("catalog-list");
-    if (catalogView === "types") {
-      if (!catalogItemTypes.length) {
-        container.innerHTML = '<div class="empty-state">No item types yet</div>';
-        return;
-      }
-      container.innerHTML = catalogItemTypes.map(t => `
-        <div class="card" style="display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:0.6rem">
-          <div style="width:64px;height:50px;flex-shrink:0;border-radius:6px;overflow:hidden;background:var(--teal);display:flex;align-items:center;justify-content:center">
-            ${t.r2PhotoUrl || t.photoUrl
-              ? `<img src="${t.r2PhotoUrl || t.photoUrl}" style="width:100%;height:100%;object-fit:cover" />`
-              : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1B3A4B" stroke-width="1.5" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}
-          </div>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.2rem">
-              <strong style="font-size:0.9rem">${t.name}</strong>
-              <span class="tag ${t.active ? "tag-green" : "tag-amber"}" style="font-size:0.65rem">${t.active ? "Active" : "Inactive"}</span>
-              <span style="font-size:0.72rem;color:var(--muted);margin-left:auto">#${t.displayOrder} · ${t.itemCount} items</span>
-            </div>
-            ${t.description ? `<div style="font-size:0.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.description}</div>` : ""}
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick='openEditItemType(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>
-        </div>`).join("");
-    } else {
-      const groups = {};
-      catalogItems.forEach(item => {
-        const type = item.itemTypeName || "Other";
-        if (!groups[type]) groups[type] = [];
-        groups[type].push(item);
-      });
-      if (!Object.keys(groups).length) {
-        container.innerHTML = '<div class="empty-state">No items yet</div>';
-        return;
-      }
-      container.innerHTML = Object.entries(groups).map(([type, items]) => `
-        <div class="inventory-group">
-          <div class="inventory-group-title">${type}</div>
-          ${items.map(item => `
-            <div class="inventory-item">
-              <div>
-                <strong>${item.itemId}</strong>
-                ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${item.notes}</span>` : ""}
-              </div>
-              <div style="display:flex;align-items:center;gap:0.4rem">
-                <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${item.condition}</span>
-                <span class="tag ${item.active ? "tag-green" : "tag-amber"}">${item.active ? "Active" : "Inactive"}</span>
-                <button class="btn btn-ghost btn-sm" onclick='openEditItem(${JSON.stringify(item).replace(/'/g,"&#39;")})'>Edit</button>
-              </div>
-            </div>`).join("")}
-        </div>`).join("");
+  function renderItemTypes() {
+    const container = document.getElementById("item-types-list");
+    if (!container) return;
+    if (!catalogItemTypes.length) {
+      container.innerHTML = '<div class="empty-state">No item types yet</div>';
+      return;
     }
-  }
-
-  function openAddSheet() {
-    if (catalogView === "types") openAddItemType();
-    else openAddItem();
+    container.innerHTML = catalogItemTypes.map(t => `
+      <div class="card" style="display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:0.6rem">
+        <div style="width:64px;height:50px;flex-shrink:0;border-radius:6px;overflow:hidden;background:var(--teal);display:flex;align-items:center;justify-content:center">
+          ${t.r2PhotoUrl || t.photoUrl
+            ? `<img src="${t.r2PhotoUrl || t.photoUrl}" style="width:100%;height:100%;object-fit:cover" />`
+            : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1B3A4B" stroke-width="1.5" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.2rem">
+            <strong style="font-size:0.9rem">${t.name}</strong>
+            <span class="tag ${t.active ? "tag-green" : "tag-amber"}" style="font-size:0.65rem">${t.active ? "Active" : "Inactive"}</span>
+            <span style="font-size:0.72rem;color:var(--muted);margin-left:auto">#${t.displayOrder} · ${t.itemCount} items</span>
+          </div>
+          ${t.description ? `<div style="font-size:0.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.description}</div>` : ""}
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick='openEditItemType(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>
+      </div>`).join("");
   }
 
   function openAddItemType() {
@@ -2210,7 +2166,7 @@
       await api("/admin/catalog/item-types", "POST", body);
     }
     closeSheet("item-type-sheet");
-    await loadCatalog();
+    await loadItemTypes();
     showToast(editingItemTypeId ? "Item type updated" : "Item type added");
     btn.disabled = false; btn.textContent = "Save";
   }
@@ -2278,11 +2234,7 @@
   }
 
   async function refreshItemScreens() {
-    const invActive = document.getElementById("screen-inventory")?.classList.contains("active");
-    const catActive = document.getElementById("screen-catalog")?.classList.contains("active");
-    if (invActive) await loadInventory();
-    if (catActive) await loadCatalog();
-    if (!invActive && !catActive) await loadCatalog();
+    await loadInventory();
   }
 
   async function handleFileSelect(event) {
