@@ -377,6 +377,23 @@
       color: var(--muted);
       margin-bottom: 0.4rem;
     }
+    .loan-notes.request-note {
+      background: var(--surface);
+      border-left: 3px solid var(--navy);
+      padding: 0.3rem 0.5rem;
+      border-radius: 0 4px 4px 0;
+      color: var(--text);
+    }
+    .note-label {
+      font-weight: 600;
+      color: var(--navy);
+      margin-right: 0.25rem;
+    }
+    .note-indicator {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-left: 0.25rem;
+    }
 
     .card-item-type {
       font-size: 0.9rem;
@@ -1567,17 +1584,20 @@
       const contact = l.borrowerContact?.toLowerCase();
       const lJson = JSON.stringify(l).replace(/'/g,"&#39;");
 
+      const hasNote = l.notes || l.requestNote;
       return `
         <div class="loan-row ${cls}" id="loan-row-${l.id}" onclick="toggleLoanActions('${l.id}')">
           <div class="loan-row-main">
             <span class="loan-row-name">${l.borrowerName}</span>
             <span class="loan-row-item">${l.itemTypeName || ""}</span>
             ${l.itemId ? `<span class="loan-row-code">${l.itemId}</span>` : ""}
+            ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
           </div>
           <span class="loan-row-date">${fmt(l.dateBorrowed)}</span>
           ${tag}
         </div>
         <div class="loan-actions-panel" id="loan-panel-${l.id}">
+          ${l.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${l.requestNote}</div>` : ""}
           ${l.notes ? `<div class="loan-notes">💬 ${l.notes}</div>` : ""}
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick='event.stopPropagation();openReturn(${lJson})'>✓ Returned</button>
@@ -1671,6 +1691,7 @@
           <span class="tag tag-navy loan-row-tag">Reserved</span>
         </div>
         <div class="loan-actions-panel" id="res-panel-${r.id}">
+          ${r.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${r.requestNote}</div>` : ""}
           ${r.notes ? `<div class="loan-notes">💬 ${r.notes}</div>` : ""}
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick='event.stopPropagation();openPickup(${rJson})'>✓ Mark picked up</button>
