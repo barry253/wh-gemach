@@ -227,6 +227,28 @@
     .radio-card small { display: block; color: var(--muted); font-size: 0.75rem; }
     .example-line { font-size: 0.82rem; background: var(--teal); color: var(--navy); border-radius: 6px; padding: 0.5rem 0.75rem; }
 
+    [hidden] { display: none !important; }
+    .topbar-public { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 0.7rem; white-space: nowrap; margin-top: 0.1rem; }
+    .btn-signout { white-space: nowrap; }
+    .topbar-public:hover { color: #fff; text-decoration: underline; }
+    .url-box {
+      display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+      background: var(--grey); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.6rem;
+    }
+    .url-box code { font-size: 0.8rem; color: var(--navy); word-break: break-all; flex: 1 1 100%; }
+    .net-row { display: flex; flex-direction: column; gap: 0.5rem; }
+    .net-row-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+    .net-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+    .net-controls select { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; font-family: 'Inter', sans-serif; background: var(--white); color: var(--text); }
+    .switch-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--muted); }
+    .switch-row input { accent-color: var(--navy); width: auto; }
+    .net-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .net-toolbar select { padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; font-family: 'Inter', sans-serif; max-width: 60%; }
+    .check-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.6rem; }
+    .form-group .check-list label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 400; margin: 0; }
+    .form-group .check-list input { width: auto; flex: none; accent-color: var(--navy); }
+    .muted-small { font-size: 0.75rem; color: var(--muted); }
+
     .settings-note {
       font-size: 0.82rem;
       color: var(--amber);
@@ -985,6 +1007,7 @@
       <div class="topbar-left">
         <div class="topbar-title">Gemach Admin</div>
         <div class="topbar-gemach" id="topbar-gemach"></div>
+        <a class="topbar-public" id="topbar-public" href="#" target="_blank" rel="noopener" hidden>View public page ↗</a>
       </div>
     </div>
     <div class="topbar-user">
@@ -998,11 +1021,12 @@
     <button class="nav-tab" onclick="switchTab('requests')" id="tab-requests">
       Requests
     </button>
-    <button class="nav-tab" onclick="switchTab('loans')">Loans</button>
     <button class="nav-tab" onclick="switchTab('reservations')">Reservations</button>
+    <button class="nav-tab" onclick="switchTab('loans')">Loans</button>
     <button class="nav-tab" onclick="switchTab('inventory')">Inventory</button>
     <button class="nav-tab" onclick="switchTab('history')">History</button>
     <button class="nav-tab" onclick="switchTab('settings')">Settings</button>
+    <button class="nav-tab" onclick="switchTab('network')" id="tab-network" hidden>Network</button>
   </div>
 
   <div class="content">
@@ -1098,6 +1122,28 @@
       </div>
     </div>
 
+    <!-- Network (Network Admins only) -->
+    <div class="screen" id="screen-network">
+      <div class="net-toolbar">
+        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-gemachs">Gemachs</div>
+        <button class="btn btn-primary btn-sm" onclick="openNewGemach()">+ New gemach</button>
+      </div>
+      <div class="card-list" id="net-gemachs" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+
+      <div class="net-toolbar">
+        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-admins">Admins</div>
+        <button class="btn btn-primary btn-sm" onclick="openAdminSheet(null)">+ Add admin</button>
+        <select id="net-admin-filter" aria-label="Filter admins by gemach" onchange="renderNetAdmins()" style="flex:1 1 100%;max-width:100%"></select>
+      </div>
+      <div class="card-list" id="net-admins" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+
+      <div class="net-toolbar">
+        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-categories">Browse categories</div>
+        <button class="btn btn-primary btn-sm" onclick="openCategorySheet(null)">+ Add category</button>
+      </div>
+      <div class="card-list" id="net-categories" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+    </div>
+
   </div>
 </div>
 
@@ -1162,6 +1208,141 @@
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('appointment-sheet')">Cancel</button>
       <button class="btn btn-primary" id="appointment-submit-btn">Confirm appointment</button>
+    </div>
+  </div>
+</div>
+
+<!-- Network: New Gemach Sheet -->
+<div class="sheet-overlay" id="net-gemach-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('net-gemach-sheet')">×</button>
+    <h3>New gemach</h3>
+    <p class="sheet-subtitle">Created hidden — turn it on in the list when it's ready.</p>
+    <div id="ng-form">
+      <div class="form-group">
+        <label for="ng-name">Name <span style="color:var(--red)">*</span></label>
+        <input type="text" id="ng-name" maxlength="100" placeholder="e.g. Kallah Gown Gemach" />
+      </div>
+      <div class="form-group">
+        <label for="ng-slug">Web address</label>
+        <input type="text" id="ng-slug" maxlength="64" placeholder="kallah-gown-gemach" />
+        <div class="muted-small" style="margin-top:0.3rem" id="ng-slug-preview"></div>
+      </div>
+      <div class="settings-grid2">
+        <div class="form-group">
+          <label for="ng-category">Category</label>
+          <select id="ng-category"></select>
+        </div>
+        <div class="form-group">
+          <label for="ng-mode">Requests</label>
+          <select id="ng-mode">
+            <option value="Full">Online requests</option>
+            <option value="Directory">Listing only</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="ng-email">Email</label>
+        <input type="email" id="ng-email" maxlength="200" />
+      </div>
+      <div class="form-group">
+        <label for="ng-phone">Phone</label>
+        <input type="tel" id="ng-phone" maxlength="50" />
+      </div>
+      <div class="sheet-actions">
+        <button class="btn btn-ghost" onclick="closeSheet('net-gemach-sheet')">Cancel</button>
+        <button class="btn btn-primary" id="ng-submit-btn" onclick="createGemach()">Create gemach</button>
+      </div>
+    </div>
+    <div id="ng-done" hidden>
+      <p style="font-size:0.9rem;margin:0.5rem 0 1rem" id="ng-done-text"></p>
+      <div class="sheet-actions">
+        <button class="btn btn-ghost" onclick="closeSheet('net-gemach-sheet')">Close</button>
+        <button class="btn btn-primary" id="ng-open-btn">Open it now</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Network: Admin Sheet -->
+<div class="sheet-overlay" id="net-admin-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('net-admin-sheet')">×</button>
+    <h3 id="na-title">Add admin</h3>
+    <p class="sheet-subtitle" id="na-subtitle"></p>
+    <div class="form-group">
+      <label for="na-name">Name <span style="color:var(--red)">*</span></label>
+      <input type="text" id="na-name" maxlength="100" />
+    </div>
+    <div class="form-group">
+      <label for="na-email">Google account email <span style="color:var(--red)">*</span></label>
+      <input type="email" id="na-email" maxlength="200" />
+    </div>
+    <div class="form-group">
+      <label for="na-role">Role</label>
+      <select id="na-role">
+        <option value="Owner">Owner — full access, can edit settings</option>
+        <option value="Manager">Manager — full access, can edit settings</option>
+        <option value="Volunteer">Volunteer — requests, loans, inventory</option>
+        <option value="Network Admin">Network Admin — every gemach + this tab</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Gemachs</label>
+      <div class="check-list" id="na-gemachs"></div>
+    </div>
+    <div class="checkbox-row" id="na-active-row">
+      <input type="checkbox" id="na-active" />
+      <label for="na-active">Active (can sign in)</label>
+    </div>
+    <div class="checkbox-row" id="na-invite-row">
+      <input type="checkbox" id="na-invite" checked />
+      <label for="na-invite">Send invite email</label>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('net-admin-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="na-submit-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Network: Category Sheet -->
+<div class="sheet-overlay" id="net-category-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('net-category-sheet')">×</button>
+    <h3 id="nc-title">Add category</h3>
+    <div class="settings-grid2" style="grid-template-columns:5rem 1fr">
+      <div class="form-group">
+        <label for="nc-icon">Icon</label>
+        <input type="text" id="nc-icon" maxlength="16" placeholder="🦽" />
+      </div>
+      <div class="form-group">
+        <label for="nc-name">Name <span style="color:var(--red)">*</span></label>
+        <input type="text" id="nc-name" maxlength="60" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="nc-keywords">Search keywords</label>
+      <textarea id="nc-keywords" rows="2" style="min-height:0" placeholder="comma-separated: wheel chair, transport chair"></textarea>
+    </div>
+    <div class="settings-grid2">
+      <div class="form-group">
+        <label for="nc-order">Display order</label>
+        <input type="number" id="nc-order" step="1" />
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-end">
+        <div class="checkbox-row" style="margin:0 0 0.6rem">
+          <input type="checkbox" id="nc-active" checked />
+          <label for="nc-active">Active</label>
+        </div>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('net-category-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="nc-submit-btn">Save</button>
     </div>
   </div>
 </div>
@@ -1326,6 +1507,15 @@
       <textarea id="assign-notes" rows="2" placeholder="Optional"></textarea>
     </div>
 
+    <div class="form-group">
+      <label for="assign-condition">Condition</label>
+      <select id="assign-condition">
+        <option value="Good">Good</option>
+        <option value="Needs Repair">Needs Repair</option>
+      </select>
+    </div>
+    <button class="btn btn-ghost btn-sm" type="button" id="assign-edit-details-btn" onclick="openEditItemFromAssign()">✎ Edit item details (ID, type, active)</button>
+
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('assign-item-sheet')">Cancel</button>
       <button class="btn btn-primary" id="assign-item-submit-btn">Save</button>
@@ -1394,6 +1584,11 @@
       <label>Description</label>
       <textarea id="it-description" rows="3" placeholder="Help borrowers understand what this item is"></textarea>
     </div>
+    <div class="form-group">
+      <label for="it-category">Browse category</label>
+      <select id="it-category"><option value="">— none —</option></select>
+      <div class="muted-small" style="margin-top:0.3rem">Where this item appears when people browse whgemachs.org by category.</div>
+    </div>
     <div class="form-row">
       <div class="form-group">
         <label>Display Order</label>
@@ -1454,12 +1649,10 @@
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label>Condition</label>
+        <label for="pi-condition">Condition</label>
         <select id="pi-condition">
           <option value="Good">Good</option>
-          <option value="Fair">Fair</option>
           <option value="Needs Repair">Needs Repair</option>
-          <option value="Out of Service">Out of Service</option>
         </select>
       </div>
       <div class="form-group">
@@ -1494,7 +1687,11 @@
 
   // ── Gemach context ────────────────────────────────────────────────────────
   let gemachSlug = localStorage.getItem("gemach_slug"); // sent as X-Gemach on every admin call (validated after /admin/me)
-  let MY_GEMACHS = [];     // [{id, slug, name}] from /admin/me
+  let MY_GEMACHS = [];     // [{id, slug, name, active}] from /admin/me
+  let MY_ROLE = null;      // role from /admin/me ("Network Admin" unlocks the Network tab)
+  const isNetworkAdmin = () => MY_ROLE === "Network Admin";
+  const PUBLIC_BASE = "https://whgemachs.org/g/";
+  const publicUrl = slug => PUBLIC_BASE + encodeURIComponent(slug || "");
   let GEMACH = null;       // GET /admin/gemach payload (profile + templates)
 
   // Client copy of the contract's built-in defaults (fallback if /admin/gemach failed; placeholders in Settings)
@@ -1608,6 +1805,8 @@
     const me = await api("/admin/me");
     if (!me) return;
     MY_GEMACHS = Array.isArray(me.gemachs) ? me.gemachs : [];
+    MY_ROLE = me.role || null;
+    document.getElementById("tab-network").hidden = !isNetworkAdmin();
     if (me.name) { adminName = me.name; document.getElementById("admin-name").textContent = adminName; }
     const inList = s => s && MY_GEMACHS.some(g => g.slug === s);
     const params = new URLSearchParams(location.search);
@@ -1639,13 +1838,15 @@
 
   function renderGemachSwitcher() {
     renderTopbarLogo();
+    const pub = document.getElementById("topbar-public");
+    if (gemachSlug) { pub.href = publicUrl(gemachSlug); pub.hidden = false; } else pub.hidden = true;
     const el = document.getElementById("topbar-gemach");
-    if (MY_GEMACHS.length > 1) {
+    if (MY_GEMACHS.length > 1 || (isNetworkAdmin() && MY_GEMACHS.length)) {
       el.innerHTML = `<select class="gemach-switcher" id="gemach-switcher" aria-label="Gemach" onchange="switchGemach(this.value)"></select>`;
       const sel = el.querySelector("select");
       MY_GEMACHS.forEach(g => {
         const o = document.createElement("option");
-        o.value = g.slug; o.textContent = g.name || g.slug;
+        o.value = g.slug; o.textContent = (g.name || g.slug) + (g.active === false ? " (hidden)" : "");
         if (g.slug === gemachSlug) o.selected = true;
         sel.appendChild(o);
       });
@@ -1801,6 +2002,7 @@
     if (name === "inventory")    loadInventory();
     if (name === "history")      initHistory();
     if (name === "settings")     loadSettings();
+    if (name === "network")      loadNetwork();
   }
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -2425,11 +2627,13 @@
   async function loadInventory() {
     const container = document.getElementById("inventory-list");
     container.innerHTML = '<div class="loading">Loading…</div>';
-    const [invData, typesData, itemsData] = await Promise.all([
+    const [invData, typesData, itemsData, catsData] = await Promise.all([
       api("/admin/inventory"),
       api("/admin/catalog/item-types"),
-      api("/admin/catalog/items")
+      api("/admin/catalog/items"),
+      api("/admin/catalog/categories").catch(() => null)
     ]);
+    browseCategories = Array.isArray(catsData) ? catsData : [];
     inventoryData = invData || [];
     catalogItemTypes = (typesData || []).slice().sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
     // Populate pi-type dropdown for Add/Edit Item sheet
@@ -2583,8 +2787,18 @@
       document.getElementById("assign-notes").value            = item.notes || "";
     }
 
+    const cond = item.condition === "Needs Repair" ? "Needs Repair" : "Good";
+    document.getElementById("assign-condition").value = cond;
+    document.getElementById("assign-condition").dataset.original = cond;
     selectAssignStatus(item.status || "Available");
     openSheet("assign-item-sheet");
+  }
+
+  function openEditItemFromAssign() {
+    const item = assignItemRecord;
+    if (!item) return;
+    closeSheet("assign-item-sheet");
+    openEditItem({ ...item, condition: document.getElementById("assign-condition").value });
   }
 
   function selectAssignStatus(status) {
@@ -2597,6 +2811,9 @@
     document.getElementById("assign-borrower-fields").style.display = needsBorrower ? "" : "none";
     document.getElementById("assign-loan-date-fields").style.display = status === "On Loan" ? "" : "none";
     document.getElementById("assign-reservation-date-fields").style.display = status === "Reserved" ? "" : "none";
+    const condEl = document.getElementById("assign-condition");
+    if (status === "Needs Repair") condEl.value = "Needs Repair";
+    condEl.disabled = status === "Needs Repair";
   }
 
   document.getElementById("assign-item-submit-btn").addEventListener("click", async () => {
@@ -2632,7 +2849,16 @@
       payload.reservationEnd   = document.getElementById("assign-res-end").value   || null;
     }
 
-    const result = await api(`/admin/inventory/${assignItemRecord.id}/assign`, "POST", payload);
+    const result = await api(`/admin/inventory/${safeId(assignItemRecord.id)}/assign`, "POST", payload);
+    // Condition: "Needs Repair" status sets it, "Available" resets it to Good — otherwise apply the select.
+    if (result?.success && assignStatus !== "Needs Repair") {
+      const condEl = document.getElementById("assign-condition");
+      const implied = assignStatus === "Available" ? "Good" : condEl.dataset.original;
+      if (condEl.value !== implied) {
+        const r2 = await api(`/admin/catalog/items/${safeId(assignItemRecord.id)}`, "PATCH", { condition: condEl.value });
+        if (r2?.error) showToast(r2.error);
+      }
+    }
     btn.disabled = false;
     btn.textContent = "Save";
 
@@ -2653,6 +2879,7 @@
 
   // ── Settings (grouped: profile, contact, branding, info, requests, templates) ──
   const SETTINGS_FIELDS = {
+    name:               { label: "Gemach name",         type: "text",  max: 100 },
     tagline:            { label: "Tagline",             type: "text",  max: 200,  hint: "One line shown on the gemach's card and page header." },
     description:        { label: "Description",         type: "area",  max: 2000, rows: 4 },
     website:            { label: "Website",             type: "url",   max: 200, placeholder: "https://" },
@@ -2668,7 +2895,7 @@
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
   };
   const SETTINGS_GROUPS = [
-    { title: "Profile", fields: ["tagline", "description", "website", "donationUrl", "hours", "pickupAddress", "pickupInstructions"] },
+    { title: "Profile", fields: ["name", "tagline", "description", "website", "donationUrl", "hours", "pickupAddress", "pickupInstructions"] },
     { title: "Contact", fields: ["phone", "whatsapp", "email"], extra: "contact" },
     { title: "Branding", extra: "branding" },
     { title: "Gemach info", extra: "info" },
@@ -2826,10 +3053,20 @@
       <div class="card" style="margin-bottom:1.25rem">
         <div class="card-header" style="margin-bottom:0">
           <div>
-            <div class="card-title" id="set-name"></div>
+            <div class="card-title" id="set-title"></div>
             <div class="card-id" id="set-slug"></div>
           </div>
           <span class="tag tag-navy" id="set-mode"></span>
+        </div>
+        <div class="muted-small" id="set-mode-help" style="margin-top:0.4rem"></div>
+        <div class="form-group" style="margin:0.75rem 0 0">
+          <label>Public page</label>
+          <div class="url-box">
+            <code id="set-public-url"></code>
+            <button class="btn btn-ghost btn-sm" type="button" id="copy-url-btn" onclick="copyPublicUrl()">Copy</button>
+            <a class="btn btn-ghost btn-sm" id="open-url-btn" target="_blank" rel="noopener">Open ↗</a>
+            <a class="btn btn-whatsapp btn-sm" id="share-url-btn" target="_blank" rel="noopener">Share on WhatsApp</a>
+          </div>
         </div>
       </div>
       ${SETTINGS_GROUPS.map(gr => settingsGroupHtml(gr, ro)).join("")}
@@ -2849,9 +3086,19 @@
       </div>`}`;
 
     // Values are assigned via properties (never interpolated into HTML).
-    setEl("name").textContent = g.name || "";
+    setEl("title").textContent = g.name || "";
     setEl("slug").textContent = `${g.slug || ""}${g.communityName ? " · " + g.communityName : ""}`;
-    setEl("mode").textContent = g.mode || "Full";
+    const listing = g.mode === "Directory";
+    setEl("mode").textContent = listing ? "Listing only" : "Online requests";
+    const modeHelp = listing
+      ? "Your public page shows contact details only; borrowers can't send requests online."
+      : "Borrowers can see your items and send requests online.";
+    setEl("mode").title = modeHelp;
+    setEl("mode-help").textContent = modeHelp + (isNetworkAdmin() ? " Change it in the Network tab." : " Only a network admin can change this.");
+    const url = publicUrl(g.slug);
+    setEl("public-url").textContent = url;
+    document.getElementById("open-url-btn").href = url;
+    document.getElementById("share-url-btn").href = "https://wa.me/?text=" + encodeURIComponent(`${g.name || "Our gemach"} — ${url}`);
     settingsOriginal = {};
     const remember = (key, v) => { settingsOriginal[key] = v; };
 
@@ -3109,6 +3356,20 @@
     updateTemplateState(t);
   }
 
+  async function copyPublicUrl() {
+    const url = publicUrl(GEMACH?.slug || gemachSlug);
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Link copied");
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand("copy"); } catch { /* ignore */ }
+      ta.remove();
+      showToast(ok ? "Link copied" : url);
+    }
+  }
+
   function collectSettingsPatch() {
     const patch = {};
     const put = (key, v) => { if (v !== settingsOriginal[key]) patch[key] = v; };
@@ -3139,6 +3400,7 @@
       if (raw !== settingsOriginal[t.key]) patch[t.key] = raw.trim();
     });
     if (!setEl("primaryContact").value) return { error: "Choose a primary contact method." };
+    if ("name" in patch && !patch.name) return { error: "Gemach name can't be empty." };
     return { patch };
   }
 
@@ -3154,6 +3416,8 @@
       if (!data) return;
       if (data.error) { showToast(data.error); return; }
       GEMACH = data;
+      const mine = MY_GEMACHS.find(x => x.slug === gemachSlug);
+      if (mine && data.name) mine.name = data.name;
       renderGemachSwitcher();
       renderSettings();
       showToast("Settings saved");
@@ -3163,6 +3427,266 @@
       const b = document.getElementById("settings-save-btn");
       if (b) { b.disabled = false; b.textContent = "Save settings"; }
     }
+  }
+
+  // ── Network (Network Admins only) ─────────────────────────────────────────
+  const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Food", "Wedding", "Other"];
+  const NET = { gemachs: [], admins: [], categories: [] };
+  const netStore = { gemach: new Map(), admin: new Map(), category: new Map() };
+
+  function slugifyName(name) {
+    return String(name || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50).replace(/-+$/g, "") || "gemach";
+  }
+
+  async function loadNetwork() {
+    if (!isNetworkAdmin()) return;
+    const [g, a, c] = await Promise.all([
+      api("/admin/network/gemachs"), api("/admin/network/admins"), api("/admin/network/categories"),
+    ].map(p => p.catch(e => ({ error: e.message }))));
+    for (const [key, data, el] of [["gemachs", g, "net-gemachs"], ["admins", a, "net-admins"], ["categories", c, "net-categories"]]) {
+      if (!Array.isArray(data)) {
+        document.getElementById(el).innerHTML = `<div class="empty-state">${esc(data?.error || "Could not load")}</div>`;
+        NET[key] = [];
+      } else NET[key] = data;
+    }
+    if (Array.isArray(g)) renderNetGemachs();
+    if (Array.isArray(a)) { fillAdminFilter(); renderNetAdmins(); }
+    if (Array.isArray(c)) renderNetCategories();
+  }
+
+  function renderNetGemachs() {
+    netStore.gemach.clear();
+    const el = document.getElementById("net-gemachs");
+    if (!NET.gemachs.length) { el.innerHTML = '<div class="empty-state">No gemachs yet</div>'; return; }
+    el.innerHTML = NET.gemachs.map(g => {
+      const id = safeId(g.id); netStore.gemach.set(id, g);
+      const catOpts = GEMACH_CATEGORIES.map(c => `<option value="${c}"${g.category === c ? " selected" : ""}>${c}</option>`).join("") +
+        (g.category && !GEMACH_CATEGORIES.includes(g.category) ? `<option selected>${esc(g.category)}</option>` : "");
+      return `<div class="card net-row" id="ng-row-${id}">
+        <div class="net-row-head">
+          <div style="min-width:0">
+            <div class="card-title">${esc(g.name)}${g.active ? "" : ' <span class="tag tag-amber">Hidden</span>'}</div>
+            <div class="card-id">${esc(g.slug || "")} · ${esc(g.itemCount)} item${g.itemCount === 1 ? "" : "s"} · ${esc(g.adminCount)} admin${g.adminCount === 1 ? "" : "s"}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="switchGemach(netStore.gemach.get('${id}').slug)">Open</button>
+        </div>
+        <div class="net-controls">
+          <select aria-label="Requests mode" onchange="netPatchGemach('${id}', { mode: this.value }, this)">
+            <option value="Full"${g.mode !== "Directory" ? " selected" : ""}>Online requests</option>
+            <option value="Directory"${g.mode === "Directory" ? " selected" : ""}>Listing only</option>
+          </select>
+          <select aria-label="Category" onchange="netPatchGemach('${id}', { category: this.value }, this)">${catOpts}</select>
+        </div>
+        <label class="switch-row"><input type="checkbox" ${g.active ? "checked" : ""} onchange="netPatchGemach('${id}', { active: this.checked }, this)" /> Visible on whgemachs.org</label>
+      </div>`;
+    }).join("");
+  }
+
+  async function netPatchGemach(id, patch, control) {
+    const g = netStore.gemach.get(id);
+    if (!g) return;
+    if (control) control.disabled = true;
+    try {
+      const res = await api(`/admin/network/gemachs/${id}`, "PATCH", patch);
+      if (!res) return;
+      if (res.error) { showToast(res.error); renderNetGemachs(); return; }
+      NET.gemachs = NET.gemachs.map(x => (x.id === res.id ? res : x));
+      const mine = MY_GEMACHS.find(x => x.id === res.id);
+      if (mine) { mine.active = res.active; mine.name = res.name; mine.slug = res.slug; renderGemachSwitcher(); }
+      renderNetGemachs();
+      showToast("Saved");
+    } finally { if (control) control.disabled = false; }
+  }
+
+  let ngSlugTouched = false;
+  function openNewGemach() {
+    ngSlugTouched = false;
+    document.getElementById("ng-form").hidden = false;
+    document.getElementById("ng-done").hidden = true;
+    for (const k of ["name", "slug", "email", "phone"]) document.getElementById(`ng-${k}`).value = "";
+    document.getElementById("ng-category").innerHTML = GEMACH_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
+    document.getElementById("ng-category").value = "Other";
+    document.getElementById("ng-mode").value = "Full";
+    updateSlugPreview();
+    openSheet("net-gemach-sheet");
+  }
+  function updateSlugPreview() {
+    const slugEl = document.getElementById("ng-slug");
+    if (!ngSlugTouched) slugEl.value = document.getElementById("ng-name").value.trim() ? slugifyName(document.getElementById("ng-name").value) : "";
+    const slug = slugEl.value.trim().toLowerCase();
+    const taken = NET.gemachs.some(g => g.slug === slug);
+    document.getElementById("ng-slug-preview").textContent = slug
+      ? `${PUBLIC_BASE}${slug}${taken ? (ngSlugTouched ? " — already taken" : " — taken, a number will be added") : ""}`
+      : "Filled in from the name";
+  }
+  document.getElementById("ng-name").addEventListener("input", updateSlugPreview);
+  document.getElementById("ng-slug").addEventListener("input", () => { ngSlugTouched = document.getElementById("ng-slug").value.trim() !== ""; updateSlugPreview(); });
+
+  async function createGemach() {
+    const name = document.getElementById("ng-name").value.trim();
+    if (!name) { showToast("Name is required"); return; }
+    const body = {
+      name,
+      category: document.getElementById("ng-category").value,
+      mode: document.getElementById("ng-mode").value,
+      email: document.getElementById("ng-email").value.trim(),
+      phone: document.getElementById("ng-phone").value.trim(),
+    };
+    if (ngSlugTouched) body.slug = document.getElementById("ng-slug").value.trim().toLowerCase();
+    const btn = document.getElementById("ng-submit-btn");
+    btn.disabled = true;
+    try {
+      const res = await api("/admin/network/gemachs", "POST", body);
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
+      NET.gemachs = [...NET.gemachs, res].sort((a, b) => a.name.localeCompare(b.name));
+      MY_GEMACHS = [...MY_GEMACHS, { id: res.id, slug: res.slug, name: res.name, active: res.active }].sort((a, b) => a.name.localeCompare(b.name));
+      renderNetGemachs(); fillAdminFilter(); renderGemachSwitcher();
+      document.getElementById("ng-form").hidden = true;
+      document.getElementById("ng-done").hidden = false;
+      document.getElementById("ng-done-text").textContent = `“${res.name}” was created (hidden) at ${publicUrl(res.slug)}. Open it to fill in its settings and inventory, then make it visible here.`;
+      document.getElementById("ng-open-btn").onclick = () => switchGemach(res.slug);
+      showToast("Gemach created");
+    } finally { btn.disabled = false; }
+  }
+
+  function fillAdminFilter() {
+    const sel = document.getElementById("net-admin-filter");
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All gemachs</option><option value="__network">Network admins</option>' +
+      NET.gemachs.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join("");
+    sel.value = [...sel.options].some(o => o.value === cur) ? cur : "";
+  }
+
+  function renderNetAdmins() {
+    netStore.admin.clear();
+    const f = document.getElementById("net-admin-filter").value;
+    const list = NET.admins.filter(a => !f || (f === "__network" ? a.role === "Network Admin" : a.gemachs.some(g => g.id === f)));
+    const el = document.getElementById("net-admins");
+    if (!list.length) { el.innerHTML = '<div class="empty-state">No admins</div>'; return; }
+    el.innerHTML = list.map(a => {
+      const id = safeId(a.id); netStore.admin.set(id, a);
+      const gs = a.role === "Network Admin" ? "All gemachs" : a.gemachs.map(g => g.name).join(", ") || "—";
+      return `<div class="card net-row" id="na-row-${id}">
+        <div class="net-row-head">
+          <div style="min-width:0">
+            <div class="card-title">${esc(a.name || a.email)}${a.active ? "" : ' <span class="tag tag-red">Inactive</span>'}</div>
+            <div class="card-id">${esc(a.email)}</div>
+          </div>
+          <span class="tag tag-navy">${esc(a.role || "—")}</span>
+        </div>
+        <div class="muted-small">${esc(gs)}</div>
+        <div><button class="btn btn-ghost btn-sm" onclick="openAdminSheet('${id}')">Edit</button></div>
+      </div>`;
+    }).join("");
+  }
+
+  function openAdminSheet(id) {
+    const a = id ? netStore.admin.get(id) : null;
+    document.getElementById("na-title").textContent = a ? "Edit admin" : "Add admin";
+    document.getElementById("na-subtitle").textContent = a ? a.email : "They sign in with this Google account.";
+    document.getElementById("na-name").value = a?.name || "";
+    const emailEl = document.getElementById("na-email");
+    emailEl.value = a?.email || ""; emailEl.disabled = !!a;
+    document.getElementById("na-role").value = a?.role || "Manager";
+    const selected = new Set((a?.gemachs || []).map(g => g.id));
+    const pre = document.getElementById("net-admin-filter").value;
+    if (!a && pre && pre !== "__network") selected.add(pre);
+    document.getElementById("na-gemachs").innerHTML = NET.gemachs.map(g => `<label><input type="checkbox" value="${esc(g.id)}"${selected.has(g.id) ? " checked" : ""} /> ${esc(g.name)}${g.active ? "" : ' <span class="muted-small">(hidden)</span>'}</label>`).join("")
+      || '<span class="muted-small">No gemachs</span>';
+    document.getElementById("na-active").checked = a ? !!a.active : true;
+    document.getElementById("na-active-row").hidden = !a;
+    document.getElementById("na-invite-row").hidden = !!a;
+    document.getElementById("na-invite").checked = true;
+    const btn = document.getElementById("na-submit-btn");
+    btn.textContent = a ? "Save" : "Add admin";
+    btn.onclick = () => saveAdmin(a);
+    openSheet("net-admin-sheet");
+  }
+
+  async function saveAdmin(a) {
+    const body = {
+      name: document.getElementById("na-name").value.trim(),
+      role: document.getElementById("na-role").value,
+      gemachIds: [...document.querySelectorAll("#na-gemachs input:checked")].map(i => i.value),
+    };
+    if (!body.name) { showToast("Name is required"); return; }
+    if (body.role !== "Network Admin" && !body.gemachIds.length) { showToast("Choose at least one gemach"); return; }
+    if (a) body.active = document.getElementById("na-active").checked;
+    else {
+      body.email = document.getElementById("na-email").value.trim();
+      body.sendInvite = document.getElementById("na-invite").checked;
+      if (!safeEmail(body.email)) { showToast("Enter a valid email address"); return; }
+    }
+    const btn = document.getElementById("na-submit-btn");
+    btn.disabled = true;
+    try {
+      const res = await api(a ? `/admin/network/admins/${safeId(a.id)}` : "/admin/network/admins", a ? "PATCH" : "POST", body);
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
+      NET.admins = a ? NET.admins.map(x => (x.id === res.id ? res : x)) : [...NET.admins, res];
+      NET.admins.sort((x, y) => (x.name || "").localeCompare(y.name || ""));
+      renderNetAdmins();
+      closeSheet("net-admin-sheet");
+      showToast(a ? "Admin updated" : res.invited ? "Admin added · invite sent" : "Admin added");
+    } finally { btn.disabled = false; }
+  }
+
+  function renderNetCategories() {
+    netStore.category.clear();
+    const el = document.getElementById("net-categories");
+    if (!NET.categories.length) { el.innerHTML = '<div class="empty-state">No categories yet</div>'; return; }
+    el.innerHTML = NET.categories.map(c => {
+      const id = safeId(c.id); netStore.category.set(id, c);
+      return `<div class="card net-row" id="nc-row-${id}">
+        <div class="net-row-head">
+          <div style="min-width:0">
+            <div class="card-title">${esc(c.icon || "▫️")} ${esc(c.name)}${c.active ? "" : ' <span class="tag tag-amber">Off</span>'}</div>
+            <div class="card-id">Order ${esc(c.displayOrder ?? "—")} · ${esc(c.itemTypeCount ?? 0)} item type${c.itemTypeCount === 1 ? "" : "s"}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="openCategorySheet('${id}')">Edit</button>
+        </div>
+        ${c.keywords?.length ? `<div class="muted-small">${esc(c.keywords.join(", "))}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+
+  function openCategorySheet(id) {
+    const c = id ? netStore.category.get(id) : null;
+    document.getElementById("nc-title").textContent = c ? "Edit category" : "Add category";
+    document.getElementById("nc-icon").value = c?.icon || "";
+    document.getElementById("nc-name").value = c?.name || "";
+    document.getElementById("nc-keywords").value = (c?.keywords || []).join(", ");
+    const maxOrder = Math.max(0, ...NET.categories.map(x => x.displayOrder || 0));
+    document.getElementById("nc-order").value = c ? (c.displayOrder ?? "") : maxOrder + 10;
+    document.getElementById("nc-active").checked = c ? !!c.active : true;
+    document.getElementById("nc-submit-btn").onclick = () => saveCategory(c);
+    openSheet("net-category-sheet");
+  }
+
+  async function saveCategory(c) {
+    const orderRaw = document.getElementById("nc-order").value.trim();
+    const body = {
+      name: document.getElementById("nc-name").value.trim(),
+      icon: document.getElementById("nc-icon").value.trim(),
+      keywords: document.getElementById("nc-keywords").value,
+      displayOrder: orderRaw === "" ? null : Number(orderRaw),
+      active: document.getElementById("nc-active").checked,
+    };
+    if (!body.name) { showToast("Name is required"); return; }
+    const btn = document.getElementById("nc-submit-btn");
+    btn.disabled = true;
+    try {
+      const res = await api(c ? `/admin/network/categories/${safeId(c.id)}` : "/admin/network/categories", c ? "PATCH" : "POST", body);
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
+      NET.categories = c ? NET.categories.map(x => (x.id === res.id ? res : x)) : [...NET.categories, res];
+      NET.categories.sort((x, y) => ((x.displayOrder ?? 1e9) - (y.displayOrder ?? 1e9)) || x.name.localeCompare(y.name));
+      renderNetCategories();
+      closeSheet("net-category-sheet");
+      showToast(c ? "Category updated" : "Category added");
+    } finally { btn.disabled = false; }
   }
 
   // ── Sheet helpers ─────────────────────────────────────────────────────────
@@ -3242,6 +3766,15 @@
 
   // ── Catalog ───────────────────────────────────────────────────────────────
   let editingItemTypeId = null;
+  let browseCategories = []; // active Product Categories [{id,name,icon}]
+
+  function fillCategorySelect(selected) {
+    const sel = document.getElementById("it-category");
+    sel.innerHTML = '<option value="">— none —</option>' +
+      browseCategories.map(c => `<option value="${esc(c.id)}">${esc((c.icon ? c.icon + " " : "") + c.name)}</option>`).join("");
+    sel.value = browseCategories.some(c => c.id === selected) ? selected : "";
+    sel.dataset.original = sel.value;
+  }
   let editingItemId = null;
   let pendingPhotoUrl = null;
 
@@ -3254,6 +3787,7 @@
     document.getElementById("it-description").value = "";
     document.getElementById("it-order").value = catalogItemTypes.length + 1;
     document.getElementById("it-active").value = "true";
+    fillCategorySelect("");
     clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
     openSheet("item-type-sheet");
@@ -3268,6 +3802,7 @@
     document.getElementById("it-description").value = t.description;
     document.getElementById("it-order").value = t.displayOrder;
     document.getElementById("it-active").value = t.active ? "true" : "false";
+    fillCategorySelect(t.categoryId || "");
     if (pendingPhotoUrl) showPhotoPreview(pendingPhotoUrl);
     else clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
@@ -3284,13 +3819,17 @@
       active: document.getElementById("it-active").value === "true",
       r2PhotoUrl: pendingPhotoUrl || null
     };
+    const catSel = document.getElementById("it-category");
+    if (!editingItemTypeId ? catSel.value : catSel.value !== catSel.dataset.original) body.categoryId = catSel.value;
     const btn = document.getElementById("item-type-submit-btn");
     btn.disabled = true; btn.textContent = "Saving…";
+    let res;
     if (editingItemTypeId) {
-      await api(`/admin/catalog/item-types/${editingItemTypeId}`, "PATCH", body);
+      res = await api(`/admin/catalog/item-types/${safeId(editingItemTypeId)}`, "PATCH", body);
     } else {
-      await api("/admin/catalog/item-types", "POST", body);
+      res = await api("/admin/catalog/item-types", "POST", body);
     }
+    if (res?.error) { btn.disabled = false; btn.textContent = "Save"; showToast(typeof res.error === "string" ? res.error : "Could not save"); return; }
     closeSheet("item-type-sheet");
     await loadInventory();
     showToast(editingItemTypeId ? "Item type updated" : "Item type added");
@@ -3315,7 +3854,7 @@
     document.getElementById("physical-item-sheet-title").textContent = "Edit Item";
     document.getElementById("pi-type").value = item.itemTypeId || "";
     document.getElementById("pi-id").value = item.itemId;
-    document.getElementById("pi-condition").value = item.condition;
+    document.getElementById("pi-condition").value = item.condition === "Needs Repair" ? "Needs Repair" : "Good";
     document.getElementById("pi-active").value = item.active ? "true" : "false";
     document.getElementById("pi-notes").value = item.notes || "";
     document.getElementById("physical-item-submit-btn").onclick = saveItem;
@@ -3337,10 +3876,11 @@
     btn.disabled = true; btn.textContent = "Saving…";
     let result;
     if (editingItemId) {
-      result = await api(`/admin/catalog/items/${editingItemId}`, "PATCH", body);
+      result = await api(`/admin/catalog/items/${safeId(editingItemId)}`, "PATCH", body);
     } else {
       result = await api("/admin/catalog/items", "POST", body);
     }
+    if (result?.error) { btn.disabled = false; btn.textContent = "Save"; showToast(result.error); return; }
     closeSheet("physical-item-sheet");
     await refreshItemScreens();
     const genId = result?.generatedId;
