@@ -621,6 +621,15 @@
       margin-bottom: 0.4rem;
     }
 
+    .inventory-group--inactive {
+      opacity: 0.45;
+    }
+
+    .inventory-group--inactive .inventory-group-title {
+      text-decoration: line-through;
+      text-decoration-color: var(--muted);
+    }
+
     .inventory-group-title {
       font-size: 0.82rem;
       font-weight: 600;
@@ -1893,12 +1902,16 @@
     container.innerHTML = header + typesToShow.map(type => {
       const items = groups[type.id] || groups[type.name] || [];
       const typeName = type.name.replace(/'/g, "&#39;");
+      const typeJson = JSON.stringify(type).replace(/'/g,"&#39;");
+      const inactive = !type.active;
       return `
-      <div class="inventory-group">
+      <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}">
         <div class="inventory-group-header">
           <div style="display:flex;align-items:center;gap:0.5rem">
             <span class="inventory-group-title">${type.name}</span>
             <span class="badge">${items.length}</span>
+            ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
+            <button class="btn btn-ghost btn-sm" style="padding:0.1rem 0.35rem;font-size:0.75rem;opacity:0.6" onclick='openEditItemType(${typeJson})' title="Edit item type">✎</button>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="openAddItem('${type.id}', '${typeName}')">+ Add Item</button>
         </div>
