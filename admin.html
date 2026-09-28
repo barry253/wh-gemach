@@ -895,7 +895,10 @@
 
     <!-- Inventory -->
     <div class="screen" id="screen-inventory">
-      <div class="section-label">Inventory status</div>
+      <div class="section-label" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Inventory status</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddItem()">+ Add Item</button>
+      </div>
       <div id="inventory-list">
         <div class="loading">Loading…</div>
       </div>
@@ -2257,7 +2260,7 @@
       result = await api("/admin/catalog/items", "POST", body);
     }
     closeSheet("physical-item-sheet");
-    await loadCatalog();
+    await refreshItemScreens();
     const genId = result?.generatedId;
     showToast(editingItemId ? "Item updated" : `Item added${genId && !body.itemId ? " — ID: " + genId : ""}`);
     btn.disabled = false; btn.textContent = "Save";
@@ -2270,8 +2273,16 @@
     btn.disabled = true; btn.textContent = "Deleting…";
     await api(`/admin/catalog/items/${editingItemId}`, "DELETE");
     closeSheet("physical-item-sheet");
-    await loadCatalog();
+    await refreshItemScreens();
     showToast("Item deleted");
+  }
+
+  async function refreshItemScreens() {
+    const invActive = document.getElementById("screen-inventory")?.classList.contains("active");
+    const catActive = document.getElementById("screen-catalog")?.classList.contains("active");
+    if (invActive) await loadInventory();
+    if (catActive) await loadCatalog();
+    if (!invActive && !catActive) await loadCatalog();
   }
 
   async function handleFileSelect(event) {
