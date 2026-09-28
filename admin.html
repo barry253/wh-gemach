@@ -1274,6 +1274,7 @@
 
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('physical-item-sheet')">Cancel</button>
+      <button class="btn btn-danger" id="physical-item-delete-btn" style="display:none" onclick="deleteItem()">Delete</button>
       <button class="btn btn-primary" id="physical-item-submit-btn">Save</button>
     </div>
   </div>
@@ -2220,6 +2221,7 @@
     document.getElementById("pi-active").value = "true";
     document.getElementById("pi-notes").value = "";
     document.getElementById("physical-item-submit-btn").onclick = saveItem;
+    document.getElementById("physical-item-delete-btn").style.display = "none";
     openSheet("physical-item-sheet");
   }
 
@@ -2232,6 +2234,7 @@
     document.getElementById("pi-active").value = item.active ? "true" : "false";
     document.getElementById("pi-notes").value = item.notes || "";
     document.getElementById("physical-item-submit-btn").onclick = saveItem;
+    document.getElementById("physical-item-delete-btn").style.display = "";
     openSheet("physical-item-sheet");
   }
 
@@ -2258,6 +2261,17 @@
     const genId = result?.generatedId;
     showToast(editingItemId ? "Item updated" : `Item added${genId && !body.itemId ? " — ID: " + genId : ""}`);
     btn.disabled = false; btn.textContent = "Save";
+  }
+
+  async function deleteItem() {
+    const itemId = document.getElementById("pi-id").value || editingItemId;
+    if (!confirm(`Delete item "${itemId}"? This cannot be undone.`)) return;
+    const btn = document.getElementById("physical-item-delete-btn");
+    btn.disabled = true; btn.textContent = "Deleting…";
+    await api(`/admin/catalog/items/${editingItemId}`, "DELETE");
+    closeSheet("physical-item-sheet");
+    await loadCatalog();
+    showToast("Item deleted");
   }
 
   async function handleFileSelect(event) {
