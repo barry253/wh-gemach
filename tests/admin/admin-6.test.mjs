@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 const html = fs.readFileSync(new URL("../../admin.html", import.meta.url), "utf8");
-process.chdir(new URL("../.out/", import.meta.url).pathname); // screenshots land in tests/.out
+process.chdir(new URL("../test-output/", import.meta.url).pathname); // screenshots land in tests/test-output
 const exe = process.env.CHROMIUM_PATH || ""; // blank = Playwright's own Chromium
 const browser = await chromium.launch({ executablePath: fs.existsSync(exe) ? exe : undefined });
 const ok = (c, m) => { console.log(c ? "PASS" : "FAIL", m); if (!c) process.exitCode = 1; };

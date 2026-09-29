@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), { spawn } = require('child_pro
 const { directory, gemachPayload } = require('./mock.js');
 const API = 'https://wh-gemach.barry253-0f5.workers.dev';
 const BASE = 'http://localhost:8796';
-const SHOTS = path.join(__dirname, '..', '.out');
+const SHOTS = path.join(__dirname, '..', 'test-output');
 const FONTDIR = path.join(path.dirname(require.resolve('@fontsource/figtree/package.json')), '..');
 const posts = [], errors = [];
 const errs = p => p.$$eval('.field-error:not([hidden]), #error-msg:not([hidden])', els => els.map(e => e.textContent).join(' | '));

@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-fs.mkdirSync(path.join(here, ".out"), { recursive: true });
+fs.mkdirSync(path.join(here, "test-output"), { recursive: true });
 const build = spawnSync("sh", ["build.sh"], { cwd: path.join(here, ".."), stdio: "inherit" });
 if (build.status !== 0) process.exit(1);
 

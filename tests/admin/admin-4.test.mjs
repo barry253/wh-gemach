@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 const html = fs.readFileSync(new URL("../../admin.html", import.meta.url), "utf8");
-process.chdir(new URL("../.out/", import.meta.url).pathname); // screenshots land in tests/.out
+process.chdir(new URL("../test-output/", import.meta.url).pathname); // screenshots land in tests/test-output
 const exe = process.env.CHROMIUM_PATH || ""; // blank = Playwright's own Chromium
 const browser = await chromium.launch({ executablePath: fs.existsSync(exe) ? exe : undefined });
 const ok = (c, m) => { console.log(c ? "PASS" : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -113,6 +113,7 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.waitForFunction(() => document.body.textContent.includes("Settings saved"));
   const patch = reqs.filter(r => r.method === "PATCH" && r.path === "/admin/gemach").at(-1).body;
   ok(JSON.stringify(patch) === JSON.stringify({ name: "WH Medical & Mobility" }), "rename PATCH: " + JSON.stringify(patch));
+  await page.waitForFunction(() => document.getElementById("topbar-gemach")?.textContent === "WH Medical & Mobility", null, { timeout: 5000 }).catch(() => {});
   ok(await page.textContent("#topbar-gemach") === "WH Medical & Mobility", "top bar label updated after rename");
 
   // condition in item sheet

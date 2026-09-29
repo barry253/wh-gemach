@@ -43,5 +43,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
-          path: tests/.out/*.png
+          path: tests/test-output/*.png
           retention-days: 7
