@@ -282,6 +282,20 @@
     .form-group .check-list label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 400; margin: 0; }
     .form-group .check-list input { width: auto; flex: none; accent-color: var(--navy); }
     .muted-small { font-size: 0.75rem; color: var(--muted); }
+    /* Quantity items (counted, not numbered) */
+    .qty-list { display: grid; gap: 0.5rem; }
+    .qty-line { display: grid; grid-template-columns: 1fr 6.5rem; align-items: center; gap: 0.15rem 0.75rem; }
+    .qty-line .qty-name { font-size: 0.88rem; font-weight: 500; }
+    .qty-line input { width: 100%; }
+    .qty-line .muted-small { grid-column: 1 / -1; }
+    .qty-line .warn, .qty-warn { color: var(--amber); }
+    .check-row { display: flex; align-items: center; gap: 0.45rem; cursor: pointer; }
+    .form-group .check-row input { width: 18px; height: 18px; min-height: 0; flex: 0 0 auto; margin: 0; padding: 0; }
+    .form-group .check-row span { flex: 1; text-align: left; }
+    .qty-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 0.5rem; padding: 0.5rem 0; }
+    .qty-stat { border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.6rem; }
+    .qty-stat b { display: block; font-size: 1.15rem; }
+    .qty-stat span { font-size: 0.72rem; color: var(--muted); }
 
     .settings-note {
       font-size: 0.82rem;
@@ -1241,6 +1255,11 @@
     <h3 id="confirm-title">Confirm request</h3>
     <p class="sheet-subtitle" id="confirm-subtitle"></p>
 
+    <div class="form-group" id="confirm-qty-group" style="display:none">
+      <label>How many are you confirming?</label>
+      <div id="confirm-qty-list" class="qty-list"></div>
+    </div>
+
     <div class="form-group">
       <label>Message to borrower</label>
       <textarea id="confirm-message" rows="5"></textarea>
@@ -1456,7 +1475,15 @@
       <label>Date returned</label>
       <input type="date" id="return-date" />
     </div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1.25rem">
+    <div class="form-group" id="return-qty-group" style="display:none">
+      <label for="return-qty">How many came back?</label>
+      <input type="number" id="return-qty" min="0" step="1" inputmode="numeric" style="max-width:8rem" />
+      <p class="muted-small" id="return-qty-note" style="margin-top:0.3rem"></p>
+      <label class="check-row" id="return-reduce-row" style="display:none;margin-top:0.5rem;font-weight:400;font-size:0.85rem">
+        <input type="checkbox" id="return-reduce" /> <span id="return-reduce-label">Take the missing ones out of inventory</span>
+      </label>
+    </div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1.25rem" id="return-explainer">
       This will mark the item as returned and make it available for other borrowers.
     </p>
     <div class="sheet-actions">
@@ -1477,6 +1504,11 @@
       <label for="pickup-item">Which item is going out?</label>
       <select id="pickup-item"></select>
       <p class="login-error" id="pickup-item-error" style="text-align:left"></p>
+    </div>
+    <div class="form-group" id="pickup-qty-group" style="margin-top:0.75rem;display:none">
+      <label for="pickup-qty">How many are going out?</label>
+      <input type="number" id="pickup-qty" min="1" step="1" inputmode="numeric" style="max-width:8rem" />
+      <p class="login-error" id="pickup-qty-error" style="text-align:left"></p>
     </div>
     <div class="form-group" style="margin-top:0.75rem">
       <label>Date picked up</label>
@@ -1612,6 +1644,10 @@
         <input type="date" id="edit-res-end" />
       </div>
     </div>
+    <div class="form-group" id="edit-res-qty-group" style="display:none">
+      <label for="edit-res-qty">How many</label>
+      <input type="number" id="edit-res-qty" min="1" step="1" inputmode="numeric" style="max-width:8rem" />
+    </div>
     <div class="form-group">
       <label>Notes</label>
       <textarea id="edit-res-notes" rows="3" placeholder="Optional notes"></textarea>
@@ -1660,6 +1696,24 @@
       <label for="it-category">Browse category</label>
       <select id="it-category"><option value="">— none —</option></select>
       <div class="muted-small" style="margin-top:0.3rem">Where this item appears when people browse whgemachs.org by category.</div>
+    </div>
+    <div class="form-group">
+      <label for="it-tracking">How do you keep track of these?</label>
+      <select id="it-tracking" onchange="updateTrackingUi()">
+        <option value="Units">Numbered units (WC-001, WC-002…)</option>
+        <option value="Quantity">By count (e.g. 60 folding chairs)</option>
+      </select>
+      <div class="muted-small" style="margin-top:0.3rem" id="it-tracking-hint"></div>
+    </div>
+    <div class="form-row" id="it-qty-row" style="display:none">
+      <div class="form-group">
+        <label for="it-owned">How many you own</label>
+        <input type="number" id="it-owned" min="0" step="1" inputmode="numeric" placeholder="e.g. 60" />
+      </div>
+      <div class="form-group">
+        <label for="it-oos">Out of service</label>
+        <input type="number" id="it-oos" min="0" step="1" inputmode="numeric" placeholder="0" />
+      </div>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -2349,6 +2403,9 @@
       const dates = `${neededOn ? `Needed ${neededOn}` : "Needed date not given"} · ${
         r.openEnded ? "open-ended" : returnOn ? `return ~${returnOn}` : "return date not given"}`;
       const items = (r.itemNames || []).join(", ");
+      // Quantity items asking for more than is free for those dates: say so (the request can still be confirmed).
+      const short = (r.items || []).filter(i => i.quantity != null && i.available != null && i.quantity > i.available)
+        .map(i => `Only ${i.available} ${i.name} free for these dates (asked for ${i.quantity})`);
       // whatsappUrl removed — using waUrl() instead
 
       return `<div class="card" id="req-${rid}">
@@ -2363,6 +2420,7 @@
         </div>
         <div class="card-meta">
           ${items ? `<span>📦 ${esc(items)}</span>` : ""}
+          ${short.map(s => `<span class="qty-warn">⚠ ${esc(s)}</span>`).join("")}
           ${r.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(r.eventDate, true))}</span>` : ""}
           ${isAppt ? "" : `<span>📅 ${esc(dates)}</span>`}
           ${isAppt && r.preferredTimes ? `<span>🕒 ${esc(r.preferredTimes)}</span>` : ""}
@@ -2388,20 +2446,53 @@
     document.getElementById("confirm-subtitle").textContent =
       `${(r.itemNames || []).join(", ")} · ${r.requestId}`;
 
-    const itemList = (r.itemNames || []).join(" and ");
-    const msg = renderMessage("confirm", r.name.split(" ")[0], itemList, { eventDate: r.eventDate });
-    document.getElementById("confirm-message").value = msg;
+    // Quantity items (e.g. chairs): the admin can confirm a different count than was asked for.
+    const qtyItems = (r.items || []).filter(i => i.quantity != null);
+    const qtyGroup = document.getElementById("confirm-qty-group");
+    const qtyList = document.getElementById("confirm-qty-list");
+    qtyGroup.style.display = qtyItems.length ? "" : "none";
+    qtyList.innerHTML = qtyItems.map(i => {
+      const iid = safeId(i.id);
+      const free = i.available != null
+        ? `${i.available} free for these dates · ${i.owned} total`
+        : `${i.owned} total`;
+      return `<div class="qty-line">
+        <label class="qty-name" for="cq-${iid}">${esc(i.name)}</label>
+        <input type="number" id="cq-${iid}" data-qty="${iid}" min="1" step="1" inputmode="numeric" value="${esc(i.quantity)}" />
+        <div class="muted-small${i.available != null && i.quantity > i.available ? " warn" : ""}">Asked for ${esc(i.quantity)} · ${esc(free)}</div>
+      </div>`;
+    }).join("");
+    const currentQty = () => Object.fromEntries(qtyItems.map(i => [i.id, parseInt(document.getElementById(`cq-${safeId(i.id)}`).value, 10)]));
+    const itemListNow = () => {
+      const q = currentQty();
+      return (r.items || []).map(i => i.quantity != null ? `${i.name} × ${q[i.id] > 0 ? q[i.id] : i.quantity}` : i.name).join(" and ")
+        || (r.itemNames || []).join(" and ");
+    };
+    const msgEl = document.getElementById("confirm-message");
+    let lastAuto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate });
+    msgEl.value = lastAuto;
+    qtyList.oninput = () => {
+      // Keep the message in step with the counts, unless the admin has edited it by hand.
+      const auto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate });
+      if (msgEl.value === lastAuto) msgEl.value = auto;
+      lastAuto = auto;
+    };
 
     setupSendBy("confirm", r, "confirm-submit-btn", {
       whatsapp: "Confirm & open WhatsApp", sms: "Confirm & open text message", email: "Confirm & email", none: "Confirm without message",
     });
 
     document.getElementById("confirm-submit-btn").onclick = async () => {
+      const quantities = currentQty();
+      const badQty = qtyItems.find(i => !(Number.isInteger(quantities[i.id]) && quantities[i.id] >= 1));
+      if (badQty) { showToast(`Enter how many ${badQty.name} (1 or more)`); return; }
       const message = document.getElementById("confirm-message").value;
       const { choice, c } = SEND_BY.confirm;
       if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
       const sendMessage = choice === "email";
-      const res = await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage, adminName });
+      const body = { message, sendMessage, adminName };
+      if (qtyItems.length) body.quantities = quantities;
+      const res = await api(`/admin/requests/${r.id}/confirm`, "POST", body);
       if (res && res.error) { showToast(res.error); return; }
       closeSheet("confirm-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
@@ -2581,6 +2672,7 @@
             <span class="loan-row-name">${esc(l.borrowerName)}</span>
             <span class="loan-row-item">${esc(l.itemTypeName || "")}</span>
             ${l.itemId ? `<span class="loan-row-code">${esc(l.itemId)}</span>` : ""}
+            ${l.isQuantity ? `<span class="loan-row-code">× ${esc(l.quantity)}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
           </div>
           <span class="loan-row-date">${esc(fmt(l.dateBorrowed) || "—")}</span>
@@ -2613,16 +2705,49 @@
   function openReturn(l) {
     currentLoan = l;
     document.getElementById("return-subtitle").textContent =
-      `${l.borrowerName} · ${l.itemId || l.itemTypeName}`;
+      `${l.borrowerName} · ${l.itemId || l.itemTypeName}${l.isQuantity ? ` × ${l.quantity}` : ""}`;
     document.getElementById("return-date").value = new Date().toISOString().split("T")[0];
+
+    // Quantity loans: count what came back; anything short is noted, and can come off the inventory count.
+    const qGroup = document.getElementById("return-qty-group");
+    const qIn = document.getElementById("return-qty");
+    const qNote = document.getElementById("return-qty-note");
+    const reduceRow = document.getElementById("return-reduce-row");
+    const reduce = document.getElementById("return-reduce");
+    qGroup.style.display = l.isQuantity ? "" : "none";
+    document.getElementById("return-explainer").textContent = l.isQuantity
+      ? "What comes back is free for other borrowers right away."
+      : "This will mark the item as returned and make it available for other borrowers.";
+    reduce.checked = false;
+    const syncReturnQty = () => {
+      const back = parseInt(qIn.value, 10);
+      const missing = Number.isInteger(back) && back >= 0 && back <= l.quantity ? l.quantity - back : 0;
+      qNote.textContent = missing ? `${missing} missing — this will be noted on the loan and in History.` : `All ${l.quantity} back.`;
+      qNote.classList.toggle("qty-warn", missing > 0);
+      reduceRow.style.display = missing ? "flex" : "none";
+      document.getElementById("return-reduce-label").textContent =
+        `They're gone for good — lower the ${l.itemTypeName || "item"} count by ${missing}`;
+    };
+    if (l.isQuantity) { qIn.max = l.quantity; qIn.value = l.quantity; syncReturnQty(); }
+    qIn.oninput = syncReturnQty;
 
     document.getElementById("return-submit-btn").onclick = async () => {
       const returnDate = document.getElementById("return-date").value;
-      await api(`/admin/loans/${l.id}/return`, "POST", { returnDate });
+      const body = { returnDate };
+      if (l.isQuantity) {
+        const back = parseInt(qIn.value, 10);
+        if (!(Number.isInteger(back) && back >= 0 && back <= l.quantity)) { showToast(`Enter how many came back (0–${l.quantity})`); return; }
+        body.quantityReturned = back;
+        if (back < l.quantity && reduce.checked) body.reduceOwned = true;
+      }
+      const res = await api(`/admin/loans/${l.id}/return`, "POST", body);
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
       closeSheet("return-sheet");
       document.getElementById(`loan-${safeId(l.id)}`)?.remove();
       loadDashboard();
-      showToast("Item marked as returned");
+      loadLoans();
+      showToast(res.missing ? `Returned · ${res.missing} missing (noted)` : "Item marked as returned");
     };
 
     openSheet("return-sheet");
@@ -2685,6 +2810,7 @@
             <span class="loan-row-name">${esc(r.borrowerName)}</span>
             <span class="loan-row-item">${esc(r.itemTypeName || "Item TBD")}</span>
             ${r.itemId ? `<span class="loan-row-code">${esc(r.itemId)}</span>` : ""}
+            ${r.isQuantity ? `<span class="loan-row-code">× ${esc(r.quantity)}</span>` : ""}
           </div>
           <span class="loan-row-date">${esc(dates)}</span>
           <span class="tag tag-navy loan-row-tag">Reserved</span>
@@ -2720,17 +2846,26 @@
     document.getElementById("edit-res-start").value = r.reservationStart || "";
     document.getElementById("edit-res-end").value   = r.reservationEnd   || "";
     document.getElementById("edit-res-notes").value = r.notes            || "";
+    document.getElementById("edit-res-qty-group").style.display = r.isQuantity ? "" : "none";
+    document.getElementById("edit-res-qty").value = r.isQuantity ? r.quantity : "";
     document.getElementById("edit-res-submit-btn").onclick = async () => {
       const btn = document.getElementById("edit-res-submit-btn");
-      btn.disabled = true;
-      btn.textContent = "Saving…";
-      await api(`/admin/reservations/${r.id}`, "PATCH", {
+      const body = {
         reservationStart: document.getElementById("edit-res-start").value || null,
         reservationEnd:   document.getElementById("edit-res-end").value   || null,
         notes:            document.getElementById("edit-res-notes").value  || null
-      });
+      };
+      if (r.isQuantity) {
+        const n = parseInt(document.getElementById("edit-res-qty").value, 10);
+        if (!(Number.isInteger(n) && n >= 1)) { showToast("Enter how many (1 or more)"); return; }
+        body.quantity = n;
+      }
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      const res = await api(`/admin/reservations/${r.id}`, "PATCH", body);
       btn.disabled = false;
       btn.textContent = "Save changes";
+      if (res && res.error) { showToast(typeof res.error === "string" ? res.error : "Could not save"); return; }
       closeSheet("edit-res-sheet");
       loadReservations();
       showToast("Reservation updated");
@@ -2765,7 +2900,14 @@
     const select = document.getElementById("pickup-item");
     const errEl = document.getElementById("pickup-item-error");
     errEl.style.display = "none";
-    const needsUnit = !r.itemRecId;
+    // Quantity reservations have no unit to pick — just confirm how many are going out.
+    const qGroup = document.getElementById("pickup-qty-group");
+    const qIn = document.getElementById("pickup-qty");
+    const qErr = document.getElementById("pickup-qty-error");
+    qErr.style.display = "none";
+    qGroup.style.display = r.isQuantity ? "block" : "none";
+    if (r.isQuantity) qIn.value = r.quantity;
+    const needsUnit = !r.itemRecId && !r.isQuantity;
     group.style.display = needsUnit ? "block" : "none";
     select.innerHTML = "";
     let units = [];
@@ -2808,11 +2950,17 @@
         body.itemId = chosen.id;
         body.itemCode = chosen.itemId;
       }
+      if (r.isQuantity) {
+        const n = parseInt(qIn.value, 10);
+        if (!(Number.isInteger(n) && n >= 1)) { qErr.textContent = "Enter how many are going out (1 or more)."; qErr.style.display = "block"; return; }
+        body.quantity = n;
+      }
       const res = await api(`/admin/loans/${r.id}/pickup`, "POST", body);
       if (res && res.error) {
-        errEl.textContent = res.error;
-        errEl.style.display = "block";
-        group.style.display = "block";
+        const el = r.isQuantity ? qErr : errEl;
+        el.textContent = res.error;
+        el.style.display = "block";
+        if (!r.isQuantity) group.style.display = "block";
         return;
       }
       closeSheet("pickup-sheet");
@@ -2825,7 +2973,7 @@
 
   function openPickupInstructions(r) {
     document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
-    const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.itemTypeName);
+    const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName);
     document.getElementById("pickup-instructions-message").value = msg;
     setupSendBy("pickup-instructions", r, "pickup-instructions-send-btn",
       { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Open email", none: "Close" }, { noNone: true, mailto: true });
@@ -2856,7 +3004,8 @@
     catalogItemTypes = (typesData || []).slice().sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
     // Populate pi-type dropdown for Add/Edit Item sheet
     const select = document.getElementById("pi-type");
-    const types = itemsData?.itemTypes || [];
+    const qtyTypeIds = new Set(catalogItemTypes.filter(t => t.tracking === "Quantity").map(t => t.id));
+    const types = (itemsData?.itemTypes || []).filter(t => !qtyTypeIds.has(t.id)); // counted types have no units
     select.innerHTML = '<option value="">Select type…</option>' +
       types.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
     renderInventory();
@@ -2897,9 +3046,13 @@
       return;
     }
 
+    // Quantity types have no unit rows; filters use their counts instead.
+    const qtyMatches = t => inventoryFilter === "available" ? t.availableToday > 0
+      : inventoryFilter === "onloan" ? t.outNow > 0
+      : inventoryFilter === "repair" ? t.outOfService > 0 : true;
     const typesToShow = inventoryFilter === "all"
       ? catalogItemTypes
-      : catalogItemTypes.filter(t => (groups[t.id] || groups[t.name] || []).length > 0);
+      : catalogItemTypes.filter(t => t.tracking === "Quantity" ? qtyMatches(t) : (groups[t.id] || groups[t.name] || []).length > 0);
 
     if (!typesToShow.length) {
       container.innerHTML = header + '<div class="empty-state">No items match this filter</div>';
@@ -2929,6 +3082,32 @@
             </div>
           </div>`;
         }).join("") : '<div style="color:var(--muted);font-size:0.8rem;padding:0.5rem 0">No items yet</div>';
+      if (type.tracking === "Quantity") {
+        const stat = (n, label) => `<div class="qty-stat"><b>${esc(n ?? 0)}</b><span>${esc(label)}</span></div>`;
+        return `
+      <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${tid}">
+        <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="inventory-group-chevron">▾</span>
+            <span class="inventory-group-title">${esc(type.name)}</span>
+            <span class="badge">${esc(type.quantityOwned)}</span>
+            ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
+            <button class="btn btn-ghost btn-sm" style="padding:0.1rem 0.35rem;font-size:0.75rem;opacity:0.6" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))" title="Edit item type">✎</button>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">Edit count</button>
+        </div>
+        <div class="inventory-group-body">
+          <div class="qty-stats">
+            ${stat(type.quantityOwned, "own")}
+            ${stat(type.availableToday, "free today")}
+            ${stat(type.outNow, "out now")}
+            ${stat(type.reservedAhead, "reserved ahead")}
+            ${type.outOfService ? stat(type.outOfService, "out of service") : ""}
+          </div>
+          <div class="muted-small">Counted by quantity — who has them is under Loans and Reservations.</div>
+        </div>
+      </div>`;
+      }
       return `
       <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${tid}">
         <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
@@ -4030,9 +4209,31 @@
     document.getElementById("it-order").value = catalogItemTypes.length + 1;
     document.getElementById("it-active").value = "true";
     fillCategorySelect("");
+    setTrackingFields({ tracking: "Units", quantityOwned: "", outOfService: "", itemCount: 0 });
     clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
     openSheet("item-type-sheet");
+  }
+
+  let editingTracking = null; // tracking the item type had when the sheet opened
+  function setTrackingFields(t) {
+    editingTracking = t.tracking || "Units";
+    document.getElementById("it-tracking").value = editingTracking;
+    document.getElementById("it-tracking").dataset.itemCount = t.itemCount || 0;
+    document.getElementById("it-owned").value = t.tracking === "Quantity" ? (t.quantityOwned ?? "") : "";
+    document.getElementById("it-oos").value = t.tracking === "Quantity" && t.outOfService ? t.outOfService : "";
+    updateTrackingUi();
+  }
+  function updateTrackingUi() {
+    const sel = document.getElementById("it-tracking");
+    const qty = sel.value === "Quantity";
+    const units = Number(sel.dataset.itemCount || 0);
+    document.getElementById("it-qty-row").style.display = qty ? "" : "none";
+    document.getElementById("it-tracking-hint").textContent = qty
+      ? (editingTracking !== "Quantity" && units
+        ? `This type has ${units} numbered unit${units === 1 ? "" : "s"}. Delete ${units === 1 ? "it" : "them"} first, then switch.`
+        : "People choose how many they need; what's free depends on their dates.")
+      : "Each piece gets its own ID so you know exactly which one is out.";
   }
 
   function openEditItemType(t) {
@@ -4045,6 +4246,7 @@
     document.getElementById("it-order").value = t.displayOrder;
     document.getElementById("it-active").value = t.active ? "true" : "false";
     fillCategorySelect(t.categoryId || "");
+    setTrackingFields(t);
     if (pendingPhotoUrl) showPhotoPreview(pendingPhotoUrl);
     else clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
@@ -4063,6 +4265,17 @@
     };
     const catSel = document.getElementById("it-category");
     if (!editingItemTypeId ? catSel.value : catSel.value !== catSel.dataset.original) body.categoryId = catSel.value;
+    const tracking = document.getElementById("it-tracking").value;
+    if (!editingItemTypeId || tracking !== editingTracking) body.tracking = tracking;
+    if (tracking === "Quantity") {
+      const owned = document.getElementById("it-owned").value.trim();
+      const oos = document.getElementById("it-oos").value.trim();
+      if (!/^\d+$/.test(owned)) { showToast("Enter how many you own"); return; }
+      if (oos && !/^\d+$/.test(oos)) { showToast("Out of service must be a whole number"); return; }
+      if (Number(oos || 0) > Number(owned)) { showToast("Out of service can't be more than you own"); return; }
+      body.quantityOwned = Number(owned);
+      body.outOfService = Number(oos || 0);
+    }
     const btn = document.getElementById("item-type-submit-btn");
     btn.disabled = true; btn.textContent = "Saving…";
     let res;

@@ -15,9 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap" />
-  <link rel="stylesheet" href="/assets/site.css?v=5" />
+  <link rel="stylesheet" href="/assets/site.css?v=6" />
   <script src="/assets/site.js?v=5" defer></script>
-  <script src="/assets/gemach.js?v=5" defer></script>
+  <script src="/assets/gemach.js?v=6" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -117,6 +117,7 @@
         <div id="modal-items-grid"></div>
       </fieldset>
 
+
       <fieldset class="form-group" id="dates-group">
         <legend>When do you need it?</legend>
         <div class="form-row" id="date-fields">
@@ -148,6 +149,11 @@
         <input type="date" id="f-event" name="eventDate" aria-describedby="event-summary" />
         <p class="event-summary" id="event-summary" aria-live="polite" hidden></p>
       </div>
+
+      <fieldset class="form-group" id="qty-group" hidden>
+        <legend>How many? <span class="req" aria-hidden="true">*</span></legend>
+        <div id="qty-list"></div>
+      </fieldset>
 
       <div class="deposit-form" id="deposit-group" hidden>
         <div class="deposit-callout" id="deposit-form-info"></div>

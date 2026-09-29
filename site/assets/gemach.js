@@ -121,6 +121,77 @@
   }
 
   function isV3(g) { return !!g && ("requestStyle" in g || "depositRequired" in g || "gemachInfo" in g); }
+
+  // ── Quantity items (e.g. 60 chairs): counted, not numbered; free count depends on the dates ──
+  function isQty(it) { return !!it && it.tracking === "quantity"; }
+  var qtyVals = {}; // item id -> what the person typed (kept while the modal is re-rendered)
+
+  /** Fewest free at any point of [from, to] (to = null: open-ended). Same rule as the server. */
+  function qtyFree(it, from, to) {
+    var total = Math.max(0, it.totalUnits || 0);
+    var list = (it.bookings || []).filter(function (b) { return (to == null || b.from <= to) && (b.to == null || b.to >= from); });
+    var points = [from].concat(list.map(function (b) { return b.from; }).filter(function (d) { return d > from; }));
+    var peak = 0;
+    points.forEach(function (p) {
+      var used = 0;
+      list.forEach(function (b) { if (b.from <= p && (b.to == null || b.to >= p)) used += b.qty; });
+      if (used > peak) peak = used;
+    });
+    return Math.max(0, total - peak);
+  }
+  /** The dates the form currently asks for: { from, to } (to null = open-ended), or null if not chosen yet. */
+  function formWindow() {
+    var st = style();
+    if (st === "Event") {
+      var v = $("f-event").value;
+      var w = v && W.parseYMD(v) ? W.eventWindow(v, gemach) : null;
+      return w ? { from: w.pickup, to: w.ret } : null;
+    }
+    if (st !== "Dates") return null;
+    var f = $("f-from").value, u = $("f-until").value;
+    if (!W.parseYMD(f)) return null;
+    return { from: f, to: W.parseYMD(u) && u > f ? u : null };
+  }
+  /** Rows of number inputs for the checked quantity items, with "N free for your dates". */
+  function renderQty() {
+    var group = $("qty-group"), list = $("qty-list");
+    var ids = Array.prototype.map.call(modal.querySelectorAll('input[name="modal-items"]:checked'), function (cb) { return cb.value; });
+    var qi = items.filter(function (it) { return isQty(it) && ids.indexOf(it.id) >= 0; });
+    if (!qi.length || style() === "Appointment") { group.hidden = true; list.innerHTML = ""; return; }
+    // keep what's typed; rebuild only when the set of rows changes
+    var have = Array.prototype.map.call(list.querySelectorAll("input[data-qty]"), function (i) { return i.getAttribute("data-qty"); }).join(",");
+    if (have !== qi.map(function (it) { return it.id; }).join(",")) {
+      list.innerHTML = qi.map(function (it) {
+        var id = esc(it.id);
+        return '<div class="qty-row"><label for="q-' + id + '">' + esc(it.name) + "</label>" +
+          '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (it.totalUnits || 1) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || "") + '" placeholder="0" aria-describedby="qn-' + id + '" />' +
+          '<p class="qty-note" id="qn-' + id + '" aria-live="polite"></p></div>';
+      }).join("");
+    }
+    group.hidden = false;
+    updateQtyNotes();
+  }
+  function updateQtyNotes() {
+    var w = formWindow();
+    Array.prototype.forEach.call($("qty-list").querySelectorAll("input[data-qty]"), function (inp) {
+      var it = items.filter(function (x) { return x.id === inp.getAttribute("data-qty"); })[0];
+      var note = $("qn-" + inp.getAttribute("data-qty"));
+      if (!it || !note) return;
+      var n = parseInt(inp.value, 10);
+      var total = it.totalUnits || 0;
+      var txt, warn = false;
+      if (!it.bookings) txt = total + " in the gemach";
+      else if (!w) txt = total + " in the gemach — choose your dates to see how many are free";
+      else {
+        var free = qtyFree(it, w.from, w.to);
+        if (n > free) { warn = true; txt = "Only " + free + " free for your dates. You can still ask — the gemach will let you know what they can do."; }
+        else txt = free + " of " + total + " free for your dates";
+      }
+      if (n > total) { warn = true; txt = "The gemach has " + total + " in total."; }
+      note.textContent = txt;
+      note.classList.toggle("warn", warn);
+    });
+  }
   function style() { return W.requestStyle(gemach); }
 
   function depositHtml(g) {
@@ -155,7 +226,8 @@
       ? '<button type="button" class="item-thumb" data-photo="' + id + '" aria-label="View photo of ' + esc(it.name) + '"><img src="' + esc(photo) + '" alt="" loading="lazy" width="92" height="72" /></button>'
       : '<div class="item-thumb" aria-hidden="true">' + W.ICONS.photo + "</div>";
     var units = typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
-      ? '<div class="item-units">' + W.plural(it.totalUnits, "unit") + " in the gemach</div>" : "";
+      ? '<div class="item-units">' + (isQty(it) ? it.totalUnits : W.plural(it.totalUnits, "unit")) + " in the gemach" +
+        (isQty(it) ? " · choose how many when you request" : "") + "</div>" : "";
     var desc = it.description
       ? '<button type="button" class="item-desc-toggle" aria-expanded="false" aria-controls="desc-' + id + '"><span class="arr" aria-hidden="true">▸</span> Details</button>' +
         '<div class="item-desc" id="desc-' + id + '" hidden>' + esc(it.description).replace(/\r?\n/g, "<br>") + "</div>"
@@ -378,6 +450,7 @@
       (rest.length ? (chosen.length || appt
         ? '<details class="items-more"><summary>' + (chosen.length ? "Add more items" : "Choose items you’d like to see") + '</summary><div class="items-grid">' + rest.map(label).join("") + "</div></details>"
         : '<div class="items-grid">' + rest.map(label).join("") + "</div>") : "");
+    renderQty();
     $("form-view").hidden = false;
     $("success-view").hidden = true;
     hideError();
@@ -399,6 +472,18 @@
     if (cb.name !== "modal-items") return;
     cb.closest("label").classList.toggle("checked", cb.checked);
     toggleItem(cb.value, cb.checked);
+    renderQty();
+  });
+  $("qty-list").addEventListener("input", function (e) {
+    var id = e.target.getAttribute("data-qty");
+    if (!id) return;
+    qtyVals[id] = e.target.value;
+    if (e.target.getAttribute("aria-invalid") === "true") clearFieldError(e.target);
+    updateQtyNotes();
+  });
+  ["f-from", "f-until", "f-event"].forEach(function (id) {
+    $(id).addEventListener("input", updateQtyNotes);
+    $(id).addEventListener("change", updateQtyNotes);
   });
 
   function submitLabel() { return style() === "Appointment" ? "Send appointment request" : "Send request"; }
@@ -498,6 +583,7 @@
   function errAnchor(field) {
     if (field.id === "f-deposit") return $("deposit-group");
     if (field.name === "modal-items") return $("items-group");
+    if (field.hasAttribute && field.hasAttribute("data-qty")) return field.closest(".qty-row");
     return field.closest(".form-group") || field.parentNode;
   }
   function errKey(field) { return field.name === "modal-items" ? "items" : field.id; }
@@ -594,6 +680,19 @@
     var body = { gemach: gemach.slug || slug, name: name, phone: ph, itemsRequested: ids };
     var firstItem = modal.querySelector('input[name="modal-items"]');
     if (st !== "Appointment" && !ids.length && firstItem) bad(firstItem, "Please select at least one item.");
+    if (st !== "Appointment") {
+      var quantities = {};
+      Array.prototype.forEach.call($("qty-list").querySelectorAll("input[data-qty]"), function (inp) {
+        var it = items.filter(function (x) { return x.id === inp.getAttribute("data-qty"); })[0];
+        if (!it || ids.indexOf(it.id) < 0) return;
+        var v = inp.value.trim(), n = +v;
+        if (!v) bad(inp, "How many " + it.name + " do you need?");
+        else if (!/^\d+$/.test(v) || n < 1) bad(inp, "Please enter a whole number, 1 or more.");
+        else if (it.totalUnits && n > it.totalUnits) bad(inp, "The gemach has " + it.totalUnits + " " + it.name + " in total.");
+        else quantities[it.id] = n;
+      });
+      if (Object.keys(quantities).length) body.quantities = quantities;
+    }
 
     if (st === "Appointment") {
       var times = $("f-times").value.trim();
@@ -668,7 +767,9 @@
       }
       $("success-title").focus();
       var had = Array.from(selected); selected.clear(); had.forEach(syncRow); updateCTA();
+      qtyVals = {};
       $("form-view").reset(); updateEventSummary(); updateEmailReq(); updateDateMins();
+      $("qty-list").innerHTML = ""; $("qty-group").hidden = true;
       W.clearDirCache();
       refresh();
     }).catch(function (err) {

@@ -679,3 +679,12 @@ fieldset { border: 0; }
 #date-fields { row-gap: 1rem; }
 #date-fields .form-group { margin-bottom: 0; }
 #dates-group .field-hint { margin-top: .45rem; }
+
+/* Quantity items (e.g. chairs): "How many?" rows in the request form */
+#qty-list { display: grid; gap: .6rem; }
+.qty-row { display: grid; grid-template-columns: 1fr 7rem; align-items: center; gap: .15rem .75rem; }
+.qty-row label { font-size: .9rem; font-weight: 500; }
+.form-group .qty-row input[type="number"] { max-width: none; }
+.qty-row .qty-note, .qty-row .field-error { grid-column: 1 / -1; margin: 0; font-size: .8rem; color: var(--muted); }
+.qty-row .qty-note.warn { color: var(--amber); }
+.qty-row .field-error { color: var(--red); }
