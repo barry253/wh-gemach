@@ -41,13 +41,47 @@
     /* ── Login screen ── */
     #login-screen {
       min-height: 100vh;
+      min-height: 100dvh; /* visible viewport on phones (excludes browser toolbars) */
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 2rem;
+      justify-content: flex-start;
+      padding: clamp(3rem, 14vh, 8rem) 1.25rem 2rem;
       background: var(--navy);
     }
+    /* No white strip below the login screen on phones with bottom toolbars */
+    html:has(#login-screen:not([style*="none"])),
+    body:has(#login-screen:not([style*="none"])) { background: var(--navy); }
+
+    #gemach-picker {
+      position: fixed; inset: 0; z-index: 1000;
+      background: var(--navy);
+      display: flex; justify-content: center; align-items: flex-start;
+      padding: clamp(2rem, 10vh, 6rem) 1.25rem 2rem;
+      overflow-y: auto;
+    }
+    .gemach-picker-box {
+      background: var(--white); border-radius: 12px; padding: 1.5rem;
+      width: 100%; max-width: 420px;
+    }
+    .gemach-picker-box h2 {
+      font-family: 'DM Serif Display', serif; font-weight: 400; font-size: 1.5rem;
+      color: var(--text); margin-bottom: 0.25rem;
+    }
+    .gemach-picker-sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem; }
+    .gemach-picker-search {
+      width: 100%; padding: 0.7rem 0.85rem; border: 1px solid var(--border, #d7dee3);
+      border-radius: 8px; font: inherit; margin-bottom: 0.75rem;
+    }
+    .gemach-picker-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .gemach-picker-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+      width: 100%; min-height: 48px; padding: 0.75rem 1rem; text-align: left;
+      background: var(--white); border: 1px solid var(--border, #d7dee3); border-radius: 10px;
+      font: inherit; font-weight: 600; color: var(--text); cursor: pointer;
+    }
+    .gemach-picker-item:hover, .gemach-picker-item:focus-visible { border-color: var(--navy); background: var(--teal, #E8F0F5); }
+    .gemach-picker-item[hidden] { display: none; }
 
     #login-screen h1 {
       font-family: 'DM Serif Display', serif;
@@ -1012,7 +1046,7 @@
     </div>
     <div class="topbar-user">
       <span id="admin-name"></span>
-      <button class="btn-signout" onclick="signOut()">Sign out</button>
+      <button class="btn-signout" onclick="signOut(true)">Sign out</button>
     </div>
   </div>
 
@@ -1812,7 +1846,10 @@
     const params = new URLSearchParams(location.search);
     const fromUrl = (params.get("g") || "").toLowerCase();
     const stored = localStorage.getItem("gemach_slug");
-    gemachSlug = inList(fromUrl) ? fromUrl : inList(stored) ? stored : (MY_GEMACHS[0]?.slug || null);
+    gemachSlug = inList(fromUrl) ? fromUrl : inList(stored) ? stored : null;
+    // No remembered choice and several gemachs: let the admin pick instead of defaulting to the first one.
+    if (!gemachSlug && MY_GEMACHS.length > 1) gemachSlug = await chooseGemach();
+    if (!gemachSlug) gemachSlug = MY_GEMACHS[0]?.slug || null;
     if (gemachSlug) localStorage.setItem("gemach_slug", gemachSlug);
     if (params.has("g")) {
       params.delete("g");
@@ -1821,6 +1858,71 @@
     }
     renderGemachSwitcher();
     await loadGemachProfile();
+  }
+
+  // Full-screen "Choose a gemach" picker. Resolves with the chosen slug. All text via textContent.
+  function chooseGemach() {
+    return new Promise(resolve => {
+      const wrap = document.createElement("div");
+      wrap.id = "gemach-picker";
+      wrap.setAttribute("role", "dialog");
+      wrap.setAttribute("aria-modal", "true");
+      wrap.setAttribute("aria-labelledby", "gemach-picker-title");
+      const box = document.createElement("div");
+      box.className = "gemach-picker-box";
+      const h = document.createElement("h2");
+      h.id = "gemach-picker-title";
+      h.textContent = "Choose a gemach";
+      const sub = document.createElement("p");
+      sub.className = "gemach-picker-sub";
+      sub.textContent = "You can switch any time from the menu at the top.";
+      box.append(h, sub);
+      let search = null;
+      if (MY_GEMACHS.length > 6) {
+        search = document.createElement("input");
+        search.type = "search";
+        search.placeholder = "Search gemachs";
+        search.className = "gemach-picker-search";
+        search.setAttribute("aria-label", "Search gemachs");
+        box.appendChild(search);
+      }
+      const list = document.createElement("div");
+      list.className = "gemach-picker-list";
+      const sorted = [...MY_GEMACHS].sort((a, b) =>
+        (a.active === false) - (b.active === false) || String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
+      sorted.forEach(g => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "gemach-picker-item";
+        const name = document.createElement("span");
+        name.className = "gemach-picker-name";
+        name.textContent = g.name || g.slug;
+        btn.appendChild(name);
+        if (g.active === false) {
+          const tag = document.createElement("span");
+          tag.className = "tag tag-amber";
+          tag.textContent = "Hidden";
+          btn.appendChild(tag);
+        }
+        btn.dataset.search = String((g.name || "") + " " + g.slug).toLowerCase();
+        btn.onclick = () => {
+          localStorage.setItem("gemach_slug", g.slug);
+          wrap.remove();
+          resolve(g.slug);
+        };
+        list.appendChild(btn);
+      });
+      box.appendChild(list);
+      if (search) {
+        search.oninput = () => {
+          const q = search.value.trim().toLowerCase();
+          list.querySelectorAll(".gemach-picker-item").forEach(b => { b.hidden = !!q && !b.dataset.search.includes(q); });
+        };
+      }
+      wrap.appendChild(box);
+      document.body.appendChild(wrap);
+      (search || list.querySelector("button"))?.focus();
+    });
   }
 
   async function loadGemachProfile() {
@@ -1963,9 +2065,10 @@
     el.style.display = "block";
   }
 
-  function signOut() {
+  function signOut(explicit) {
     localStorage.removeItem("gemach_token");
     localStorage.removeItem("gemach_name");
+    if (explicit === true) localStorage.removeItem("gemach_slug");
     token = null;
     location.reload();
   }
