@@ -374,8 +374,12 @@ main { flex: 1; }
 @media (min-width: 720px) { .info-panel.has-side .info-side { border-left: 1px solid var(--border); padding-left: 1.5rem; } }
 .info-label { font-size: .74rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .15rem; }
 .info-side a { overflow-wrap: anywhere; }
-.donation-info p { margin: 0 0 .6rem; line-height: 1.5; }
-.donation-info + .btn { margin-top: .15rem; }
+.donation-info p { margin: 0 0 .75rem; line-height: 1.55; }
+.modal-narrow { max-width: 480px; }
+.modal.modal-narrow h2 { margin-bottom: .9rem; }
+.donate-actions { margin-top: 1.1rem; }
+.donate-actions .btn { width: 100%; justify-content: center; }
+@media (min-width: 600px) { .donate-actions .btn { width: auto; } }
 .donation-info a[href^="tel:"] { white-space: nowrap; }
 
 .notice {

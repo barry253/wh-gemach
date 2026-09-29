@@ -79,24 +79,48 @@ G('baby-gear').donationInfo = 'We gladly accept clean strollers — call 516-555
       page.on('dialog', d => { errors.push('dialog: ' + d.message()); d.dismiss(); });
       const support = () => page.$eval('.support', el => ({ text: el.innerText, links: [...el.querySelectorAll('a')].map(a => [a.textContent.trim(), a.getAttribute('href'), a.target || '']), html: el.innerHTML })).catch(() => null);
 
+      const modalInfo = () => page.$eval('#donate-modal', el => ({ open: !el.hidden, title: el.querySelector('h2').textContent, text: el.querySelector('#donate-body').innerText, html: el.querySelector('#donate-body').innerHTML,
+        links: [...el.querySelectorAll('#donate-body a')].map(a => [a.textContent.trim(), a.getAttribute('href')]), action: [...el.querySelectorAll('#donate-actions a')].map(a => [a.textContent.trim(), a.getAttribute('href'), a.target]) }));
+
+      // text + link: page shows only the Donate button; clicking opens the pop-up with the text and a "Donate online" link
       await page.goto(BASE + '/g/wh-medical', { waitUntil: 'networkidle' });
       let s = await support();
-      assert(s && /Support this gemach/i.test(s.text), `${label} medical: support section shown`);
-      const hrefs = Object.fromEntries(s.links.map(l => [l[0], l[1]]));
-      assert(hrefs['anshei.org/donate'] === 'https://anshei.org/donate', `${label} bare web address linked ` + JSON.stringify(s.links));
+      assert(s && /Support this gemach/i.test(s.text) && !s.text.includes('monetary'), `${label} medical: text not shown on the page`);
+      assert(await page.$('#btn-donate') !== null && s.links.length === 0, `${label} medical: Donate is a button (opens pop-up), not a link`);
+      await page.click('#btn-donate');
+      await page.waitForSelector('#donate-modal.open');
+      let m = await modalInfo();
+      assert(m.open && m.title === 'Support West Hempstead Medical Gemach', `${label} pop-up opens with gemach name: ` + m.title);
+      const hrefs = Object.fromEntries(m.links);
+      assert(hrefs['anshei.org/donate'] === 'https://anshei.org/donate', `${label} bare web address linked ` + JSON.stringify(m.links));
       assert(hrefs['https://example.org/give?a=1&b=2'] === 'https://example.org/give?a=1&b=2', `${label} full URL linked, & kept`);
       assert(hrefs['gemach@example.com'] === 'mailto:gemach@example.com', `${label} email linked`);
       assert(hrefs['(718) 986-7345'] === 'tel:+17189867345', `${label} phone linked`);
-      assert(/Donate$/.test(s.links.at(-1)[0]) && s.links.at(-1)[1] === 'https://www.anshei.org/medical-gemach', `${label} Donate button still there after the text`);
-      assert(s.text.includes('<script>alert(1)</script>') && !s.html.includes('<script>'), `${label} text escaped`);
-      assert((s.html.match(/<p>/g) || []).length === 2, `${label} blank line = new paragraph`);
-      await page.locator('.support').screenshot({ path: path.join(SHOTS, `${label}-donation-both.png`) });
+      assert(m.text.includes('<script>alert(1)</script>') && !m.html.includes('<script>'), `${label} text escaped`);
+      assert((m.html.match(/<p>/g) || []).length === 2, `${label} blank line = new paragraph`);
+      assert(m.action.length === 1 && /Donate online/.test(m.action[0][0]) && m.action[0][1] === 'https://www.anshei.org/medical-gemach' && m.action[0][2] === '_blank', `${label} Donate online link in pop-up`);
+      assert(await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'donate-close', null, { timeout: 2000 }).then(() => true, () => false), `${label} focus moves into pop-up`);
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: path.join(SHOTS, `${label}-donate-modal.png`) });
+      await page.keyboard.press('Escape');
+      assert((await modalInfo()).open === false && await page.evaluate(() => document.activeElement && document.activeElement.id === 'btn-donate'), `${label} Escape closes, focus returns to Donate`);
+      await page.click('#btn-donate'); await page.waitForSelector('#donate-modal.open');
+      await page.mouse.click(5, 5);
+      assert((await modalInfo()).open === false, `${label} click outside closes`);
+      await page.locator('.support').screenshot({ path: path.join(SHOTS, `${label}-donate-button.png`) });
 
+      // text only: pop-up with the text, no "Donate online"
       await page.goto(BASE + '/g/baby-gear', { waitUntil: 'networkidle' });
+      await page.click('#btn-donate'); await page.waitForSelector('#donate-modal.open');
+      m = await modalInfo();
+      assert(m.text.includes('We gladly accept clean strollers') && m.action.length === 0, `${label} text only: pop-up without Donate online`);
+      assert(m.links.length === 1 && m.links[0][1] === 'tel:+15165550199', `${label} text only: phone linked`);
+      await page.keyboard.press('Escape');
+
+      // link only: Donate opens the link in a new tab, no pop-up
+      await page.goto(BASE + '/g/wedding-shtick', { waitUntil: 'networkidle' });
       s = await support();
-      assert(s && s.text.includes('We gladly accept clean strollers') && !/Donate/.test(s.links.map(l => l[0]).join(' ')), `${label} text only: no Donate button`);
-      assert(s.links.length === 1 && s.links[0][1] === 'tel:+15165550199', `${label} text only: phone linked`);
-      await page.locator('.support').screenshot({ path: path.join(SHOTS, `${label}-donation-text.png`) });
+      assert(s && s.links.length === 1 && /Donate/.test(s.links[0][0]) && s.links[0][1] === 'https://example.org/donate-shtick' && s.links[0][2] === '_blank' && await page.$('#btn-donate') === null, `${label} link only: plain link, new tab ` + JSON.stringify(s && s.links));
 
       await page.goto(BASE + '/g/' + directory.gemachs.find(g => !g.donationUrl && !g.donationInfo && g.mode !== 'Directory').slug, { waitUntil: 'networkidle' });
       assert(!(await support()), `${label} neither: no support section`);

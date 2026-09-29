@@ -112,13 +112,15 @@
     if (contact.length) side.push('<div><div class="info-label">Contact</div><div>' + contact.join("<br>") + "</div></div>");
     var web = W.safeUrl(g.website);
     if (web) side.push('<div><div class="info-label">Website</div><a href="' + esc(web) + '" target="_blank" rel="noopener">' + esc(W.prettyUrl(web)) + "</a></div>");
-    // Donations: a Donate button (link), a short text (how to give money / equipment), or both.
+    // Donations: link only -> the Donate button opens it in a new tab.
+    // Donation text (with or without a link) -> the Donate button opens it in a pop-up (see openDonate).
     var don = W.safeUrl(g.donationUrl);
-    var donInfo = g.donationInfo ? W.formatRich(g.donationInfo) : "";
-    if (don || donInfo) {
+    var hasInfo = !!String(g.donationInfo || "").trim();
+    if (don || hasInfo) {
       side.push('<div class="support"><div class="info-label">Support this gemach</div>' +
-        (donInfo ? '<div class="donation-info">' + donInfo + "</div>" : "") +
-        (don ? '<a class="btn btn-sm btn-pill" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate</a>" : "") + "</div>");
+        (hasInfo
+          ? '<button type="button" class="btn btn-sm btn-pill" id="btn-donate" aria-haspopup="dialog">' + W.ICONS.heart + "Donate</button>"
+          : '<a class="btn btn-sm btn-pill" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate</a>") + "</div>");
     }
     if (!desc && !side.length) return "";
     return '<section class="info-panel' + (desc && side.length ? " has-side" : "") + '" aria-label="About this gemach">' +
@@ -412,6 +414,44 @@
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
   function lockScroll(on) { document.documentElement.style.overflow = on ? "hidden" : ""; }
+
+  // ── Donate pop-up (only when the gemach has donation text) ──
+  var donateModal = null;
+  function openDonate(opener) {
+    var g = gemach || {};
+    var don = W.safeUrl(g.donationUrl);
+    if (!donateModal) {
+      donateModal = document.createElement("div");
+      donateModal.className = "modal-overlay";
+      donateModal.id = "donate-modal";
+      donateModal.hidden = true;
+      donateModal.innerHTML = '<div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="donate-title">' +
+        '<button type="button" class="modal-close" id="donate-close" aria-label="Close">×</button>' +
+        '<h2 id="donate-title">Support this gemach</h2>' +
+        '<div class="donation-info" id="donate-body"></div><div class="donate-actions" id="donate-actions"></div></div>';
+      document.body.appendChild(donateModal);
+      $("donate-close").addEventListener("click", closeDonate);
+      donateModal.addEventListener("click", function (e) { if (e.target === donateModal) closeDonate(); });
+      donateModal.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDonate(); trap(e, donateModal); });
+    }
+    $("donate-title").textContent = "Support " + (g.name || "this gemach");
+    $("donate-body").innerHTML = W.formatRich(g.donationInfo);
+    $("donate-actions").innerHTML = don
+      ? '<a class="btn btn-primary" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate online</a>"
+      : "";
+    lastFocus = opener || document.activeElement;
+    donateModal.hidden = false; donateModal.classList.add("open"); lockScroll(true);
+    setTimeout(function () { $("donate-close").focus(); }, 30);
+  }
+  function closeDonate() {
+    if (!donateModal) return;
+    donateModal.classList.remove("open"); donateModal.hidden = true; lockScroll(false);
+    if (lastFocus && lastFocus.focus && document.body.contains(lastFocus)) lastFocus.focus();
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("#btn-donate");
+    if (b) openDonate(b);
+  });
 
   // ── Lightbox ──
   var lb = $("lightbox");
