@@ -770,6 +770,15 @@
       margin-bottom: 1rem;
     }
 
+    .send-by-options { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .send-by-options button {
+      flex: 1 1 auto; padding: 0.5rem 0.6rem; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--white); color: var(--text); font-size: 0.8rem; font-family: 'Inter', sans-serif; cursor: pointer;
+    }
+    .send-by-options button.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .send-by-help { font-size: 0.75rem; color: var(--muted); margin-top: 0.45rem; line-height: 1.4; overflow-wrap: anywhere; }
+    .contact-caption { font-size: 0.72rem; color: var(--muted); align-self: center; }
+
     .sheet-actions {
       display: flex;
       gap: 0.5rem;
@@ -1194,12 +1203,7 @@
       <textarea id="confirm-message" rows="5"></textarea>
     </div>
 
-    <div class="contact-options" id="confirm-contact-options"></div>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="confirm-send" checked />
-      <label for="confirm-send">Send message to borrower</label>
-    </div>
+    <div class="form-group" id="confirm-send-by"></div>
 
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('confirm-sheet')">Cancel</button>
@@ -1232,12 +1236,7 @@
       <textarea id="appointment-message" rows="5"></textarea>
     </div>
 
-    <div class="contact-options" id="appointment-contact-options"></div>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="appointment-send" checked />
-      <label for="appointment-send">Send message to borrower (with calendar invite)</label>
-    </div>
+    <div class="form-group" id="appointment-send-by"></div>
 
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('appointment-sheet')">Cancel</button>
@@ -1394,12 +1393,7 @@
       <textarea id="decline-message" rows="4"></textarea>
     </div>
 
-    <div class="contact-options" id="decline-contact-options"></div>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="decline-send" checked />
-      <label for="decline-send">Send message to borrower</label>
-    </div>
+    <div class="form-group" id="decline-send-by"></div>
 
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('decline-sheet')">Cancel</button>
@@ -1463,9 +1457,10 @@
       <label>Message</label>
       <textarea id="pickup-instructions-message" rows="6"></textarea>
     </div>
-    <div class="contact-options" id="pickup-instructions-contact"></div>
+    <div class="form-group" id="pickup-instructions-send-by"></div>
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('pickup-instructions-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="pickup-instructions-send-btn">Open WhatsApp</button>
     </div>
   </div>
 </div>
@@ -1765,6 +1760,105 @@
   }
   function phoneDigits(p) { return String(p ?? "").replace(/\D/g, ""); }
   function safeHttpsUrl(u) { try { const x = new URL(String(u || "")); return x.protocol === "https:" ? x.href : null; } catch { return null; } }
+
+  // ── Contacting borrowers ──────────────────────────────────────────────────
+  // Requests store WhatsApp | Phone | SMS | Email; Borrowers store WhatsApp | Phone | Text.
+  function contactMethod(pref) {
+    const p = String(pref ?? "").trim().toLowerCase();
+    return p === "whatsapp" ? "whatsapp" : (p === "sms" || p === "text") ? "sms" : (p === "phone" || p === "call") ? "call" : p === "email" ? "email" : null;
+  }
+  function contactOf(r) {
+    return { phone: r.phone || r.borrowerPhone || "", email: r.email || r.borrowerEmail || "", pref: r.preferredContact || r.borrowerContact || "" };
+  }
+  function smsHref(phone, body) {
+    const d = phoneDigits(phone);
+    if (!d) return null;
+    return `sms:${d}${body ? `?&body=${encodeURIComponent(body)}` : ""}`;
+  }
+  const METHOD_ACTION = { whatsapp: "Message on WhatsApp", sms: "Send a text", call: "Call", email: "Email" };
+  const METHOD_PREFERS = { whatsapp: "WhatsApp", sms: "text messages", call: "phone calls", email: "email" };
+  function methodHref(m, c) {
+    if (m === "whatsapp") return waUrl(c.phone);
+    if (m === "sms") return smsHref(c.phone);
+    if (m === "call") return phoneDigits(c.phone) ? `tel:${phoneDigits(c.phone)}` : null;
+    if (m === "email") return mailtoHref(c.email);
+    return null;
+  }
+  /** Card buttons: only the borrower's preferred method (or what's on file when there's no usable preference). */
+  function contactActions(c, stop = false) {
+    const pref = contactMethod(c.pref);
+    const avail = ["whatsapp", "sms", "call", "email"].filter(m => methodHref(m, c));
+    let show, caption;
+    if (pref && avail.includes(pref)) { show = [pref]; caption = `Prefers ${METHOD_PREFERS[pref]}`; }
+    else {
+      show = avail;
+      caption = !avail.length ? "No phone or email on file"
+        : pref ? `Prefers ${METHOD_PREFERS[pref]} — not on file`
+        : c.pref ? `Prefers ${c.pref}` : "No contact preference given";
+    }
+    return show.map(m => `<a class="btn ${m === "whatsapp" ? "btn-whatsapp" : "btn-ghost"} btn-sm" data-contact="${m}" href="${esc(methodHref(m, c))}"${m === "whatsapp" ? ` target="_blank" rel="noopener"` : ""}${stop ? ` onclick="event.stopPropagation()"` : ""}>${METHOD_ACTION[m]}</a>`).join("")
+      + `<span class="contact-caption">${esc(caption)}</span>`;
+  }
+
+  // "Send this message by" control used by the confirm / decline / appointment / pickup sheets.
+  const SEND_LABEL = { whatsapp: "WhatsApp", sms: "Text message", email: "Email", none: "Don't send" };
+  const SEND_BY = {};
+  function sendChoices(c, allowNone = true) {
+    const out = [];
+    if (waUrl(c.phone)) out.push("whatsapp");
+    if (phoneDigits(c.phone)) out.push("sms");
+    if (safeEmail(c.email)) out.push("email");
+    if (allowNone || !out.length) out.push("none");
+    return out;
+  }
+  function sendHelp(choice, c, extra = "") {
+    if (choice === "whatsapp") return "Opens WhatsApp on this device with the message ready — tap Send there.";
+    if (choice === "sms") return "Opens Messages on this device with the message ready — tap Send there.";
+    if (choice === "email") {
+      const replyTo = safeEmail(GEMACH?.email);
+      return `Sent from noreply@whgemachs.org to ${safeEmail(c.email)}${replyTo ? `; replies go to ${replyTo}` : ""}.${extra}`;
+    }
+    return "The borrower won't be sent anything.";
+  }
+  /**
+   * Render the choice into #<prefix>-send-by. labels: { whatsapp, sms, email, none } for the primary button.
+   * opts.mailto: email opens the device's mail app instead of being sent by the server (pickup sheet).
+   */
+  function setupSendBy(prefix, r, btnId, labels, opts = {}) {
+    const c = contactOf(r);
+    const choices = sendChoices(c, !opts.noNone);
+    const pref = contactMethod(c.pref);
+    const choice = choices.includes(pref) ? pref : (pref === "call" && choices.includes("sms")) ? "sms" : choices[0];
+    SEND_BY[prefix] = { c, choice };
+    const box = document.getElementById(`${prefix}-send-by`);
+    const paint = () => {
+      const cur = SEND_BY[prefix].choice;
+      box.innerHTML = `<label>Send this message by</label>
+        <div class="send-by-options" role="radiogroup">${choices.map(v =>
+          `<button type="button" role="radio" data-send="${v}" aria-checked="${v === cur}" class="${v === cur ? "active" : ""}">${SEND_LABEL[v]}</button>`).join("")}</div>
+        <div class="send-by-help">${esc(opts.mailto && cur === "email" ? `Opens your email app addressed to ${safeEmail(c.email)}.` : sendHelp(cur, c, opts.emailExtra || ""))}</div>`;
+      box.querySelectorAll("[data-send]").forEach(b => b.onclick = () => { SEND_BY[prefix].choice = b.dataset.send; paint(); });
+      const btn = document.getElementById(btnId);
+      if (btn) btn.textContent = labels[cur] || labels.none;
+    };
+    paint();
+  }
+  /** Open WhatsApp / Messages / mail app. Must run synchronously inside the click handler (popup blockers). */
+  function openOutbound(choice, c, message) {
+    let href = null;
+    if (choice === "whatsapp") {
+      href = waUrl(c.phone, message);
+      if (href) { window.open(href, "_blank", "noopener"); return true; }
+      return false;
+    }
+    if (choice === "sms") href = smsHref(c.phone, message);
+    else if (choice === "email") href = mailtoHref(c.email, message);
+    if (!href) return false;
+    const a = document.createElement("a");
+    a.href = href; a.style.display = "none";
+    document.body.appendChild(a); a.click(); a.remove();
+    return true;
+  }
 
   // ── Dates & colors (shared with the public site's rules) ────────────────
   const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
@@ -2136,11 +2230,10 @@
     RECORDS.req.clear();
     list.innerHTML = data.map(r => {
       const rid = keep("req", r);
-      const contact = r.preferredContact || "any";
       const isAppt = r.requestType === "Appointment";
-      const dates = r.openEnded
-        ? "Open-ended"
-        : r.neededFrom ? `${fmt(r.neededFrom)} → ${fmt(r.neededUntil || "?")}` : "Dates TBD";
+      const neededOn = fmt(r.neededFrom), returnOn = fmt(r.neededUntil);
+      const dates = `${neededOn ? `Needed ${neededOn}` : "Needed date not given"} · ${
+        r.openEnded ? "open-ended" : returnOn ? `return ~${returnOn}` : "return date not given"}`;
       const items = (r.itemNames || []).join(", ");
       // whatsappUrl removed — using waUrl() instead
 
@@ -2148,11 +2241,10 @@
         <div class="card-header">
           <div>
             <div class="card-title">${esc(r.name)}</div>
-            <div class="card-id">${esc(r.requestId)} · ${esc(timeAgo(r.receivedAt))}</div>
+            <div class="card-id">${esc([r.requestId, timeAgo(r.receivedAt)].filter(Boolean).join(" · "))}</div>
           </div>
           <div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:flex-end">
             <span class="tag ${isAppt ? "tag-amber" : "tag-green"}">${isAppt ? "Appointment" : "Loan"}</span>
-            <span class="tag tag-navy">${esc(contact)}</span>
           </div>
         </div>
         <div class="card-meta">
@@ -2168,13 +2260,7 @@
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" onclick="openConfirm(rec('req','${rid}'))">✓ Confirm</button>
           <button class="btn btn-danger btn-sm" onclick="openDecline(rec('req','${rid}'))">✗ Decline</button>
-          <a class="btn btn-whatsapp btn-sm"
-            href="${esc(waUrl(r.phone) || "#")}"
-            target="_blank"
-            style="${!waUrl(r.phone) ? "opacity:0.4;pointer-events:none" : ""}">
-            ${(r.preferredContact||"").toLowerCase() === "whatsapp" ? "★ " : ""}WhatsApp</a>
-          ${mailtoHref(r.email) ? `<a class="btn btn-ghost btn-sm" href="${esc(mailtoHref(r.email))}">Email</a>` : ""}
-          ${phoneDigits(r.phone) ? `<a class="btn btn-ghost btn-sm" href="sms:${phoneDigits(r.phone)}">SMS</a>` : ""}
+          ${contactActions(contactOf(r))}
         </div>
       </div>`;
     }).join("");
@@ -2192,11 +2278,15 @@
     const msg = renderMessage("confirm", r.name.split(" ")[0], itemList, { eventDate: r.eventDate });
     document.getElementById("confirm-message").value = msg;
 
-    renderContactOptions("confirm-contact-options", r);
+    setupSendBy("confirm", r, "confirm-submit-btn", {
+      whatsapp: "Confirm & open WhatsApp", sms: "Confirm & open text message", email: "Confirm & email", none: "Confirm without message",
+    });
 
     document.getElementById("confirm-submit-btn").onclick = async () => {
       const message = document.getElementById("confirm-message").value;
-      const sendMessage = document.getElementById("confirm-send").checked;
+      const { choice, c } = SEND_BY.confirm;
+      if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
+      const sendMessage = choice === "email";
       const res = await api(`/admin/requests/${r.id}/confirm`, "POST", { message, sendMessage, adminName });
       if (res && res.error) { showToast(res.error); return; }
       closeSheet("confirm-sheet");
@@ -2232,23 +2322,27 @@
       // Only rewrite while the admin hasn't hand-edited the message.
       if (msgEl.value === lastAuto) msgEl.value = auto;
       lastAuto = auto;
-      renderContactOptions("appointment-contact-options", r, "appointment-message");
     };
     msgEl.value = "";
     refresh();
     dateEl.oninput = dateEl.onchange = refresh;
     timeEl.oninput = timeEl.onchange = refresh;
-    msgEl.oninput = () => renderContactOptions("appointment-contact-options", r, "appointment-message");
+    msgEl.oninput = null;
+    setupSendBy("appointment", r, "appointment-submit-btn", {
+      whatsapp: "Schedule & open WhatsApp", sms: "Schedule & open text message", email: "Schedule & email", none: "Schedule without message",
+    }, { emailExtra: " A calendar invite is attached." });
 
     const btn = document.getElementById("appointment-submit-btn");
     btn.onclick = async () => {
       if (!isValidDate(dateEl.value) || !/^\d{2}:\d{2}$/.test(timeEl.value)) { showToast("Choose a date and time for the appointment"); return; }
       const message = msgEl.value;
       if (/\[date & time\]/.test(message)) { showToast("Choose a date and time for the appointment"); return; }
+      const { choice, c } = SEND_BY.appointment;
+      if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
       btn.disabled = true;
       try {
         const res = await api(`/admin/requests/${safeId(r.id)}/confirm`, "POST", {
-          appointmentAt: `${dateEl.value}T${timeEl.value}`, message, sendMessage: document.getElementById("appointment-send").checked, adminName,
+          appointmentAt: `${dateEl.value}T${timeEl.value}`, message, sendMessage: choice === "email", adminName,
         });
         if (!res) return;
         if (res.error) { showToast(res.error); return; }
@@ -2270,12 +2364,17 @@
     document.getElementById("decline-message").value =
       renderMessage("decline", String(r.name || "").split(" ")[0], (r.itemNames || []).join(" and "), { eventDate: r.eventDate });
 
-    renderContactOptions("decline-contact-options", r);
+    setupSendBy("decline", r, "decline-submit-btn", {
+      whatsapp: "Decline & open WhatsApp", sms: "Decline & open text message", email: "Decline & email", none: "Decline without message",
+    });
 
     document.getElementById("decline-submit-btn").onclick = async () => {
       const message = document.getElementById("decline-message").value;
-      const sendMessage = document.getElementById("decline-send").checked;
-      await api(`/admin/requests/${r.id}/decline`, "POST", { message, sendMessage, adminName });
+      const { choice, c } = SEND_BY.decline;
+      if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
+      const res = await api(`/admin/requests/${r.id}/decline`, "POST", { message, sendMessage: choice === "email", adminName });
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
       closeSheet("decline-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
@@ -2283,36 +2382,6 @@
     };
 
     openSheet("decline-sheet");
-  }
-
-  function renderContactOptions(containerId, r, msgElId) {
-    const container = document.getElementById(containerId);
-    const phone = phoneDigits(r.phone);
-    const preferred = r.preferredContact?.toLowerCase();
-    const msgEl = msgElId || (containerId.includes("confirm") ? "confirm-message" : "decline-message");
-    const rawMsg = document.getElementById(msgEl).value;
-    const msg = encodeURIComponent(rawMsg);
-    const mailto = mailtoHref(r.email, rawMsg);
-
-    container.innerHTML = `
-      <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
-      <a class="btn btn-whatsapp btn-sm"
-        href="${esc(waUrl(r.phone, rawMsg) || "#")}"
-        target="_blank"
-        style="${!waUrl(r.phone) ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!waUrl(r.phone) ? "No phone on file" : ""}">
-        ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>
-      <a class="btn btn-ghost btn-sm"
-        href="${esc(mailto || "#")}"
-        style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!mailto ? "No email on file" : ""}">
-        ${preferred === "email" ? "★ " : ""}Email</a>
-      <a class="btn btn-ghost btn-sm"
-        href="${esc(phone ? `sms:${phone}&body=${msg}` : "#")}"
-        style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!phone ? "No phone on file" : ""}">
-        ${preferred === "sms" ? "★ " : ""}SMS</a>
-    `;
   }
 
   // ── Loans ─────────────────────────────────────────────────────────────────
@@ -2390,9 +2459,6 @@
           ? `<span class="tag tag-navy loan-row-tag">${esc(l.daysOut)}d</span>`
           : `<span class="tag tag-navy loan-row-tag">?</span>`;
 
-      const phone = phoneDigits(l.borrowerPhone);
-      const contact = l.borrowerContact?.toLowerCase();
-      const mailto = mailtoHref(l.borrowerEmail);
 
       const hasNote = l.notes || l.requestNote;
       return `
@@ -2403,7 +2469,7 @@
             ${l.itemId ? `<span class="loan-row-code">${esc(l.itemId)}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
           </div>
-          <span class="loan-row-date">${esc(fmt(l.dateBorrowed))}</span>
+          <span class="loan-row-date">${esc(fmt(l.dateBorrowed) || "—")}</span>
           ${tag}
         </div>
         <div class="loan-actions-panel" id="loan-panel-${lid}">
@@ -2411,27 +2477,7 @@
           ${l.notes ? `<div class="loan-notes">💬 ${esc(l.notes)}</div>` : ""}
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openReturn(rec('loan','${lid}'))">✓ Returned</button>
-            <a class="btn btn-whatsapp btn-sm"
-              href="${esc(waUrl(l.borrowerPhone) || "#")}"
-              target="_blank"
-              onclick="event.stopPropagation()"
-              style="${!waUrl(l.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}"
-              title="${!waUrl(l.borrowerPhone) ? "No phone on file" : ""}">
-              ${contact === "whatsapp" ? "★ " : ""}WhatsApp</a>
-            <a class="btn btn-ghost btn-sm"
-              href="${esc(mailto || "#")}"
-              onclick="event.stopPropagation()"
-              style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
-              title="${!mailto ? "No email on file" : ""}">
-              ${contact === "email" ? "★ " : ""}Email</a>
-            <a class="btn btn-ghost btn-sm"
-              href="${phone ? `tel:${phone}` : "#"}"
-              onclick="event.stopPropagation()"
-              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">Call</a>
-            <a class="btn btn-ghost btn-sm"
-              href="${phone ? `sms:${phone}` : "#"}"
-              onclick="event.stopPropagation()"
-              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">SMS</a>
+            ${contactActions(contactOf(l), true)}
           </div>
         </div>`;
     }).join("");
@@ -2476,8 +2522,6 @@
     if (!Array.isArray(data) || !data.length) { block.style.display = "none"; return; }
     document.getElementById("appointments-section-label").textContent = `Upcoming appointments (${data.length})`;
     document.getElementById("appointments-list").innerHTML = data.map(a => {
-      const phone = phoneDigits(a.phone);
-      const mailto = mailtoHref(a.email);
       const items = (a.itemNames || []).join(", ");
       return `<div class="card">
         <div class="card-header">
@@ -2494,9 +2538,7 @@
           ${a.notes ? `<span>💬 ${esc(a.notes)}</span>` : ""}
         </div>
         <div class="card-actions">
-          <a class="btn btn-whatsapp btn-sm" href="${esc(waUrl(a.phone) || "#")}" target="_blank" style="${!waUrl(a.phone) ? "opacity:0.4;pointer-events:none" : ""}">WhatsApp</a>
-          ${phone ? `<a class="btn btn-ghost btn-sm" href="tel:${phone}">Call</a><a class="btn btn-ghost btn-sm" href="sms:${phone}">SMS</a>` : ""}
-          ${mailto ? `<a class="btn btn-ghost btn-sm" href="${esc(mailto)}">Email</a>` : ""}
+          ${contactActions(contactOf(a))}
         </div>
       </div>`;
     }).join("");
@@ -2520,12 +2562,8 @@
     RECORDS.res.clear();
     list.innerHTML = data.map(r => {
       const rid = keep("res", r);
-      const dates = r.reservationStart
-        ? `${fmt(r.reservationStart)} → ${r.reservationEnd ? fmt(r.reservationEnd) : "Open return date"}`
-        : "Dates TBD";
-      const phone = phoneDigits(r.borrowerPhone);
-      const contact = r.borrowerContact?.toLowerCase();
-      const mailto = mailtoHref(r.borrowerEmail);
+      const resStart = fmt(r.reservationStart);
+      const dates = resStart ? `${resStart} → ${fmt(r.reservationEnd) || "Open return date"}` : "Dates TBD";
 
       return `
         <div class="loan-row" id="res-row-${rid}" onclick="toggleResActions('${rid}')">
@@ -2545,27 +2583,7 @@
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPickupInstructions(rec('res','${rid}'))">📍 Send pickup info</button>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditReservation(rec('res','${rid}'))">✏️ Edit</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="event.stopPropagation();openCancelReservation(rec('res','${rid}'))">✕ Cancel</button>
-            <a class="btn btn-whatsapp btn-sm"
-              href="${esc(waUrl(r.borrowerPhone) || "#")}"
-              target="_blank"
-              onclick="event.stopPropagation()"
-              style="${!waUrl(r.borrowerPhone) ? "opacity:0.4;pointer-events:none" : ""}"
-              title="${!waUrl(r.borrowerPhone) ? "No phone on file" : ""}">
-              ${contact === "whatsapp" ? "★ " : ""}WhatsApp</a>
-            <a class="btn btn-ghost btn-sm"
-              href="${esc(mailto || "#")}"
-              onclick="event.stopPropagation()"
-              style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
-              title="${!mailto ? "No email on file" : ""}">
-              ${contact === "email" ? "★ " : ""}Email</a>
-            <a class="btn btn-ghost btn-sm"
-              href="${phone ? `tel:${phone}` : "#"}"
-              onclick="event.stopPropagation()"
-              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">Call</a>
-            <a class="btn btn-ghost btn-sm"
-              href="${phone ? `sms:${phone}` : "#"}"
-              onclick="event.stopPropagation()"
-              style="${!phone ? "opacity:0.4;pointer-events:none" : ""}">SMS</a>
+            ${contactActions(contactOf(r), true)}
           </div>
         </div>`;
     }).join("");
@@ -2695,30 +2713,13 @@
     document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
     const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.itemTypeName);
     document.getElementById("pickup-instructions-message").value = msg;
-    const phone = phoneDigits(r.borrowerPhone);
-    const encodedMsg = encodeURIComponent(msg);
-    const mailto = mailtoHref(r.borrowerEmail, msg);
-    const preferred = r.borrowerContact?.toLowerCase();
-    const wa = waPhone(r.borrowerPhone);
-    document.getElementById("pickup-instructions-contact").innerHTML = `
-      <span style="font-size:0.75rem;color:var(--muted);align-self:center">Send via:</span>
-      <a class="btn btn-whatsapp btn-sm ${!phone ? "btn-disabled" : ""}"
-        href="${esc(waUrl(r.borrowerPhone, msg) || "#")}"
-        target="_blank"
-        style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!phone ? "No phone number on file" : ""}">
-        ${preferred === "whatsapp" ? "★ " : ""}WhatsApp</a>
-      <a class="btn btn-ghost btn-sm"
-        href="${esc(mailto || "#")}"
-        style="${!mailto ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!mailto ? "No email on file" : ""}">
-        ${preferred === "email" ? "★ " : ""}Email</a>
-      <a class="btn btn-ghost btn-sm"
-        href="${esc(phone ? `sms:${phone}&body=${encodedMsg}` : "#")}"
-        style="${!phone ? "opacity:0.4;pointer-events:none" : ""}"
-        title="${!phone ? "No phone number on file" : ""}">
-        ${preferred === "sms" ? "★ " : ""}SMS</a>
-    `;
+    setupSendBy("pickup-instructions", r, "pickup-instructions-send-btn",
+      { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Open email", none: "Close" }, { noNone: true, mailto: true });
+    document.getElementById("pickup-instructions-send-btn").onclick = () => {
+      const { choice, c } = SEND_BY["pickup-instructions"];
+      if (choice !== "none") openOutbound(choice, c, document.getElementById("pickup-instructions-message").value);
+      closeSheet("pickup-instructions-sheet");
+    };
     openSheet("pickup-instructions-sheet");
   }
 
@@ -3850,14 +3851,18 @@
     return text ? `${base}?text=${encodeURIComponent(text)}` : base;
   }
 
-    function fmt(dateStr) {
-    if (!dateStr) return "?";
-    const d = new Date(dateStr + "T00:00:00");
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  /** "Sep 29" from "YYYY-MM-DD" (calendar date) or an ISO instant; "" for empty/invalid input. */
+  function fmt(dateStr) {
+    const s = String(dateStr ?? "").trim();
+    if (!s) return "";
+    const plain = isValidDate(s);
+    const d = plain ? new Date(dateMs(s)) : /^\d{4}-\d{2}-\d{2}T/.test(s) ? new Date(s) : null;
+    if (!d || isNaN(d)) return "";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(plain ? { timeZone: "UTC" } : {}) });
   }
 
   function timeAgo(iso) {
-    if (!iso) return "";
+    if (!iso || isNaN(new Date(iso))) return "";
     const diff = Date.now() - new Date(iso);
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return "just now";
@@ -4237,6 +4242,7 @@
   function fmtHistoryTime(iso) {
     if (!iso) return "";
     const d = new Date(iso);
+    if (isNaN(d)) return "";
     const now = new Date();
     const diffMs = now - d;
     const diffMins = Math.floor(diffMs / 60000);

@@ -240,6 +240,35 @@
     return ymd(d);
   }
 
+  function addDaysYMD(s, n) { var d = parseYMD(s); return d ? ymd(addDays(d, n)) : ""; }
+
+  // ── Phone formatting (US → "(516) 555-1234"; non-+1 international left as typed) ──
+  function isIntlPhone(v) {
+    var t = String(v || "").replace(/[^\d+]/g, "");
+    return t.charAt(0) === "+" && t.slice(0, 2) !== "+1";
+  }
+  /** Progressive US format. Returns the input unchanged when it isn't (yet) a US-shaped number. */
+  function formatPhone(v) {
+    var s = String(v == null ? "" : v);
+    if (isIntlPhone(s) || /[a-z]/i.test(s)) return s;
+    var d = s.replace(/\D/g, "");
+    if (!d) return s;
+    if (d.charAt(0) === "1") { if (d.length === 1) return s; d = d.slice(1); }
+    if (d.length > 10) return s;
+    if (d.length <= 3) return "(" + d;
+    if (d.length <= 6) return "(" + d.slice(0, 3) + ") " + d.slice(3);
+    return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6);
+  }
+  /** "" when valid, else a user-facing message. */
+  function phoneError(v) {
+    var s = String(v || "").trim();
+    if (!s) return "Please enter your phone number.";
+    var d = s.replace(/\D/g, "");
+    if (isIntlPhone(s)) return d.length >= 7 && d.length <= 15 ? "" : "Please enter a full phone number, including the country code.";
+    if (d.length === 11 && d.charAt(0) === "1") d = d.slice(1);
+    return d.length === 10 ? "" : "Please enter a 10-digit phone number, including the area code.";
+  }
+
   // ── v3: theme colors ──
   var DEFAULT_THEME = "#1B3A4B";
   function validHex(h) { return typeof h === "string" && /^#[0-9a-f]{6}$/i.test(h.trim()) ? h.trim().toUpperCase() : null; }
@@ -361,6 +390,9 @@
     fmtDay: fmtDay,
     todayNY: todayNY,
     maxEventDate: maxEventDate,
+    addDaysYMD: addDaysYMD,
+    formatPhone: formatPhone,
+    phoneError: phoneError,
     validHex: validHex,
     contrast: contrast,
     onColor: onColor,

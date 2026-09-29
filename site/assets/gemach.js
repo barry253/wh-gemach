@@ -19,7 +19,6 @@
 
   var gemach = null, items = [], categories = [];
   var selected = new Set();
-  var openEnded = false;
   var lastFocus = null;
   var loadedFresh = false;
 
@@ -369,7 +368,7 @@
     hideError();
     var btn = $("btn-submit"); btn.disabled = false; btn.textContent = submitLabel();
     modal.hidden = false; modal.classList.add("open"); lockScroll(true);
-    setTimeout(function () { $("f-name").focus(); }, 30);
+    setTimeout(function () { if (!modal.contains(document.activeElement) || document.activeElement === modal) $("f-name").focus(); }, 30);
   }
   function closeModal() {
     modal.classList.remove("open"); modal.hidden = true; lockScroll(false);
@@ -387,16 +386,6 @@
     toggleItem(cb.value, cb.checked);
   });
 
-  function setOpenEnded(val) {
-    openEnded = val;
-    $("date-fields").hidden = val;
-    $("open-msg").hidden = !val;
-    $("btn-dates").setAttribute("aria-pressed", val ? "false" : "true");
-    $("btn-open").setAttribute("aria-pressed", val ? "true" : "false");
-  }
-  $("btn-dates").addEventListener("click", function () { setOpenEnded(false); });
-  $("btn-open").addEventListener("click", function () { setOpenEnded(true); });
-
   function submitLabel() { return style() === "Appointment" ? "Send appointment request" : "Send request"; }
   var NOTES_PH = $("f-notes").getAttribute("placeholder");
   function configureForm(st) {
@@ -413,6 +402,8 @@
     var fe = $("f-event");
     fe.min = W.todayNY(); fe.max = W.maxEventDate();
     fe.required = ev;
+    updateDateMins();
+    updateEmailReq();
     $("f-times").required = appt;
     var dep = !!gemach.depositRequired;
     $("deposit-group").hidden = !dep;
@@ -433,9 +424,6 @@
   }
   $("f-event").addEventListener("input", updateEventSummary);
   $("f-event").addEventListener("change", updateEventSummary);
-  $("f-deposit").addEventListener("change", function () {
-    $("deposit-line").classList.remove("invalid"); this.removeAttribute("aria-invalid");
-  });
   function checkEventDate(v, required) {
     if (!v) return required ? "Please enter your " + eventLabel().toLowerCase() + "." : "";
     if (!W.parseYMD(v)) return "Please enter a valid date.";
@@ -444,16 +432,110 @@
     return "";
   }
 
-  function showError(msg, field) {
+  // ── Dates style: live min/max ──
+  function updateDateMins() {
+    var today = W.todayNY(), max = W.maxEventDate();
+    var f = $("f-from"), u = $("f-until");
+    f.min = today; f.max = max;
+    var from = W.parseYMD(f.value) && f.value >= today ? f.value : today;
+    u.min = W.addDaysYMD(from, 1);
+  }
+  $("f-from").addEventListener("input", updateDateMins);
+  $("f-from").addEventListener("change", updateDateMins);
+
+  // ── Email becomes required when it's the best way to reach you ──
+  function updateEmailReq() {
+    var need = $("f-contact").value === "Email";
+    $("email-opt").hidden = need;
+    $("email-req").hidden = !need;
+    $("f-email").required = need;
+  }
+  $("f-contact").addEventListener("change", function () {
+    updateEmailReq();
+    if ($("f-contact").value !== "Email" && !$("f-email").value.trim()) clearFieldError($("f-email"));
+  });
+
+  // ── Phone: format as you type / paste, and on blur ──
+  var phone = $("f-phone");
+  phone.addEventListener("input", function (e) {
+    if (e.inputType && /^delete/.test(e.inputType)) return;   // don't fight deletions
+    var raw = phone.value;
+    var caret = typeof phone.selectionStart === "number" ? phone.selectionStart : raw.length;
+    var atEnd = caret >= raw.length;
+    var out = W.formatPhone(raw);
+    if (out === raw) return;
+    var digitsBefore = raw.slice(0, caret).replace(/\D/g, "").length;
+    if (raw.replace(/\D/g, "").length > out.replace(/\D/g, "").length) digitsBefore = Math.max(0, digitsBefore - 1); // dropped leading 1
+    phone.value = out;
+    var pos = out.length;
+    if (!atEnd) {
+      pos = 0;
+      for (var seen = 0; pos < out.length && seen < digitsBefore; pos++) if (/\d/.test(out.charAt(pos))) seen++;
+    }
+    try { phone.setSelectionRange(pos, pos); } catch (err) { /* some input types disallow */ }
+  });
+  phone.addEventListener("blur", function () {
+    var out = W.formatPhone(phone.value.trim());
+    if (out !== phone.value) phone.value = out;
+  });
+
+  // ── Inline field errors ──
+  function errAnchor(field) {
+    if (field.id === "f-deposit") return $("deposit-group");
+    if (field.name === "modal-items") return $("items-group");
+    return field.closest(".form-group") || field.parentNode;
+  }
+  function errKey(field) { return field.name === "modal-items" ? "items" : field.id; }
+  function setFieldError(field, msg) {
+    var key = errKey(field), id = "err-" + key;
+    var el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement("p");
+      el.className = "field-error"; el.id = id;
+      errAnchor(field).appendChild(el);
+    }
+    el.innerHTML = W.ICONS.info + esc(msg);
+    el.hidden = false;
+    var targets = field.name === "modal-items" ? modal.querySelectorAll('input[name="modal-items"]') : [field];
+    Array.prototype.forEach.call(targets, function (t) {
+      if (t.name !== "modal-items") t.setAttribute("aria-invalid", "true");
+      var db = (t.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+      if (db.indexOf(id) < 0) { db.push(id); t.setAttribute("aria-describedby", db.join(" ")); }
+    });
+    if (field.id === "f-deposit") $("deposit-line").classList.add("invalid");
+    if (field.name === "modal-items") $("items-group").classList.add("invalid");
+  }
+  function clearFieldError(field) {
+    var key = errKey(field), id = "err-" + key;
+    var el = document.getElementById(id);
+    if (el) el.remove();
+    var targets = field.name === "modal-items" ? modal.querySelectorAll('input[name="modal-items"]') : [field];
+    Array.prototype.forEach.call(targets, function (t) {
+      t.removeAttribute("aria-invalid");
+      var db = (t.getAttribute("aria-describedby") || "").split(/\s+/).filter(function (x) { return x && x !== id; });
+      if (db.length) t.setAttribute("aria-describedby", db.join(" ")); else t.removeAttribute("aria-describedby");
+    });
+    if (field.id === "f-deposit") $("deposit-line").classList.remove("invalid");
+    if (field.name === "modal-items") $("items-group").classList.remove("invalid");
+  }
+
+  function showError(msg) {
     var el = $("error-msg"); el.textContent = msg; el.hidden = false;
-    if (!field && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
-    if (field) { field.setAttribute("aria-invalid", "true"); field.focus(); }
+    if (el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
   }
   function hideError() {
     $("error-msg").hidden = true;
+    var errs = modal.querySelectorAll(".field-error");
+    for (var i = errs.length - 1; i >= 0; i--) errs[i].remove();
     $("deposit-line").classList.remove("invalid");
-    var inv = modal.querySelectorAll('[aria-invalid="true"]');
-    for (var i = 0; i < inv.length; i++) inv[i].removeAttribute("aria-invalid");
+    $("items-group").classList.remove("invalid");
+    var inv = modal.querySelectorAll("[aria-describedby]");
+    for (var j = 0; j < inv.length; j++) {
+      var db = inv[j].getAttribute("aria-describedby").split(/\s+/).filter(function (x) { return x && x.indexOf("err-") !== 0; });
+      if (db.length) inv[j].setAttribute("aria-describedby", db.join(" ")); else inv[j].removeAttribute("aria-describedby");
+    }
+    var bad = modal.querySelectorAll('[aria-invalid="true"]');
+    for (var k = 0; k < bad.length; k++) bad[k].removeAttribute("aria-invalid");
   }
 
   function gemachContactLine() {
@@ -463,62 +545,97 @@
     return bits.length ? " You can also reach the gemach at " + bits.join(" or ") + "." : " Please email " + W.CONTACT_EMAIL + ".";
   }
 
-  $("form-view").addEventListener("input", function (e) {
-    if (e.target.getAttribute("aria-invalid") === "true") { e.target.removeAttribute("aria-invalid"); $("error-msg").hidden = true; }
-  });
-  $("form-view").addEventListener("submit", function (e) {
-    e.preventDefault();
-    hideError();
+  function onFieldEdit(e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    if (t.name === "modal-items") { if (modal.querySelector('input[name="modal-items"]:checked')) clearFieldError(t); }
+    else if (t.getAttribute("aria-invalid") === "true" || t.id === "f-deposit") clearFieldError(t);
+    if (t.id === "f-from" && $("f-until").getAttribute("aria-invalid") === "true") clearFieldError($("f-until"));
+    $("error-msg").hidden = true;
+  }
+  $("form-view").addEventListener("input", onFieldEdit);
+  $("form-view").addEventListener("change", onFieldEdit);
+
+  /** Validate everything, show all inline errors, focus the first. Returns the request body or null. */
+  function validate() {
+    var errs = [];
+    function bad(field, msg) { errs.push(field); setFieldError(field, msg); }
+    var st = style();
     var name = $("f-name").value.trim();
-    var phone = $("f-phone").value.trim();
+    var ph = W.formatPhone($("f-phone").value.trim());
+    if (ph !== $("f-phone").value) $("f-phone").value = ph;
     var email = $("f-email").value.trim();
     var preferredContact = $("f-contact").value;
     var notes = $("f-notes").value.trim();
-    var neededFrom = openEnded ? "" : $("f-from").value;
-    var neededUntil = openEnded ? "" : $("f-until").value;
     var ids = Array.prototype.map.call(modal.querySelectorAll('input[name="modal-items"]:checked'), function (cb) { return cb.value; });
 
-    if (!name) return showError("Please enter your name.", $("f-name"));
-    if (!phone) return showError("Please enter your phone number.", $("f-phone"));
-    if (phone.replace(/\D/g, "").length < 10) return showError("Please enter a phone number with area code.", $("f-phone"));
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError("That email address doesn’t look right.", $("f-email"));
-    if (preferredContact === "Email" && !email) return showError("Please add your email, since that’s the best way to reach you.", $("f-email"));
-    var st = style();
-    var body = { gemach: gemach.slug || slug, name: name, phone: phone, itemsRequested: ids };
+    if (!name) bad($("f-name"), "Please enter your name.");
+    var pe = W.phoneError(ph);
+    if (pe) bad($("f-phone"), pe);
+    if (!preferredContact) bad($("f-contact"), "Please choose the best way to reach you.");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) bad($("f-email"), "That email address doesn’t look right.");
+    else if (preferredContact === "Email" && !email) bad($("f-email"), "Please add your email, since that’s the best way to reach you.");
+
+    var body = { gemach: gemach.slug || slug, name: name, phone: ph, itemsRequested: ids };
+    var firstItem = modal.querySelector('input[name="modal-items"]');
+    if (st !== "Appointment" && !ids.length && firstItem) bad(firstItem, "Please select at least one item.");
+
     if (st === "Appointment") {
       var times = $("f-times").value.trim();
       var party = $("f-party").value.trim();
       var evA = $("f-event").value;
-      if (!times) return showError("Please let the gemach know when you’d like to come.", $("f-times"));
-      if (party && !(/^\d+$/.test(party) && +party >= 1 && +party <= 20)) return showError("Number of people should be between 1 and 20.", $("f-party"));
+      if (!times) bad($("f-times"), "Please let the gemach know when you’d like to come.");
+      if (party && !(/^\d+$/.test(party) && +party >= 1 && +party <= 20)) bad($("f-party"), "Number of people should be between 1 and 20.");
       var errA = checkEventDate(evA, false);
-      if (errA) return showError(errA, $("f-event"));
+      if (errA) bad($("f-event"), errA);
       body.preferredTimes = times;
       if (party) body.partySize = +party;
       if (evA) body.eventDate = evA;
     } else if (st === "Event") {
-      if (!ids.length) return showError("Please select at least one item.");
       var evE = $("f-event").value;
       var errE = checkEventDate(evE, true);
-      if (errE) return showError(errE, $("f-event"));
+      if (errE) bad($("f-event"), errE);
       body.eventDate = evE;
     } else {
-      if (!ids.length) return showError("Please select at least one item.");
-      if (neededFrom && neededUntil && neededUntil < neededFrom) return showError("The “until” date is before the “from” date.", $("f-until"));
-      body.openEnded = openEnded;
-      if (neededFrom) body.neededFrom = neededFrom;
-      if (neededUntil) body.neededUntil = neededUntil;
+      var from = $("f-from").value, until = $("f-until").value;
+      var today = W.todayNY();
+      var fromOk = false;
+      if (!from) bad($("f-from"), $("f-from").validity && $("f-from").validity.badInput ? "Please enter a valid date." : "Please choose the date you need it from.");
+      else if (!W.parseYMD(from)) bad($("f-from"), "Please enter a valid date.");
+      else if (from < today) bad($("f-from"), "This date is in the past — please choose today or later.");
+      else if (from > W.maxEventDate()) bad($("f-from"), "Please choose a date within the next 2 years.");
+      else fromOk = true;
+      if (until) {
+        if (!W.parseYMD(until)) bad($("f-until"), "Please enter a valid date.");
+        else if (fromOk && until <= from) bad($("f-until"), "The return date needs to be after " + W.fmtDay(from) + ".");
+      } else if ($("f-until").validity && $("f-until").validity.badInput) bad($("f-until"), "Please enter a valid date.");
+      body.openEnded = !until;
+      if (from) body.neededFrom = from;
+      if (until) body.neededUntil = until;
     }
     if (gemach.depositRequired) {
-      if (!$("f-deposit").checked) {
-        $("deposit-line").classList.add("invalid");
-        return showError("Please confirm you understand a deposit is required.", $("f-deposit"));
-      }
+      if (!$("f-deposit").checked) bad($("f-deposit"), "Please confirm you understand a deposit is required.");
       body.depositAck = true;
     }
+    if (errs.length) {
+      var f = errs[0];
+      if (f.name === "modal-items") { var d = f.closest("details"); if (d) d.open = true; }
+      f.focus();
+      if (f.scrollIntoView) f.scrollIntoView({ block: "center" });
+      return null;
+    }
     if (email) body.email = email;
-    if (preferredContact) body.preferredContact = preferredContact;
+    body.preferredContact = preferredContact;
     if (notes) body.notes = notes;
+    return body;
+  }
+
+  $("form-view").addEventListener("submit", function (e) {
+    e.preventDefault();
+    hideError();
+    var st = style();
+    var body = validate();
+    if (!body) return;
 
     var btn = $("btn-submit");
     btn.disabled = true; btn.textContent = "Sending…";
@@ -536,7 +653,7 @@
       }
       $("success-title").focus();
       var had = Array.from(selected); selected.clear(); had.forEach(syncRow); updateCTA();
-      $("form-view").reset(); setOpenEnded(false); updateEventSummary();
+      $("form-view").reset(); updateEventSummary(); updateEmailReq(); updateDateMins();
       W.clearDirCache();
       refresh();
     }).catch(function (err) {

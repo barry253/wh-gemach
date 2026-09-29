@@ -611,3 +611,18 @@ fieldset { border: 0; }
 .form-group input[type="number"] { max-width: 9rem; }
 .sticky-cta.always .cta-label { display: none; }
 @media (min-width: 600px) { .sticky-cta.always .cta-label { display: block; } }
+
+/* Request form (r5): inline field errors */
+.field-error {
+  display: flex; align-items: flex-start; gap: .35rem; margin-top: .35rem;
+  font-size: .84rem; font-weight: 500; line-height: 1.35; color: var(--red);
+}
+.field-error svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: .1rem; }
+.form-group select[aria-invalid="true"] { border-color: var(--red); }
+.form-group input[aria-invalid="true"], .form-group select[aria-invalid="true"], .form-group textarea[aria-invalid="true"] {
+  border-width: 2px; padding: calc(.6rem - 1px) calc(.75rem - 1px);
+}
+#items-group.invalid .item-check-label { border-color: #E3A6A6; }
+#date-fields { row-gap: 1rem; }
+#date-fields .form-group { margin-bottom: 0; }
+#dates-group .field-hint { margin-top: .45rem; }
