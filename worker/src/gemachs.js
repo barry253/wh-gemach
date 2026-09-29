@@ -2,6 +2,7 @@
 import { fStr, linkedId } from "./airtable.js";
 import { CACHE_TTL_MS, LEGACY_SLUG, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
 import { isLiveNetworkAdmin } from "./network.js";
+import { parseAttrDefs } from "./attributes.js";
 
 // ─── Gemach lookup ────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ function gemachFromRecord(r) {
     logoUrl: nonBlank(f["Logo URL"]) || f.Logo?.[0]?.url || null,
     logoDarkUrl: /^https:\/\//i.test(nonBlank(f["Logo On Dark URL"]) || "") ? nonBlank(f["Logo On Dark URL"]) : null,
     communityIds: (f.Community || []).map(linkedId),
+    itemAttributes: parseAttrDefs(f["Item Attributes"]),
   };
 }
 

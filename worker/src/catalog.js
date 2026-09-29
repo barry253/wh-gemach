@@ -1,5 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { AirtableError, firstLink, getOwned, linkedId, scopeF } from "./airtable.js";
+import { parseItemAttrs, validateItemAttrs } from "./attributes.js";
+import { gemachFromRecord } from "./gemachs.js";
 import { REC_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { json, readJson } from "./http.js";
@@ -28,6 +30,7 @@ async function handleGetItemTypes({ db, g }) {
       price: addonPrice(r),
       quantityOwned: wholeNum(r.fields["Quantity Owned"]),
       outOfService: wholeNum(r.fields["Out of Service"]),
+      attributes: parseItemAttrs(r.fields["Attributes"]),
     };
     if (isQtyType(r)) {
       // Counts for the inventory card: out now, reserved ahead, free today.
@@ -104,6 +107,17 @@ async function resolveCategoryField(db, categoryId) {
   return { value: [categoryId] };
 }
 
+/** body.attributes → { skip } | { value } | { error }, checked against the gemach's current filters (read fresh). */
+async function resolveAttributesField(db, g, attributes) {
+  if (attributes === undefined) return { skip: true };
+  let defs = g.itemAttributes || [];
+  if (attributes && typeof attributes === "object" && Object.keys(attributes).length) {
+    const rec = await db.get(T.GEMACHS, g.id); // Settings may have just changed; the gemach memo can be up to 60s old
+    if (rec) defs = gemachFromRecord(rec).itemAttributes;
+  }
+  return validateItemAttrs(attributes, defs);
+}
+
 async function airtableResult(promise) {
   try { return json(await promise); }
   catch (e) {
@@ -126,6 +140,9 @@ async function handleCreateItemType(c) {
   const cat = await resolveCategoryField(c.db, body.categoryId);
   if (cat.error) return json({ error: cat.error }, 400);
   if (!cat.skip && cat.value.length) fields["Product Category"] = cat.value;
+  const attrs = await resolveAttributesField(c.db, c.g, body.attributes);
+  if (attrs.error) return json({ error: attrs.error }, 400);
+  if (!attrs.skip && attrs.value) fields["Attributes"] = attrs.value;
   const q = await itemTypeQtyFields(c.db, c.g, body);
   if (q.error) return json({ error: q.error }, 400);
   Object.assign(fields, q.fields);
@@ -147,6 +164,9 @@ async function handleUpdateItemType(c, id) {
   const cat = await resolveCategoryField(c.db, body.categoryId);
   if (cat.error) return json({ error: cat.error }, 400);
   if (!cat.skip) fields["Product Category"] = cat.value;
+  const attrs = await resolveAttributesField(c.db, c.g, body.attributes);
+  if (attrs.error) return json({ error: attrs.error }, 400);
+  if (!attrs.skip) fields["Attributes"] = attrs.value;
   return airtableResult(c.db.update(T.ITEM_TYPES, id, fields));
 }
 

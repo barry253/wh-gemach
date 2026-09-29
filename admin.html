@@ -625,6 +625,18 @@
     .tag-amber { background: #FEF3C7; color: var(--amber); }
     .tag-green { background: #DCFCE7; color: var(--green); }
     .tag-addon { background: #E0E7FF; color: #3730A3; }
+    /* Item filters (Size, Color…) */
+    .attr-picker { margin-bottom: 0.55rem; }
+    .attr-picker-name { font-size: 0.75rem; color: var(--muted); font-weight: 600; margin-bottom: 0.25rem; }
+    .attr-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .attr-chip { border: 1px solid var(--border); background: #fff; color: var(--text); border-radius: 999px; padding: 0.2rem 0.65rem; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+    .attr-chip[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .attr-chip.attr-orphan { border-style: dashed; color: var(--muted); }
+    .attr-def { border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.7rem; margin-bottom: 0.6rem; }
+    .attr-def-head { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
+    .attr-def-head input { flex: 1; }
+    .attr-presets { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
+    .inv-attrs { font-size: 0.78rem; color: var(--muted); margin: 0 0 0.35rem; }
     .tag-navy { background: var(--teal); color: var(--navy); }
 
     /* ── Action buttons ── */
@@ -749,7 +761,9 @@
 
     .form-group input,
     .form-group select,
-    .form-group textarea {
+    .form-group textarea,
+    .attr-def input,
+    .attr-def textarea {
       width: 100%;
       padding: 0.6rem 0.75rem;
       border: 1px solid var(--border);
@@ -762,7 +776,9 @@
 
     .form-group input:focus,
     .form-group select:focus,
-    .form-group textarea:focus {
+    .form-group textarea:focus,
+    .attr-def input:focus,
+    .attr-def textarea:focus {
       outline: none;
       border-color: var(--navy);
     }
@@ -1697,6 +1713,11 @@
       <label for="it-category">Browse category</label>
       <select id="it-category"><option value="">— none —</option></select>
       <div class="muted-small" style="margin-top:0.3rem">Where this item appears when people browse whgemachs.org by category.</div>
+    </div>
+    <div class="form-group" id="it-attrs-row" style="display:none">
+      <label>Filters</label>
+      <div id="it-attrs"></div>
+      <div class="muted-small" style="margin-top:0.2rem">Tap to choose. Borrowers can filter and sort by these on your page. Change the choices in Settings → Item filters.</div>
     </div>
     <div class="form-group">
       <label for="it-tracking">How do you keep track of these?</label>
@@ -3138,6 +3159,7 @@
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">Edit count</button>
         </div>
         <div class="inventory-group-body">
+          ${attrSummary(type)}
           <div class="qty-stats">
             ${stat(type.quantityOwned, "own")}
             ${stat(type.availableToday, "free today")}
@@ -3161,7 +3183,7 @@
           </div>
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddItem('${tid}', rec('type','${tid}').name)">+ Add Item</button>
         </div>
-        <div class="inventory-group-body">${itemsHtml}</div>
+        <div class="inventory-group-body">${attrSummary(type)}${itemsHtml}</div>
       </div>`;
     }).join("");
   }
@@ -3339,6 +3361,7 @@
     { title: "Branding", extra: "branding" },
     { title: "Gemach info", extra: "info" },
     { title: "Requests", extra: "requests" },
+    { title: "Item filters", extra: "attrs" },
   ];
   const SETTINGS_TEMPLATES = [
     { kind: "confirm",     key: "confirmMessage",     label: "Request confirmed" },
@@ -3478,6 +3501,13 @@
           <div class="example-line" id="event-example"></div>
         </div>`;
     }
+    if (group.extra === "attrs") {
+      inner += `
+        <p class="settings-help" style="margin:0 0 0.6rem">Let borrowers filter your items — e.g. <b>Size</b> and <b>Color</b> for gowns. Most gemachs don't need this.
+          List the choices in the order to sort by (sizes small → large); then pick each item's values when you edit it.</p>
+        <div id="attr-defs"></div>
+        ${ro ? "" : `<div class="attr-presets" id="attr-presets"></div>`}`;
+    }
     return `<div class="section-label" id="settings-sec-${group.title.toLowerCase().replace(/\s+/g, "-")}">${group.title}</div>
       <div class="card" style="margin-bottom:1.25rem">${inner}</div>`;
   }
@@ -3592,9 +3622,59 @@
       settingsOriginal[t.key] = el.value;
       updateTemplateState(t);
     });
+    ATTR_DRAFT = (g.itemAttributes || []).map(a => ({ name: a.name, values: a.values.join(", ") }));
+    settingsOriginal.itemAttributes = attrDefsKey(ATTR_DRAFT);
+    renderAttrDefs(ro);
     renderLogoPreview();
     onSettingsInput();
   }
+
+  // ── Item filters editor (Settings) ──
+  let ATTR_DRAFT = []; // [{ name, values: "a, b, c" }]
+  const ATTR_PRESETS = {
+    "Size": "0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24",
+    "Color": "Black, Navy, Royal Blue, Teal, Green, Burgundy, Red, Blush, Purple, Gold, Silver, Champagne, Grey, White",
+    "Length": "Floor-length, Tea-length, Midi, Knee-length",
+    "Style": "A-line, Ball gown, Mermaid, Sheath, Empire",
+    "Sleeves": "Long sleeves, 3/4 sleeves, Elbow, Short sleeves",
+  };
+  const splitVals = v => String(v || "").split(/[,\n]/).map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const attrDefsKey = defs => JSON.stringify(defs.map(d => ({ name: String(d.name || "").trim(), values: splitVals(d.values) })).filter(d => d.name || d.values.length));
+
+  function renderAttrDefs(ro = !GEMACH?.canEdit) {
+    const box = document.getElementById("attr-defs");
+    if (!box) return;
+    box.innerHTML = ATTR_DRAFT.length ? ATTR_DRAFT.map((d, i) => `
+      <div class="attr-def">
+        <div class="attr-def-head">
+          <input type="text" id="attr-name-${i}" maxlength="30" placeholder="Filter name, e.g. Size" aria-label="Filter name" ${ro ? "disabled" : ""} />
+          ${ro ? "" : `<button class="btn btn-ghost btn-sm" type="button" style="color:var(--red)" onclick="removeAttrDef(${i})">Remove</button>`}
+        </div>
+        <textarea id="attr-values-${i}" rows="2" style="min-height:0;resize:vertical" placeholder="Choices, separated by commas" aria-label="Choices" ${ro ? "disabled" : ""}></textarea>
+      </div>`).join("") : `<div class="muted-small" style="margin-bottom:0.4rem">No filters.</div>`;
+    ATTR_DRAFT.forEach((d, i) => {
+      const n = document.getElementById(`attr-name-${i}`), v = document.getElementById(`attr-values-${i}`);
+      n.value = d.name; v.value = d.values;
+      n.oninput = () => { d.name = n.value; renderAttrPresets(); };
+      v.oninput = () => { d.values = v.value; };
+    });
+    renderAttrPresets();
+  }
+  function renderAttrPresets() {
+    const el = document.getElementById("attr-presets");
+    if (!el) return;
+    const have = new Set(ATTR_DRAFT.map(d => d.name.trim().toLowerCase()));
+    const left = Object.keys(ATTR_PRESETS).filter(k => !have.has(k.toLowerCase()));
+    el.innerHTML = (ATTR_DRAFT.length < 6 ? left.map(k => `<button class="btn btn-ghost btn-sm" type="button" onclick="addAttrDef('${k}')">+ ${k}</button>`).join("") +
+      `<button class="btn btn-ghost btn-sm" type="button" onclick="addAttrDef('')">+ Other filter</button>` : "");
+  }
+  function addAttrDef(name) {
+    if (ATTR_DRAFT.length >= 6) { showToast("Up to 6 filters"); return; }
+    ATTR_DRAFT.push({ name, values: ATTR_PRESETS[name] || "" });
+    renderAttrDefs();
+    document.getElementById(`attr-${name ? "values" : "name"}-${ATTR_DRAFT.length - 1}`)?.focus();
+  }
+  function removeAttrDef(i) { ATTR_DRAFT.splice(i, 1); renderAttrDefs(); }
 
   function onSettingsInput() {
     updateContactNeeds();
@@ -3838,6 +3918,13 @@
       const raw = setEl(t.key).value;
       if (raw !== settingsOriginal[t.key]) patch[t.key] = raw.trim();
     });
+    const attrNow = attrDefsKey(ATTR_DRAFT);
+    if (attrNow !== settingsOriginal.itemAttributes) {
+      const defs = JSON.parse(attrNow);
+      const bad = defs.find(d => !d.name || !d.values.length);
+      if (bad) return { error: bad.name ? `List at least one choice for “${bad.name}”.` : "Each item filter needs a name (e.g. Size)." };
+      patch.itemAttributes = defs;
+    }
     if (!setEl("primaryContact").value) return { error: "Choose a primary contact method." };
     if ("name" in patch && !patch.name) return { error: "Gemach name can't be empty." };
     return { patch };
@@ -4248,6 +4335,54 @@
   let editingItemId = null;
   let pendingPhotoUrl = null;
 
+  // Filter values for the item type being edited: { "Size": Set(["8"]) }
+  let ITEM_ATTR_SEL = {}, itemAttrOriginal = "{}";
+  const attrKey = s => String(s || "").trim().toLowerCase();
+  function itemAttrsJson() {
+    const out = {};
+    for (const d of GEMACH?.itemAttributes || []) {
+      const sel = ITEM_ATTR_SEL[d.name];
+      const list = d.values.filter(v => sel?.has(v));
+      if (list.length) out[d.name] = list;
+    }
+    return JSON.stringify(out);
+  }
+  function renderItemAttrPickers(current = {}) {
+    const defs = GEMACH?.itemAttributes || [];
+    const row = document.getElementById("it-attrs-row");
+    row.style.display = defs.length ? "" : "none";
+    ITEM_ATTR_SEL = {};
+    const cur = Object.fromEntries(Object.entries(current || {}).map(([k, v]) => [attrKey(k), new Set((v || []).map(attrKey))]));
+    const orphans = {};
+    for (const d of defs) {
+      const have = cur[attrKey(d.name)] || new Set();
+      ITEM_ATTR_SEL[d.name] = new Set(d.values.filter(v => have.has(attrKey(v))));
+      const known = new Set(d.values.map(attrKey));
+      orphans[d.name] = Object.entries(current || {}).filter(([k]) => attrKey(k) === attrKey(d.name)).flatMap(([, v]) => v).filter(v => !known.has(attrKey(v)));
+    }
+    document.getElementById("it-attrs").innerHTML = defs.map((d, i) => `
+      <div class="attr-picker" role="group" aria-label="${esc(d.name)}">
+        <div class="attr-picker-name">${esc(d.name)}</div>
+        <div class="attr-chips">${d.values.map((v, j) => `<button type="button" class="attr-chip" data-a="${i}" data-v="${j}" aria-pressed="${ITEM_ATTR_SEL[d.name].has(v)}">${esc(v)}</button>`).join("")}
+          ${orphans[d.name].map(v => `<span class="attr-chip attr-orphan" title="No longer one of your choices — saving removes it">${esc(v)}</span>`).join("")}</div>
+      </div>`).join("");
+    document.querySelectorAll("#it-attrs .attr-chip[data-a]").forEach(b => b.onclick = () => {
+      const d = defs[b.dataset.a], v = d.values[b.dataset.v], sel = ITEM_ATTR_SEL[d.name];
+      sel.has(v) ? sel.delete(v) : sel.add(v);
+      b.setAttribute("aria-pressed", sel.has(v));
+    });
+    itemAttrOriginal = itemAttrsJson();
+  }
+  function attrSummary(type) {
+    const defs = GEMACH?.itemAttributes || [];
+    const a = type.attributes || {};
+    const parts = defs.map(d => {
+      const v = Object.entries(a).find(([k]) => attrKey(k) === attrKey(d.name))?.[1];
+      return v?.length ? `${d.name} ${v.join(", ")}` : "";
+    }).filter(Boolean);
+    return parts.length ? `<div class="inv-attrs">${esc(parts.join(" · "))}</div>` : "";
+  }
+
   function openAddItemType() {
     editingItemTypeId = null;
     pendingPhotoUrl = null;
@@ -4258,6 +4393,8 @@
     document.getElementById("it-order").value = catalogItemTypes.length + 1;
     document.getElementById("it-active").value = "true";
     fillCategorySelect("");
+    renderItemAttrPickers({});
+    itemAttrOriginal = "{}";
     setTrackingFields({ tracking: "Units", quantityOwned: "", outOfService: "", itemCount: 0 });
     clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
@@ -4300,6 +4437,8 @@
     document.getElementById("it-order").value = t.displayOrder;
     document.getElementById("it-active").value = t.active ? "true" : "false";
     fillCategorySelect(t.categoryId || "");
+    renderItemAttrPickers(t.attributes || {});
+    if (Object.keys(t.attributes || {}).length && itemAttrsJson() === "{}") itemAttrOriginal = "(orphans)";
     setTrackingFields(t);
     if (pendingPhotoUrl) showPhotoPreview(pendingPhotoUrl);
     else clearPhotoUI();
@@ -4321,6 +4460,7 @@
     if (!editingItemTypeId ? catSel.value : catSel.value !== catSel.dataset.original) body.categoryId = catSel.value;
     const tracking = document.getElementById("it-tracking").value;
     if (!editingItemTypeId || tracking !== editingTracking) body.tracking = tracking;
+    if ((GEMACH?.itemAttributes || []).length && itemAttrsJson() !== itemAttrOriginal) body.attributes = JSON.parse(itemAttrsJson());
     if (tracking === "Quantity") {
       const owned = document.getElementById("it-owned").value.trim();
       const oos = document.getElementById("it-oos").value.trim();

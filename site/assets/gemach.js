@@ -19,6 +19,8 @@
 
   var gemach = null, items = [], categories = [];
   var selected = new Set();
+  var attrFilter = {};        // { "Size": ["8","10"] } — values picked in the filter bar
+  var sortBySize = false;
   var lastFocus = null;
   var loadedFresh = false;
 
@@ -242,6 +244,57 @@
                  : '<span class="badge badge-out">All on loan</span>';
   }
 
+  // ── Item filters (gemach-defined, e.g. Size / Color) ──
+  function attrDefs() { return (gemach && Array.isArray(gemach.itemAttributes)) ? gemach.itemAttributes : []; }
+  function itemVals(it, name) { return (it.attributes && it.attributes[name]) || []; }
+  function sizeDef() { return attrDefs().filter(function (d) { return /size/i.test(d.name); })[0] || null; }
+  /** Filters worth showing: only values that some (non add-on) item actually has, in the gemach's order. */
+  function usableDefs() {
+    return attrDefs().map(function (d) {
+      var used = {};
+      items.forEach(function (it) { if (!isAddon(it)) itemVals(it, d.name).forEach(function (v) { used[v] = 1; }); });
+      return { name: d.name, values: d.values.filter(function (v) { return used[v]; }) };
+    }).filter(function (d) { return d.values.length; });
+  }
+  function passesFilter(it) {
+    if (isAddon(it)) return true; // add-ons aren't sized/colored; always listed
+    return Object.keys(attrFilter).every(function (name) {
+      var want = attrFilter[name];
+      if (!want || !want.length) return true;
+      var have = itemVals(it, name);
+      return want.some(function (v) { return have.indexOf(v) !== -1; });
+    });
+  }
+  function sizeRank(it) {
+    var d = sizeDef();
+    if (!d) return 1e9;
+    var v = itemVals(it, d.name);
+    var best = 1e9;
+    v.forEach(function (x) { var i = d.values.indexOf(x); if (i !== -1 && i < best) best = i; });
+    return best;
+  }
+  function activeFilterCount() {
+    return Object.keys(attrFilter).reduce(function (n, k) { return n + (attrFilter[k] || []).length; }, 0);
+  }
+  function filterBar(defs, shown, total) {
+    if (!defs.length) return "";
+    var sd = sizeDef();
+    var rows = defs.map(function (d, i) {
+      var on = attrFilter[d.name] || [];
+      return '<div class="af-row" role="group" aria-label="Filter by ' + esc(d.name) + '"><span class="af-name">' + esc(d.name) + "</span>" +
+        '<div class="af-chips">' + d.values.map(function (v, j) {
+          var pressed = on.indexOf(v) !== -1;
+          return '<button type="button" class="af-chip" data-fa="' + i + '" data-fv="' + j + '" aria-pressed="' + pressed + '">' + esc(v) + "</button>";
+        }).join("") + "</div></div>";
+    }).join("");
+    var n = activeFilterCount();
+    var sort = sd && defs.some(function (d) { return d.name === sd.name; })
+      ? '<label class="af-sort">Sort <select id="af-sort"><option value="">As listed</option><option value="size"' + (sortBySize ? " selected" : "") + ">By " + esc(sd.name.toLowerCase()) + ", smallest first</option></select></label>" : "";
+    return '<div class="af-bar" id="af-bar">' + rows +
+      '<div class="af-foot"><span class="af-count" role="status">' + (n ? "Showing " + shown + " of " + total : W.plural(total, "item")) + "</span>" +
+      (n ? '<button type="button" class="af-clear" id="af-clear">Clear filters</button>' : "") + sort + "</div></div>";
+  }
+
   function itemRow(it) {
     var dir = W.isDirectory(gemach);
     var id = esc(it.id);
@@ -249,6 +302,11 @@
     var thumb = photo
       ? '<button type="button" class="item-thumb" data-photo="' + id + '" aria-label="View photo of ' + esc(it.name) + '"><img src="' + esc(photo) + '" alt="" loading="lazy" width="92" height="72" /></button>'
       : '<div class="item-thumb" aria-hidden="true">' + W.ICONS.photo + "</div>";
+    var attrs = attrDefs().map(function (d) {
+      var v = itemVals(it, d.name);
+      return v.length ? '<span class="ia"><span class="ia-k">' + esc(d.name) + "</span> " + esc(v.join(", ")) + "</span>" : "";
+    }).filter(Boolean).join("");
+    attrs = attrs ? '<div class="item-attrs">' + attrs + "</div>" : "";
     var units = isAddon(it) ? '<div class="item-units">Made to order · paid separately' + (dir ? "" : " · choose how many when you request") + "</div>"
       : typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
       ? '<div class="item-units">' + (isQty(it) ? it.totalUnits : W.plural(it.totalUnits, "unit")) + " in the gemach" +
@@ -263,7 +321,7 @@
       ' aria-label="Select ' + esc(it.name) + '" /></label>';
     return '<li class="item-row' + (dir ? "" : " selectable") + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
       thumb +
-      '<div class="item-content"><div class="item-top"><div><div class="item-name">' + esc(it.name) + "</div>" + units + "</div>" +
+      '<div class="item-content"><div class="item-top"><div><div class="item-name">' + esc(it.name) + "</div>" + attrs + units + "</div>" +
       availBadge(it) + "</div>" + desc + "</div>" + check + "</li>";
   }
 
@@ -281,7 +339,20 @@
     categories.forEach(function (c, i) { byCat[c.id] = { c: c, items: [], i: i }; });
     var other = { c: { name: "Other", icon: "📦" }, items: [], i: 9999 };
     var addons = { c: { name: "Add-ons (for purchase)", icon: "🛍" }, items: [], i: 10000 };
-    items.forEach(function (it) {
+    // Drop filter picks that no longer match anything offered.
+    var defs = usableDefs();
+    Object.keys(attrFilter).forEach(function (k) {
+      var d = defs.filter(function (x) { return x.name === k; })[0];
+      attrFilter[k] = d ? attrFilter[k].filter(function (v) { return d.values.indexOf(v) !== -1; }) : [];
+      if (!attrFilter[k].length) delete attrFilter[k];
+    });
+    var listed = items.filter(passesFilter);
+    if (sortBySize && sizeDef()) {
+      listed = listed.map(function (it, i) { return { it: it, i: i, r: sizeRank(it) }; })
+        .sort(function (a, b) { return a.r - b.r || a.i - b.i; }).map(function (x) { return x.it; });
+    }
+    var counted = items.filter(function (it) { return !isAddon(it); });
+    listed.forEach(function (it) {
       var b = isAddon(it) ? addons : it.categoryId && byCat[it.categoryId] ? byCat[it.categoryId] : other;
       b.items.push(it);
     });
@@ -301,6 +372,10 @@
     html += dir
       ? '<div class="notice">This gemach is listed in our directory. To borrow, contact them directly using the buttons above.</div>'
       : '<p class="inv-help">' + help[st] + "</p>";
+    html += filterBar(defs, listed.filter(function (it) { return !isAddon(it); }).length, counted.length);
+    if (activeFilterCount() && !listed.some(function (it) { return !isAddon(it); })) {
+      html += '<div class="notice notice-info af-none">Nothing matches these filters. <button type="button" class="af-clear" id="af-clear-2">Clear filters</button></div>';
+    }
     html += order.map(function (b) {
       return '<section class="cat-block" aria-label="' + esc(b.c.name) + '">' +
         (showHeads ? '<h3><span class="ci" aria-hidden="true">' + esc(b.c.icon || "•") + "</span>" + esc(b.c.name) + "</h3>" : "") +
@@ -314,7 +389,7 @@
     // drop selections that no longer exist / directory mode
     var ids = new Set(items.map(function (i) { return i.id; }));
     selected.forEach(function (id) { if (!ids.has(id) || W.isDirectory(gemach)) selected.delete(id); });
-    $("g-body").innerHTML = infoPanel() + gemachInfoSection() + renderInventory();
+    $("g-body").innerHTML = infoPanel() + gemachInfoSection() + '<div id="inv-wrap">' + renderInventory() + "</div>";
     updateCTA();
     handleType();
   }
@@ -389,8 +464,31 @@
     return l || "Event date";
   }
 
+  function rerenderInventory(focusSel) {
+    var wrap = $("inv-wrap");
+    if (!wrap) return;
+    wrap.innerHTML = renderInventory();
+    if (focusSel) { var f = wrap.querySelector(focusSel); if (f) f.focus(); }
+  }
+  $("g-body").addEventListener("change", function (e) {
+    if (e.target.id !== "af-sort") return;
+    sortBySize = e.target.value === "size";
+    rerenderInventory("#af-sort");
+  });
+
   $("g-body").addEventListener("click", function (e) {
     var t = e.target;
+    var chip = t.closest(".af-chip");
+    if (chip) {
+      var d = usableDefs()[Number(chip.getAttribute("data-fa"))];
+      if (!d) return;
+      var v = d.values[Number(chip.getAttribute("data-fv"))];
+      var list = attrFilter[d.name] || [];
+      attrFilter[d.name] = list.indexOf(v) !== -1 ? list.filter(function (x) { return x !== v; }) : list.concat([v]);
+      rerenderInventory('.af-chip[data-fa="' + chip.getAttribute("data-fa") + '"][data-fv="' + chip.getAttribute("data-fv") + '"]');
+      return;
+    }
+    if (t.closest(".af-clear")) { attrFilter = {}; rerenderInventory("#af-bar .af-chip"); return; }
     var photoBtn = t.closest("[data-photo]");
     if (photoBtn) {
       var it = items.filter(function (i) { return i.id === photoBtn.getAttribute("data-photo"); })[0];

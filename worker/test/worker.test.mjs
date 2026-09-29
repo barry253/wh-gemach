@@ -1616,6 +1616,64 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
   });
 }
 
+// ── Item attributes (filters like Size / Color for gown gemachs) ──
+{
+  const G = { id: "recGOWNGEMACH0001", slug: "gown-gemach" };
+  DB.Gemachs.push(rec(G.id, { Name: "Gown Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "gown@example.com", "Request Style": "Appointment" }));
+  const sc = { Gemach: [G.id], "Gemach Slug": [G.slug] };
+  DB["Item Types"].push(
+    rec("recGOWNTYPE000001", { Name: "Navy A-line", Active: true, ...sc }),
+    rec("recGOWNTYPE000002", { Name: "Gold Mermaid", Active: true, ...sc, Attributes: JSON.stringify({ size: ["12"], Color: ["gold", "Silver"], Old: ["x"] }) }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const patchG = b => call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify(b) });
+
+  await t("attributes: Settings saves the gemach's filters (cleaned, deduped); bad input refused", async () => {
+    let r = await patchG({ itemAttributes: [{ name: " Size ", values: "0, 2, 4,6,8,10,12, 2" }, { name: "Color", values: ["Navy", "Gold", "Black", "Silver"] }, { name: "Length", values: ["Floor", "Tea"] }] });
+    assert.equal(r.status, 200, await r.clone().text());
+    const saved = JSON.parse(DB.Gemachs.find(x => x.id === G.id).fields["Item Attributes"]);
+    assert.deepEqual(saved[0], { name: "Size", values: ["0", "2", "4", "6", "8", "10", "12"] });
+    assert.deepEqual((await r.json()).itemAttributes.map(a => a.name), ["Size", "Color", "Length"]);
+    for (const bad of [[{ name: "", values: "a" }], [{ name: "Size", values: "a" }, { name: "size", values: "b" }], [{ name: "Size", values: " , " }],
+      "Size", [{ name: "x".repeat(31), values: "a" }], Array.from({ length: 7 }, (_, i) => ({ name: "A" + i, values: "x" }))]) {
+      r = await patchG({ itemAttributes: bad });
+      assert.equal(r.status, 400, JSON.stringify(bad));
+    }
+  });
+
+  await t("attributes: item values checked against the gemach's list; public page shows them in list order", async () => {
+    let r = await call("/admin/catalog/item-types/recGOWNTYPE000001", { method: "PATCH", headers: H, body: JSON.stringify({ attributes: { Size: "8", color: ["gold", "Navy"] } }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.deepEqual(JSON.parse(DB["Item Types"].find(x => x.id === "recGOWNTYPE000001").fields.Attributes), { Size: ["8"], Color: ["Navy", "Gold"] });
+    r = await call("/admin/catalog/item-types/recGOWNTYPE000001", { method: "PATCH", headers: H, body: JSON.stringify({ attributes: { Size: "9" } }) });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /isn't a Size choice/);
+    r = await call("/admin/catalog/item-types/recGOWNTYPE000001", { method: "PATCH", headers: H, body: JSON.stringify({ attributes: { Fabric: "Silk" } }) });
+    assert.equal(r.status, 400);
+    r = await call("/admin/catalog/item-types", { method: "POST", headers: H, body: JSON.stringify({ name: "Black Sheath", attributes: { Length: ["Tea"] } }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    const types = await (await call("/admin/catalog/item-types", { headers: H })).json();
+    assert.deepEqual(types.find(x => x.name === "Black Sheath").attributes, { Length: ["Tea"] });
+
+    __WHG_TEST__.clearMemo();
+    const d = await (await call("/public/gemach/" + G.slug + "?attrs=1")).json();
+    assert.deepEqual(d.gemach.itemAttributes.find(a => a.name === "Size").values.slice(0, 3), ["0", "2", "4"]);
+    assert.deepEqual(d.items.find(i => i.name === "Navy A-line").attributes, { Size: ["8"], Color: ["Navy", "Gold"] });
+    // Stored values are matched case-insensitively; values/filters the gemach no longer offers are dropped.
+    assert.deepEqual(d.items.find(i => i.name === "Gold Mermaid").attributes, { Size: ["12"], Color: ["Gold", "Silver"] });
+    const dir = await (await call("/public/directory?attrs=1")).json();
+    assert.deepEqual(dir.gemachs.find(x => x.slug === G.slug).items.find(i => i.name === "Navy A-line").attributes.Size, ["8"]);
+
+    // Clearing an item's values
+    r = await call("/admin/catalog/item-types/recGOWNTYPE000001", { method: "PATCH", headers: H, body: JSON.stringify({ attributes: {} }) });
+    assert.equal(r.status, 200); assert.equal(DB["Item Types"].find(x => x.id === "recGOWNTYPE000001").fields.Attributes, null);
+  });
+
+  await t("attributes: gemachs without filters get no attributes on items", async () => {
+    const d = await (await call("/public/gemach/wh-medical?attrs=2")).json();
+    assert.deepEqual(d.gemach.itemAttributes, []);
+    assert.ok(d.items.every(i => !("attributes" in i)));
+  });
+}
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

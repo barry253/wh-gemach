@@ -46,6 +46,12 @@
     }
     return edits + (la - i) + (lb - j) <= 1;
   }
+  /** "Size 8 Color Navy Gold" from an item's filter values, so searches like "navy gown" or "size 8" find it. */
+  function attrText(it) {
+    var a = it && it.attributes;
+    if (!a || typeof a !== "object") return "";
+    return Object.keys(a).map(function (k) { return k + " " + (Array.isArray(a[k]) ? a[k].join(" ") : ""); }).join(" ");
+  }
   function makeHay(parts) {
     var text = norm(parts.join(" "));
     return { text: " " + text + " ", compact: text.replace(/ /g, ""), words: text.split(" ") };
@@ -93,7 +99,7 @@
         index.push({
           g: g, item: it, cat: c, order: ii,
           nameHay: makeHay([it.name]),
-          hay: makeHay([it.name, it.description, c && c.name, c && (c.keywords || []).join(" "), g.name])
+          hay: makeHay([it.name, it.description, c && c.name, c && (c.keywords || []).join(" "), g.name, attrText(it)])
         });
       });
     });

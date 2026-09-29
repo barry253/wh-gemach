@@ -1,5 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { AirtableError, fetchByIds } from "./airtable.js";
+import { validateAttrDefs } from "./attributes.js";
 import { NETWORK_ADMIN_ROLE, T } from "./config.js";
 import { CONTACT_METHODS, HEX_RE, REQUEST_STYLES, gemachFromRecord, gemachMemo } from "./gemachs.js";
 import { json, readJson } from "./http.js";
@@ -93,6 +94,7 @@ const GEMACH_EDITABLE = {
   shabbosAdjust:      ["Shabbos Adjust", "bool"],
   appointmentMessage: ["Appointment Message", "long"],
   logoUrl:            ["Logo URL", "logo"],
+  itemAttributes:     ["Item Attributes", "attrs"],
 };
 const GEMACH_LABELS = {
   tagline: "Tagline", description: "Description", phone: "Phone", email: "Email", whatsapp: "WhatsApp",
@@ -102,7 +104,7 @@ const GEMACH_LABELS = {
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
   depositRequired: "Deposit required", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after",
-  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", logoUrl: "Logo",
+  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", logoUrl: "Logo", itemAttributes: "Item filters",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
 const MAX_LINE = 200, MAX_LONG = 2000;
@@ -122,6 +124,12 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
     if (kind === "bool") {
       if (typeof v !== "boolean") return { error: `${label} must be true or false.` };
       fields[field] = v;
+      continue;
+    }
+    if (kind === "attrs") {
+      const r = validateAttrDefs(v);
+      if (r.error) return { error: r.error };
+      fields[field] = r.value;
       continue;
     }
     if (kind === "days") {

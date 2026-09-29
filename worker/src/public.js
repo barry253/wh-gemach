@@ -5,6 +5,7 @@ import { LEGACY_SLUG, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs, loadGemachBySlug, nonBlank } from "./gemachs.js";
 import { json } from "./http.js";
+import { itemAttrsFor } from "./attributes.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAvailable } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
@@ -14,7 +15,7 @@ import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAv
  * and, with withBookings, the open loans' date windows and counts (no names) so the page can work out
  * what's free for the dates a person picks.
  */
-function publicItemType(type, availableIds, { withCategory = false, bookings = null, withBookings = false } = {}) {
+function publicItemType(type, availableIds, { withCategory = false, bookings = null, withBookings = false, attrDefs = null } = {}) {
   const itemIds = (type.fields["Items"] || []).map(linkedId);
   const photoUrl = type.fields["R2 Photo URL"] || type.fields["Photo"]?.[0]?.url || null;
   const out = {
@@ -40,6 +41,10 @@ function publicItemType(type, availableIds, { withCategory = false, bookings = n
     out.totalUnits = 0;
     out.availableCount = null;
   }
+  if (attrDefs?.length) { // the gemach's item filters (e.g. Size, Color): only values it still offers
+    const a = itemAttrsFor(type.fields["Attributes"], attrDefs);
+    if (Object.keys(a).length) out.attributes = a;
+  }
   if (withCategory) out.categoryId = linkedId(firstLink(type.fields["Product Category"])) || null;
   return out;
 }
@@ -52,7 +57,7 @@ async function loadInventory(db, g, opts = {}) {
   const availableIds = new Set(avail.map(r => r.id));
   const qtyIds = types.filter(isQtyType).map(t => t.id);
   const bookings = qtyIds.length ? await loadQtyBookings(db, g, qtyIds) : {};
-  return types.map(t => publicItemType(t, availableIds, { ...opts, bookings }));
+  return types.map(t => publicItemType(t, availableIds, { ...opts, bookings, attrDefs: g.itemAttributes }));
 }
 
 // Public profile fields only — NEVER pickupAddress / pickupInstructions / templates.
@@ -68,6 +73,7 @@ function publicGemach(g, communityName) {
     depositRequired: !!g.depositRequired, depositInfo: g.depositInfo ?? null, gemachInfo: g.gemachInfo ?? null,
     requestStyle: g.requestStyle || "Dates", eventLabel: g.eventLabel || DEFAULT_EVENT_LABEL,
     pickupDaysBefore: g.pickupDaysBefore ?? 1, returnDaysAfter: g.returnDaysAfter ?? 1, shabbosAdjust: !!g.shabbosAdjust,
+    itemAttributes: g.itemAttributes || [],
   };
 }
 
@@ -114,10 +120,11 @@ async function buildDirectory(db) {
   const qtyIds = types.filter(isQtyType).map(t => t.id);
   const bookings = qtyIds.length ? await loadQtyBookings(db, null, qtyIds) : {};
   const typesByGemach = {};
+  const defsById = Object.fromEntries(gemachs.map(g => [g.id, g.itemAttributes]));
   for (const t of types) {
     const links = (t.fields["Gemach"] || []).map(linkedId);
     if (links.length !== 1) continue; // item types must belong to exactly one gemach
-    (typesByGemach[links[0]] ||= []).push(publicItemType(t, availableIds, { withCategory: true, bookings }));
+    (typesByGemach[links[0]] ||= []).push(publicItemType(t, availableIds, { withCategory: true, bookings, attrDefs: defsById[links[0]] }));
   }
   return {
     categories,
