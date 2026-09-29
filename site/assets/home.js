@@ -108,7 +108,8 @@
       s.items++;
       if (!e.g._dir && !e.g._appt) s.avail += Math.max(0, e.item.availableCount || 0);
     });
-    var cats = data.categories.filter(function (c) { return stats[c.id]; });
+    var cats = data.categories.filter(function (c) { return stats[c.id]; })
+      .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || ""), "en", { sensitivity: "base" }); }); // A–Z
     $("cats-section").hidden = cats.length === 0;
     catGrid.innerHTML = cats.map(function (c) {
       var s = stats[c.id], ng = Object.keys(s.gemachs).length;
