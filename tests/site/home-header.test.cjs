@@ -71,7 +71,7 @@ const logs = [];
       const page = await ctx.newPage();
       await page.goto(BASE + '/', { waitUntil: 'networkidle' });
       await page.evaluate(() => document.fonts.ready);
-      for (const art of ['items', 'roofs', 'none']) {
+      for (const art of ['items', 'none']) {
         await page.evaluate(a => { const h = document.getElementById('home-hero'); h.classList.remove('hero-art-items', 'hero-art-roofs'); if (a !== 'none') h.classList.add('hero-art-' + a); window.scrollTo(0, 0); }, art);
         await page.waitForTimeout(300);
         await page.screenshot({ path: path.join(out, `${label}-home-${art}.png`) });

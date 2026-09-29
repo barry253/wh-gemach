@@ -149,7 +149,7 @@ main { flex: 1; }
   .search-hint button { flex: 0 0 auto; margin: 0; }
 }
 
-/* Graphic treatments (pick one class on the home hero) */
+/* Home header graphic: faint line drawings of things people borrow */
 .hero-art-items::before {           /* scattered line drawings of things people borrow */
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: url("/assets/brand/hero-items.svg") repeat;
@@ -157,11 +157,7 @@ main { flex: 1; }
   -webkit-mask-image: radial-gradient(ellipse 55% 75% at 50% 50%, transparent 35%, #000 80%);
           mask-image: radial-gradient(ellipse 55% 75% at 50% 50%, transparent 35%, #000 80%);
 }
-.hero-art-roofs::after {            /* neighborhood rooftops along the bottom edge */
-  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 70px; pointer-events: none;
-  background: url("/assets/brand/hero-roofs.svg") bottom / 100% 100% no-repeat;
-}
-@media (min-width: 640px) { .hero-art-roofs::after { height: 90px; } }
+
 
 /* ── Search ── */
 .search-form { margin: 1.1rem auto 0; max-width: 36rem; position: relative; }
