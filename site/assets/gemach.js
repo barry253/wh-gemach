@@ -164,7 +164,7 @@
       list.innerHTML = qi.map(function (it) {
         var id = esc(it.id);
         return '<div class="qty-row"><label for="q-' + id + '">' + esc(it.name) + "</label>" +
-          '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (it.totalUnits || 1) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || "") + '" placeholder="0" aria-describedby="qn-' + id + '" />' +
+          '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (it.totalUnits || 1) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || "") + '" aria-describedby="qn-' + id + '" />' +
           '<p class="qty-note" id="qn-' + id + '" aria-live="polite"></p></div>';
       }).join("");
     }
