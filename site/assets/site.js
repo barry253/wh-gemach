@@ -22,7 +22,7 @@
   /** fetch JSON with a timeout and one retry on network error / 5xx. */
   function fetchJSON(path, opts) {
     opts = opts || {};
-    var timeout = opts.timeout || 12000;
+    var timeout = opts.timeout || 20000; // a cold rebuild can take several seconds when Airtable is slow
     var retries = opts.retry === false ? 0 : 1;
     var url = /^https?:/.test(path) ? path : API_BASE + path;
 
