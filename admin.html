@@ -3534,7 +3534,7 @@
   }
 
   // ── Network (Network Admins only) ─────────────────────────────────────────
-  const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Food", "Wedding", "Other"];
+  const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Food", "Wedding & Events", "Other"];
   const NET = { gemachs: [], admins: [], categories: [] };
   const netStore = { gemach: new Map(), admin: new Map(), category: new Map() };
 
@@ -3565,7 +3565,7 @@
     if (!NET.gemachs.length) { el.innerHTML = '<div class="empty-state">No gemachs yet</div>'; return; }
     el.innerHTML = NET.gemachs.map(g => {
       const id = safeId(g.id); netStore.gemach.set(id, g);
-      const catOpts = GEMACH_CATEGORIES.map(c => `<option value="${c}"${g.category === c ? " selected" : ""}>${c}</option>`).join("") +
+      const catOpts = GEMACH_CATEGORIES.map(c => `<option value="${esc(c)}"${g.category === c ? " selected" : ""}>${esc(c)}</option>`).join("") +
         (g.category && !GEMACH_CATEGORIES.includes(g.category) ? `<option selected>${esc(g.category)}</option>` : "");
       return `<div class="card net-row" id="ng-row-${id}">
         <div class="net-row-head">
@@ -3609,7 +3609,7 @@
     document.getElementById("ng-form").hidden = false;
     document.getElementById("ng-done").hidden = true;
     for (const k of ["name", "slug", "email", "phone"]) document.getElementById(`ng-${k}`).value = "";
-    document.getElementById("ng-category").innerHTML = GEMACH_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
+    document.getElementById("ng-category").innerHTML = GEMACH_CATEGORIES.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
     document.getElementById("ng-category").value = "Other";
     document.getElementById("ng-mode").value = "Full";
     updateSlugPreview();
