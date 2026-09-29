@@ -78,9 +78,17 @@ async function sendNotificationEmail(env, g, data) {
   const adminUrl = env.ADMIN_URL || DEFAULT_ADMIN_URL;
   const link = `${adminUrl}${adminUrl.includes("?") ? "&" : "?"}g=${encodeURIComponent(g.slug)}`;
   const heading = isAppt ? `New appointment request — ${requestId}` : `New request — ${requestId}`;
+  // No gemach Email → it goes to the network fallback address; say so, so whoever gets it knows why.
+  const fallback = !g.email && !!env.NOTIFY_EMAIL;
+  const gContact = [g.phone, g.whatsapp && g.whatsapp !== g.phone ? `WhatsApp ${g.whatsapp}` : ""].filter(Boolean).join(" · ");
+  const fallbackNote = fallback
+    ? `${g.name || "This gemach"} has no email address in its Settings, so this request came to you instead. ` +
+      `${gContact ? `Gemach contact: ${gContact}. ` : ""}To send requests straight to the gemach, add an email in admin → Settings → Email.`
+    : "";
 
   // ── Plain text ──
   const lines = [heading, ""];
+  if (fallback) lines.push(`ℹ ${fallbackNote}`, "");
   if (conflicts.length) lines.push(`⚠ ${conflicts.length} of ${items.length} item${items.length === 1 ? "" : "s"} may not be available for these dates — see below.`, "");
   lines.push(`Name: ${name}`, `Phone: ${phone}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, "");
   if (isAppt) {
@@ -152,7 +160,12 @@ async function sendNotificationEmail(env, g, data) {
       `<strong>⚠ ${conflicts.length} of ${items.length} item${items.length === 1 ? "" : "s"} may not be available for these dates:</strong> ` +
       e(conflicts.map(label).join(", ")) + `</div>`
     : "";
+  const fallbackHtml = fallback
+    ? `<div style="background:#e0f2fe;border:1px solid #7dd3fc;color:#0c4a6e;border-radius:6px;padding:10px 12px;margin:0 0 16px;font-size:14px;">` +
+      `<strong>Why you got this:</strong> ${e(fallbackNote)}</div>`
+    : "";
   const bodyHtml =
+    fallbackHtml +
     `<div style="font-size:17px;font-weight:bold;margin:0 0 12px;">${e(heading)}</div>` + warn +
     `<table role="presentation" cellpadding="0" cellspacing="0" style="font-size:14px;">${details.join("")}</table>` +
     itemsTable +

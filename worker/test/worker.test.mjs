@@ -1592,6 +1592,30 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
   });
 }
 
+// ── New-request email for a gemach with no Email → network fallback, with a note saying why ──
+{
+  const G = { id: "recNOEMAILGEMACH1", slug: "no-email-gemach" };
+  DB.Gemachs.push(rec(G.id, { Name: "Quiet Gemach", Slug: G.slug, Active: true, Mode: "Full", Phone: "(516) 555-0100" }));
+  DB["Item Types"].push(rec("recNOEMAILTYPE001", { Name: "Punch Bowl", Active: true, Tracking: "Quantity", "Quantity Owned": 2, Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  const day = n => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  await t("request email with no gemach Email goes to NOTIFY_EMAIL and explains why", async () => {
+    env.NOTIFY_EMAIL = "network@example.com";
+    try {
+      const r = await post("/submit-request", { gemach: G.slug, name: "No Mail", phone: "5165551234", preferredContact: "Phone",
+        itemsRequested: ["recNOEMAILTYPE001"], neededFrom: day(10), neededUntil: day(12) });
+      assert.equal(r.status, 200, await r.clone().text());
+      await Promise.allSettled(waits);
+      const m = resendCalls().filter(x => x.to[0] === "network@example.com").at(-1);
+      assert.ok(m, "sent to the fallback address");
+      assert.match(m.text, /Quiet Gemach has no email address in its Settings, so this request came to you instead\. Gemach contact: \(516\) 555-0100\./);
+      assert.ok(m.html.includes("Why you got this:"));
+      // A gemach that has its own Email gets no such note.
+      const own = resendCalls().filter(x => x.to[0] === "addon@example.com").at(-1);
+      assert.ok(own && !/no email address in its Settings/.test(own.text) && !own.html.includes("Why you got this"));
+    } finally { delete env.NOTIFY_EMAIL; }
+  });
+}
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {
