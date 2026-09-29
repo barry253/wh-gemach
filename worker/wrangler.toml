@@ -3,7 +3,7 @@
 
 name = "wh-gemach"                 # must match the Worker's name in the dashboard
 main = "src/index.js"
-compatibility_date = "2026-09-24"  # CONFIRM: copy the date from Worker → Settings → Runtime before the first automated deploy
+compatibility_date = "2026-09-23"  # same as the dashboard-deployed worker; change deliberately, not casually
 
 # Plain variables (AIRTABLE_BASE_ID, FROM_EMAIL, ALERT_EMAIL, NOTIFY_EMAIL, ASSETS_URL, ...) stay managed in the
 # dashboard: without this, every deploy would delete them.
