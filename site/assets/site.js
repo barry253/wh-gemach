@@ -119,6 +119,32 @@
       return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + m + "</a>";
     });
   }
+  /**
+   * Like linkify, but also makes emails, US phone numbers and bare web addresses ("anshei.org/donate")
+   * clickable. Operates on already-escaped text; one left-to-right pass so nothing is linked twice.
+   */
+  var RICH_RE = new RegExp([
+    "(\\bhttps?:\\/\\/[^\\s<]+[^\\s<.,;:!?)\\]'\"])",                                  // 1 URL
+    "([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})",                                  // 2 email
+    "((?:\\+?1[\\s.-]?)?\\(?\\b\\d{3}\\)?[\\s.-]?\\d{3}[\\s.-]\\d{4}\\b)",              // 3 phone
+    "(\\b(?:www\\.)?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9-]+)*\\.(?:com|org|net|us|edu|gov|info|io|co)\\b(?:\\/[^\\s<]*[^\\s<.,;:!?)\\]'\"])?)" // 4 bare web address
+  ].join("|"), "gi");
+  function linkifyRich(escaped) {
+    return escaped.replace(RICH_RE, function (m, url, email, phone, bare) {
+      if (url) return '<a href="' + escapeHtml(url.replace(/&amp;/g, "&")) + '" target="_blank" rel="noopener">' + m + "</a>";
+      if (email) return '<a href="mailto:' + escapeHtml(email) + '">' + m + "</a>";
+      if (phone) { var t = telHref(phone); return t ? '<a href="' + t + '">' + m + "</a>" : m; }
+      return '<a href="https://' + escapeHtml(bare.replace(/&amp;/g, "&")) + '" target="_blank" rel="noopener">' + m + "</a>";
+    });
+  }
+  /** formatText with emails, phone numbers and bare web addresses linked too. */
+  function formatRich(s) {
+    var text = String(s || "").replace(/\r\n?/g, "\n").trim();
+    if (!text) return "";
+    return text.split(/\n\s*\n+/).map(function (p) {
+      return "<p>" + linkifyRich(escapeHtml(p.trim())).replace(/\n/g, "<br>") + "</p>";
+    }).join("");
+  }
   /** Markdown-ish: blank line → paragraph, single newline → <br>. HTML escaped. */
   function formatText(s) {
     var text = String(s || "").replace(/\r\n?/g, "\n").trim();
@@ -391,6 +417,7 @@
     loadDirectory: loadDirectory,
     escapeHtml: escapeHtml,
     formatText: formatText,
+    formatRich: formatRich,
     telHref: telHref,
     waHref: waHref,
     safeUrl: safeUrl,

@@ -1478,6 +1478,24 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
   });
 }
 
+await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and shown on the public page", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const text = "For monetary donations, visit anshei.org/donate.\n\nEquipment: call (718) 986-7345.";
+  let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ donationInfo: "  " + text + "  " }) });
+  assert.equal(r.status, 200);
+  const rec = DB.Gemachs.find(g => g.id === A.id);
+  assert.equal(rec.fields["Donation Info"], text);
+  assert.equal((await r.json()).donationInfo, text);
+  __WHG_TEST__.clearMemo();
+  const pub = await (await call("/public/gemach/" + A.slug)).json();
+  assert.equal(pub.gemach.donationInfo, text);
+  r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ donationInfo: "x".repeat(2001) }) });
+  assert.equal(r.status, 400);
+  r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ donationInfo: "" }) });
+  assert.equal(r.status, 200);
+  assert.ok(!rec.fields["Donation Info"]);
+});
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

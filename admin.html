@@ -3280,7 +3280,8 @@
     tagline:            { label: "Tagline",             type: "text",  max: 200,  hint: "One line shown on the gemach's card and page header." },
     description:        { label: "Description",         type: "area",  max: 2000, rows: 4 },
     website:            { label: "Website",             type: "url",   max: 200, placeholder: "https://" },
-    donationUrl:        { label: "Donation link",       type: "url",   max: 200, placeholder: "https://" },
+    donationUrl:        { label: "Donation link",       type: "url",   max: 200, placeholder: "https://", hint: "Shows a Donate button on your page. Leave blank for no button." },
+    donationInfo:       { label: "Donation info",       type: "area",  max: 2000, rows: 3, placeholder: "e.g. For monetary donations, visit anshei.org/donate. To donate equipment, contact us at gemach@example.com or (718) 555-1234.", hint: "Shown under “Support this gemach” on your page, with or instead of the Donate button. Web addresses, emails and phone numbers become clickable." },
     hours:              { label: "Hours",               type: "area",  max: 2000, rows: 2, placeholder: "e.g. Sun–Thu evenings, by appointment" },
     pickupAddress:      { label: "Pickup address",      type: "text",  max: 200, hint: "Private — only included in messages to borrowers." },
     pickupInstructions: { label: "Pickup instructions", type: "area",  max: 2000, rows: 2, placeholder: "e.g. In the driveway, ring the bell", hint: "Private — only included in messages to borrowers." },
@@ -3292,7 +3293,7 @@
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
   };
   const SETTINGS_GROUPS = [
-    { title: "Profile", fields: ["name", "tagline", "description", "website", "donationUrl", "hours", "pickupAddress", "pickupInstructions"] },
+    { title: "Profile", fields: ["name", "tagline", "description", "website", "donationUrl", "donationInfo", "hours", "pickupAddress", "pickupInstructions"] },
     { title: "Contact", fields: ["phone", "whatsapp", "email"], extra: "contact" },
     { title: "Branding", extra: "branding" },
     { title: "Gemach info", extra: "info" },

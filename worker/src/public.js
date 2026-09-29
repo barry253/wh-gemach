@@ -55,7 +55,7 @@ function publicGemach(g, communityName) {
     id: g.id, slug: g.slug, name: g.name, tagline: g.tagline, description: g.description, category: g.category,
     mode: g.mode || "Full",
     phone: g.phone, email: g.email, whatsapp: g.whatsapp,
-    website: g.website, donationUrl: g.donationUrl, hours: g.hours,
+    website: g.website, donationUrl: g.donationUrl, donationInfo: g.donationInfo ?? null, hours: g.hours,
     logoUrl: g.logoUrl, logoDarkUrl: g.logoDarkUrl ?? null, communityName: communityName || null, displayOrder: g.displayOrder ?? null,
     primaryContact: g.primaryContact ?? null, secondaryContact: g.secondaryContact ?? null,
     themeColor: g.themeColor || DEFAULT_THEME, accentColor: g.accentColor ?? null,

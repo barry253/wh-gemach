@@ -112,8 +112,14 @@
     if (contact.length) side.push('<div><div class="info-label">Contact</div><div>' + contact.join("<br>") + "</div></div>");
     var web = W.safeUrl(g.website);
     if (web) side.push('<div><div class="info-label">Website</div><a href="' + esc(web) + '" target="_blank" rel="noopener">' + esc(W.prettyUrl(web)) + "</a></div>");
+    // Donations: a Donate button (link), a short text (how to give money / equipment), or both.
     var don = W.safeUrl(g.donationUrl);
-    if (don) side.push('<div><div class="info-label">Support this gemach</div><a class="btn btn-sm btn-pill" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate</a></div>");
+    var donInfo = g.donationInfo ? W.formatRich(g.donationInfo) : "";
+    if (don || donInfo) {
+      side.push('<div class="support"><div class="info-label">Support this gemach</div>' +
+        (donInfo ? '<div class="donation-info">' + donInfo + "</div>" : "") +
+        (don ? '<a class="btn btn-sm btn-pill" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate</a>" : "") + "</div>");
+    }
     if (!desc && !side.length) return "";
     return '<section class="info-panel' + (desc && side.length ? " has-side" : "") + '" aria-label="About this gemach">' +
       (desc ? '<div class="prose">' + desc + "</div>" : "") +

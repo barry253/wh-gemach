@@ -115,6 +115,14 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   ok(JSON.stringify(patch) === JSON.stringify({ name: "WH Medical & Mobility" }), "rename PATCH: " + JSON.stringify(patch));
   await page.waitForFunction(() => document.getElementById("topbar-gemach")?.textContent === "WH Medical & Mobility", null, { timeout: 5000 }).catch(() => {});
   ok(await page.textContent("#topbar-gemach") === "WH Medical & Mobility", "top bar label updated after rename");
+  // Donation info: a text box next to the Donate link, saved like the other profile fields
+  ok(await page.$("#set-donationInfo") !== null && (await page.$eval("#set-donationInfo", e => e.tagName)) === "TEXTAREA", "donation info text box in Settings");
+  const donText = "For monetary donations visit anshei.org/donate.\n\nEquipment: call (718) 986-7345.";
+  await page.fill("#set-donationInfo", donText);
+  await page.click("#settings-save-btn");
+  await page.waitForFunction(() => document.body.textContent.includes("Settings saved"));
+  const donPatch = reqs.filter(r => r.method === "PATCH" && r.path === "/admin/gemach").at(-1).body;
+  ok(JSON.stringify(donPatch) === JSON.stringify({ donationInfo: donText }), "donation info PATCH: " + JSON.stringify(donPatch));
 
   // condition in item sheet
   await page.click("text=Inventory");

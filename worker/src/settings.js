@@ -71,6 +71,7 @@ const GEMACH_EDITABLE = {
   whatsapp:           ["WhatsApp", "line"],
   website:            ["Website", "url"],
   donationUrl:        ["Donation URL", "url"],
+  donationInfo:       ["Donation Info", "long"],
   hours:              ["Hours", "long"],
   pickupAddress:      ["Pickup Address", "line"],
   pickupInstructions: ["Pickup Instructions", "long"],
@@ -95,7 +96,7 @@ const GEMACH_EDITABLE = {
 };
 const GEMACH_LABELS = {
   tagline: "Tagline", description: "Description", phone: "Phone", email: "Email", whatsapp: "WhatsApp",
-  website: "Website", donationUrl: "Donation link", hours: "Hours", pickupAddress: "Pickup address",
+  website: "Website", donationUrl: "Donation link", donationInfo: "Donation info", hours: "Hours", pickupAddress: "Pickup address",
   pickupInstructions: "Pickup instructions", confirmMessage: "Confirm message", declineMessage: "Decline message",
   pickupMessage: "Pickup message", name: "Gemach name",
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",

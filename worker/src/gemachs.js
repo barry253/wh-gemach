@@ -35,6 +35,7 @@ function gemachFromRecord(r) {
     whatsapp: f.WhatsApp || null,
     website: nonBlank(f.Website),
     donationUrl: nonBlank(f["Donation URL"]),
+    donationInfo: nonBlank(f["Donation Info"]),
     hours: nonBlank(f.Hours),
     description: f.Description || "",
     category: f.Category || null,
