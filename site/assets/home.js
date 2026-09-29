@@ -246,6 +246,33 @@
     return { groups: list, count: hits.length, partial: partial, cat: cat };
   }
 
+  // ── Searches that come up empty are logged (no personal info) so the network can see unmet needs ──
+  var logTimer = null, logged = {};
+  function scheduleSearchLog(outcome, cat) {
+    clearTimeout(logTimer);
+    var q = state.q.trim();
+    if (!outcome || q.length < 3 || /@/.test(q) || (q.match(/\d/g) || []).length >= 5) return;
+    logTimer = setTimeout(function () {
+      if (state.q.trim() !== q) return;
+      var key = q.toLowerCase() + "|" + outcome;
+      if (logged[key]) return;
+      logged[key] = 1;
+      try {
+        fetch(W.API_BASE + "/public/search-log", {
+          method: "POST", keepalive: true, headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ q: q, outcome: outcome, category: cat ? cat.name : undefined }),
+        }).catch(function () {});
+      } catch (e) {}
+    }, 2000);
+  }
+  function searchOutcome(r) {
+    if (!state.q.trim()) return null;
+    if (!r.groups.length) return "none";
+    if (r.partial || !r.count) return null;
+    var allOut = r.groups.every(function (grp) { return !grp.g._dir && !grp.g._appt && !grp.hasAvail; });
+    return allOut ? "all-on-loan" : null;
+  }
+
   function badge(g, it) {
     if (g._dir) return '<span class="badge badge-dir">Contact to check</span>';
     if (g._appt) return '<span class="badge badge-appt">By appointment</span>';
@@ -260,9 +287,10 @@
     resultsSection.hidden = !active;
     $("search-hint").hidden = active;
     clearBtn.hidden = !state.q;
-    if (!active) { resultsEl.innerHTML = ""; return; }
+    if (!active) { clearTimeout(logTimer); resultsEl.innerHTML = ""; return; }
 
     var r = search();
+    scheduleSearchLog(searchOutcome(r), r.cat);
     var what = [];
     if (state.q.trim()) what.push("“" + esc(state.q.trim()) + "”");
     if (r.cat) what.push(esc(r.cat.name));

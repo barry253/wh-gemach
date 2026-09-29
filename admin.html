@@ -1015,6 +1015,28 @@
       .sheet { border-radius: 12px; }
       .sheet-handle { display: none; }
     }
+    /* ── Dashboard stats ── */
+    .stats-head { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin:.25rem 0 .75rem; padding-bottom:.4rem; border-bottom:1px solid var(--border); }
+    .stats-head .section-label { margin:0; padding:0; border:0; }
+    .stats-head select, .net-toolbar select.days { font:inherit; font-size:.8rem; padding:.3rem .5rem; border:1px solid var(--border); border-radius:8px; background:var(--white); }
+    .kpi-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:.6rem; margin-bottom:.75rem; }
+    .kpi { background:var(--white); border:1px solid var(--border); border-radius:10px; padding:.75rem; }
+    .kpi-num { font-size:1.35rem; font-weight:600; color:var(--navy); line-height:1.1; }
+    .kpi-label { font-size:.72rem; color:var(--muted); font-weight:500; margin-top:.2rem; }
+    .kpi-sub { font-size:.72rem; color:var(--muted); margin-top:.35rem; }
+    .stat-block { margin-bottom:.75rem; }
+    .stat-block h4 { font-size:.85rem; margin:0 0 .5rem; }
+    .stat-note { font-size:.75rem; color:var(--muted); margin:.4rem 0 0; }
+    .stat-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+    .stat-table th { text-align:left; font-weight:500; color:var(--muted); font-size:.72rem; padding:.25rem .35rem; border-bottom:1px solid var(--border); }
+    .stat-table td { padding:.4rem .35rem; border-bottom:1px solid var(--border); vertical-align:top; }
+    .stat-table tr:last-child td { border-bottom:0; }
+    .stat-table .num { text-align:right; white-space:nowrap; }
+    .stat-list { margin:0; padding:0; list-style:none; font-size:.82rem; }
+    .stat-list li { padding:.3rem 0; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:.5rem; }
+    .stat-list li:last-child { border-bottom:0; }
+    @media (max-width: 480px) { .kpi-grid { grid-template-columns:1fr 1fr; } .kpi-grid .kpi:last-child { grid-column:1 / -1; } .kpi-num { font-size:1.2rem; } }
+    .stat-table .tag { white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -1094,6 +1116,16 @@
           <div class="stat-label">Reservations</div>
         </div>
       </div>
+
+      <div class="stats-head">
+        <div class="section-label">How it's going</div>
+        <select id="stats-days" aria-label="Stats period" onchange="loadStats(true)">
+          <option value="30">Last 30 days</option>
+          <option value="90" selected>Last 90 days</option>
+          <option value="365">Last 12 months</option>
+        </select>
+      </div>
+      <div id="stats-body"><div class="loading">Loading…</div></div>
     </div>
 
     <!-- Requests -->
@@ -1185,6 +1217,17 @@
         <button class="btn btn-primary btn-sm" onclick="openCategorySheet(null)">+ Add category</button>
       </div>
       <div class="card-list" id="net-categories" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+
+      <div class="net-toolbar">
+        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-searches">Searches with no results</div>
+        <select class="days" id="net-search-days" aria-label="Searches period" onchange="loadNetSearches()">
+          <option value="30">Last 30 days</option>
+          <option value="90" selected>Last 90 days</option>
+          <option value="365">Last 12 months</option>
+        </select>
+      </div>
+      <p class="stat-note" style="margin:0 0 .6rem">What people looked for on the home page that no gemach had, or that was all on loan. Useful for deciding what to add, or which gemach to invite next.</p>
+      <div class="card" id="net-searches" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
     </div>
 
   </div>
@@ -2211,10 +2254,81 @@
     document.getElementById("stat-active").textContent = data.activeLoans;
     document.getElementById("stat-reservations").textContent = data.upcomingReservations;
 
+    loadStats(false);
+
     // Badge on requests tab
     const tab = document.getElementById("tab-requests");
     tab.innerHTML = `Requests${data.newRequests > 0 ? `<span class="badge">${esc(data.newRequests)}</span>` : ""}`;
     tab.onclick = () => switchTab('requests');
+  }
+
+  // ── Dashboard stats ───────────────────────────────────────────────────────
+  let STATS_KEY = "", STATS_AT = 0;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + "s")}`;
+  function fmtHours(h) {
+    if (h == null) return "—";
+    if (h < 1) return "under 1 hour";
+    if (h < 36) return plural(Math.round(h), "hour");
+    return plural(Math.round(h / 24), "day");
+  }
+  function ageText(iso) {
+    const h = (Date.now() - Date.parse(iso)) / 3600e3;
+    return !isFinite(h) ? "" : h < 72 ? `${Math.round(h)} hours` : `${Math.round(h / 24)} days`;
+  }
+  async function loadStats(force) {
+    const days = document.getElementById("stats-days").value;
+    const key = `${gemachSlug}|${days}`;
+    if (!force && key === STATS_KEY && Date.now() - STATS_AT < 60000) return;
+    STATS_KEY = key; STATS_AT = Date.now();
+    const body = document.getElementById("stats-body");
+    body.innerHTML = '<div class="loading">Loading…</div>';
+    let d;
+    try { d = await api(`/admin/stats?days=${encodeURIComponent(days)}`); } catch (e) { d = { error: "Couldn't load stats right now." }; }
+    if (key !== STATS_KEY) return; // a newer load started
+    if (!d || d.error) { STATS_KEY = ""; body.innerHTML = `<div class="empty-state">${esc(d?.error || "Could not load stats")}</div>`; return; }
+    renderStats(d);
+  }
+  function renderStats(d) {
+    const period = d.days === 365 ? "the last 12 months" : `the last ${d.days} days`;
+    const rq = d.requests || {}, rs = d.response || {};
+    let html = `<div class="kpi-grid">
+      <div class="kpi"><div class="kpi-num">${esc(rq.received ?? 0)}</div><div class="kpi-label">Requests received</div>
+        <div class="kpi-sub">${esc(rq.confirmed ?? 0)} confirmed · ${esc(rq.declined ?? 0)} declined${rq.waiting ? ` · ${esc(rq.waiting)} waiting` : ""}</div></div>
+      <div class="kpi"><div class="kpi-num">${esc(fmtHours(rs.medianHours))}</div><div class="kpi-label">Typical time to reply</div>
+        <div class="kpi-sub">${rs.answered ? `based on ${esc(plural(rs.answered, "reply", "replies"))}` : "no replies yet"}</div></div>
+      <div class="kpi"><div class="kpi-num">${rs.within24hPct == null ? "—" : esc(rs.within24hPct) + "%"}</div><div class="kpi-label">Answered within a day</div>
+        <div class="kpi-sub">${esc(d.loansReturned || 0)} loan${d.loansReturned === 1 ? "" : "s"} returned</div></div>
+    </div>`;
+
+    const w = d.waitingOver48h || { count: 0, oldest: [] };
+    if (w.count) {
+      html += `<div class="card warning stat-block"><h4>${esc(plural(w.count, "request"))} waiting more than 2 days</h4>
+        <ul class="stat-list">${w.oldest.map(r => `<li><span>${esc(r.name || "Someone")}${r.requestId ? ` <span class="card-id">${esc(r.requestId)}</span>` : ""}</span><span class="card-id">${esc(ageText(r.receivedAt))}</span></li>`).join("")}</ul>
+        <button class="btn btn-ghost btn-sm" style="margin-top:.5rem" onclick="switchTab('requests')">Go to Requests</button></div>`;
+    }
+
+    const top = d.topRequested || [];
+    html += `<div class="card stat-block"><h4>Most requested</h4>` + (top.length
+      ? `<table class="stat-table"><thead><tr><th>Item</th><th class="num">Requests</th><th class="num">You have</th><th class="num">Available now</th></tr></thead><tbody>` +
+        top.map(t => `<tr><td>${esc(t.name)}${t.available === 0 && t.units > 0 ? ' <span class="tag tag-amber">All out</span>' : ""}${t.units === 0 ? ' <span class="tag tag-red">None in stock</span>' : ""}</td>
+          <td class="num">${esc(t.requests)}</td><td class="num">${esc(t.units)}</td><td class="num">${esc(t.available)}</td></tr>`).join("") +
+        `</tbody></table><p class="stat-note">Items that are often all out may be worth adding more of.</p>`
+      : `<p class="stat-note">No requests in ${esc(period)}.</p>`) + `</div>`;
+
+    const len = d.loanLength || [];
+    html += `<div class="card stat-block"><h4>How long loans last</h4>` + (len.length
+      ? `<table class="stat-table"><thead><tr><th>Item</th><th class="num">Returned</th><th class="num">Typical length</th></tr></thead><tbody>` +
+        len.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${esc(t.loans)}</td><td class="num">${esc(plural(t.medianDays, "day"))}</td></tr>`).join("") +
+        `</tbody></table>`
+      : `<p class="stat-note">No loans returned in ${esc(period)}.</p>`) + `</div>`;
+
+    const nl = d.neverLent || { count: 0, types: [] };
+    if (nl.count) {
+      html += `<div class="card stat-block"><h4>${esc(plural(nl.count, "unit"))} never lent out</h4>
+        <ul class="stat-list">${nl.types.map(t => `<li><span>${esc(t.name)}</span><span class="card-id">${esc(t.count)} of ${esc(t.units)}</span></li>`).join("")}</ul>
+        <p class="stat-note">Units added more than 2 months ago that have never gone out. They could be passed to another gemach, or the listing may need a better photo or description.</p></div>`;
+    }
+    document.getElementById("stats-body").innerHTML = html;
   }
 
   // ── Requests ──────────────────────────────────────────────────────────────
@@ -3557,6 +3671,26 @@
     if (Array.isArray(g)) renderNetGemachs();
     if (Array.isArray(a)) { fillAdminFilter(); renderNetAdmins(); }
     if (Array.isArray(c)) renderNetCategories();
+    loadNetSearches();
+  }
+
+  async function loadNetSearches() {
+    const el = document.getElementById("net-searches");
+    const days = document.getElementById("net-search-days").value;
+    el.innerHTML = '<div class="loading">Loading…</div>';
+    let d;
+    try { d = await api(`/admin/network/searches?days=${encodeURIComponent(days)}`); } catch (e) { d = { error: "Couldn't load searches right now." }; }
+    if (document.getElementById("net-search-days").value !== days) return;
+    if (!d || d.error || !Array.isArray(d.searches)) { el.innerHTML = `<div class="empty-state">${esc(d?.error || "Could not load")}</div>`; return; }
+    if (!d.searches.length) { el.innerHTML = '<div class="empty-state" style="padding:1rem">No unmatched searches in this period</div>'; return; }
+    el.innerHTML = `<table class="stat-table"><thead><tr><th>Searched for</th><th class="num">Times</th><th>Result</th><th class="num">Last</th></tr></thead><tbody>` +
+      d.searches.map(r => {
+        const tags = [];
+        if (r.nothingFound) tags.push(`<span class="tag tag-red">Nothing found${r.nothingFound !== r.count ? ` ×${esc(r.nothingFound)}` : ""}</span>`);
+        if (r.allOnLoan) tags.push(`<span class="tag tag-amber">All on loan${r.allOnLoan !== r.count ? ` ×${esc(r.allOnLoan)}` : ""}</span>`);
+        return `<tr><td>${esc(r.query)}${r.category ? `<div class="card-id">in ${esc(r.category)}</div>` : ""}</td><td class="num">${esc(r.count)}</td><td>${tags.join(" ")}</td><td class="num card-id">${esc(fmt(r.lastSearched))}</td></tr>`;
+      }).join("") + `</tbody></table>` +
+      (d.total > d.searches.length ? `<p class="stat-note">Showing the top ${esc(d.searches.length)} of ${esc(d.total)}.</p>` : "");
   }
 
   function renderNetGemachs() {
