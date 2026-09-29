@@ -62,6 +62,7 @@ function evalFilter(table, f, r) {
   if (/\{Status\}="Available"/.test(f) && r.fields.Status !== "Available") return false;
   if (/\{Status\}="New"/.test(f) && r.fields.Status !== "New") return false;
   if (/\{Status\}="Returned"/.test(f) && r.fields.Status !== "Returned") return false;
+  if (/\{Status\}="Active"/.test(f) && !/OR\(\{Status\}/.test(f) && r.fields.Status !== "Active") return false;
   if (/OR\(\{Status\}="Active",\{Status\}="Reserved"\)/.test(f) && !["Active", "Reserved"].includes(r.fields.Status)) return false;
   if ((m = f.match(/\{Query\}="([^"]*)"/)) && r.fields.Query !== m[1]) return false;
   const evs = [...f.matchAll(/\{Event Type\}="([^"]+)"/g)].map(x => x[1]);
@@ -1495,6 +1496,101 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
   assert.equal(r.status, 200);
   assert.ok(!rec.fields["Donation Info"]);
 });
+
+// ── Add-ons (made to order, for purchase) ──
+{
+  const G = { id: "recADDONGEMACH001", slug: "addon-gemach" };
+  DB.Gemachs.push(rec(G.id, { Name: "Addon Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "addon@example.com" }));
+  const sc = { Gemach: [G.id], "Gemach Slug": [G.slug] };
+  const day = n => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  DB["Item Types"].push(
+    rec("recADDTYPE0000001", { Name: "Family Sweatshirt", Active: true, Tracking: "Add-on", Price: 40, Description: "$40 each", ...sc }),
+    rec("recADDTYPE0000002", { Name: "Tumblers", Active: true, Tracking: "Add-on", ...sc }), // no price
+    rec("recADDTYPE0000003", { Name: "Arch", Active: true, Items: ["recADDITEM0000001"], ...sc }));
+  DB.Items.push(rec("recADDITEM0000001", { "Item ID": "AR-001", "Item Type": ["recADDTYPE0000003"], Active: true, Status: "Available", ...sc }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const settle = async () => { await Promise.allSettled(waits); };
+
+  await t("add-ons: public page marks them as add-ons with price, never 'available' counts", async () => {
+    __WHG_TEST__.clearMemo();
+    const d = await (await call("/public/gemach/" + G.slug)).json();
+    const sw = d.items.find(i => i.name === "Family Sweatshirt");
+    assert.equal(sw.tracking, "addon"); assert.equal(sw.price, 40); assert.equal(sw.availableCount, null); assert.equal(sw.totalUnits, 0);
+    assert.equal(d.items.find(i => i.name === "Tumblers").price, null);
+    assert.equal(d.items.find(i => i.name === "Arch").tracking, undefined);
+  });
+
+  let reqRec;
+  await t("add-ons: can be ordered on their own, with a count; email shows price, total, no availability warning", async () => {
+    const r = await post("/submit-request", { gemach: G.slug, name: "Sweat Shirt", phone: "5165551234", preferredContact: "Phone",
+      itemsRequested: ["recADDTYPE0000001", "recADDTYPE0000002"], quantities: { recADDTYPE0000001: 4 }, neededFrom: day(20) });
+    assert.equal(r.status, 200, await r.clone().text());
+    reqRec = DB.Requests.at(-1);
+    assert.deepEqual(JSON.parse(reqRec.fields["Item Quantities"]), { recADDTYPE0000001: 4, recADDTYPE0000002: 1 });
+    await settle();
+    const m = resendCalls().filter(x => x.to[0] === "addon@example.com").at(-1);
+    assert.match(m.text, /• Family Sweatshirt × 4 — Add-on · \$40 × 4 = \$160/);
+    assert.match(m.text, /• Tumblers × 1 — Add-on \(for purchase\)/);
+    assert.match(m.text, /Add-ons total: \$160 \(separate payment\)/);
+    assert.ok(!/may not be available/.test(m.text) && !/^⚠/.test(m.subject), "no conflict warning for add-ons");
+    assert.ok(m.html.includes("Add-ons total: $160"));
+    const bad = await post("/submit-request", { gemach: G.slug, name: "X", phone: "5165551234", preferredContact: "Phone",
+      itemsRequested: ["recADDTYPE0000001"], quantities: { recADDTYPE0000001: 0 }, neededFrom: day(20) });
+    assert.equal(bad.status, 400);
+  });
+
+  await t("add-ons: admin request card, confirm -> add-on reservation, hand over completes it", async () => {
+    const list = await (await call("/admin/requests", { headers: H })).json();
+    const card = list.find(x => x.id === reqRec.id);
+    const it = card.items.find(i => i.id === "recADDTYPE0000001");
+    assert.equal(it.addon, true); assert.equal(it.price, 40); assert.equal(it.quantity, 4); assert.equal(it.available, null);
+    let r = await call(`/admin/requests/${reqRec.id}/confirm`, { method: "POST", headers: H, body: JSON.stringify({ quantities: { recADDTYPE0000001: 5 } }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    const created = (await r.json()).reservations;
+    assert.equal(created.length, 2);
+    const loan = DB.Loans.find(l => l.id === created.find(c => /Sweatshirt/.test(c.itemTypeName)).id);
+    assert.equal(loan.fields.Status, "Reserved"); assert.equal(loan.fields.Quantity, 5);
+    await settle();
+    assert.ok(DB["tblC3PY7f5sXQDMJK"].some(l => l.fields["Event Type"] === "Add-on Ordered" && l.fields["Loan ID"] === loan.fields["Loan ID"]));
+    const res = await (await call("/admin/reservations", { headers: H })).json();
+    const row = res.find(x => x.id === loan.id);
+    assert.equal(row.isAddon, true); assert.equal(row.isQuantity, false); assert.equal(row.price, 40); assert.equal(row.quantity, 5);
+    r = await call(`/admin/loans/${loan.id}/pickup`, { method: "POST", headers: H, body: JSON.stringify({}) });
+    assert.equal(r.status, 200); assert.equal((await r.json()).handedOver, true);
+    assert.equal(loan.fields.Status, "Returned"); assert.ok(loan.fields["Date Borrowed"] && loan.fields["Date Borrowed"] === loan.fields["Date Returned"]);
+    await settle();
+    assert.ok(DB["tblC3PY7f5sXQDMJK"].some(l => l.fields["Event Type"] === "Add-on Handed Over" && l.fields["Loan ID"] === loan.fields["Loan ID"]));
+    const loans = await (await call("/admin/loans", { headers: H })).json();
+    assert.ok(!loans.some(l => l.id === loan.id), "never shows as out on loan");
+    const stats = await (await call("/admin/stats?days=90", { headers: H })).json();
+    assert.ok(!stats.loanLength.some(x => x.name === "Family Sweatshirt"), "not counted as a loan");
+    assert.equal(stats.topRequested.find(x => x.name === "Family Sweatshirt").addon, true);
+  });
+
+  await t("add-ons: an add-on-only order needs no deposit acknowledgement; borrowing still does", async () => {
+    const gr = DB.Gemachs.find(x => x.id === G.id); gr.fields["Deposit Required"] = true; __WHG_TEST__.clearMemo();
+    const base = { gemach: G.slug, name: "Dep Test", phone: "5165551234", preferredContact: "Phone", neededFrom: day(25) };
+    let r = await post("/submit-request", { ...base, itemsRequested: ["recADDTYPE0000001"] });
+    assert.equal(r.status, 200, await r.clone().text());
+    r = await post("/submit-request", { ...base, itemsRequested: ["recADDTYPE0000001", "recADDTYPE0000003"] });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /deposit/i);
+    gr.fields["Deposit Required"] = false; __WHG_TEST__.clearMemo();
+  });
+
+  await t("add-ons: item types take Tracking 'Add-on' + price; no numbered units for add-ons", async () => {
+    let r = await call("/admin/catalog/items", { method: "POST", headers: H, body: JSON.stringify({ itemTypeId: "recADDTYPE0000001" }) });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /add-on/i);
+    r = await call("/admin/catalog/item-types/recADDTYPE0000003", { method: "PATCH", headers: H, body: JSON.stringify({ tracking: "Add-on" }) });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /numbered unit/);
+    r = await call("/admin/catalog/item-types/recADDTYPE0000002", { method: "PATCH", headers: H, body: JSON.stringify({ price: "28" }) });
+    assert.equal(r.status, 200); assert.equal(DB["Item Types"].find(x => x.id === "recADDTYPE0000002").fields.Price, 28);
+    r = await call("/admin/catalog/item-types/recADDTYPE0000002", { method: "PATCH", headers: H, body: JSON.stringify({ price: "abc" }) });
+    assert.equal(r.status, 400);
+    const types = await (await call("/admin/catalog/item-types", { headers: H })).json();
+    assert.equal(types.find(x => x.id === "recADDTYPE0000001").tracking, "Add-on");
+    assert.equal(types.find(x => x.id === "recADDTYPE0000002").price, 28);
+  });
+}
 
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];

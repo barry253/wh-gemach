@@ -6,7 +6,7 @@ import { DATE_RE, T } from "./config.js";
 import { isValidDate } from "./dates.js";
 import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
-import { MAX_QTY, isQtyType, itemTypeInfoMap, loanQty, wholeNum } from "./quantity.js";
+import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loanQty, wholeNum } from "./quantity.js";
 import { itemTypeNameMap } from "./requests.js";
 
 // ─── Loans / reservations shared lookups ──────────────────────────────────────
@@ -50,8 +50,10 @@ async function loadLoanRelations(db, g, loans, { includeItemToReserve = false } 
 /** Quantity fields for a loan row: { isQuantity, quantity } (quantity null for unit loans). */
 function loanQtyInfo(f, typeInfo) {
   const t = typeInfo[linkedId(firstLink(f["Item to Reserve"]))];
-  const isQuantity = !!t?.qty && !(f["Item"] || []).length;
-  return { isQuantity, quantity: isQuantity ? loanQty(f) : null };
+  const noUnit = !(f["Item"] || []).length;
+  const isAddon = !!t?.addon && noUnit;
+  const isQuantity = !!t?.qty && noUnit;
+  return { isQuantity, isAddon, price: isAddon ? t.price : null, quantity: isQuantity || isAddon ? loanQty(f) : null };
 }
 
 async function handleGetLoans({ db, g }) {
@@ -162,6 +164,14 @@ async function handleReturnLoan(c, id) {
   return json({ success: true, ...(typeRec ? { missing } : {}) });
 }
 
+/** The loan's item type record when it's an add-on order (add-on type, no unit linked), else null. */
+async function addonTypeForLoan(db, g, loan) {
+  if ((loan.fields["Item"] || []).length) return null;
+  const typeId = linkedId(firstLink(loan.fields["Item to Reserve"]));
+  const rec = typeId ? await getOwned(db, T.ITEM_TYPES, typeId, g) : null;
+  return isAddonType(rec) ? rec : null;
+}
+
 /** The loan's item type record when it's a quantity loan (quantity type, no unit linked), else null. */
 async function qtyTypeForLoan(db, g, loan) {
   if ((loan.fields["Item"] || []).length) return null;
@@ -175,6 +185,24 @@ async function handleMarkPickedUp(c, id) {
   const body = await readJson(c.request);
   const loan = await getOwned(db, T.LOANS, id, g);
   if (!loan) return json({ error: "Not found" }, 404);
+  // Add-on order (made to order, for purchase): handing it over completes it — it never goes "out on loan".
+  const addonRec = await addonTypeForLoan(db, g, loan);
+  if (addonRec) {
+    let n = loanQty(loan.fields);
+    if (body.quantity != null && body.quantity !== "") {
+      n = Number(body.quantity);
+      if (!Number.isInteger(n) || n < 1 || n > 500) return json({ error: "How many are being handed over? Enter 1 or more." }, 400);
+    }
+    const day = DATE_RE.test(body.pickupDate || "") ? body.pickupDate : today();
+    await db.update(T.LOANS, id, { "Status": "Returned", "Quantity": n, "Date Borrowed": day, "Date Returned": day });
+    logEvent(ctx, db, g, {
+      eventType: "Add-on Handed Over",
+      ...(await loanLogDetails(db, g, loan, body)),
+      admin: c.adminName || body.adminName || null,
+      notes: `Handed over ${n}`,
+    });
+    return json({ success: true, handedOver: true });
+  }
   const typeRec = await qtyTypeForLoan(db, g, loan);
   const fields = {
     "Status": "Active",
@@ -236,6 +264,8 @@ async function handleGetReservations({ db, g }) {
       itemRecId: linkedId(iRaw) || null,
       itemTypeId: item.itemTypeId || linkedId(itRaw) || null,
       isQuantity: q.isQuantity,
+      isAddon: q.isAddon,
+      price: q.price,
       quantity: q.quantity,
       reservationStart: f["Reservation Start"] || null,
       reservationEnd: f["Reservation End"] || null,

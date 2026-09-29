@@ -132,6 +132,9 @@
 
   // ── Quantity items (e.g. 60 chairs): counted, not numbered; free count depends on the dates ──
   function isQty(it) { return !!it && it.tracking === "quantity"; }
+  // Add-ons: made to order for purchase (e.g. a personalized sweatshirt) — never "on loan", paid separately.
+  function isAddon(it) { return !!it && it.tracking === "addon"; }
+  function money(n) { var x = Number(n); return isFinite(x) ? "$" + (x % 1 ? x.toFixed(2) : x) : ""; }
   var qtyVals = {}; // item id -> what the person typed (kept while the modal is re-rendered)
 
   /** Fewest free at any point of [from, to] (to = null: open-ended). Same rule as the server. */
@@ -164,7 +167,12 @@
   function renderQty() {
     var group = $("qty-group"), list = $("qty-list");
     var ids = Array.prototype.map.call(modal.querySelectorAll('input[name="modal-items"]:checked'), function (cb) { return cb.value; });
-    var qi = items.filter(function (it) { return isQty(it) && ids.indexOf(it.id) >= 0; });
+    var qi = items.filter(function (it) { return (isQty(it) || isAddon(it)) && ids.indexOf(it.id) >= 0; });
+    // The deposit is for borrowed items: hide it when only add-ons are chosen.
+    var addonsOnly = ids.length > 0 && ids.every(function (id) { return isAddon(items.filter(function (x) { return x.id === id; })[0]); });
+    var dep = !!gemach.depositRequired && !addonsOnly;
+    $("deposit-group").hidden = !dep;
+    $("f-deposit").required = dep;
     if (!qi.length || style() === "Appointment") { group.hidden = true; list.innerHTML = ""; return; }
     // keep what's typed; rebuild only when the set of rows changes
     var have = Array.prototype.map.call(list.querySelectorAll("input[data-qty]"), function (i) { return i.getAttribute("data-qty"); }).join(",");
@@ -172,7 +180,7 @@
       list.innerHTML = qi.map(function (it) {
         var id = esc(it.id);
         return '<div class="qty-row"><label for="q-' + id + '">' + esc(it.name) + "</label>" +
-          '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (it.totalUnits || 1) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || "") + '" aria-describedby="qn-' + id + '" />' +
+          '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (isAddon(it) ? 500 : (it.totalUnits || 1)) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || (isAddon(it) ? "1" : "")) + '" aria-describedby="qn-' + id + '" />' +
           '<p class="qty-note" id="qn-' + id + '" aria-live="polite"></p></div>';
       }).join("");
     }
@@ -188,6 +196,13 @@
       var n = parseInt(inp.value, 10);
       var total = it.totalUnits || 0;
       var txt, warn = false;
+      if (isAddon(it)) {
+        note.textContent = it.price != null
+          ? "Add-on · " + money(it.price) + " each" + (n > 1 ? " — " + money(it.price * n) + " for " + n : "") + " · paid separately"
+          : "Add-on · made to order, paid separately";
+        note.classList.remove("warn");
+        return;
+      }
       if (!it.bookings) txt = total + " in the gemach";
       else if (!w) txt = total + " in the gemach — choose your dates to see how many are free";
       else {
@@ -220,6 +235,7 @@
 
   function availBadge(it) {
     if (W.isDirectory(gemach)) return '<span class="badge badge-dir">Contact to check</span>';
+    if (isAddon(it)) return '<span class="badge badge-addon">Add-on' + (it.price != null ? " · " + money(it.price) : "") + "</span>";
     if (style() === "Appointment") return "";
     var n = Math.max(0, it.availableCount || 0);
     return n > 0 ? '<span class="badge badge-ok">' + n + " available</span>"
@@ -233,7 +249,8 @@
     var thumb = photo
       ? '<button type="button" class="item-thumb" data-photo="' + id + '" aria-label="View photo of ' + esc(it.name) + '"><img src="' + esc(photo) + '" alt="" loading="lazy" width="92" height="72" /></button>'
       : '<div class="item-thumb" aria-hidden="true">' + W.ICONS.photo + "</div>";
-    var units = typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
+    var units = isAddon(it) ? '<div class="item-units">Made to order · paid separately' + (dir ? "" : " · choose how many when you request") + "</div>"
+      : typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
       ? '<div class="item-units">' + (isQty(it) ? it.totalUnits : W.plural(it.totalUnits, "unit")) + " in the gemach" +
         (isQty(it) ? " · choose how many when you request" : "") + "</div>" : "";
     var desc = it.description
@@ -263,12 +280,14 @@
     var byCat = {}, order = [];
     categories.forEach(function (c, i) { byCat[c.id] = { c: c, items: [], i: i }; });
     var other = { c: { name: "Other", icon: "📦" }, items: [], i: 9999 };
+    var addons = { c: { name: "Add-ons (for purchase)", icon: "🛍" }, items: [], i: 10000 };
     items.forEach(function (it) {
-      var b = it.categoryId && byCat[it.categoryId] ? byCat[it.categoryId] : other;
+      var b = isAddon(it) ? addons : it.categoryId && byCat[it.categoryId] ? byCat[it.categoryId] : other;
       b.items.push(it);
     });
     Object.keys(byCat).forEach(function (k) { if (byCat[k].items.length) order.push(byCat[k]); });
     if (other.items.length) order.push(other);
+    if (addons.items.length) order.push(addons);
     var showHeads = order.length > 1 || order[0] !== other;
 
     var st = style();
@@ -484,10 +503,11 @@
     configureForm(st);
     var label = function (it) {
       var on = selected.has(it.id);
-      var out = !appt && !(it.availableCount > 0);
+      var out = !appt && !isAddon(it) && !(it.availableCount > 0);
       return '<label class="item-check-label' + (on ? " checked" : "") + '">' +
         '<input type="checkbox" name="modal-items" value="' + esc(it.id) + '"' + (on ? " checked" : "") + " />" +
-        "<span>" + esc(it.name) + (out ? "<small>Currently on loan</small>" : "") + "</span></label>";
+        "<span>" + esc(it.name) + (out ? "<small>Currently on loan</small>" : "") +
+        (isAddon(it) ? "<small>Add-on" + (it.price != null ? " · " + money(it.price) + " each" : "") + "</small>" : "") + "</span></label>";
     };
     var chosen = items.filter(function (it) { return selected.has(it.id); });
     var rest = items.filter(function (it) { return !selected.has(it.id); });
@@ -734,7 +754,8 @@
         var v = inp.value.trim(), n = +v;
         if (!v) bad(inp, "How many " + it.name + " do you need?");
         else if (!/^\d+$/.test(v) || n < 1) bad(inp, "Please enter a whole number, 1 or more.");
-        else if (it.totalUnits && n > it.totalUnits) bad(inp, "The gemach has " + it.totalUnits + " " + it.name + " in total.");
+        else if (isAddon(it) && n > 500) bad(inp, "Please enter 500 or fewer.");
+        else if (!isAddon(it) && it.totalUnits && n > it.totalUnits) bad(inp, "The gemach has " + it.totalUnits + " " + it.name + " in total.");
         else quantities[it.id] = n;
       });
       if (Object.keys(quantities).length) body.quantities = quantities;
@@ -773,7 +794,7 @@
       if (from) body.neededFrom = from;
       if (until) body.neededUntil = until;
     }
-    if (gemach.depositRequired) {
+    if (gemach.depositRequired && !$("deposit-group").hidden) {
       if (!$("f-deposit").checked) bad($("f-deposit"), "Please confirm you understand a deposit is required.");
       body.depositAck = true;
     }

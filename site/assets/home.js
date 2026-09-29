@@ -234,9 +234,10 @@
 
     var list = Object.keys(groups).map(function (k) { return groups[k]; });
     list.forEach(function (grp) {
-      grp.hasAvail = !grp.g._dir && !grp.g._appt && grp.rows.some(function (h) { return h.e.item.availableCount > 0; });
+      grp.hasAvail = !grp.g._dir && !grp.g._appt && grp.rows.some(function (h) { return h.e.item.availableCount > 0 || h.e.item.tracking === "addon"; });
       grp.rows.sort(function (a, b) {
-        var aa = a.e.item.availableCount > 0 ? 1 : 0, bb = b.e.item.availableCount > 0 ? 1 : 0;
+        var ok = function (x) { return x.e.item.availableCount > 0 || x.e.item.tracking === "addon" ? 1 : 0; };
+        var aa = ok(a), bb = ok(b);
         return (bb - aa) || (b.score - a.score) || (a.e.order - b.e.order);
       });
     });
@@ -278,6 +279,7 @@
   function badge(g, it) {
     if (g._dir) return '<span class="badge badge-dir">Contact to check</span>';
     if (g._appt) return '<span class="badge badge-appt">By appointment</span>';
+    if (it.tracking === "addon") return '<span class="badge badge-addon">Add-on</span>';
     var n = Math.max(0, it.availableCount || 0);
     return n > 0 ? '<span class="badge badge-ok">' + n + " available</span>"
                  : '<span class="badge badge-out">All on loan</span>';

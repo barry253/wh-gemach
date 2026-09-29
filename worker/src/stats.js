@@ -3,7 +3,7 @@ import { fAnd, fStr, linkedId, scopeF, today } from "./airtable.js";
 import { REC_RE, T } from "./config.js";
 import { DAY_MS, addDays, dateToUtcMs, isValidDate, nyToday } from "./dates.js";
 import { json } from "./http.js";
-import { isQtyType, lendableQty, loadQtyBookings, qtyAvailable } from "./quantity.js";
+import { isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAvailable } from "./quantity.js";
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
@@ -58,6 +58,7 @@ async function handleStats({ db, g, url }) {
       fields: ["Date Borrowed", "Date Returned", "Item Type (from Item)", "Item", "Item to Reserve"] }),
   ]);
   const qtyTypes = types.filter(isQtyType);
+  const addonIds = new Set(types.filter(isAddonType).map(t => t.id)); // add-ons are sold, not lent
   const qtyBookings = qtyTypes.length ? await loadQtyBookings(db, g, qtyTypes.map(t => t.id)) : {};
 
   const typeName = new Map(types.map(t => [t.id, t.fields.Name || "Item"]));
@@ -108,6 +109,7 @@ async function handleStats({ db, g, url }) {
   for (const r of requests) for (const id of new Set((r.fields["Items Requested"] || []).map(linkedId))) asked.set(id, (asked.get(id) || 0) + 1);
   const topRequested = [...asked].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id, n]) => ({
     name: typeName.get(id) || "Item", requests: n, units: inv.get(id)?.units || 0, available: inv.get(id)?.available || 0,
+    ...(addonIds.has(id) ? { addon: true } : {}),
   }));
 
   // How long loans actually last (returned in the period), by item type
@@ -116,6 +118,7 @@ async function handleStats({ db, g, url }) {
     const a = l.fields["Date Borrowed"], z = l.fields["Date Returned"];
     if (!isValidDate(a) || !isValidDate(z) || z < sinceDate) continue;
     const itemId = linkedId((l.fields.Item || [])[0]);
+    if (!itemId && addonIds.has(linkedId((l.fields["Item to Reserve"] || [])[0]))) continue; // handed-over add-on, not a loan
     const n = nameOf((l.fields["Item Type (from Item)"] || [])[0]) || typeName.get(itemType.get(itemId))
       || typeName.get(linkedId((l.fields["Item to Reserve"] || [])[0])) || "Item";
     (lengths.get(n) || lengths.set(n, []).get(n)).push(Math.max(0, (dateToUtcMs(z) - dateToUtcMs(a)) / DAY_MS));

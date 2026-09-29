@@ -40,6 +40,13 @@
  *   Network: /admin/network/{gemachs,admins,categories} — role "Network Admin" only, re-checked live in Airtable.
  *   Contract: see API.md (v2) + API-v3.md (request styles, appointments, branding, HTML emails + .ics).
  *
+ * ── Add-ons (Item Types.Tracking = "Add-on", optional Item Types.Price) ───────
+ *   Made to order for purchase (e.g. personalized sweatshirts): no Items records, never "on loan", never
+ *   returned, never in availability. Public item: tracking:"addon", price, availableCount null. Requests take
+ *   quantities (1–500); an add-on-only order needs no deposit. Confirming creates a Reserved loan with
+ *   Item to Reserve + Quantity (log "Add-on Ordered"); "pickup" on it = handed over → Status Returned with
+ *   Date Borrowed = Date Returned (log "Add-on Handed Over"). Stats skip them as loans.
+ *
  * ── Quantity-tracked item types (Item Types.Tracking = "Quantity") ──────────
  *   Counted, not numbered (e.g. 60 folding chairs): Quantity Owned / Out of Service, no Item records.
  *   Public item: tracking:"quantity", totalUnits = lendable, availableCount = free today, bookings[{from,to,qty}]

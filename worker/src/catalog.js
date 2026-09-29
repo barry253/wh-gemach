@@ -4,7 +4,7 @@ import { REC_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { json, readJson } from "./http.js";
 import { generateNextItemId } from "./ids.js";
-import { MAX_QTY, isQtyType, lendableQty, loadQtyBookings, qtyAvailable, wholeNum } from "./quantity.js";
+import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAvailable, wholeNum } from "./quantity.js";
 
 // ─── Catalog — Item Types ─────────────────────────────────────────────────────
 
@@ -24,7 +24,8 @@ async function handleGetItemTypes({ db, g }) {
       r2PhotoUrl: r.fields["R2 Photo URL"] || null,
       itemCount: (r.fields["Items"] || []).length,
       categoryId: linkedId(firstLink(r.fields["Product Category"])) || null,
-      tracking: isQtyType(r) ? "Quantity" : "Units",
+      tracking: isAddonType(r) ? "Add-on" : isQtyType(r) ? "Quantity" : "Units",
+      price: addonPrice(r),
       quantityOwned: wholeNum(r.fields["Quantity Owned"]),
       outOfService: wholeNum(r.fields["Out of Service"]),
     };
@@ -46,18 +47,28 @@ async function handleGetItemTypes({ db, g }) {
 async function itemTypeQtyFields(db, g, body, current = null) {
   const fields = {};
   const wasQty = current ? isQtyType(current) : false;
+  const wasAddon = current ? isAddonType(current) : false;
   let nowQty = wasQty;
   if (body.tracking !== undefined) {
-    if (!["Units", "Quantity"].includes(body.tracking)) return { error: "Tracking must be Units or Quantity." };
+    if (!["Units", "Quantity", "Add-on"].includes(body.tracking)) return { error: "Tracking must be Units, Quantity or Add-on." };
     nowQty = body.tracking === "Quantity";
+    const nowAddon = body.tracking === "Add-on";
     fields["Tracking"] = body.tracking;
-    if (current && nowQty && !wasQty) {
+    if (current && (nowQty || nowAddon) && !wasQty && !wasAddon) {
       const n = (current.fields["Items"] || []).length;
-      if (n) return { error: `This item type still has ${n === 1 ? "1 numbered unit" : `${n} numbered units`} listed under it. Delete ${n === 1 ? "it" : "them"} first (Edit → Delete), then switch to counting by quantity.` };
+      if (n) return { error: `This item type still has ${n === 1 ? "1 numbered unit" : `${n} numbered units`} listed under it. Delete ${n === 1 ? "it" : "them"} first (Edit → Delete), then switch to ${nowAddon ? "an add-on" : "counting by quantity"}.` };
     }
-    if (current && !nowQty && wasQty) {
-      const open = await loadQtyBookings(db, g, [current.id]);
-      if ((open[current.id] || []).length) return { error: "This item type has open loans or reservations counted by quantity. Close them before switching to numbered units." };
+    if (current && (wasQty || wasAddon) && body.tracking !== selTracking(current)) {
+      const open = await loadOpenLoansFor(db, g, current.id);
+      if (open) return { error: `This item type has open ${wasAddon ? "add-on orders" : "loans or reservations"}. Close them before changing how it's tracked.` };
+    }
+  }
+  if (body.price !== undefined) {
+    if (body.price === "" || body.price === null) fields["Price"] = null;
+    else {
+      const p = Number(body.price);
+      if (!Number.isFinite(p) || p < 0 || p > 100000) return { error: "Price must be a number (e.g. 40 or 12.50)." };
+      fields["Price"] = Math.round(p * 100) / 100;
     }
   }
   const num = (v, label) => {
@@ -74,6 +85,13 @@ async function itemTypeQtyFields(db, g, body, current = null) {
   const oos = fields["Out of Service"] ?? wholeNum(current?.fields?.["Out of Service"]);
   if (nowQty && oos > owned) return { error: "Out of service can't be more than how many you own." };
   return { fields };
+}
+
+const selTracking = rec => (isAddonType(rec) ? "Add-on" : isQtyType(rec) ? "Quantity" : "Units");
+/** Whether an item type has any open (Reserved/Active) loans that link it as "Item to Reserve". */
+async function loadOpenLoansFor(db, g, typeId) {
+  const loans = await db.listAll(T.LOANS, { filter: `AND(${scopeF(g)},OR({Status}="Active",{Status}="Reserved"))`, fields: ["Item to Reserve", "Item"] });
+  return loans.some(l => linkedId(firstLink(l.fields["Item to Reserve"])) === typeId && !(l.fields["Item"] || []).length);
 }
 
 /** categoryId from a body: undefined = untouched, "" / null = clear, else must be an existing ACTIVE category. */
@@ -169,6 +187,7 @@ async function handleCreateItem(c) {
   const typeRec = await getOwned(db, T.ITEM_TYPES, body.itemTypeId, g);
   if (!typeRec) return json({ error: "Item type not found" }, 404);
   if (isQtyType(typeRec)) return json({ error: `${typeRec.fields.Name || "This item type"} is counted by quantity — change "How many you own" instead of adding units.` }, 400);
+  if (isAddonType(typeRec)) return json({ error: `${typeRec.fields.Name || "This item"} is an add-on (made to order) — it doesn't have numbered units.` }, 400);
 
   const itemId = body.itemId || await generateNextItemId(db, g, typeRec);
   const fields = {

@@ -8,7 +8,7 @@ import { sendNotificationEmail } from "./email.js";
 import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
 import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
-import { isQtyType, lendableQty, qtyLabel, requestAvailability } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, qtyLabel, requestAvailability } from "./quantity.js";
 import { EMAIL_RE } from "./settings.js";
 
 // ─── Public form submission ───────────────────────────────────────────────────
@@ -58,9 +58,6 @@ async function handleSubmitRequest(request, db, env, ctx) {
   const style = g.requestStyle || "Dates";
   const isAppt = style === "Appointment";
   if (!isAppt && !itemsRequested.length) return json({ error: "Name, phone, and at least one item are required." }, 400);
-  if (g.depositRequired && body.depositAck !== true) {
-    return json({ error: "Please confirm that you understand the deposit requirement." }, 400);
-  }
 
   // Event date (required for Event style, optional for appointments): not in the past (NY), ≤ 2 years ahead.
   let eventDate = null;
@@ -99,6 +96,12 @@ async function handleSubmitRequest(request, db, env, ctx) {
     const rawQty = body.quantities && typeof body.quantities === "object" && !Array.isArray(body.quantities) ? body.quantities : {};
     for (const id of itemIds) {
       const t = typeMap[id];
+      if (isAddonType(t)) { // made to order: any reasonable count, nothing to check against
+        const n = rawQty[id] == null || rawQty[id] === "" ? 1 : Number(rawQty[id]);
+        if (!Number.isInteger(n) || n < 1 || n > 500) return json({ error: `Please enter how many ${t.fields.Name || "add-ons"} you'd like (1–500).` }, 400);
+        qtyMap[id] = n;
+        continue;
+      }
       if (!isQtyType(t)) continue;
       const name = t.fields.Name || "items";
       const max = lendableQty(t);
@@ -109,6 +112,11 @@ async function handleSubmitRequest(request, db, env, ctx) {
       qtyMap[id] = n;
     }
     itemNames = itemIds.map(id => qtyLabel(typeMap[id].fields.Name || id, qtyMap[id]));
+  }
+  // The deposit is for borrowed items: an order of add-ons only doesn't need it.
+  const addonsOnly = itemIds.length > 0 && itemIds.every(id => isAddonType(typeMap[id]));
+  if (g.depositRequired && !addonsOnly && body.depositAck !== true) {
+    return json({ error: "Please confirm that you understand the deposit requirement." }, 400);
   }
 
   const requestId = await getNextRequestId(db);
@@ -175,7 +183,8 @@ async function handleSubmitRequest(request, db, env, ctx) {
     requestId, name, phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes,
     requestType: isAppt ? "Appointment" : "Loan", eventDate, preferredTimes, partySize,
     depositAck: fields["Deposit Acknowledged"],
-    items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null })),
+    items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null,
+      addon: isAddonType(typeMap[id]), price: isAddonType(typeMap[id]) ? addonPrice(typeMap[id]) : null })),
     availability,
   });
   if (notified !== true) {

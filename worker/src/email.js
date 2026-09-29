@@ -2,7 +2,7 @@
 import { DEFAULT_ADMIN_URL, DEFAULT_FROM_EMAIL } from "./config.js";
 import { dateToUtcMs, isValidDate } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, HEX_RE } from "./gemachs.js";
-import { qtyLabel } from "./quantity.js";
+import { money, qtyLabel } from "./quantity.js";
 
 // ─── Email ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +43,18 @@ function longDate(s) {
 }
 const shortDate = s => (isValidDate(s) ? new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" }).format(new Date(dateToUtcMs(s))) : s || "");
 
+/** "Add-on · $40 × 4 = $160" (price known) or "Add-on (for purchase)". */
+function addonText(it) {
+  const n = it.quantity || 1;
+  if (it.price == null) return "Add-on (for purchase)";
+  return n > 1 ? `Add-on · ${money(it.price)} × ${n} = ${money(it.price * n)}` : `Add-on · ${money(it.price)}`;
+}
+/** Sum of priced add-ons, or null when there are none with a price. */
+function addonTotal(items) {
+  const priced = items.filter(it => it.addon && it.price != null);
+  return priced.length ? priced.reduce((s, it) => s + it.price * (it.quantity || 1), 0) : null;
+}
+
 /** One line of availability wording for an item, or "" when there's nothing to say. */
 function availabilityText(a, isQty) {
   if (!a) return "";
@@ -82,9 +94,11 @@ async function sendNotificationEmail(env, g, data) {
   if (items.length) {
     lines.push("", `${isAppt ? "Items of interest" : "Items requested"} (${items.length}):`);
     for (const it of items) {
-      const a = availabilityText(availability?.[it.id], it.quantity != null);
+      const a = it.addon ? addonText(it) : availabilityText(availability?.[it.id], it.quantity != null);
       lines.push(`  • ${label(it)}${a ? ` — ${a}` : ""}`);
     }
+    const tot = addonTotal(items);
+    if (tot != null) lines.push(`  Add-ons total: ${money(tot)} (separate payment)`);
     if (!isAppt && neededFrom && availability === null) lines.push("  (Couldn't check availability — please check in admin.)");
   }
   if (g.depositRequired) lines.push("", `Deposit acknowledged: ${depositAck ? "yes" : "no"}`);
@@ -114,10 +128,11 @@ async function sendNotificationEmail(env, g, data) {
   const STATUS_STYLE = {
     ok: "background:#dcfce7;color:#166534;", short: "background:#fef3c7;color:#92400e;",
     none: "background:#fee2e2;color:#991b1b;", "none-owned": "background:#fee2e2;color:#991b1b;",
+    addon: "background:#e0e7ff;color:#3730a3;",
   };
   const itemRows = items.map((it, i) => {
-    const a = availability?.[it.id];
-    const txt = availabilityText(a, it.quantity != null);
+    const a = it.addon ? { status: "addon" } : availability?.[it.id];
+    const txt = it.addon ? addonText(it) : availabilityText(a, it.quantity != null);
     const pill = a && txt ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;line-height:1.5;${STATUS_STYLE[a.status]}">${e(txt)}</span>` : "";
     const bg = i % 2 ? "#ffffff" : "#f8f9fa";
     return `<tr style="background:${bg};"><td style="padding:8px 10px;border-top:1px solid #e5e7eb;vertical-align:top;"><strong>${e(it.name)}</strong></td>` +
@@ -129,6 +144,7 @@ async function sendNotificationEmail(env, g, data) {
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate;font-size:14px;">` +
       `<tr style="background:#eef1f3;"><th align="left" style="padding:6px 10px;font-size:12px;color:#5e6b72;">Item</th><th style="padding:6px 10px;font-size:12px;color:#5e6b72;">Qty</th><th align="left" style="padding:6px 10px;font-size:12px;color:#5e6b72;">${isAppt ? "" : "For these dates"}</th></tr>` +
       itemRows + `</table>` +
+      (addonTotal(items) != null ? `<div style="font-size:13px;margin-top:6px;"><strong>Add-ons total: ${e(money(addonTotal(items)))}</strong> <span style="color:#5e6b72;">(separate payment)</span></div>` : "") +
       (!isAppt && neededFrom && availability === null ? `<div style="font-size:12px;color:#5e6b72;margin-top:6px;">Couldn't check availability — please check in admin.</div>` : "")
     : "";
   const warn = conflicts.length

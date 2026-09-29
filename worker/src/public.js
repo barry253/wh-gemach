@@ -5,7 +5,7 @@ import { LEGACY_SLUG, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs, loadGemachBySlug, nonBlank } from "./gemachs.js";
 import { json } from "./http.js";
-import { isQtyType, lendableQty, loadQtyBookings, qtyAvailable } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAvailable } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
 
@@ -33,6 +33,12 @@ function publicItemType(type, availableIds, { withCategory = false, bookings = n
     out.totalUnits = lendableQty(type);
     out.availableCount = qtyAvailable(out.totalUnits, list, t, t);
     if (withBookings) out.bookings = list.map(b => ({ from: b.from, to: b.to, qty: b.qty }));
+  }
+  if (isAddonType(type)) { // made to order for purchase: no stock, never "on loan"
+    out.tracking = "addon";
+    out.price = addonPrice(type);
+    out.totalUnits = 0;
+    out.availableCount = null;
   }
   if (withCategory) out.categoryId = linkedId(firstLink(type.fields["Product Category"])) || null;
   return out;

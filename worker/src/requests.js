@@ -34,6 +34,7 @@ async function handleGetRequests({ db, g }) {
     // One entry per requested type; quantity types say how many and how many are free for the dates.
     const items = (f["Items Requested"] || []).map(linkedId).filter(id => info[id]).map(id => {
       const t = info[id];
+      if (t.addon) return { id, name: t.name, quantity: qmap[id] || 1, available: null, owned: null, addon: true, price: t.price };
       if (!t.qty) return { id, name: t.name, quantity: null, available: null, owned: null };
       return {
         id, name: t.name, quantity: qmap[id] || 1, owned: t.lendable,
@@ -80,7 +81,7 @@ async function handleRequestDecision(c, id, kind) {
   const qtyMap = parseQtyMap(fields["Item Quantities"]);
   const override = body.quantities && typeof body.quantities === "object" && !Array.isArray(body.quantities) ? body.quantities : {};
   for (const id of itemIds) {
-    if (!info[id]?.qty) { delete qtyMap[id]; continue; }
+    if (!info[id]?.qty && !info[id]?.addon) { delete qtyMap[id]; continue; }
     if (override[id] != null && override[id] !== "") {
       const n = Number(override[id]);
       if (!Number.isInteger(n) || n < 1 || n > MAX_QTY) return json({ error: `Please enter how many ${info[id].name} (1 or more).` }, 400);
@@ -95,7 +96,8 @@ async function handleRequestDecision(c, id, kind) {
   let reservations = [];
   if (kind === "confirm" && fields["Status"] !== "Converted") {
     try {
-      reservations = await createReservationsFromRequest(c, rec, itemIds.filter(i => nameMap[i]), nameMap, qtyMap);
+      const addonIds = new Set(itemIds.filter(i => info[i]?.addon));
+      reservations = await createReservationsFromRequest(c, rec, itemIds.filter(i => nameMap[i]), nameMap, qtyMap, addonIds);
     } catch (e) {
       console.error("Reservation creation failed:", e.message, JSON.stringify(e.detail || ""));
       return json({ error: "Could not create reservations: " + (e.message || "Airtable error") }, 500);
@@ -203,7 +205,7 @@ async function handleGetAppointments({ db, g }) {
   return json(out);
 }
 
-async function createReservationsFromRequest(c, rec, typeIds, nameMap, qtyMap = {}) {
+async function createReservationsFromRequest(c, rec, typeIds, nameMap, qtyMap = {}, addonIds = new Set()) {
   const { db, g, ctx } = c;
   if (!typeIds.length) return [];
   const f = rec.fields;
@@ -236,7 +238,7 @@ async function createReservationsFromRequest(c, rec, typeIds, nameMap, qtyMap = 
     const data = await db.create(T.LOANS, fields);
     created.push({ id: data.id, loanId, itemTypeName: nameMap[typeIds[i]] || null, quantity: qtyMap[typeIds[i]] || null });
     logEvent(ctx, db, g, {
-      eventType: "Item Reserved",
+      eventType: addonIds.has(typeIds[i]) ? "Add-on Ordered" : "Item Reserved",
       itemType: nameMap[typeIds[i]] || null,
       borrower: f["Name"] || null,
       loanId,

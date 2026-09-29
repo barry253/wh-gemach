@@ -11,6 +11,11 @@ import { selName } from "./gemachs.js";
 // (never "Item") and carry Loans.Quantity. What's free depends on the dates asked for.
 
 const isQtyType = rec => selName(rec?.fields?.["Tracking"]) === "Quantity";
+// Item Types.Tracking = "Add-on": something the gemach makes/sells to order (e.g. a personalized sweatshirt).
+// Never lent, never returned, no Items records, never counted in availability. Can have a Price.
+const isAddonType = rec => selName(rec?.fields?.["Tracking"]) === "Add-on";
+const addonPrice = rec => { const v = rec?.fields?.["Price"]; const n = Number(v); return v != null && v !== "" && Number.isFinite(n) && n >= 0 ? n : null; };
+const money = n => (n == null || !Number.isFinite(n) ? "" : "$" + (Number.isInteger(n) ? String(n) : n.toFixed(2)));
 const wholeNum = v => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0; };
 /** Pieces on a loan record (blank = 1). */
 const loanQty = f => { const n = Number(f?.["Quantity"]); return Number.isInteger(n) && n > 0 ? n : 1; };
@@ -88,10 +93,12 @@ function qtyAvailable(total, bookings, from, to = from) {
 
 /** Item type facts for ids (scoped): { id: { name, qty: bool, lendable, owned, outOfService } }. */
 async function itemTypeInfoMap(db, ids, g) {
-  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Tracking", "Quantity Owned", "Out of Service"] });
+  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Tracking", "Quantity Owned", "Out of Service", "Price"] });
   return Object.fromEntries(recs.map(r => [r.id, {
     name: r.fields.Name || r.id,
     qty: isQtyType(r),
+    addon: isAddonType(r),
+    price: addonPrice(r),
     lendable: lendableQty(r),
     owned: wholeNum(r.fields["Quantity Owned"]),
     outOfService: wholeNum(r.fields["Out of Service"]),
@@ -114,7 +121,9 @@ function requestWindow(f) {
  * backBy = soonest date something overlapping is due back (null if unknown / open-ended).
  */
 async function requestAvailability(db, g, typeRecs, qtyMap, win) {
+  typeRecs = typeRecs.filter(r => !isAddonType(r)); // add-ons are made to order: nothing to check
   const wanted = new Map(typeRecs.map(r => [r.id, r]));
+  if (!wanted.size) return {};
   const unitTypes = typeRecs.filter(r => !isQtyType(r)).map(r => r.id);
   const [loans, units] = await Promise.all([
     db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `OR({Status}="Active",{Status}="Reserved")`), fields: [...LOAN_WINDOW_FIELDS, "Item"] }),
@@ -155,4 +164,4 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
   return out;
 }
 
-export { isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability };
+export { isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money };

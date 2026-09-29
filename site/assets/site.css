@@ -306,6 +306,7 @@ main { flex: 1; }
 .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .badge-ok { color: var(--green); background: var(--green-bg); }
 .badge-out { color: var(--red); background: var(--red-bg); }
+.badge-addon { color: #3730A3; background: #E0E7FF; }
 .badge-dir { color: var(--amber); background: var(--amber-bg); }
 
 /* ── Gemach cards ── */

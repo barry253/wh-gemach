@@ -624,6 +624,7 @@
     .tag-red { background: #FEE2E2; color: var(--red); }
     .tag-amber { background: #FEF3C7; color: var(--amber); }
     .tag-green { background: #DCFCE7; color: var(--green); }
+    .tag-addon { background: #E0E7FF; color: #3730A3; }
     .tag-navy { background: var(--teal); color: var(--navy); }
 
     /* ── Action buttons ── */
@@ -1498,7 +1499,7 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <button class="sheet-close" onclick="closeSheet('pickup-sheet')">×</button>
-    <h3>Mark as picked up</h3>
+    <h3 id="pickup-title">Mark as picked up</h3>
     <p class="sheet-subtitle" id="pickup-subtitle"></p>
     <div class="form-group" id="pickup-item-group" style="margin-top:0.75rem;display:none">
       <label for="pickup-item">Which item is going out?</label>
@@ -1506,7 +1507,7 @@
       <p class="login-error" id="pickup-item-error" style="text-align:left"></p>
     </div>
     <div class="form-group" id="pickup-qty-group" style="margin-top:0.75rem;display:none">
-      <label for="pickup-qty">How many are going out?</label>
+      <label for="pickup-qty" id="pickup-qty-label">How many are going out?</label>
       <input type="number" id="pickup-qty" min="1" step="1" inputmode="numeric" style="max-width:8rem" />
       <p class="login-error" id="pickup-qty-error" style="text-align:left"></p>
     </div>
@@ -1702,8 +1703,14 @@
       <select id="it-tracking" onchange="updateTrackingUi()">
         <option value="Units">Numbered units (WC-001, WC-002…)</option>
         <option value="Quantity">By count (e.g. 60 folding chairs)</option>
+        <option value="Add-on">Add-on — made to order, for purchase (not lent)</option>
       </select>
       <div class="muted-small" style="margin-top:0.3rem" id="it-tracking-hint"></div>
+    </div>
+    <div class="form-group" id="it-price-row" style="display:none">
+      <label for="it-price">Price (each)</label>
+      <input type="number" id="it-price" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 40" />
+      <div class="muted-small" style="margin-top:0.3rem">Shown on your page and in request emails, with a total. Leave blank if it varies.</div>
     </div>
     <div class="form-row" id="it-qty-row" style="display:none">
       <div class="form-group">
@@ -2364,8 +2371,8 @@
     const top = d.topRequested || [];
     html += `<div class="card stat-block"><h4>Most requested</h4>` + (top.length
       ? `<table class="stat-table"><thead><tr><th>Item</th><th class="num">Requests</th><th class="num">You have</th><th class="num">Available now</th></tr></thead><tbody>` +
-        top.map(t => `<tr><td>${esc(t.name)}${t.available === 0 && t.units > 0 ? ' <span class="tag tag-amber">All out</span>' : ""}${t.units === 0 ? ' <span class="tag tag-red">None in stock</span>' : ""}</td>
-          <td class="num">${esc(t.requests)}</td><td class="num">${esc(t.units)}</td><td class="num">${esc(t.available)}</td></tr>`).join("") +
+        top.map(t => `<tr><td>${esc(t.name)}${t.addon ? ' <span class="tag tag-addon">Add-on</span>' : ""}${!t.addon && t.available === 0 && t.units > 0 ? ' <span class="tag tag-amber">All out</span>' : ""}${!t.addon && t.units === 0 ? ' <span class="tag tag-red">None in stock</span>' : ""}</td>
+          <td class="num">${esc(t.requests)}</td><td class="num">${t.addon ? "—" : esc(t.units)}</td><td class="num">${t.addon ? "—" : esc(t.available)}</td></tr>`).join("") +
         `</tbody></table><p class="stat-note">Items that are often all out may be worth adding more of.</p>`
       : `<p class="stat-note">No requests in ${esc(period)}.</p>`) + `</div>`;
 
@@ -2402,7 +2409,14 @@
       const neededOn = fmt(r.neededFrom), returnOn = fmt(r.neededUntil);
       const dates = `${neededOn ? `Needed ${neededOn}` : "Needed date not given"} · ${
         r.openEnded ? "open-ended" : returnOn ? `return ~${returnOn}` : "return date not given"}`;
-      const items = (r.itemNames || []).join(", ");
+      const addons = (r.items || []).filter(i => i.addon);
+      const items = r.items && r.items.length
+        ? r.items.filter(i => !i.addon).map(i => i.quantity != null ? `${i.name} × ${i.quantity}` : i.name).join(", ")
+        : (r.itemNames || []).join(", ");
+      const addonTotal = addons.filter(i => i.price != null).reduce((s, i) => s + i.price * (i.quantity || 1), 0);
+      const addonText = addons.length
+        ? `Add-ons: ${addons.map(i => addonLine(i.name, i.quantity, i.price)).join(", ")}${addons.length > 1 && addonTotal ? ` · total ${fmtMoney(addonTotal)}` : ""} (separate payment)`
+        : "";
       // Quantity items asking for more than is free for those dates: say so (the request can still be confirmed).
       const short = (r.items || []).filter(i => i.quantity != null && i.available != null && i.quantity > i.available)
         .map(i => `Only ${i.available} ${i.name} free for these dates (asked for ${i.quantity})`);
@@ -2420,6 +2434,7 @@
         </div>
         <div class="card-meta">
           ${items ? `<span>📦 ${esc(items)}</span>` : ""}
+          ${addonText ? `<span>🛍 ${esc(addonText)}</span>` : ""}
           ${short.map(s => `<span class="qty-warn">⚠ ${esc(s)}</span>`).join("")}
           ${r.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(r.eventDate, true))}</span>` : ""}
           ${isAppt ? "" : `<span>📅 ${esc(dates)}</span>`}
@@ -2453,9 +2468,11 @@
     qtyGroup.style.display = qtyItems.length ? "" : "none";
     qtyList.innerHTML = qtyItems.map(i => {
       const iid = safeId(i.id);
-      const free = i.available != null
-        ? `${i.available} free for these dates · ${i.owned} total`
-        : `${i.owned} total`;
+      const free = i.addon
+        ? (i.price != null ? `Add-on · ${fmtMoney(i.price)} each` : "Add-on (made to order)")
+        : i.available != null
+          ? `${i.available} free for these dates · ${i.owned} total`
+          : `${i.owned} total`;
       return `<div class="qty-line">
         <label class="qty-name" for="cq-${iid}">${esc(i.name)}</label>
         <input type="number" id="cq-${iid}" data-qty="${iid}" min="1" step="1" inputmode="numeric" value="${esc(i.quantity)}" />
@@ -2802,7 +2819,9 @@
     list.innerHTML = data.map(r => {
       const rid = keep("res", r);
       const resStart = fmt(r.reservationStart);
-      const dates = resStart ? `${resStart} → ${fmt(r.reservationEnd) || "Open return date"}` : "Dates TBD";
+      const dates = r.isAddon
+        ? (resStart ? `For ${resStart}` : "Date TBD")
+        : resStart ? `${resStart} → ${fmt(r.reservationEnd) || "Open return date"}` : "Dates TBD";
 
       return `
         <div class="loan-row" id="res-row-${rid}" onclick="toggleResActions('${rid}')">
@@ -2811,15 +2830,16 @@
             <span class="loan-row-item">${esc(r.itemTypeName || "Item TBD")}</span>
             ${r.itemId ? `<span class="loan-row-code">${esc(r.itemId)}</span>` : ""}
             ${r.isQuantity ? `<span class="loan-row-code">× ${esc(r.quantity)}</span>` : ""}
+            ${r.isAddon ? `<span class="loan-row-code">× ${esc(r.quantity)}${r.price != null ? ` · ${esc(fmtMoney(r.price * r.quantity))}` : ""}</span>` : ""}
           </div>
           <span class="loan-row-date">${esc(dates)}</span>
-          <span class="tag tag-navy loan-row-tag">Reserved</span>
+          ${r.isAddon ? `<span class="tag tag-addon loan-row-tag">Add-on</span>` : `<span class="tag tag-navy loan-row-tag">Reserved</span>`}
         </div>
         <div class="loan-actions-panel" id="res-panel-${rid}">
           ${r.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(r.requestNote)}</div>` : ""}
           ${r.notes ? `<div class="loan-notes">💬 ${esc(r.notes)}</div>` : ""}
           <div class="card-actions">
-            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPickup(rec('res','${rid}'))">✓ Mark picked up</button>
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPickup(rec('res','${rid}'))">✓ ${r.isAddon ? "Mark handed over" : "Mark picked up"}</button>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPickupInstructions(rec('res','${rid}'))">📍 Send pickup info</button>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditReservation(rec('res','${rid}'))">✏️ Edit</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="event.stopPropagation();openCancelReservation(rec('res','${rid}'))">✕ Cancel</button>
@@ -2846,8 +2866,9 @@
     document.getElementById("edit-res-start").value = r.reservationStart || "";
     document.getElementById("edit-res-end").value   = r.reservationEnd   || "";
     document.getElementById("edit-res-notes").value = r.notes            || "";
-    document.getElementById("edit-res-qty-group").style.display = r.isQuantity ? "" : "none";
-    document.getElementById("edit-res-qty").value = r.isQuantity ? r.quantity : "";
+    const counted = r.isQuantity || r.isAddon;
+    document.getElementById("edit-res-qty-group").style.display = counted ? "" : "none";
+    document.getElementById("edit-res-qty").value = counted ? r.quantity : "";
     document.getElementById("edit-res-submit-btn").onclick = async () => {
       const btn = document.getElementById("edit-res-submit-btn");
       const body = {
@@ -2855,7 +2876,7 @@
         reservationEnd:   document.getElementById("edit-res-end").value   || null,
         notes:            document.getElementById("edit-res-notes").value  || null
       };
-      if (r.isQuantity) {
+      if (counted) {
         const n = parseInt(document.getElementById("edit-res-qty").value, 10);
         if (!(Number.isInteger(n) && n >= 1)) { showToast("Enter how many (1 or more)"); return; }
         body.quantity = n;
@@ -2894,6 +2915,9 @@
   }
 
   async function openPickup(r) {
+    const counted = r.isQuantity || r.isAddon; // no unit to choose, just how many
+    document.getElementById("pickup-title").textContent = r.isAddon ? "Mark as handed over" : "Mark as picked up";
+    document.getElementById("pickup-qty-label").textContent = r.isAddon ? "How many are being handed over?" : "How many are going out?";
     document.getElementById("pickup-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
     document.getElementById("pickup-date").value = new Date().toISOString().split("T")[0];
     const group = document.getElementById("pickup-item-group");
@@ -2905,9 +2929,9 @@
     const qIn = document.getElementById("pickup-qty");
     const qErr = document.getElementById("pickup-qty-error");
     qErr.style.display = "none";
-    qGroup.style.display = r.isQuantity ? "block" : "none";
-    if (r.isQuantity) qIn.value = r.quantity;
-    const needsUnit = !r.itemRecId && !r.isQuantity;
+    qGroup.style.display = counted ? "block" : "none";
+    if (counted) qIn.value = r.quantity;
+    const needsUnit = !r.itemRecId && !counted;
     group.style.display = needsUnit ? "block" : "none";
     select.innerHTML = "";
     let units = [];
@@ -2950,23 +2974,23 @@
         body.itemId = chosen.id;
         body.itemCode = chosen.itemId;
       }
-      if (r.isQuantity) {
+      if (counted) {
         const n = parseInt(qIn.value, 10);
-        if (!(Number.isInteger(n) && n >= 1)) { qErr.textContent = "Enter how many are going out (1 or more)."; qErr.style.display = "block"; return; }
+        if (!(Number.isInteger(n) && n >= 1)) { qErr.textContent = r.isAddon ? "Enter how many (1 or more)." : "Enter how many are going out (1 or more)."; qErr.style.display = "block"; return; }
         body.quantity = n;
       }
       const res = await api(`/admin/loans/${r.id}/pickup`, "POST", body);
       if (res && res.error) {
-        const el = r.isQuantity ? qErr : errEl;
+        const el = counted ? qErr : errEl;
         el.textContent = res.error;
         el.style.display = "block";
-        if (!r.isQuantity) group.style.display = "block";
+        if (!counted) group.style.display = "block";
         return;
       }
       closeSheet("pickup-sheet");
       loadReservations();
       loadDashboard();
-      showToast("Marked as picked up");
+      showToast(r.isAddon ? "Marked as handed over" : "Marked as picked up");
     };
     openSheet("pickup-sheet");
   }
@@ -3004,8 +3028,8 @@
     catalogItemTypes = (typesData || []).slice().sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
     // Populate pi-type dropdown for Add/Edit Item sheet
     const select = document.getElementById("pi-type");
-    const qtyTypeIds = new Set(catalogItemTypes.filter(t => t.tracking === "Quantity").map(t => t.id));
-    const types = (itemsData?.itemTypes || []).filter(t => !qtyTypeIds.has(t.id)); // counted types have no units
+    const qtyTypeIds = new Set(catalogItemTypes.filter(t => t.tracking === "Quantity" || t.tracking === "Add-on").map(t => t.id));
+    const types = (itemsData?.itemTypes || []).filter(t => !qtyTypeIds.has(t.id)); // counted types and add-ons have no units
     select.innerHTML = '<option value="">Select type…</option>' +
       types.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
     renderInventory();
@@ -3052,7 +3076,7 @@
       : inventoryFilter === "repair" ? t.outOfService > 0 : true;
     const typesToShow = inventoryFilter === "all"
       ? catalogItemTypes
-      : catalogItemTypes.filter(t => t.tracking === "Quantity" ? qtyMatches(t) : (groups[t.id] || groups[t.name] || []).length > 0);
+      : catalogItemTypes.filter(t => t.tracking === "Add-on" ? false : t.tracking === "Quantity" ? qtyMatches(t) : (groups[t.id] || groups[t.name] || []).length > 0);
 
     if (!typesToShow.length) {
       container.innerHTML = header + '<div class="empty-state">No items match this filter</div>';
@@ -3082,6 +3106,23 @@
             </div>
           </div>`;
         }).join("") : '<div style="color:var(--muted);font-size:0.8rem;padding:0.5rem 0">No items yet</div>';
+      if (type.tracking === "Add-on") {
+        return `
+      <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${tid}">
+        <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+            <span class="inventory-group-chevron">▾</span>
+            <span class="inventory-group-title">${esc(type.name)}</span>
+            <span class="tag tag-addon">Add-on${type.price != null ? ` · ${esc(fmtMoney(type.price))}` : ""}</span>
+            ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">Edit</button>
+        </div>
+        <div class="inventory-group-body">
+          <div class="muted-small">Made to order, for purchase — nothing to count. Orders show under Reservations until handed over.</div>
+        </div>
+      </div>`;
+      }
       if (type.tracking === "Quantity") {
         const stat = (n, label) => `<div class="qty-stat"><b>${esc(n ?? 0)}</b><span>${esc(label)}</span></div>`;
         return `
@@ -4166,6 +4207,13 @@
   }
 
   /** "Sep 29" from "YYYY-MM-DD" (calendar date) or an ISO instant; "" for empty/invalid input. */
+  /** "$40" / "$12.50" */
+  function fmtMoney(n) { const x = Number(n); return Number.isFinite(x) ? "$" + (Number.isInteger(x) ? x : x.toFixed(2)) : ""; }
+  function addonLine(name, qty, price) {
+    const n = qty || 1;
+    return price != null ? `${name} × ${n} · ${fmtMoney(price * n)}` : `${name} × ${n}`;
+  }
+
   function fmt(dateStr) {
     const s = String(dateStr ?? "").trim();
     if (!s) return "";
@@ -4223,18 +4271,23 @@
     document.getElementById("it-tracking").dataset.itemCount = t.itemCount || 0;
     document.getElementById("it-owned").value = t.tracking === "Quantity" ? (t.quantityOwned ?? "") : "";
     document.getElementById("it-oos").value = t.tracking === "Quantity" && t.outOfService ? t.outOfService : "";
+    document.getElementById("it-price").value = t.price != null ? t.price : "";
     updateTrackingUi();
   }
   function updateTrackingUi() {
     const sel = document.getElementById("it-tracking");
     const qty = sel.value === "Quantity";
+    const addon = sel.value === "Add-on";
     const units = Number(sel.dataset.itemCount || 0);
     document.getElementById("it-qty-row").style.display = qty ? "" : "none";
-    document.getElementById("it-tracking-hint").textContent = qty
-      ? (editingTracking !== "Quantity" && units
-        ? `This type has ${units} numbered unit${units === 1 ? "" : "s"}. Delete ${units === 1 ? "it" : "them"} first, then switch.`
-        : "People choose how many they need; what's free depends on their dates.")
-      : "Each piece gets its own ID so you know exactly which one is out.";
+    document.getElementById("it-price-row").style.display = addon ? "" : "none";
+    const mustDelete = (qty || addon) && editingTracking === "Units" && units
+      ? `This type has ${units} numbered unit${units === 1 ? "" : "s"}. Delete ${units === 1 ? "it" : "them"} first, then switch.` : "";
+    document.getElementById("it-tracking-hint").textContent = mustDelete || (qty
+      ? "People choose how many they need; what's free depends on their dates."
+      : addon
+        ? "Made to order and paid for separately. Never shown as on loan, never returned, no stock to count."
+        : "Each piece gets its own ID so you know exactly which one is out.");
   }
 
   function openEditItemType(t) {
@@ -4276,6 +4329,11 @@
       if (Number(oos || 0) > Number(owned)) { showToast("Out of service can't be more than you own"); return; }
       body.quantityOwned = Number(owned);
       body.outOfService = Number(oos || 0);
+    }
+    if (tracking === "Add-on") {
+      const price = document.getElementById("it-price").value.trim();
+      if (price && !(Number(price) >= 0)) { showToast("Price must be a number, e.g. 40"); return; }
+      body.price = price === "" ? null : Number(price);
     }
     const btn = document.getElementById("item-type-submit-btn");
     btn.disabled = true; btn.textContent = "Saving…";
@@ -4445,7 +4503,8 @@
   const HISTORY_EVENT_TYPES = [
     "Loan Created", "Item Returned", "Item Reserved",
     "Reservation Cancelled", "Marked for Repair", "Restored",
-    "Request Received", "Request Confirmed", "Request Declined", "Borrower Created"
+    "Request Received", "Request Confirmed", "Request Declined", "Borrower Created",
+    "Add-on Ordered", "Add-on Handed Over"
   ];
 
   const HISTORY_DOT_COLORS = {
@@ -4453,6 +4512,8 @@
     "Item Returned":          "#00897B",
     "Item Reserved":          "#1565C0",
     "Reservation Cancelled":  "#757575",
+    "Add-on Ordered":         "#3730A3",
+    "Add-on Handed Over":     "#4F46E5",
     "Marked for Repair":      "#E65100",
     "Restored":               "#43A047",
     "Request Received":       "#6A1B9A",
