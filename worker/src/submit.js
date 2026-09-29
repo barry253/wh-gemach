@@ -1,0 +1,202 @@
+// Part of the Gemach Network worker (see index.js for routes and env vars).
+import { logEvent } from "./activity.js";
+import { AirtableError, linkedId, verifyOwnedIds } from "./airtable.js";
+import { sendAlert } from "./alerts.js";
+import { LEGACY_SLUG, T } from "./config.js";
+import { addYearsDate, eventDates, isValidDate, nyToday } from "./dates.js";
+import { sendNotificationEmail } from "./email.js";
+import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
+import { json } from "./http.js";
+import { getNextRequestId } from "./ids.js";
+import { isQtyType, lendableQty, qtyLabel, requestAvailability } from "./quantity.js";
+import { EMAIL_RE } from "./settings.js";
+
+// ─── Public form submission ───────────────────────────────────────────────────
+
+const clip = (s, n) => (s == null ? s : String(s).slice(0, n));
+
+/** Preferred Contact values the public form offers (all exist as Requests."Preferred Contact" choices). */
+const REQUEST_CONTACTS = ["WhatsApp", "Phone", "SMS", "Email"];
+
+/** US numbers -> "(516) 555-1234"; other formats kept as entered (trimmed); null if < 7 digits. */
+function formatPhone(raw) {
+  const s = String(raw || "").trim();
+  const d = s.replace(/\D/g, "");
+  if (d.length < 7) return null;
+  const us = d.length === 10 ? d : d.length === 11 && d[0] === "1" ? d.slice(1) : null;
+  if (us && !/^\s*\+(?!1)/.test(s)) return `(${us.slice(0, 3)}) ${us.slice(3, 6)}-${us.slice(6)}`;
+  return s.slice(0, 50);
+}
+
+async function handleSubmitRequest(request, db, env, ctx) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "Invalid JSON" }, 400); }
+  body = body && typeof body === "object" ? body : {};
+
+  const str = v => (typeof v === "string" ? v.trim() : v == null ? "" : typeof v === "number" ? String(v) : null);
+  const name = str(body.name), rawPhone = str(body.phone), email = str(body.email), notes = str(body.notes);
+  const preferredContact = typeof body.preferredContact === "string" ? body.preferredContact.trim() : "";
+  const neededFrom = str(body.neededFrom), neededUntil = str(body.neededUntil), openEnded = body.openEnded === true;
+  if ([name, rawPhone, email, notes, neededFrom, neededUntil].some(v => v === null)) return json({ error: "Invalid request." }, 400);
+  const itemsRequested = body.itemsRequested == null ? [] : body.itemsRequested;
+  if (!Array.isArray(itemsRequested)) return json({ error: "Invalid items." }, 400);
+  if (!name || !rawPhone) return json({ error: "Name and phone are required." }, 400);
+  if (itemsRequested.length > 50) return json({ error: "Too many items." }, 400);
+
+  const slug = String(body.gemach || LEGACY_SLUG).trim().toLowerCase();
+  const g = await loadGemachBySlug(db, slug);
+  if (!g || !g.active) return json({ error: "Unknown gemach." }, 400);
+  if (g.mode === "Directory") {
+    return json({ error: `${g.name || "This gemach"} doesn't take online requests. Please contact them directly${g.phone ? ` at ${g.phone}` : ""}.` }, 400);
+  }
+  const phone = formatPhone(rawPhone);
+  if (!phone) return json({ error: "Please enter a valid phone number." }, 400);
+  if (email && (!EMAIL_RE.test(email) || email.length > 200)) return json({ error: "Please enter a valid email address." }, 400);
+  if (!REQUEST_CONTACTS.includes(preferredContact)) return json({ error: "Please choose the best way to reach you." }, 400);
+  if (preferredContact === "Email" && !email) return json({ error: "Please enter your email address so we can reach you by email." }, 400);
+  const style = g.requestStyle || "Dates";
+  const isAppt = style === "Appointment";
+  if (!isAppt && !itemsRequested.length) return json({ error: "Name, phone, and at least one item are required." }, 400);
+  if (g.depositRequired && body.depositAck !== true) {
+    return json({ error: "Please confirm that you understand the deposit requirement." }, 400);
+  }
+
+  // Event date (required for Event style, optional for appointments): not in the past (NY), ≤ 2 years ahead.
+  let eventDate = null;
+  if (body.eventDate != null && body.eventDate !== "") {
+    eventDate = String(body.eventDate);
+    const todayNy = nyToday();
+    const [ty, tm, td] = todayNy.split("-");
+    const maxDate = `${Number(ty) + 2}-${tm}-${td === "29" && tm === "02" ? "28" : td}`;
+    if (!isValidDate(eventDate)) return json({ error: `Please enter a valid ${(g.eventLabel || DEFAULT_EVENT_LABEL).toLowerCase()}.` }, 400);
+    if (eventDate < todayNy) return json({ error: `The ${(g.eventLabel || DEFAULT_EVENT_LABEL).toLowerCase()} can't be in the past.` }, 400);
+    if (eventDate > maxDate) return json({ error: `The ${(g.eventLabel || DEFAULT_EVENT_LABEL).toLowerCase()} must be within 2 years.` }, 400);
+  } else if (style === "Event") {
+    return json({ error: `${g.eventLabel || DEFAULT_EVENT_LABEL} is required.` }, 400);
+  }
+
+  let preferredTimes = null, partySize = null;
+  if (isAppt) {
+    preferredTimes = typeof body.preferredTimes === "string" ? body.preferredTimes.trim() : "";
+    if (!preferredTimes) return json({ error: "Please tell us which days and times work for you." }, 400);
+    if (preferredTimes.length > 1000) return json({ error: "Preferred times is too long (max 1000 characters)." }, 400);
+    if (body.partySize != null && body.partySize !== "") {
+      const n = Number(body.partySize);
+      if (!Number.isInteger(n) || n < 1 || n > 20) return json({ error: "Party size must be between 1 and 20." }, 400);
+      partySize = n;
+    }
+  }
+
+  let itemIds = [], itemNames = [], typeMap = {};
+  const qtyMap = {};
+  if (itemsRequested.length) {
+    typeMap = await verifyOwnedIds(db, T.ITEM_TYPES, itemsRequested, g);
+    if (!typeMap || Object.values(typeMap).some(r => !r.fields.Active)) return json({ error: "One or more requested items are not available from this gemach." }, 400);
+    itemIds = [...new Set(itemsRequested.map(linkedId))];
+    // Quantity types (e.g. chairs): how many. Capped at what the gemach owns; more than is free
+    // for the dates is allowed (the gemach decides) and flagged in the notification email.
+    const rawQty = body.quantities && typeof body.quantities === "object" && !Array.isArray(body.quantities) ? body.quantities : {};
+    for (const id of itemIds) {
+      const t = typeMap[id];
+      if (!isQtyType(t)) continue;
+      const name = t.fields.Name || "items";
+      const max = lendableQty(t);
+      if (max < 1) return json({ error: `${name} aren't available from this gemach right now. Please contact them directly.` }, 400);
+      const n = rawQty[id] == null || rawQty[id] === "" ? 1 : Number(rawQty[id]);
+      if (!Number.isInteger(n) || n < 1) return json({ error: `Please enter how many ${name} you need.` }, 400);
+      if (n > max) return json({ error: `The gemach has ${max} ${name} in total — please ask for ${max} or fewer.` }, 400);
+      qtyMap[id] = n;
+    }
+    itemNames = itemIds.map(id => qtyLabel(typeMap[id].fields.Name || id, qtyMap[id]));
+  }
+
+  const requestId = await getNextRequestId(db);
+  const fields = {
+    "Request ID": requestId,
+    "Name": clip(name, 200),
+    "Phone": clip(phone, 50),
+    "Status": "New",
+    "Gemach": [g.id],
+    "Request Type": isAppt ? "Appointment" : "Loan",
+  };
+  if (itemIds.length) fields["Items Requested"] = itemIds;
+  if (Object.keys(qtyMap).length) fields["Item Quantities"] = JSON.stringify(qtyMap);
+  if (email) fields["Email"] = clip(email, 200);
+  fields["Preferred Contact"] = preferredContact; // validated against REQUEST_CONTACTS above
+  if (g.depositRequired || body.depositAck === true) fields["Deposit Acknowledged"] = body.depositAck === true;
+  if (eventDate) fields["Event Date"] = eventDate;
+
+  let from = null, until = null, isOpen = false;
+  if (style === "Event") {
+    // Server is authoritative: client-computed dates are ignored.
+    const d = eventDates(eventDate, g);
+    from = d.pickup; until = d.return;
+    fields["Needed From"] = from;
+    fields["Needed Until"] = until;
+    fields["Open-ended duration"] = false;
+  } else if (isAppt) {
+    fields["Preferred Times"] = preferredTimes;
+    if (partySize != null) fields["Party Size"] = partySize;
+  } else {
+    if (!neededFrom) return json({ error: "Please choose the date you need it from." }, 400);
+    if (!isValidDate(neededFrom)) return json({ error: "Please choose a valid date you need it from." }, 400);
+    const todayNy = nyToday();
+    if (neededFrom < todayNy) return json({ error: "The date you need it from can't be in the past." }, 400);
+    if (neededFrom > addYearsDate(todayNy, 2)) return json({ error: "The date you need it from must be within 2 years." }, 400);
+    isOpen = openEnded;
+    if (!isOpen && neededUntil) {
+      if (!isValidDate(neededUntil)) return json({ error: "Please choose a valid approximate return date." }, 400);
+      if (neededUntil <= neededFrom) return json({ error: "The approximate return date must be after the date you need it from." }, 400);
+      if (neededUntil > addYearsDate(todayNy, 3)) return json({ error: "The approximate return date is too far in the future." }, 400);
+      fields["Needed Until"] = until = neededUntil;
+    }
+    fields["Open-ended duration"] = isOpen;
+    fields["Needed From"] = from = neededFrom;
+  }
+  if (notes) fields["Notes"] = clip(notes, 5000);
+
+  // What's free for the requested dates, per item — for the gemach's notification email (never blocks the request).
+  let availability = null;
+  if (itemIds.length && from && !isAppt) {
+    try { availability = await requestAvailability(db, g, itemIds.map(id => typeMap[id]), qtyMap, { from, to: isOpen ? null : until || from }); }
+    catch (e) { console.error("availability check failed:", e.message, e.detail ? JSON.stringify(e.detail) : ""); }
+  }
+
+  try {
+    await db.create(T.REQUESTS, fields);
+  } catch (e) {
+    if (!(e instanceof AirtableError)) throw e;
+    console.error("Airtable error:", JSON.stringify(e.detail));
+    return json({ error: "Failed to save request. Please contact the gemach directly." }, 500);
+  }
+
+  const notified = await sendNotificationEmail(env, g, {
+    requestId, name, phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes,
+    requestType: isAppt ? "Appointment" : "Loan", eventDate, preferredTimes, partySize,
+    depositAck: fields["Deposit Acknowledged"],
+    items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null })),
+    availability,
+  });
+  if (notified !== true) {
+    ctx.waitUntil(sendAlert(env, {
+      always: true,
+      subject: `New request ${requestId} for ${g.name || g.slug} — gemach was NOT notified`,
+      text: `Request ${requestId} for ${g.name || g.slug} was saved, but the email telling the gemach about it ` +
+        (notified === null ? "had no address to go to (the gemach has no Email set)." : "failed to send.") +
+        `\n\nIt's waiting in admin under Requests. Please make sure someone at the gemach sees it.`,
+    }).catch(e => console.error("alert failed:", e.message)));
+  }
+
+  logEvent(ctx, db, g, {
+    eventType: "Request Received",
+    borrower: fields["Name"] || null,
+    itemType: itemNames.join(", ") || (isAppt ? "Appointment" : null),
+    loanId: requestId,
+    notes: fields["Notes"] || null,
+  });
+
+  return json({ success: true, requestId });
+}
+
+export { clip, REQUEST_CONTACTS, formatPhone, handleSubmitRequest };

@@ -1,0 +1,66 @@
+# Gemach Network API (Cloudflare Worker)
+
+The API behind whgemachs.org: public directory and gemach pages, the request form, and everything in
+the admin page. Worker name **wh-gemach**, served at `https://api.whgemachs.org` and
+`https://wh-gemach.barry253-0f5.workers.dev`. Data lives in Airtable; photos and logos in the R2 bucket
+`wh-gemach-assets`; email goes out through Resend.
+
+## How changes go live
+
+1. Make changes on a branch and open a pull request.
+2. Tests run automatically (GitHub Actions: worker tests + browser tests).
+3. Merge to `main`. Cloudflare **Workers Builds** runs `npm test` and, only if every test passes,
+   `npx wrangler deploy`. A failing test means nothing is deployed.
+4. If something goes wrong anyway: Cloudflare dashboard → Workers & Pages → wh-gemach → **Deployments**
+   → roll back to the previous version (one click, instant).
+
+Never paste code into the dashboard editor any more — the next deploy from GitHub would overwrite it.
+
+### Settings that live where
+
+| What | Where | Notes |
+|---|---|---|
+| Code | `worker/src/` | bundled by Wrangler into one script |
+| Bindings, domain, logs | `worker/wrangler.toml` | R2 bucket, `api.whgemachs.org`, workers.dev, Observability |
+| Plain variables (`AIRTABLE_BASE_ID`, `FROM_EMAIL`, `ALERT_EMAIL`, `NOTIFY_EMAIL`, `ASSETS_URL`, …) | Cloudflare dashboard | kept on deploy because of `keep_vars = true` |
+| Secrets (`AIRTABLE_TOKEN`, `GEMACH_JWT`, `RESEND_API_KEY`) | Cloudflare dashboard | never touched by deploys |
+
+## Working on it locally
+
+```sh
+cd worker
+npm install
+npm test          # ~90 API tests against a fake Airtable/Resend (no network, no live data)
+npm run check     # bundles exactly as a deploy would, without deploying
+```
+
+Browser tests for the site and admin page are in `../tests` (`cd tests && npm install && npx playwright install chromium && npm test`).
+
+## Where things are
+
+| File | What it does |
+|---|---|
+| `index.js` | Entry point: routing, CORS, admin session handling, env var list (top comment) |
+| `config.js` | Constants: table names, allowed origins, cache timings |
+| `http.js` | JSON responses and CORS headers |
+| `airtable.js` | Airtable client (concurrency limit, 429 retry, paging) and formula helpers |
+| `gemachs.js` | Loading a gemach by slug/id, admin gemach resolution |
+| `auth.js` | Google sign-in, admin lookup, session tokens (JWT) |
+| `dates.js` | New York dates, event-date rule, calendar invites |
+| `requests.js` | Admin request list, confirm/decline, appointments, reservations from requests |
+| `quantity.js` | Quantity-tracked item types (e.g. 60 folding chairs) and date-range availability |
+| `loans.js` | Loans and reservations: lists, pickup, return, cancel, assigning units |
+| `ids.js` / `borrowers.js` | Loan/request/item ids; borrower matching |
+| `inventory.js` | Admin inventory screen |
+| `public.js` / `cache.js` | Public directory + gemach pages and their resilient cache |
+| `submit.js` | The public request form (validation, availability check, notification) |
+| `activity.js` | Activity Log (History) |
+| `search.js` | "Searches with no results" log |
+| `stats.js` | Dashboard tiles and "How it's going" stats |
+| `alerts.js` | `/health` and failure alert emails |
+| `email.js` | Resend sending, the new-request email, HTML email layout |
+| `settings.js` | Gemach Settings (profile, branding, templates, logo upload) |
+| `network.js` | Network Admin: gemachs, admins, categories |
+| `catalog.js` | Item types, items, photo uploads |
+
+The tests import `src/index.js` directly and also pass against the bundled output.
