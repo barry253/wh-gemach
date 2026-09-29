@@ -279,11 +279,17 @@
     return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   }
   function contrast(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
-  var INK = "#1A1A1A";
-  /** White if it reaches 4.5:1, otherwise whichever of white / near-black contrasts more. */
+  var INK = "#1A1A1A", CREAM = "#FBF6EC", NETWORK_ACCENT = "#E0A63A", NAVY_MUTED = "#D5DEE3";
+  /** Cream (brand off-white) if it reaches 4.5:1, otherwise whichever of cream / near-black contrasts more. */
   function onColor(bg) {
-    var w = contrast(bg, "#FFFFFF"), k = contrast(bg, INK);
-    return w >= 4.5 || w >= k ? "#FFFFFF" : INK;
+    var w = contrast(bg, CREAM), k = contrast(bg, INK);
+    return w >= 4.5 || w >= k ? CREAM : INK;
+  }
+  /** A softer version of the band text that still reaches 4.5:1 on the band. */
+  function mutedOn(bg, on) {
+    if (bg === DEFAULT_THEME && on === CREAM) return NAVY_MUTED;
+    for (var t = 0.7; t < 1; t += 0.02) { var c = mix(on, bg, t); if (contrast(c, bg) >= 4.5) return c; }
+    return on;
   }
   function toHsl(h) {
     var c = rgb(h).map(function (v) { return v / 255; });
@@ -308,35 +314,44 @@
   }
   function mix(a, b, t) { var x = rgb(a), y = rgb(b); return toHex([0, 1, 2].map(function (i) { return x[i] * t + y[i] * (1 - t); })); }
   function shade(h, amt) { var x = toHsl(h); return fromHsl(x[0], x[1], Math.max(0, Math.min(1, x[2] + amt))); }
-  /** CSS custom properties for a gemach's theme; null when default (keeps today's look exactly). */
+  /** CSS custom properties for a gemach's theme ({} for the plain network look). */
   function themeVars(g) {
     var t = validHex(g && g.themeColor) || DEFAULT_THEME;
     var acc = validHex(g && g.accentColor);
-    if (t === DEFAULT_THEME && !acc) return null;
     var v = {};
+    var on = onColor(t), light = on !== CREAM, muted = mutedOn(t, on);
     if (t !== DEFAULT_THEME) {
-      var on = onColor(t), light = on !== "#FFFFFF";
       var strong = strongOf(t);
       v["--t"] = t;
       v["--t-on"] = on;
-      v["--t-on-muted"] = light ? "rgba(0,0,0,.72)" : "rgba(255,255,255,.85)";
+      v["--t-on-muted"] = muted;
       v["--t-glass"] = light ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.12)";
       v["--t-chip"] = light ? "rgba(0,0,0,.07)" : "rgba(255,255,255,.14)";
       v["--t-glass-2"] = light ? "rgba(255,255,255,.8)" : "rgba(255,255,255,.22)";
       v["--t-glass-b"] = light ? "rgba(0,0,0,.18)" : "rgba(255,255,255,.28)";
       v["--t-glass-b2"] = light ? "rgba(0,0,0,.3)" : "rgba(255,255,255,.45)";
-      v["--t-solid-bg"] = light ? strong : "#FFFFFF";
+      v["--t-solid-bg"] = light ? strong : CREAM;
       v["--t-solid-fg"] = light ? "#FFFFFF" : t;
-      v["--t-solid-hover"] = light ? shade(strong, -0.06) : mix(t, "#FFFFFF", 0.1);
+      v["--t-solid-hover"] = light ? shade(strong, -0.06) : mix(t, CREAM, 0.1);
       v["--t-strong"] = strong;
       v["--t-strong-2"] = shade(strong, lum(strong) < 0.02 ? 0.08 : -0.07);
       v["--t-tint"] = mix(strong, "#FFFFFF", 0.07);
       v["--t-tint-2"] = mix(strong, "#FFFFFF", 0.12);
       v["--t-border"] = mix(strong, "#FFFFFF", 0.4);
+      v["--t-link"] = strong;
+      v["--t-link-hover"] = v["--t-strong-2"];
       v["--focus-c"] = strong;
       v["--t-ring"] = "rgba(" + rgb(strong).join(",") + ",.25)";
     }
-    if (acc) v["--t-accent"] = acc;
+    // 3px rule under the band: the gemach's accent, else network gold (default band) or a derived shade.
+    var rule = acc || (t === DEFAULT_THEME ? NETWORK_ACCENT : (light ? strongOf(t) : mix(t, "#FFFFFF", 0.45)));
+    if (rule !== NETWORK_ACCENT) v["--t-accent"] = rule;
+    // Mobile eyebrow: accent when it reaches 3:1 on the band, else the muted band text.
+    var brow = acc && contrast(acc, t) >= 3 ? acc : (t === DEFAULT_THEME && !acc ? NETWORK_ACCENT : muted);
+    if (brow !== NETWORK_ACCENT) v["--t-eyebrow"] = brow;
+    // Donate pill: gemach accent if navy text reads on it at 4.5:1, else network gold.
+    var pill = acc && contrast(acc, DEFAULT_THEME) >= 4.5 ? acc : NETWORK_ACCENT;
+    if (pill !== NETWORK_ACCENT) v["--pill-bg"] = pill;
     return v;
   }
   /** Stripe color for a home card (visible on white). */
@@ -398,6 +413,7 @@
     onColor: onColor,
     strongOf: strongOf,
     themeVars: themeVars,
+    mutedOn: mutedOn,
     stripeColor: stripeColor,
     initials: initials,
     DEFAULT_THEME: DEFAULT_THEME,

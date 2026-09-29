@@ -46,7 +46,7 @@
     appliedVars.forEach(function (k) { root.style.removeProperty(k); });
     appliedVars = [];
     var v = W.themeVars(g);
-    if (v) Object.keys(v).forEach(function (k) { root.style.setProperty(k, v[k]); appliedVars.push(k); });
+    Object.keys(v).forEach(function (k) { root.style.setProperty(k, v[k]); appliedVars.push(k); });
     var mt = document.querySelector('meta[name="theme-color"]');
     if (mt) mt.setAttribute("content", W.validHex(g.themeColor) || W.DEFAULT_THEME);
   }
@@ -58,16 +58,31 @@
     else { link.setAttribute("href", "/favicon.svg"); link.setAttribute("type", "image/svg+xml"); }
   }
 
+  /** Split "West Hempstead Medical Gemach" into eyebrow + rest when it starts with the community name. */
+  function nameHtml(g) {
+    var name = String(g.name || ""), comm = String(g.communityName || "").trim();
+    if (comm && name.length > comm.length + 1 && name.toLowerCase().indexOf(comm.toLowerCase() + " ") === 0) {
+      return '<span class="g-eyebrow">' + esc(name.slice(0, comm.length)) + '</span> <span class="g-rest">' + esc(name.slice(comm.length + 1).trim()) + "</span>";
+    }
+    return esc(name);
+  }
+  function logoHtml(g) {
+    var dark = W.safeUrl(g.logoDarkUrl), light = W.safeUrl(g.logoUrl);
+    if (dark && dark.indexOf("https:") !== 0) dark = null;
+    if (dark) return '<img class="g-logo g-logo-bare" src="' + esc(dark) + '" alt="' + esc(g.name) + '" width="48" height="48" decoding="async" />';
+    if (light) return '<img class="g-logo" src="' + esc(light) + '" alt="' + esc(g.name) + '" width="56" height="56" decoding="async" />';
+    return '<span class="g-logo g-logo-initials" aria-hidden="true">' + esc(W.initials(g)) + "</span>";
+  }
+
   function renderHeader() {
     var g = gemach;
     applyTheme(g);
     applyFavicon(g);
-    var logo = W.safeUrl(g.logoUrl);
-    var h1 = "<h1>" + esc(g.name) + "</h1>";
     $("g-head").innerHTML =
       (g.category ? '<span class="chip">' + esc(g.category) + "</span>" : "") +
-      (logo ? '<div class="g-title"><img class="g-logo" src="' + esc(logo) + '" alt="' + esc(g.name) + '" width="80" height="80" decoding="async" />' + h1 + "</div>" : h1) +
-      (g.tagline ? '<p class="tagline">' + esc(g.tagline) + "</p>" : "") +
+      '<div class="g-lockup">' + logoHtml(g) +
+        '<div class="g-lockup-text"><h1 class="g-name">' + nameHtml(g) + "</h1>" +
+        (g.tagline ? '<p class="tagline">' + esc(g.tagline) + "</p>" : "") + "</div></div>" +
       contactButtons(g);
     document.title = g.name + " — West Hempstead Gemachs";
     var md = document.querySelector('meta[name="description"]');
@@ -98,7 +113,7 @@
     var web = W.safeUrl(g.website);
     if (web) side.push('<div><div class="info-label">Website</div><a href="' + esc(web) + '" target="_blank" rel="noopener">' + esc(W.prettyUrl(web)) + "</a></div>");
     var don = W.safeUrl(g.donationUrl);
-    if (don) side.push('<div><div class="info-label">Support this gemach</div><a class="btn btn-sm" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate</a></div>");
+    if (don) side.push('<div><div class="info-label">Support this gemach</div><a class="btn btn-sm btn-pill" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate</a></div>");
     if (!desc && !side.length) return "";
     return '<section class="info-panel' + (desc && side.length ? " has-side" : "") + '" aria-label="About this gemach">' +
       (desc ? '<div class="prose">' + desc + "</div>" : "") +
