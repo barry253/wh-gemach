@@ -6,6 +6,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var qInput = $("q"), form = $("search-form"), clearBtn = $("search-clear");
+  var mini = $("mini-bar"), qMini = $("q-mini");
   var catGrid = $("cat-grid"), gemachList = $("gemach-list");
   var resultsSection = $("results-section"), resultsEl = $("results"), resultsCount = $("results-count");
 
@@ -363,6 +364,7 @@
   }
   function update(push) {
     writeUrl(push);
+    if (qMini && qMini.value !== state.q) qMini.value = state.q;
     if (data) renderResults(); else clearBtn.hidden = !state.q;
     if (data) syncTilePressed();
   }
@@ -376,6 +378,39 @@
   function syncTilePressed() {
     var tiles = catGrid.querySelectorAll(".cat-tile");
     for (var i = 0; i < tiles.length; i++) tiles[i].setAttribute("aria-pressed", tiles[i].getAttribute("data-cat") === state.cat ? "true" : "false");
+  }
+
+  // ── Compact bar: slides in once the big search box has scrolled out of view ──
+  if (mini && qMini && "IntersectionObserver" in window) {
+    var miniOn = false;
+    var showMini = function (on) {
+      if (on === miniOn) return;
+      if (!on && document.activeElement === qMini) return; // don't yank it away mid-typing
+      miniOn = on;
+      mini.classList.toggle("show", on);
+      mini.setAttribute("aria-hidden", on ? "false" : "true");
+      qMini.tabIndex = on ? 0 : -1;
+      mini.querySelector(".mini-brand").tabIndex = on ? 0 : -1;
+    };
+    new IntersectionObserver(function (entries) {
+      var e = entries[entries.length - 1];
+      showMini(!e.isIntersecting && e.boundingClientRect.bottom < 0);
+    }).observe(form);
+    qMini.addEventListener("blur", function () {
+      var r = form.getBoundingClientRect();
+      if (r.bottom >= 0) showMini(false);
+    });
+    qMini.addEventListener("input", function () {
+      qInput.value = qMini.value;
+      qInput.dispatchEvent(new Event("input"));
+    });
+    qInput.addEventListener("input", function () { if (qMini.value !== qInput.value) qMini.value = qInput.value; });
+    $("mini-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      qInput.value = qMini.value;
+      qMini.blur();
+      if (form.requestSubmit) form.requestSubmit(); else form.dispatchEvent(new Event("submit", { cancelable: true }));
+    });
   }
 
   // ── Events ──

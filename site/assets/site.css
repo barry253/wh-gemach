@@ -132,12 +132,40 @@ main { flex: 1; }
   font-size: clamp(1.85rem, 6vw, 2.75rem); line-height: 1.15; margin-bottom: .5rem;
 }
 .hero .lede { color: var(--on-primary-muted); font-size: 1rem; max-width: 36rem; }
-.hero-home { text-align: center; padding: 2.5rem 0 2.25rem; }
+.hero-home { text-align: center; padding: 1.75rem 0 1.6rem; position: relative; overflow: hidden; }
+.hero-home > .wrap { position: relative; z-index: 1; }
 .hero-home .lede { margin: 0 auto; }
-.hero-mark { width: 44px; height: 44px; margin: 0 auto .85rem; }
+.hero-mark { width: 40px; height: 40px; margin: 0 auto .6rem; }
+@media (min-width: 640px) { .hero-home { padding: 2.25rem 0 2rem; } }
+@media (max-width: 639px) {        /* phones: keep the header short so categories show sooner */
+  .hero-home { padding: 1.1rem 0 1.1rem; }
+  .hero-home .hero-mark { width: 30px; height: 30px; margin-bottom: .35rem; }
+  .hero-home h1 { font-size: 1.6rem; margin-bottom: .3rem; }
+  .hero-home .lede { font-size: .92rem; line-height: 1.4; }
+  .hero-home .search-form { margin-top: .8rem; }
+  .hero-home .search-box input { height: 50px; }
+  .search-hint { display: flex; align-items: center; gap: .3rem; overflow-x: auto; white-space: nowrap; margin: .5rem -1rem 0; padding: 0 1rem; scrollbar-width: none; }
+  .search-hint::-webkit-scrollbar { display: none; }
+  .search-hint button { flex: 0 0 auto; margin: 0; }
+}
+
+/* Graphic treatments (pick one class on the home hero) */
+.hero-art-items::before {           /* scattered line drawings of things people borrow */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: url("/assets/brand/hero-items.svg") repeat;
+  background-size: 520px 260px; background-position: center -20px;
+  -webkit-mask-image: radial-gradient(ellipse 55% 75% at 50% 50%, transparent 35%, #000 80%);
+          mask-image: radial-gradient(ellipse 55% 75% at 50% 50%, transparent 35%, #000 80%);
+}
+.hero-art-roofs::after {            /* neighborhood rooftops along the bottom edge */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 70px; pointer-events: none;
+  background: url("/assets/brand/hero-roofs.svg") bottom / 100% 100% no-repeat;
+}
+@media (min-width: 640px) { .hero-art-roofs::after { height: 90px; } }
 
 /* ── Search ── */
-.search-form { margin: 1.5rem auto 0; max-width: 36rem; position: relative; }
+.search-form { margin: 1.1rem auto 0; max-width: 36rem; position: relative; }
+.search-form .search-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* placeholder says it; screen readers still get the label */
 .search-form label {
   display: block; font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; margin-bottom: .55rem; color: var(--on-primary);
 }
@@ -163,6 +191,28 @@ main { flex: 1; }
   border-radius: 999px; padding: .2rem .7rem; margin: .2rem .15rem; font-size: .82rem; min-height: 32px;
 }
 .search-hint button:hover { background: rgba(255,255,255,.2); }
+
+/* ── Compact bar (home) ── */
+.mini-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+  background: var(--primary); border-bottom: 3px solid var(--accent); box-shadow: 0 4px 18px rgba(8,20,27,.25);
+  transform: translateY(-110%); transition: transform .2s ease; visibility: hidden;
+}
+.mini-bar.show { transform: none; visibility: visible; }
+#cats-section, #results-section, #gemachs-section { scroll-margin-top: 72px; }
+.mini-inner { display: flex; align-items: center; gap: .75rem; min-height: 58px; }
+.mini-brand { display: inline-flex; align-items: center; gap: .5rem; color: var(--on-primary); text-decoration: none; font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; white-space: nowrap; }
+.mini-brand img { width: 28px; height: 28px; }
+.mini-search { position: relative; flex: 1; max-width: 30rem; margin-left: auto; }
+.mini-search svg { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.mini-search input {
+  width: 100%; height: 42px; border-radius: 10px; border: 2px solid transparent; padding: 0 .9rem 0 2.4rem;
+  font-size: 1rem; background: var(--white); color: var(--text); -webkit-appearance: none; appearance: none;
+}
+.mini-search input:focus { outline: none; border-color: var(--accent); }
+.mini-search input::-webkit-search-cancel-button { display: none; }
+@media (max-width: 480px) { .mini-brand span { display: none; } }
+@media (prefers-reduced-motion: reduce) { .mini-bar { transition: none; } }
 
 /* ── Sections ── */
 .section { padding: 1.75rem 0 .5rem; }
