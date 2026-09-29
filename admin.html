@@ -2293,7 +2293,7 @@
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
       const n = res?.reservations?.length || 0;
-      showToast(n ? `Request confirmed · ${n} reservation${n > 1 ? "s" : ""} added` : "Request confirmed");
+      showToast((n ? `Request confirmed · ${n} reservation${n > 1 ? "s" : ""} added` : "Request confirmed") + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
     };
 
     openSheet("confirm-sheet");
@@ -2349,7 +2349,7 @@
         closeSheet("appointment-sheet");
         document.getElementById(`req-${safeId(r.id)}`)?.remove();
         loadDashboard();
-        showToast(`Appointment set · ${fmtAppointment(dateEl.value, timeEl.value)}`);
+        showToast(`Appointment set · ${fmtAppointment(dateEl.value, timeEl.value)}` + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
       } finally { btn.disabled = false; }
     };
     openSheet("appointment-sheet");
@@ -2378,7 +2378,7 @@
       closeSheet("decline-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
-      showToast("Request declined");
+      showToast("Request declined" + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
     };
 
     openSheet("decline-sheet");
@@ -3811,7 +3811,7 @@
   });
 
   // ── Toast ─────────────────────────────────────────────────────────────────
-  function showToast(msg) {
+  function showToast(msg, ms) {
     const toast = document.createElement("div");
     toast.textContent = msg;
     Object.assign(toast.style, {
@@ -3819,11 +3819,11 @@
       transform: "translateX(-50%)",
       background: var_navy(), color: "white",
       padding: "0.6rem 1.25rem", borderRadius: "20px",
-      fontSize: "0.85rem", fontWeight: "500",
+      fontSize: "0.85rem", fontWeight: "500", maxWidth: "calc(100vw - 2rem)", textAlign: "center",
       zIndex: "999", boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
     });
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2500);
+    setTimeout(() => toast.remove(), ms || 2500);
   }
 
   function var_navy() { return "#1B3A4B"; }

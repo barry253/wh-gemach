@@ -4,7 +4,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: https://pub-ccb909d9c0d644b5bf1f9f2b769e9365.r2.dev https://*.airtableusercontent.com; connect-src 'self' https://api.whgemachs.org https://wh-gemach.barry253-0f5.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: https://pub-ccb909d9c0d644b5bf1f9f2b769e9365.r2.dev https://*.airtableusercontent.com; connect-src 'self' https://cloudflareinsights.com https://api.whgemachs.org https://wh-gemach.barry253-0f5.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
 
 # Admin uses Google Identity Services (inline code, accounts.google.com scripts/frames) — no site CSP here
 /admin*
