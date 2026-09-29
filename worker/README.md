@@ -7,9 +7,9 @@ the admin page. Worker name **wh-gemach**, served at `https://api.whgemachs.org`
 
 ## How changes go live
 
-1. Make changes on a branch and open a pull request.
-2. Tests run automatically (GitHub Actions: worker tests + browser tests).
-3. Merge to `main`. Cloudflare **Workers Builds** runs `npm test` and, only if every test passes,
+1. Changes are made on a branch and pushed; GitHub Actions runs the worker tests + browser tests.
+2. Barry approves the change (in the Claude conversation), and Claude merges the branch into `main`.
+3. Cloudflare **Workers Builds** runs `npm test` and, only if every test passes,
    `npx wrangler deploy`. A failing test means nothing is deployed.
 4. If something goes wrong anyway: Cloudflare dashboard → Workers & Pages → wh-gemach → **Deployments**
    → roll back to the previous version (one click, instant).
