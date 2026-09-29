@@ -1,0 +1,13 @@
+{
+  "name": "wh-gemach-browser-tests",
+  "private": true,
+  "description": "Browser tests for the public site and admin page (API calls are mocked; nothing touches live data).",
+  "scripts": {
+    "test": "node run-all.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/figtree": "5.3.0",
+    "@fontsource/source-serif-4": "5.3.0",
+    "playwright": "1.63.0"
+  }
+}
