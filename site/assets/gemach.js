@@ -649,6 +649,7 @@
         ? '<details class="items-more"><summary>' + (chosen.length ? "Add more items" : "Choose items you’d like to see") + '</summary><div class="items-grid">' + rest.map(label).join("") + "</div></details>"
         : '<div class="items-grid">' + rest.map(label).join("") + "</div>") : "");
     renderQty();
+    prefillMe();
     $("form-view").hidden = false;
     $("success-view").hidden = true;
     hideError();
@@ -656,6 +657,28 @@
     modal.hidden = false; modal.classList.add("open"); lockScroll(true);
     setTimeout(function () { if (!modal.contains(document.activeElement) || document.activeElement === modal) $("f-name").focus(); }, 30);
   }
+  // ── Remember me (opt-in, unchecked by default) ──
+  function prefillMe() {
+    var d = W.me.load();
+    $("remember-saved").hidden = !d;
+    if (!d) return;
+    $("f-remember").checked = true;
+    if (!$("f-name").value) $("f-name").value = d.name || "";
+    if (!$("f-phone").value) $("f-phone").value = d.phone || "";
+    if (!$("f-email").value) $("f-email").value = d.email || "";
+    if (!$("f-contact").value && d.preferredContact && $("f-contact").querySelector('option[value="' + d.preferredContact.replace(/[^A-Za-z]/g, "") + '"]')) $("f-contact").value = d.preferredContact;
+    updateEmailReq();
+  }
+  $("forget-me").addEventListener("click", function () {
+    W.me.forget();
+    ["f-name", "f-phone", "f-email"].forEach(function (id) { $(id).value = ""; });
+    $("f-contact").value = "";
+    $("f-remember").checked = false;
+    $("remember-saved").hidden = true;
+    updateEmailReq();
+    $("f-name").focus();
+  });
+
   function closeModal() {
     modal.classList.remove("open"); modal.hidden = true; lockScroll(false);
     if (lastFocus && lastFocus.focus && document.body.contains(lastFocus)) lastFocus.focus();
@@ -663,6 +686,11 @@
   $("btn-open-modal").addEventListener("click", openModal);
   $("modal-close").addEventListener("click", closeModal);
   $("success-done").addEventListener("click", closeModal);
+  $("manage-copy").addEventListener("click", function () {
+    var url = $("manage-link").href, btn = $("manage-copy");
+    var done = function (ok) { btn.textContent = ok ? "Copied ✓" : "Copy failed — long-press the button above"; };
+    try { navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); }); } catch (e) { done(false); }
+  });
   modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
   modal.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(); trap(e, modal); });
   $("modal-items-grid").addEventListener("change", function (e) {
@@ -955,6 +983,19 @@
 
     W.fetchJSON("/submit-request", { method: "POST", body: body, retry: false, timeout: 20000 }).then(function (data) {
       if (!data || !data.success) throw new Error((data && data.error) || "failed");
+      var link = typeof data.manageUrl === "string" && /^https:\/\//.test(data.manageUrl) ? data.manageUrl : null;
+      if ($("f-remember").checked) {
+        W.me.save({ name: body.name, phone: $("f-phone").value.trim(), email: body.email || "", preferredContact: body.preferredContact });
+        if (link) W.me.addRequest({ url: link, gemach: gemach.name, requestId: data.requestId });
+      } else if (W.me.load()) {
+        W.me.forget(); // they unticked "Remember me"
+      }
+      $("manage-box").hidden = !link;
+      if (link) {
+        $("manage-link").href = link;
+        $("manage-copy").textContent = "Copy link";
+        $("manage-hint").textContent = (body.email ? "We also emailed it to you. " : "Save it — bookmark it or send it to yourself. ") + "Please don’t share it.";
+      }
       $("form-view").hidden = true;
       $("success-view").hidden = false;
       if (st === "Appointment") {

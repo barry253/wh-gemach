@@ -1857,17 +1857,17 @@
 
   // Client copy of the contract's built-in defaults (fallback if /admin/gemach failed; placeholders in Settings)
   const DEFAULT_TEMPLATES = {
-    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nThank you!",
+    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
     decline: "Hi {first_name}, thank you for reaching out to the {gemach}. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.",
-    pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
-    appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!",
+    pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+    appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
   };
   // Used when the gemach has no pickup address (or /admin/gemach could not be loaded)
   const DEFAULT_TEMPLATES_NO_ADDRESS = {
-    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nThank you!",
+    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
     decline: DEFAULT_TEMPLATES.decline,
-    pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
-    appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!",
+    pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+    appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
   };
   function defaultTemplate(kind) {
     return (GEMACH?.pickupAddress ? DEFAULT_TEMPLATES : DEFAULT_TEMPLATES_NO_ADDRESS)[kind];
@@ -2196,7 +2196,7 @@
 
   // ── Message templates ─────────────────────────────────────────────────────
   // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
-  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time"]);
+  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link"]);
 
   function fillTemplate(template, vars) {
     const has = k => Object.prototype.hasOwnProperty.call(vars, k);
@@ -2240,6 +2240,7 @@
     const g = GEMACH || {};
     return {
       appointment_time: extra.appointmentTime || "",
+      manage_link: extra.manageUrl || "",
       deposit_info: g.depositRequired ? (g.depositInfo || "") : "",
       event_date: extra.eventDate ? fmtDay(extra.eventDate, true) : "",
       first_name: firstName || "",
@@ -2253,8 +2254,12 @@
     };
   }
 
+  // Borrower-facing messages always carry the private manage link: templates written before it existed
+  // (or customized without it) get a closing line; put {manage_link} in a template to place it yourself.
+  const LINK_LINE = { confirm: "Manage or cancel: {manage_link}", appointment: "Manage or cancel: {manage_link}", pickup: "Manage your loan: {manage_link}" };
   function renderMessage(kind, firstName, items, extra) {
-    const tpl = GEMACH?.templates?.[kind] || defaultTemplate(kind);
+    let tpl = GEMACH?.templates?.[kind] || defaultTemplate(kind);
+    if (LINK_LINE[kind] && extra?.manageUrl && !String(tpl).includes("{manage_link}")) tpl = String(tpl).trimEnd() + "\n\n" + LINK_LINE[kind];
     return fillTemplate(tpl, templateVars(firstName, items, extra));
   }
 
@@ -2514,11 +2519,11 @@
         || (r.itemNames || []).join(" and ");
     };
     const msgEl = document.getElementById("confirm-message");
-    let lastAuto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate });
+    let lastAuto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate, manageUrl: r.manageUrl });
     msgEl.value = lastAuto;
     qtyList.oninput = () => {
       // Keep the message in step with the counts, unless the admin has edited it by hand.
-      const auto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate });
+      const auto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate, manageUrl: r.manageUrl });
       if (msgEl.value === lastAuto) msgEl.value = auto;
       lastAuto = auto;
     };
@@ -2568,7 +2573,7 @@
     let lastAuto = "";
     const refresh = () => {
       const when = fmtAppointment(dateEl.value, timeEl.value);
-      const auto = renderMessage("appointment", first, items, { appointmentTime: when || "[date & time]", eventDate: r.eventDate });
+      const auto = renderMessage("appointment", first, items, { appointmentTime: when || "[date & time]", eventDate: r.eventDate, manageUrl: r.manageUrl });
       // Only rewrite while the admin hasn't hand-edited the message.
       if (msgEl.value === lastAuto) msgEl.value = auto;
       lastAuto = auto;
@@ -2719,11 +2724,13 @@
             ${l.itemId ? `<span class="loan-row-code">${esc(l.itemId)}</span>` : ""}
             ${l.isQuantity ? `<span class="loan-row-code">× ${esc(l.quantity)}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
+            ${l.readyToReturnAt ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
           </div>
           <span class="loan-row-date">${esc(fmt(l.dateBorrowed) || "—")}</span>
           ${tag}
         </div>
         <div class="loan-actions-panel" id="loan-panel-${lid}">
+          ${l.readyToReturnAt ? `<div class="loan-notes request-note"><span class="note-label">Ready to return:</span> the borrower let us know ${esc(timeAgo(l.readyToReturnAt))} — arrange the return.</div>` : ""}
           ${l.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(l.requestNote)}</div>` : ""}
           ${l.notes ? `<div class="loan-notes">💬 ${esc(l.notes)}</div>` : ""}
           <div class="card-actions">
@@ -3025,7 +3032,7 @@
 
   function openPickupInstructions(r) {
     document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
-    const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName);
+    const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName, { manageUrl: r.manageUrl });
     document.getElementById("pickup-instructions-message").value = msg;
     setupSendBy("pickup-instructions", r, "pickup-instructions-send-btn",
       { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Open email", none: "Close" }, { noNone: true, mailto: true });
@@ -4710,7 +4717,7 @@
     "Loan Created", "Item Returned", "Item Reserved",
     "Reservation Cancelled", "Marked for Repair", "Restored",
     "Request Received", "Request Confirmed", "Request Declined", "Borrower Created",
-    "Add-on Ordered", "Add-on Handed Over"
+    "Add-on Ordered", "Add-on Handed Over", "Request Cancelled", "Ready to Return"
   ];
 
   const HISTORY_DOT_COLORS = {
@@ -4726,6 +4733,8 @@
     "Request Confirmed":      "#00838F",
     "Request Declined":       "#C62828",
     "Borrower Created":       "#F9A825",
+    "Request Cancelled":      "#9E9E9E",
+    "Ready to Return":        "#2E7D32",
   };
 
   let historyState = {

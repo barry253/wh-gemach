@@ -3,44 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Page not found — West Hempstead Gemachs</title>
-  <meta name="description" content="This page could not be found on West Hempstead Gemachs." />
+  <title>Your request — West Hempstead Gemachs</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="description" content="Check on or cancel your gemach request." />
   <meta name="theme-color" content="#1B3A4B" />
-  <meta name="robots" content="noindex" />
-  <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="West Hempstead Gemachs" />
-  <meta property="og:title" content="Page not found" />
-  <meta property="og:description" content="This page could not be found on West Hempstead Gemachs." />
-  <meta name="twitter:card" content="summary" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap" />
   <link rel="stylesheet" href="/assets/site.css?v=13" />
   <script src="/assets/site.js?v=9" defer></script>
+  <script src="/assets/manage.js?v=1" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 
-<div class="topbar">
+<div class="topbar topbar-ruled">
   <div class="wrap">
     <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26" />West Hempstead Gemachs</a>
-    <a class="topbar-link" href="/">All gemachs</a>
   </div>
 </div>
 
-<header class="hero">
+<header class="hero hero-gemach hero-manage" id="m-header">
   <div class="wrap">
-    <h1>Page not found</h1>
-    <p class="lede">Sorry — we couldn’t find the page you were looking for.</p>
+    <a class="back-link" href="/" id="m-back"><span aria-hidden="true">←</span> All gemachs</a>
+    <div id="m-head">
+      <div class="sk sk-dark sk-line sk-title"></div>
+      <div class="sk sk-dark sk-line sk-w40"></div>
+    </div>
   </div>
 </header>
 
-<main id="main" class="wrap page">
-  <div class="card content">
-    <p class="lead-in">The link may be old or mistyped. Everything on the site starts from the home page, where you can search for an item or browse all the gemachs.</p>
-    <p><a class="btn btn-primary" href="/">Go to the home page</a></p>
-    <p>If you followed a link from somewhere and think it should work, let us know at <a href="mailto:whmedicalgemach@gmail.com">whmedicalgemach@gmail.com</a>.</p>
+<main id="main" class="wrap">
+  <div id="m-body" aria-live="polite">
+    <div class="info-panel"><div class="sk sk-line"></div><div class="sk sk-line"></div></div>
   </div>
 </main>
 
@@ -55,5 +51,6 @@
     <p class="footer-credit">Site maintained as a community service by Binyamin Rosenstock. Questions or want to list your gemach? <a href="mailto:whmedicalgemach@gmail.com">whmedicalgemach@gmail.com</a></p>
   </div>
 </footer>
+
 </body>
 </html>

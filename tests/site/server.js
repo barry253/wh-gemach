@@ -17,6 +17,7 @@ http.createServer((req, res) => {
   let file, status = 200;
   if (p === '/g' || p === '/g/') { res.writeHead(302, { location: '/' }); return res.end(); }
   if (/^\/g\/[^/]+\/?$/.test(p)) file = 'gemach.html';
+  else if (/^\/r\/[^/]+\/?$/.test(p)) file = 'manage.html'; // mirrors _redirects
   else if (p === '/') file = 'index.html';
   else if (fs.existsSync(path.join(ROOT, p)) && fs.statSync(path.join(ROOT, p)).isFile()) file = p.slice(1);
   else if (fs.existsSync(path.join(ROOT, p + '.html'))) file = p.slice(1) + '.html';

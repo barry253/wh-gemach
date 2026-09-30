@@ -17,9 +17,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap" />
-  <link rel="stylesheet" href="/assets/site.css?v=12" />
-  <script src="/assets/site.js?v=8" defer></script>
-  <script src="/assets/home.js?v=11" defer></script>
+  <link rel="stylesheet" href="/assets/site.css?v=13" />
+  <script src="/assets/site.js?v=9" defer></script>
+  <script src="/assets/home.js?v=12" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -61,6 +61,13 @@
 </div>
 
 <main id="main" class="wrap">
+  <section class="section my-requests" id="my-requests" aria-labelledby="my-requests-title" hidden>
+    <div class="section-head">
+      <h2 class="section-title" id="my-requests-title">Your requests</h2>
+      <button type="button" class="btn-link" id="my-requests-forget">Forget me on this device</button>
+    </div>
+    <ul class="my-req-list" id="my-requests-list"></ul>
+  </section>
   <section class="section" id="cats-section" aria-labelledby="cats-title">
     <div class="section-head">
       <h2 class="section-title" id="cats-title">Browse by category</h2>

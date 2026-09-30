@@ -69,6 +69,7 @@ function evalFilter(table, f, r) {
   if (evs.length && !evs.includes(r.fields["Event Type"])) return false;
   if (/\{Request Type\}="Appointment"/.test(f) && r.fields["Request Type"] !== "Appointment") return false;
   if (/\{Status\}!="Declined"/.test(f) && r.fields.Status === "Declined") return false;
+  if (/\{Status\}!="Cancelled"/.test(f) && r.fields.Status === "Cancelled") return false;
   if ((m = f.match(/NOT\(IS_BEFORE\(\{Appointment At\},"([^"]+)"\)\)/)) && !(r.fields["Appointment At"] && r.fields["Appointment At"] >= m[1])) return false;
   return true;
 }
@@ -425,7 +426,7 @@ await t("v2 GET /admin/gemach: private fields, default templates, placeholders, 
   assert.match(d.templates.confirm, /Pickup is at \{pickup_address\}\. \{pickup_instructions\}/);
   assert.equal(d.templates.pickup, "SECRET TPL {first_name}");
   assert.deepEqual(d.rawTemplates, { confirm: null, decline: null, pickup: "SECRET TPL {first_name}", appointment: null });
-  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date"]);
+  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link"]);
   assert.equal(d.canEdit, true);
   const v = await (await call(`/admin/gemach`, { headers: { ...auth(tokenVol), "X-Gemach": A.slug } })).json();
   assert.equal(v.canEdit, false);
@@ -436,7 +437,7 @@ await t("v2 GET /admin/gemach: confirm default omits pickup sentence without add
   const net = await sign({ email: "n@x", name: "N", role: "Network Admin", gemachs: [] });
   const d = await (await call(`/admin/gemach?g=${B.slug}`, { headers: auth(net) })).json();
   assert.ok(!d.templates.confirm.includes("Pickup is at"));
-  assert.match(d.templates.confirm, /pickup details\.\n\nThank you!$/);
+  assert.match(d.templates.confirm, /pickup details\.\n\nManage or cancel: \{manage_link\}\n\nThank you!$/);
   assert.ok(!d.templates.pickup.includes("{pickup_address}"));
   assert.match(d.templates.pickup, /ready for pickup\. \{pickup_instructions\}/);
   assert.equal(d.canEdit, true, "Network Admin can edit");
@@ -657,7 +658,7 @@ await t("v3 submit Appointment: items optional, preferred times required, party 
   assert.equal(f["Party Size"], 3);
   assert.equal(f["Event Date"], plusDays(30));
   assert.ok(!("Items Requested" in f) && !("Needed From" in f) && !("Needed Until" in f));
-  const mail = resendCalls().at(-1);
+  const mail = resendCalls().filter(x => x.to[0] !== "chana@example.com").at(-1); // the borrower also gets a receipt
   assert.match(mail.subject, /New appointment request/);
   assert.match(mail.text, /^New appointment request — R-/);
   assert.match(mail.text, /Preferred times: Sun or Mon evening/);
@@ -729,13 +730,13 @@ await t("v3 GET /admin/appointments: upcoming only, sorted, scoped", async () =>
   );
   const d = await (await call(`/admin/appointments`, { headers: jsonB })).json();
   assert.deepEqual(d.map(x => x.name), ["Soon", "Chana Levi"]);
-  assert.deepEqual(Object.keys(d[0]).sort(), ["appointmentAt", "email", "eventDate", "id", "itemNames", "name", "notes", "partySize", "phone", "preferredContact", "requestId"].sort());
+  assert.deepEqual(Object.keys(d[0]).sort(), ["appointmentAt", "email", "eventDate", "id", "itemNames", "manageUrl", "name", "notes", "partySize", "phone", "preferredContact", "requestId"].sort());
   assert.equal(d[0].partySize, 2);
 });
 
 await t("v3 GET /admin/gemach: appointment template (+ no-address variant), new placeholders, profile fields", async () => {
   const d = await (await call(`/admin/gemach`, { headers: jsonB })).json();
-  assert.equal(d.templates.appointment, "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!");
+  assert.equal(d.templates.appointment, "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}");
   assert.equal(d.rawTemplates.appointment, null);
   assert.ok(d.placeholders.includes("appointment_time") && d.placeholders.includes("deposit_info") && d.placeholders.includes("event_date"));
   assert.equal(d.requestStyle, "Appointment"); assert.equal(d.depositInfo, "$50 check");
@@ -1731,6 +1732,107 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.deepEqual(dir.gemachs.find(g => g.slug === IN.slug).browseCategoryIds, ["recCAT0000000000A", "recCAT0000000000C"]);
     r = await call("/admin/gemach", { method: "PATCH", headers: HI, body: JSON.stringify({ browseCategoryIds: [] }) });
     assert.equal(r.status, 200); assert.deepEqual((await r.json()).browseCategoryIds, []);
+  });
+}
+
+// ── Borrower manage link (cancel, ready to return) ──
+{
+  const HA = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const tokOf = u => u.split("/r/")[1];
+  const mg = (tok, action) => action ? call(`/public/manage/${tok}/${action}`, { method: "POST", body: "{}" }) : call(`/public/manage/${tok}`);
+  const soon = n => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const submit = extra => post("/submit-request", { gemach: A.slug, name: "Rivka Manage", phone: "5165559999", preferredContact: "Phone",
+    itemsRequested: ["recTYPEA000000002"], neededFrom: soon(10), neededUntil: soon(14), ...extra });
+  const logsFor = rid => DB["tblC3PY7f5sXQDMJK"].filter(l => l.fields["Loan ID"] === rid).map(l => l.fields["Event Type"]);
+
+  await t("manage: submit returns a signed link; tampered/unknown links refused; receipt emailed when there's an email", async () => {
+    const r = await submit({ email: "rivka@example.com" });
+    assert.equal(r.status, 200);
+    const d = await r.json();
+    assert.match(d.manageUrl, /^https:\/\/whgemachs\.org\/r\/rec[A-Za-z0-9]{14}\.[A-Za-z0-9_-]{22}$/);
+    const tok = tokOf(d.manageUrl);
+    await Promise.allSettled(waits);
+    const receipt = resendCalls().filter(x => x.to[0] === "rivka@example.com").at(-1);
+    assert.ok(receipt && receipt.text.includes(d.manageUrl) && /We got your request/.test(receipt.subject));
+    const g = await (await mg(tok)).json();
+    assert.equal(g.request.status, "waiting"); assert.equal(g.request.firstName, "Rivka"); assert.equal(g.can.cancel, true);
+    assert.ok(!("phone" in g.request) && !JSON.stringify(g).includes("5165559999"), "no borrower phone in the page data");
+    const bad = tok.slice(0, -1) + (tok.endsWith("A") ? "B" : "A");
+    assert.equal((await mg(bad)).status, 404);
+    assert.equal((await mg("recNOPE0000000000.AAAAAAAAAAAAAAAAAAAAAA")).status, 404);
+    assert.equal((await mg("junk")).status, 404);
+    globalThis.__mgWaiting = { tok, id: DB.Requests.at(-1).id, rid: DB.Requests.at(-1).fields["Request ID"] };
+  });
+
+  await t("manage: cancel a waiting request — status Cancelled, gemach emailed, History logged; can't cancel twice", async () => {
+    const { tok, id, rid } = globalThis.__mgWaiting;
+    const before = resendCalls().length;
+    const r = await mg(tok, "cancel");
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).request.status, "cancelled");
+    assert.equal(DB.Requests.find(x => x.id === id).fields.Status, "Cancelled");
+    await Promise.allSettled(waits);
+    const mail = resendCalls().slice(before).find(x => /^Cancelled:/.test(x.subject));
+    assert.ok(mail, "gemach told");
+    assert.match(mail.text, new RegExp(`cancelled request ${rid}`));
+    assert.ok(logsFor(rid).includes("Request Cancelled"));
+    assert.equal((await mg(tok, "cancel")).status, 409);
+    const list = await (await call("/admin/requests", { headers: HA })).json();
+    assert.ok(!list.some(x => x.id === id), "gone from admin Requests");
+  });
+
+  await t("manage: cancel a confirmed request releases its reservations", async () => {
+    const d = await (await submit({})).json();
+    const reqRec = DB.Requests.at(-1);
+    const list = await (await call("/admin/requests", { headers: HA })).json();
+    assert.equal(list.find(x => x.id === reqRec.id).manageUrl, d.manageUrl, "admin sees the same link");
+    const c = await call(`/admin/requests/${reqRec.id}/confirm`, { method: "POST", headers: HA, body: JSON.stringify({}) });
+    assert.equal(c.status, 200, await c.clone().text());
+    const loanId = (await c.json()).reservations[0].id;
+    const res = await (await call("/admin/reservations", { headers: HA })).json();
+    assert.equal(res.find(x => x.id === loanId).manageUrl, d.manageUrl);
+    const g = await (await mg(tokOf(d.manageUrl))).json();
+    assert.equal(g.request.status, "confirmed"); assert.equal(g.loans.length, 1); assert.equal(g.loans[0].status, "Reserved");
+    const r = await mg(tokOf(d.manageUrl), "cancel");
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(DB.Loans.find(l => l.id === loanId).fields.Status, "Cancelled");
+    assert.equal(reqRec.fields.Status, "Cancelled");
+    await Promise.allSettled(waits);
+    const ev = DB["tblC3PY7f5sXQDMJK"].filter(l => l.fields.Admin === "Borrower (online)").map(l => l.fields["Event Type"]);
+    assert.ok(ev.includes("Reservation Cancelled") && ev.includes("Request Cancelled"));
+  });
+
+  await t("manage: once picked up — no cancel; 'ready to return' flags the loan, emails the gemach, shows in admin Loans", async () => {
+    const d = await (await submit({})).json();
+    const reqRec = DB.Requests.at(-1);
+    const c = await call(`/admin/requests/${reqRec.id}/confirm`, { method: "POST", headers: HA, body: JSON.stringify({}) });
+    const newLoanId = (await c.json()).reservations[0].id;
+    const loan = DB.Loans.find(l => l.id === newLoanId);
+    Object.assign(loan.fields, { Status: "Active", "Date Borrowed": soon(-2) }); // picked up
+    const tok = tokOf(d.manageUrl);
+    let g = await (await mg(tok)).json();
+    assert.equal(g.request.status, "out"); assert.equal(g.can.cancel, false); assert.equal(g.can.readyToReturn, true);
+    assert.equal((await mg(tok, "cancel")).status, 409);
+    const before = resendCalls().length;
+    const r = await mg(tok, "ready");
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.ok(loan.fields["Ready To Return At"]);
+    g = await r.json();
+    assert.equal(g.can.readyToReturn, false); assert.ok(g.loans[0].readyToReturnAt);
+    await Promise.allSettled(waits);
+    assert.ok(resendCalls().slice(before).some(x => /^Ready to return:/.test(x.subject) && /5165559999|\(516\) 555-9999/.test(x.text)));
+    assert.ok(logsFor(loan.fields["Loan ID"]).includes("Ready to Return"));
+    assert.equal((await mg(tok, "ready")).status, 409, "only once");
+    const loans = await (await call("/admin/loans", { headers: HA })).json();
+    const row = loans.find(x => x.id === loan.id);
+    assert.ok(row.readyToReturnAt && row.manageUrl === d.manageUrl);
+  });
+
+  await t("manage: link expires 30 days after everything is finished", async () => {
+    const d = await (await submit({})).json();
+    Object.assign(DB.Requests.at(-1).fields, { Status: "Declined", "Needed From": soon(-60), "Needed Until": soon(-50), "Received At": new Date(Date.now() - 70 * 864e5).toISOString() });
+    const r = await mg(tokOf(d.manageUrl));
+    assert.equal(r.status, 410); assert.equal((await r.json()).expired, true);
   });
 }
 

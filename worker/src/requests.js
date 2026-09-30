@@ -11,6 +11,7 @@ import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
 import { MAX_QTY, itemTypeInfoMap, loadQtyBookings, parseQtyMap, qtyAvailable, qtyLabel, requestWindow } from "./quantity.js";
 import { emailSignature } from "./settings.js";
+import { manageUrl } from "./manage.js";
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ async function itemTypeNameMap(db, ids, g) {
   return Object.fromEntries(recs.map(r => [r.id, r.fields.Name || r.id]));
 }
 
-async function handleGetRequests({ db, g }) {
+async function handleGetRequests({ db, g, env }) {
   const reqs = await db.listAll(T.REQUESTS, {
     filter: fAnd(scopeF(g), `{Status}="New"`),
     sort: [{ field: "Received At", direction: "asc" }],
@@ -27,7 +28,7 @@ async function handleGetRequests({ db, g }) {
   const info = await itemTypeInfoMap(db, reqs.flatMap(r => r.fields["Items Requested"] || []), g);
   const qtyTypeIds = Object.keys(info).filter(id => info[id].qty);
   const bookings = qtyTypeIds.length ? await loadQtyBookings(db, g, qtyTypeIds) : {};
-  const records = reqs.map(r => {
+  const records = await Promise.all(reqs.map(async r => {
     const f = r.fields;
     const qmap = parseQtyMap(f["Item Quantities"]);
     const win = requestWindow(f);
@@ -61,8 +62,9 @@ async function handleGetRequests({ db, g }) {
       partySize: f["Party Size"] ?? null,
       depositAcknowledged: !!f["Deposit Acknowledged"],
       appointmentAt: f["Appointment At"] || null,
+      manageUrl: await manageUrl(env, r.id), // for the {manage_link} template placeholder
     };
-  });
+  }));
   return json(records);
 }
 
@@ -176,16 +178,16 @@ async function confirmAppointment(c, rec, body) {
 }
 
 /** Upcoming appointments (Appointment At >= start of today, New York), soonest first. */
-async function handleGetAppointments({ db, g }) {
+async function handleGetAppointments({ db, g, env }) {
   const since = new Date(nyLocalToUtc(nyToday(), "00:00")).toISOString();
   const recs = await db.listAll(T.REQUESTS, {
-    filter: fAnd(scopeF(g), `{Request Type}="Appointment"`, `{Status}!="Declined"`, `{Appointment At}`, `NOT(IS_BEFORE({Appointment At},${fStr(since)}))`),
+    filter: fAnd(scopeF(g), `{Request Type}="Appointment"`, `{Status}!="Declined"`, `{Status}!="Cancelled"`, `{Appointment At}`, `NOT(IS_BEFORE({Appointment At},${fStr(since)}))`),
     sort: [{ field: "Appointment At", direction: "asc" }],
   });
   const nameMap = await itemTypeNameMap(db, recs.flatMap(r => r.fields["Items Requested"] || []), g);
-  const out = recs
-    .filter(r => r.fields["Appointment At"] && r.fields["Appointment At"] >= since)
-    .map(r => {
+  const out = (await Promise.all(recs
+    .filter(r => r.fields["Appointment At"] && r.fields["Appointment At"] >= since && selName(r.fields.Status) !== "Cancelled")
+    .map(async r => {
       const f = r.fields;
       return {
         id: r.id,
@@ -199,8 +201,9 @@ async function handleGetAppointments({ db, g }) {
         partySize: f["Party Size"] ?? null,
         eventDate: f["Event Date"] || null,
         notes: f["Notes"] || null,
+        manageUrl: await manageUrl(env, r.id),
       };
-    })
+    })))
     .sort((a, b) => a.appointmentAt.localeCompare(b.appointmentAt));
   return json(out);
 }

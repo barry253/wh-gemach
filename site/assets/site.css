@@ -789,3 +789,69 @@ fieldset { border: 0; }
 @media (max-width: 520px) {
   .io-actions .btn { flex: 1 1 100%; justify-content: center; }
 }
+
+/* ── Remember me + private manage link ── */
+.remember-line { margin: .2rem 0 1rem; }
+.remember-line small { display: block; color: var(--muted); font-size: .8rem; margin-top: .1rem; }
+.remember-saved { font-size: .85rem; color: var(--muted); margin: -.3rem 0 .9rem; }
+.remember-saved .btn-link { font-size: .85rem; }
+.manage-box {
+  text-align: left; background: var(--bg-tint); border: 1px solid var(--border); border-radius: 12px;
+  padding: .9rem 1rem; margin: 0 0 1.1rem; font-size: .92rem;
+}
+.manage-box p { margin: 0 0 .4rem; }
+.manage-box-title { font-family: var(--font-display); font-size: 1.05rem; }
+.manage-link-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
+.manage-box .field-hint { margin: .2rem 0 0; }
+
+/* Manage page (/r/<token>) */
+.hero-manage .g-name { font-size: clamp(1.5rem, 4vw, 2rem); }
+.m-card, .m-help {
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 1.2rem 1.2rem 1.3rem; margin-top: 1rem;
+}
+.m-hi { color: var(--muted); margin: 0 0 .2rem; }
+.m-status { font-family: var(--font-display); font-weight: 600; font-size: 1.45rem; line-height: 1.2; margin: 0; }
+.m-status.st-wait { color: var(--amber); }
+.m-status.st-ok { color: var(--green); }
+.m-status.st-done { color: var(--muted); }
+.m-status-sub { margin: .25rem 0 0; }
+.m-facts { display: grid; gap: .35rem; margin: 1rem 0 0; }
+.m-facts > div { display: flex; gap: .75rem; }
+.m-facts dt { flex: 0 0 6.5rem; color: var(--muted); font-size: .88rem; }
+.m-facts dd { margin: 0; font-weight: 500; }
+.m-h2 { font-size: .78rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 1.2rem 0 .5rem; }
+.m-items { margin: 0; padding-left: 1.1rem; }
+.m-items li { margin: .15rem 0; }
+.m-loans { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.m-loans li { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; border: 1px solid var(--border); border-radius: 10px; padding: .6rem .75rem; }
+.m-loans li > div { flex: 1 1 12rem; min-width: 0; }
+.m-loan-name { font-weight: 600; }
+.m-loan-sub { font-size: .85rem; color: var(--muted); }
+.m-actions-wrap { border-top: 1px solid var(--border); margin-top: 1.2rem; padding-top: .2rem; }
+.m-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .5rem; }
+.m-actions .btn { min-height: 46px; }
+.m-confirm { background: var(--error-tint); border: 1px solid #E8C1B8; border-radius: 10px; padding: .85rem 1rem; margin-top: 1rem; }
+.m-confirm p { margin: 0 0 .3rem; }
+.btn-danger { background: var(--error); border-color: var(--error); color: #fff; }
+.btn-danger:hover { background: #8C3122; border-color: #8C3122; }
+.notice-ok { background: var(--success-tint); border-color: #BFD9C8; color: #1E4D33; }
+.m-flash { margin-top: 1rem; }
+.m-help p { margin: 0 0 .7rem; }
+.m-help .m-h2 { margin-top: 0; }
+.m-private { text-align: center; color: var(--muted); font-size: .82rem; margin: 1.2rem 0 2rem; }
+@media (max-width: 520px) {
+  .m-actions .btn { flex: 1 1 100%; justify-content: center; }
+}
+
+/* Home: "Your requests" (saved on this device) */
+.my-requests .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.my-req-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.my-req {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem; text-decoration: none; color: var(--text);
+  background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: .7rem .9rem;
+}
+.my-req:hover { border-color: var(--border-strong); }
+.my-req-main { display: flex; flex-direction: column; min-width: 0; }
+.my-req-sub { font-size: .82rem; color: var(--muted); }
+.my-req-go { display: inline-flex; align-items: center; gap: .2rem; font-size: .85rem; color: var(--primary); white-space: nowrap; }

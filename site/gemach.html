@@ -15,9 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap" />
-  <link rel="stylesheet" href="/assets/site.css?v=12" />
-  <script src="/assets/site.js?v=8" defer></script>
-  <script src="/assets/gemach.js?v=12" defer></script>
+  <link rel="stylesheet" href="/assets/site.css?v=13" />
+  <script src="/assets/site.js?v=9" defer></script>
+  <script src="/assets/gemach.js?v=13" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -84,6 +84,7 @@
     <form id="form-view" novalidate>
       <h2 id="modal-title">Request to borrow</h2>
       <p class="modal-subtitle" id="modal-subtitle">The gemach will contact you to confirm and arrange pickup.</p>
+      <p class="remember-saved" id="remember-saved" hidden>Filled in from this device. <button type="button" class="btn-link" id="forget-me">Not you? Forget me</button></p>
 
       <div class="form-group">
         <label for="f-name">Your name <span class="req" aria-hidden="true">*</span></label>
@@ -165,6 +166,9 @@
         <textarea id="f-notes" name="notes" maxlength="2000" placeholder="e.g. for my mother-in-law visiting for Sukkos, recovering from knee surgery…"></textarea>
       </div>
 
+      <label class="check-line remember-line"><input type="checkbox" id="f-remember" /> <span>Remember my details on this device
+        <small>Your name, phone and email, and a link to this request, are saved in this browser for next time.</small></span></label>
+
       <button type="submit" class="btn btn-primary btn-submit" id="btn-submit">Send request</button>
       <p class="error-msg" id="error-msg" role="alert" hidden></p>
       <p class="form-note">By sending a request you agree to the <a href="/disclaimer" target="_blank" rel="noopener">Disclaimer</a>.
@@ -176,6 +180,15 @@
         <div class="checkmark" aria-hidden="true">✓</div>
         <h2 id="success-title" tabindex="-1">Request sent</h2>
         <p id="success-text">The gemach will be in touch to confirm and arrange pickup. Thank you!</p>
+        <div class="manage-box" id="manage-box" hidden>
+          <p class="manage-box-title"><strong>Your private link</strong></p>
+          <p>Use it to check on your request or cancel it.</p>
+          <div class="manage-link-row">
+            <a class="btn btn-sm" id="manage-link" href="/">View your request</a>
+            <button type="button" class="btn btn-sm" id="manage-copy">Copy link</button>
+          </div>
+          <p class="field-hint" id="manage-hint">Save it — bookmark it or send it to yourself. Please don’t share it.</p>
+        </div>
         <button type="button" class="btn btn-primary" id="success-done">Done</button>
       </div>
     </div>

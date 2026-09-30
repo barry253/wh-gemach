@@ -3,3 +3,6 @@
 /g/         /   302
 /g/:slug    /gemach   200
 /g/:slug/   /gemach   200
+
+# Borrower manage links: /r/<token> is served by manage.html (URL stays /r/<token>)
+/r/:token   /manage   200

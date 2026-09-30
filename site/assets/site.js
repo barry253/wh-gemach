@@ -61,6 +61,34 @@
     return attempt(0);
   }
 
+  // ── "Remember me on this device" (opt-in; localStorage, may be unavailable) ──
+  // Saved only when the person ticks the box: their contact details + links to their recent requests.
+  var ME_KEY = "whg_me_v1", MINE_KEY = "whg_my_requests_v1";
+  function lsGet(k) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+  var me = {
+    load: function () {
+      var d = lsGet(ME_KEY);
+      return d && typeof d === "object" && typeof d.name === "string" ? d : null;
+    },
+    save: function (d) {
+      lsSet(ME_KEY, { name: String(d.name || "").slice(0, 120), phone: String(d.phone || "").slice(0, 40),
+        email: String(d.email || "").slice(0, 200), preferredContact: String(d.preferredContact || "").slice(0, 20) });
+    },
+    forget: function () { lsDel(ME_KEY); lsDel(MINE_KEY); },
+    requests: function () {
+      var list = lsGet(MINE_KEY);
+      return Array.isArray(list) ? list.filter(function (r) { return r && /^https:\/\/[^\s]+\/r\/rec[A-Za-z0-9]{14}\.[A-Za-z0-9_-]{22}$/.test(r.url || ""); }) : [];
+    },
+    addRequest: function (r) {
+      var list = me.requests().filter(function (x) { return x.url !== r.url; });
+      list.unshift({ url: r.url, gemach: String(r.gemach || "").slice(0, 120), requestId: String(r.requestId || "").slice(0, 20), at: new Date().toISOString() });
+      lsSet(MINE_KEY, list.slice(0, 10));
+    },
+    removeRequest: function (url) { lsSet(MINE_KEY, me.requests().filter(function (x) { return x.url !== url; })); }
+  };
+
   // ── Directory cache (sessionStorage; may be unavailable) ──
   function readDirCache() {
     try {
@@ -417,6 +445,7 @@
     CONTACT_EMAIL: CONTACT_EMAIL,
     fetchJSON: fetchJSON,
     readDirCache: readDirCache,
+    me: me,
     writeDirCache: writeDirCache,
     clearDirCache: clearDirCache,
     loadDirectory: loadDirectory,

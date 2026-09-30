@@ -378,6 +378,23 @@
     }).join("");
   }
 
+  // ── "Your requests": links saved on this device when the person ticked "Remember me" ──
+  function renderMine() {
+    var sec = $("my-requests");
+    if (!sec) return;
+    var list = W.me.requests();
+    sec.hidden = !list.length;
+    if (!list.length) return;
+    $("my-requests-list").innerHTML = list.slice(0, 5).map(function (r) {
+      var d = new Date(r.at);
+      return '<li><a class="my-req" href="' + esc(r.url) + '"><span class="my-req-main"><strong>' + esc(r.gemach || "Gemach") + "</strong>" +
+        '<span class="my-req-sub">' + esc(r.requestId || "") + (isNaN(d) ? "" : " · sent " + esc(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }))) + "</span></span>" +
+        '<span class="my-req-go">View or cancel ' + W.ICONS.chevron + "</span></a></li>";
+    }).join("");
+  }
+  if ($("my-requests-forget")) $("my-requests-forget").addEventListener("click", function () { W.me.forget(); renderMine(); });
+  renderMine();
+
   function renderAll() {
     renderTiles();
     renderGemachs();

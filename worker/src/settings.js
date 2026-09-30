@@ -9,15 +9,15 @@ import { publicGemach } from "./public.js";
 
 // ─── Gemach profile & message templates (admin) ───────────────────────────────
 
-const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date"];
+const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link"];
 const DEFAULT_TEMPLATES = {
-  confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nThank you!",
-  confirmNoAddress: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nThank you!",
+  confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
+  confirmNoAddress: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
   decline: "Hi {first_name}, thank you for reaching out to the {gemach}. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.",
-  pickup: "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
-  pickupNoAddress: "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!",
-  appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!",
-  appointmentNoAddress: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!",
+  pickup: "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+  pickupNoAddress: "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+  appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
+  appointmentNoAddress: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
 };
 
 /** Effective template text: stored value, else built-in default. */

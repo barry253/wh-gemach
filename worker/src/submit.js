@@ -4,12 +4,13 @@ import { AirtableError, linkedId, verifyOwnedIds } from "./airtable.js";
 import { sendAlert } from "./alerts.js";
 import { LEGACY_SLUG, T } from "./config.js";
 import { addYearsDate, eventDates, isValidDate, nyToday } from "./dates.js";
-import { sendNotificationEmail } from "./email.js";
+import { buildEmailHtml, escHtml, sendEmail, sendNotificationEmail } from "./email.js";
 import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
 import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, qtyLabel, requestAvailability } from "./quantity.js";
-import { EMAIL_RE } from "./settings.js";
+import { EMAIL_RE, emailSignature } from "./settings.js";
+import { manageUrl } from "./manage.js";
 
 // ─── Public form submission ───────────────────────────────────────────────────
 
@@ -171,8 +172,9 @@ async function handleSubmitRequest(request, db, env, ctx) {
     catch (e) { console.error("availability check failed:", e.message, e.detail ? JSON.stringify(e.detail) : ""); }
   }
 
+  let created;
   try {
-    await db.create(T.REQUESTS, fields);
+    created = await db.create(T.REQUESTS, fields);
   } catch (e) {
     if (!(e instanceof AirtableError)) throw e;
     console.error("Airtable error:", JSON.stringify(e.detail));
@@ -205,7 +207,24 @@ async function handleSubmitRequest(request, db, env, ctx) {
     notes: fields["Notes"] || null,
   });
 
-  return json({ success: true, requestId });
+  const link = created?.id ? await manageUrl(env, created.id) : null;
+  if (link && email) ctx.waitUntil(sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link })
+    .catch(e => console.error("receipt email failed:", e.message)));
+  return json({ success: true, requestId, ...(link ? { manageUrl: link } : {}) });
+}
+
+/** "We got your request" to the borrower (only when they gave an email), with their manage link. */
+async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link }) {
+  const first = String(name || "").trim().split(/\s+/)[0] || "there";
+  const what = isAppt ? "your appointment request" : `your request${itemNames.length ? ` for ${itemNames.join(", ")}` : ""}`;
+  const text = `Hi ${first},\n\nThanks — ${g.name || "the gemach"} received ${what} (${requestId}). They'll be in touch soon.\n\n` +
+    `To check on it or cancel, use your private link:\n${link}\n\nPlease don't share this link.`;
+  const e = escHtml;
+  const bodyHtml = `<p style="margin:0 0 12px;">Hi ${e(first)},</p>` +
+    `<p style="margin:0 0 12px;">Thanks — ${e(g.name || "the gemach")} received ${e(what)} (${e(requestId)}). They'll be in touch soon.</p>` +
+    `<p style="margin:18px 0;"><a href="${e(link)}" style="display:inline-block;background:#1B3A4B;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">View or cancel your request</a></p>` +
+    `<p style="margin:0;color:#5e6b72;font-size:13px;">This link is private to you — please don't share it.</p>`;
+  return sendEmail(env, g, { to: email, subject: `We got your request — ${g.name || "Gemach"} (${requestId})`, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true, bodyHtml }) });
 }
 
 export { clip, REQUEST_CONTACTS, formatPhone, handleSubmitRequest };

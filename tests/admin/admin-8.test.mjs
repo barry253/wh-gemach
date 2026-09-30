@@ -10,9 +10,11 @@ const REQS = [
   { id: "recREQADD00000001", requestId: "R-201", name: "Addon Person", phone: "5165551234", email: "ap@example.com", preferredContact: "Email",
     itemNames: ["Arch", "Family Sweatshirt × 4"], items: [{ id: "recTYPEARCH000001", name: "Arch", quantity: null, available: null, owned: null },
       { id: "recTYPEADD0000001", name: "Family Sweatshirt", quantity: 4, available: null, owned: null, addon: true, price: 40 }],
-    neededFrom: "2026-11-01", neededUntil: "2026-11-03", openEnded: false, receivedAt: new Date().toISOString(), requestType: "Loan" },
+    neededFrom: "2026-11-01", neededUntil: "2026-11-03", openEnded: false, receivedAt: new Date().toISOString(), requestType: "Loan",
+    manageUrl: "https://whgemachs.org/r/recREQADD00000001.AAAAAAAAAAAAAAAAAAAAAA" },
 ];
-const LOANS = [{ id: "recLOAN0000000001", loanId: "L-1", borrowerName: "Loan Nodate", borrowerPhone: "5165553333", borrowerContact: "Text", itemTypeName: "Walker", dateBorrowed: null, daysOut: null }];
+const LOANS = [{ id: "recLOAN0000000001", loanId: "L-1", borrowerName: "Loan Nodate", borrowerPhone: "5165553333", borrowerContact: "Text", itemTypeName: "Walker", dateBorrowed: null, daysOut: null,
+  readyToReturnAt: new Date(Date.now() - 2 * 3600e3).toISOString() }];
 const RES = [
   { id: "recRESADD00000001", loanId: "L-50", borrowerName: "Addon Person", borrowerPhone: "5165551234", borrowerEmail: "ap@example.com", borrowerContact: "Email",
     itemTypeName: "Family Sweatshirt", itemTypeId: "recTYPEADD0000001", isQuantity: false, isAddon: true, price: 40, quantity: 4, reservationStart: "2026-11-01", reservationEnd: "2026-11-03" },
@@ -85,7 +87,16 @@ await page.click("#requests-list .card button.btn-primary");
 await page.waitForSelector("#confirm-qty-list .qty-line");
 const cq = await page.$eval("#confirm-qty-list", e => e.innerText);
 ok(/Family Sweatshirt/.test(cq) && /Add-on · \$40 each/.test(cq) && !/null/.test(cq), "confirm sheet: add-on count editable, no 'null total': " + cq.replace(/\n/g, " / "));
+const cm = await page.inputValue("#confirm-message");
+ok(cm.includes("Manage or cancel: https://whgemachs.org/r/recREQADD00000001.AAAAAAAAAAAAAAAAAAAAAA"), "confirm message carries the borrower's manage link: " + cm.replace(/\n/g, " / "));
 await page.evaluate(() => closeSheet("confirm-sheet"));
+
+// Loans: borrower said "ready to return"
+await page.evaluate(() => switchTab("loans"));
+await page.waitForSelector("#loans-list .loan-row");
+ok(/Ready to return/i.test(await page.$eval("#loans-list .loan-row", e => e.innerText)), "loan flagged Ready to return");
+await page.click("#loans-list .loan-row");
+ok(/the borrower let us know 2h ago/.test(await page.$eval("#loans-list .loan-actions-panel", e => e.innerText)), "panel says when");
 
 // Reservation row: add-on order
 await page.evaluate(() => switchTab("reservations"));

@@ -30,7 +30,10 @@
  *   Stats:   GET /admin/stats?days=30|90|365 — per-gemach request/loan/inventory stats for the Dashboard.
  *   Health:  GET /health — checks Airtable is reachable; 200 {ok:true} or 503 (for uptime monitors).
  *   Public:  GET /inventory (legacy, wh-medical only), GET /public/directory,
- *            GET /public/gemach/:slug, POST /submit-request (rejected for Directory-mode gemachs)
+ *            GET /public/gemach/:slug, POST /submit-request (rejected for Directory, Info-only and Coming-soon gemachs)
+ *   Manage:  GET /public/manage/:token, POST /public/manage/:token/cancel, POST /public/manage/:token/ready —
+ *            the borrower's signed link (see manage.js); POST /submit-request returns it as manageUrl.
+ *   SITE_URL          var  NEW (optional) public site base for manage links; defaults to https://whgemachs.org
  *   Auth:    POST /admin/login
  *   Admin:   GET /admin/me and every other /admin/* route, scoped by ?g=<slug> or X-Gemach header.
  *            GET/PATCH /admin/gemach — gemach profile, branding, request style + message templates
@@ -74,6 +77,7 @@ import { handleAssignItem, handleCancelReservation, handleGetLoans, handleGetRes
 import { networkDispatch } from "./network.js";
 import { handleDirectory, handleLegacyInventory, handlePublicGemach, loadCategories } from "./public.js";
 import { handleGetAppointments, handleGetRequests, handleRequestDecision } from "./requests.js";
+import { handleGetManage, handleManageCancel, handleManageReady } from "./manage.js";
 import { handleSearchLog } from "./search.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
 import { handleDashboard, handleStats } from "./stats.js";
@@ -90,7 +94,8 @@ export default {
     const isPublicGet = method === "GET" && (path === "/inventory" || path.startsWith("/public/"));
     // Anonymous endpoints answer any origin (public site, Pages previews, embeds).
     const isSubmit = method === "POST" && path === "/submit-request";
-    const isPublicRoute = isPublicGet || isSubmit || (method === "GET" && path === "/health") || (method === "POST" && path === "/public/search-log");
+    const isPublicRoute = isPublicGet || isSubmit || (method === "GET" && path === "/health") || (method === "POST" && path === "/public/search-log")
+      || (method === "POST" && path.startsWith("/public/manage/"));
 
     if (method === "OPTIONS") return withCors(new Response(null, { status: 204 }), request, path === "/inventory" || path.startsWith("/public/") || path === "/submit-request");
 
@@ -132,6 +137,14 @@ async function route(request, env, ctx, url, path, method) {
   if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)));
   if (method === "POST" && path === "/submit-request")   return handleSubmitRequest(request, db, env, ctx);
   if (method === "POST" && path === "/public/search-log") return handleSearchLog(request, db, ctx);
+  if (path.startsWith("/public/manage/")) { // borrower manage link (signed; no login)
+    const rest = path.slice("/public/manage/".length).split("/");
+    const token = safeDecode(rest[0] || "");
+    if (method === "GET" && rest.length === 1) return handleGetManage(db, env, token);
+    if (method === "POST" && rest[1] === "cancel" && rest.length === 2) return handleManageCancel(db, env, ctx, token);
+    if (method === "POST" && rest[1] === "ready" && rest.length === 2) return handleManageReady(db, env, ctx, token);
+    return json({ error: "Not found" }, 404);
+  }
 
   // Auth endpoint
   if (method === "POST" && path === "/admin/login")      return handleLogin(request, db, env);

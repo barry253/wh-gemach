@@ -8,6 +8,7 @@ import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
 import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loanQty, wholeNum } from "./quantity.js";
 import { itemTypeNameMap } from "./requests.js";
+import { manageUrl } from "./manage.js";
 
 // ─── Loans / reservations shared lookups ──────────────────────────────────────
 
@@ -56,7 +57,7 @@ function loanQtyInfo(f, typeInfo) {
   return { isQuantity, isAddon, price: isAddon ? t.price : null, quantity: isQuantity || isAddon ? loanQty(f) : null };
 }
 
-async function handleGetLoans({ db, g }) {
+async function handleGetLoans({ db, g, env }) {
   const loans = await db.listAll(T.LOANS, {
     filter: fAnd(scopeF(g), `{Status}="Active"`),
     sort: [{ field: "Date Borrowed", direction: "asc" }],
@@ -65,7 +66,7 @@ async function handleGetLoans({ db, g }) {
   const now = new Date();
   const t = today();
 
-  const records = loans.map(r => {
+  const records = await Promise.all(loans.map(async r => {
     const f = r.fields;
     const borrowed = f["Date Borrowed"];
     const q = loanQtyInfo(f, typeInfo);
@@ -93,10 +94,18 @@ async function handleGetLoans({ db, g }) {
       overdue: expectedReturn ? t > expectedReturn : (daysDiff > 14),
       notes: f["Notes"] || null,
       requestNote: (f["Request Note"] || []).join("") || null,
+      readyToReturnAt: f["Ready To Return At"] || null, // borrower tapped "Ready to return" on their manage page
+      manageUrl: await sourceManageUrl(env, f),
     };
-  });
+  }));
   return json(records);
 }
+
+/** The borrower's manage link for a loan made from a request (null for loans created in admin). */
+const sourceManageUrl = (env, f) => {
+  const src = linkedId(firstLink(f["Source Request"]));
+  return src ? manageUrl(env, src) : null;
+};
 
 /**
  * History details for a loan, derived from the loan record itself (Borrower, Item, Item to Reserve, Loan ID);
@@ -237,14 +246,14 @@ async function handleMarkPickedUp(c, id) {
   return json({ success: true });
 }
 
-async function handleGetReservations({ db, g }) {
+async function handleGetReservations({ db, g, env }) {
   const loans = await db.listAll(T.LOANS, {
     filter: fAnd(scopeF(g), `{Status}="Reserved"`),
     sort: [{ field: "Reservation Start", direction: "asc" }],
   });
   const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
 
-  const records = loans.map(r => {
+  const records = await Promise.all(loans.map(async r => {
     const f = r.fields;
     const q = loanQtyInfo(f, typeInfo);
     const bRaw = firstLink(f["Borrower"]);
@@ -271,8 +280,9 @@ async function handleGetReservations({ db, g }) {
       reservationEnd: f["Reservation End"] || null,
       notes: f["Notes"] || null,
       requestNote: (f["Request Note"] || []).join("") || null,
+      manageUrl: await sourceManageUrl(env, f),
     };
-  });
+  }));
   return json(records);
 }
 

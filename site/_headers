@@ -21,3 +21,12 @@
 
 /favicon.svg
   Cache-Control: public, max-age=86400
+
+# Borrower manage links carry a private token in the URL: never send it on as a referrer, never index or cache
+/r/*
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+/manage*
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex, nofollow
