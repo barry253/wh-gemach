@@ -82,6 +82,7 @@
     applyFavicon(g);
     $("g-head").innerHTML =
       (g.category ? '<span class="chip">' + esc(g.category) + "</span>" : "") +
+      (W.isComingSoon(g) ? '<span class="chip chip-soon">Coming soon</span>' : "") +
       '<div class="g-lockup">' + logoHtml(g) +
         '<div class="g-lockup-text"><h1 class="g-name">' + nameHtml(g) + "</h1>" +
         (g.tagline ? '<p class="tagline">' + esc(g.tagline) + "</p>" : "") + "</div></div>" +
@@ -111,7 +112,7 @@
       contact.push('WhatsApp: <a href="' + W.waHref(g.whatsapp) + '" target="_blank" rel="noopener">' + esc(g.whatsapp) + "</a>");
     }
     if (!acts && g.email) contact.push('<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + "</a>");
-    if (contact.length) side.push('<div><div class="info-label">Contact</div><div>' + contact.join("<br>") + "</div></div>");
+    if (contact.length && !W.isInfoOnly(g)) side.push('<div><div class="info-label">Contact</div><div>' + contact.join("<br>") + "</div></div>"); // Info only: already in the big box
     var web = W.safeUrl(g.website);
     if (web) side.push('<div><div class="info-label">Website</div><a href="' + esc(web) + '" target="_blank" rel="noopener">' + esc(W.prettyUrl(web)) + "</a></div>");
     // Donations: link only -> the Donate button opens it in a new tab.
@@ -235,7 +236,31 @@
     return '<section class="ginfo" aria-labelledby="ginfo-title"><h2 id="ginfo-title">Gemach Info</h2>' + parts.join("") + "</section>";
   }
 
+  function comingSoonBanner() {
+    if (!W.isComingSoon(gemach)) return "";
+    return '<div class="soon-banner" role="note"><strong>Coming soon</strong> ' +
+      "<span>This gemach is getting ready and isn’t taking requests online yet. You’re welcome to contact them directly.</span></div>";
+  }
+  /** Info only: "General info" shown large, with hours, deposit and big contact buttons. */
+  function infoOnlyBox() {
+    var g = gemach;
+    var info = W.formatText(g.gemachInfo);
+    var acts = W.contactActions(g) || [];
+    var btns = acts.map(function (a) {
+      var shown = a.type === "Email" ? g.email : (a.type === "WhatsApp" ? (g.whatsapp || g.phone) : g.phone);
+      return '<a class="btn' + (a.primary ? " btn-primary" : (a.type === "WhatsApp" ? " btn-wa" : "")) + '" href="' + esc(a.href) + '"' +
+        (a.ext ? ' target="_blank" rel="noopener"' : "") + ">" + W.ICONS[a.icon] + esc(a.label) + (shown ? ' <span class="io-detail">' + esc(shown) + "</span>" : "") + "</a>";
+    }).join("");
+    var rows = [];
+    if (g.hours) rows.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");
+    if (g.depositRequired) rows.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
+    return '<section class="info-only" aria-labelledby="io-title"><h2 id="io-title">How this gemach works</h2>' +
+      (info ? '<div class="prose io-prose">' + info + "</div>" : '<p class="io-prose">Contact the gemach using the buttons below.</p>') +
+      rows.join("") + (btns ? '<div class="io-actions">' + btns + "</div>" : "") + "</section>";
+  }
+
   function availBadge(it) {
+    if (W.isComingSoon(gemach)) return "";
     if (W.isDirectory(gemach)) return '<span class="badge badge-dir">Contact to check</span>';
     if (isAddon(it)) return '<span class="badge badge-addon">Add-on' + (it.price != null ? " · " + money(it.price) : "") + "</span>";
     if (style() === "Appointment") return "";
@@ -296,7 +321,7 @@
   }
 
   function itemRow(it) {
-    var dir = W.isDirectory(gemach);
+    var dir = !W.acceptsRequests(gemach); // directory, coming soon: browse only
     var id = esc(it.id);
     var photo = it.photoUrl && W.safeUrl(it.photoUrl) ? it.photoUrl : null;
     var thumb = photo
@@ -326,7 +351,8 @@
   }
 
   function renderInventory() {
-    var dir = W.isDirectory(gemach);
+    var dir = !W.acceptsRequests(gemach);
+    var soon = W.isComingSoon(gemach) && !W.isDirectory(gemach);
     var html = "";
     if (!items.length) {
       html = '<div class="notice notice-info">' + (dir
@@ -369,7 +395,9 @@
       Event: "Tap the items you need, then send one request with your " + esc(eventLabel().toLowerCase()) + ". Items on loan can still be requested — the gemach will let you know.",
       Appointment: "Browse the collection, then request an appointment to come see it in person. Selecting items you’d like to see is optional."
     };
-    html += dir
+    html += soon
+      ? '<p class="inv-help">A preview of what this gemach will lend. It isn’t taking requests online yet — contact them using the buttons above.</p>'
+      : dir
       ? '<div class="notice">This gemach is listed in our directory. To borrow, contact them directly using the buttons above.</div>'
       : '<p class="inv-help">' + help[st] + "</p>";
     html += filterBar(defs, listed.filter(function (it) { return !isAddon(it); }).length, counted.length);
@@ -388,8 +416,13 @@
     renderHeader();
     // drop selections that no longer exist / directory mode
     var ids = new Set(items.map(function (i) { return i.id; }));
-    selected.forEach(function (id) { if (!ids.has(id) || W.isDirectory(gemach)) selected.delete(id); });
-    $("g-body").innerHTML = infoPanel() + gemachInfoSection() + '<div id="inv-wrap">' + renderInventory() + "</div>";
+    selected.forEach(function (id) { if (!ids.has(id) || !W.acceptsRequests(gemach)) selected.delete(id); });
+    if (W.isInfoOnly(gemach)) { // Info only: a large info box with contact details; no items, no requests
+      $("g-body").innerHTML = comingSoonBanner() + infoOnlyBox() + infoPanel();
+      updateCTA();
+      return;
+    }
+    $("g-body").innerHTML = comingSoonBanner() + infoPanel() + gemachInfoSection() + '<div id="inv-wrap">' + renderInventory() + "</div>";
     updateCTA();
     handleType();
   }
@@ -399,7 +432,7 @@
     var it = items.filter(function (i) { return i.id === wantType; })[0];
     if (!it) { typeHandled = loadedFresh; return; }
     typeHandled = true;
-    if (!W.isDirectory(gemach)) { selected.add(it.id); syncRow(it.id); updateCTA(); }
+    if (W.acceptsRequests(gemach)) { selected.add(it.id); syncRow(it.id); updateCTA(); }
     var row = document.getElementById("row-" + it.id);
     if (row) {
       requestAnimationFrame(function () {
@@ -448,7 +481,7 @@
   }
   function updateCTA() {
     var n = selected.size;
-    var appt = !!gemach && style() === "Appointment";
+    var appt = W.acceptsRequests(gemach) && style() === "Appointment";
     $("cta-count").textContent = appt && !n ? "Visit by appointment" : (n === 1 ? "1 item" : n + " items");
     $("cta-suffix").hidden = appt && !n;
     $("cta-clear").hidden = n === 0;
@@ -591,6 +624,7 @@
   // ── Modal ──
   var modal = $("modal");
   function openModal() {
+    if (!W.acceptsRequests(gemach)) return;
     lastFocus = document.activeElement;
     var st = style();
     var appt = st === "Appointment";

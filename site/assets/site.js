@@ -155,6 +155,11 @@
   }
   function plural(n, one, many) { return n + " " + (n === 1 ? one : (many || one + "s")); }
   function isDirectory(g) { return String((g && g.mode) || "Full").toLowerCase() === "directory"; }
+  /** "Info only": contact details + a large info box; no items, no requests. */
+  function isInfoOnly(g) { return String((g && g.mode) || "").toLowerCase() === "info"; }
+  /** "Coming soon": listed, items shown as a preview, not in text search, no requests. */
+  function isComingSoon(g) { return !!(g && g.comingSoon); }
+  function acceptsRequests(g) { return !!g && !isDirectory(g) && !isInfoOnly(g) && !isComingSoon(g); }
   function gemachUrl(slug, typeId) {
     return "/g/" + encodeURIComponent(slug) + (typeId ? "?type=" + encodeURIComponent(typeId) : "");
   }
@@ -424,6 +429,9 @@
     prettyUrl: prettyUrl,
     plural: plural,
     isDirectory: isDirectory,
+    isInfoOnly: isInfoOnly,
+    isComingSoon: isComingSoon,
+    acceptsRequests: acceptsRequests,
     gemachUrl: gemachUrl,
     contactActions: contactActions,
     requestStyle: requestStyle,

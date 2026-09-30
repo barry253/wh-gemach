@@ -177,12 +177,25 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.screenshot({ path: "shot-r4-network-gemachs.png" });
 
   // toggle active on hidden gemach
-  await page.check("#ng-row-recH input[type=checkbox]");
+  await page.selectOption("#ng-status-recH", "live");
   await page.waitForFunction(() => document.body.textContent.includes("Saved"));
-  ok(reqs.some(r => r.method === "PATCH" && r.path === "/admin/network/gemachs/recH" && r.body.active === true), "active toggle PATCHes gemach");
-  await page.selectOption("#ng-row-recA select[aria-label='Requests mode']", "Directory");
+  ok(reqs.some(r => r.method === "PATCH" && r.path === "/admin/network/gemachs/recH" && r.body.active === true && r.body.comingSoon === false), "status Live PATCHes gemach");
+  await page.selectOption("#ng-status-recH", "soon");
+  await page.waitForTimeout(300);
+  ok(reqs.some(r => r.path === "/admin/network/gemachs/recH" && r.body.active === true && r.body.comingSoon === true), "status Coming soon PATCHes active + comingSoon");
+  ok(/Coming soon/.test(await page.textContent("#ng-row-recH .card-title")) && await page.inputValue("#ng-status-recH") === "soon", "row shows Coming soon");
+  await page.selectOption("#ng-status-recH", "hidden");
+  await page.waitForTimeout(300);
+  ok(reqs.some(r => r.path === "/admin/network/gemachs/recH" && r.body.active === false), "status Hidden PATCHes active false");
+  await page.selectOption("#ng-row-recA select[aria-label='Gemach type']", "Directory");
   await page.waitForTimeout(250);
-  ok(reqs.some(r => r.path === "/admin/network/gemachs/recA" && r.body.mode === "Directory"), "mode select PATCHes gemach");
+  ok(reqs.some(r => r.path === "/admin/network/gemachs/recA" && r.body.mode === "Directory"), "type select PATCHes gemach");
+  await page.selectOption("#ng-row-recA select[aria-label='Gemach type']", "Info");
+  await page.waitForTimeout(250);
+  ok(reqs.some(r => r.path === "/admin/network/gemachs/recA" && r.body.mode === "Info"), "type Info only PATCHes gemach");
+  await page.selectOption("#ng-row-recA select[aria-label='Gemach type']", "Full");
+  await page.waitForTimeout(250);
+  await page.locator("#ng-row-recH").screenshot({ path: "shot-status-network-row.png" });
 
   // create gemach flow
   await page.click("text=+ New gemach");

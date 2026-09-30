@@ -42,7 +42,7 @@ async function setup() {
     calls.push({ method: req.method(), path: p, body, gemach: req.headers()["x-gemach"] });
     const J = d => r.fulfill({ contentType: "application/json", body: JSON.stringify(d) });
     if (p === "/admin/me") return J({ email: "b@x", name: "Barry", role: "Owner", gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] });
-    if (p === "/admin/gemach" && req.method() === "PATCH") { if (body.itemAttributes) G.itemAttributes = body.itemAttributes; return J(G); }
+    if (p === "/admin/gemach" && req.method() === "PATCH") { if (body.itemAttributes) G.itemAttributes = body.itemAttributes; if (body.browseCategoryIds) G.browseCategoryIds = body.browseCategoryIds; return J(G); }
     if (p === "/admin/gemach") return J(G);
     if (p === "/admin/dashboard") return J({ newRequests: REQS.length, activeLoans: 1, overdueLoans: 0, upcomingReservations: 2 });
     if (p === "/admin/requests") return J(REQS);
@@ -55,7 +55,7 @@ async function setup() {
     if (p === "/admin/catalog/item-types") return J(TYPES);
     if (p === "/admin/inventory") return J([]);
     if (p === "/admin/catalog/items") return J({ items: [], itemTypes: TYPES.map(t => ({ id: t.id, name: t.name })) });
-    if (p === "/admin/catalog/categories") return J([]);
+    if (p === "/admin/catalog/categories") return J([{ id: "recCATGOWNS000001", name: "Gowns", icon: "👗" }, { id: "recCATSIMCHA00001", name: "Simchas", icon: "🍽️" }]);
     if (/\/admin\/catalog\/item-types\/[^/]+$/.test(p)) return J({ id: "x" });
     return J([]);
   });
@@ -99,6 +99,18 @@ await page.waitForFunction(() => document.body.textContent.includes("Settings sa
 const sp = calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach").at(-1);
 ok(sp && JSON.stringify(sp.body.itemAttributes.map(a => a.name)) === '["Size","Color","Length"]' && sp.body.itemAttributes[0].values.join(",") === "2,4,6,8,10"
   && Object.keys(sp.body).length === 1, "PATCH sends only the filters " + JSON.stringify(sp && sp.body));
+
+// Settings → Home page categories
+await page.waitForSelector("#browse-cats .attr-chip");
+ok((await page.$$eval("#browse-cats .attr-chip", els => els.map(e => e.textContent))).join("|") === "👗 Gowns|🍽️ Simchas", "category chips listed");
+await page.click("#browse-cats .attr-chip:has-text('Simchas')");
+await page.click("#settings-save-btn");
+await page.waitForTimeout(300);
+const bp = calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach").at(-1);
+ok(bp && JSON.stringify(bp.body) === '{"browseCategoryIds":["recCATSIMCHA00001"]}', "PATCH sends chosen categories only " + JSON.stringify(bp && bp.body));
+ok(await page.$eval("#browse-cats .attr-chip:has-text('Simchas')", b => b.getAttribute("aria-pressed")) === "true", "choice kept after save");
+await page.evaluate(() => document.getElementById("settings-sec-home-page-categories").scrollIntoView());
+await page.screenshot({ path: "shot-status-settings-cats.png" });
 
 // Inventory shows the gown's values; item type sheet has chips
 await page.evaluate(() => switchTab("inventory"));

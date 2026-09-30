@@ -47,7 +47,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   const slug = String(body.gemach || LEGACY_SLUG).trim().toLowerCase();
   const g = await loadGemachBySlug(db, slug);
   if (!g || !g.active) return json({ error: "Unknown gemach." }, 400);
-  if (g.mode === "Directory") {
+  if (g.mode === "Directory" || g.mode === "Info" || g.comingSoon) {
     return json({ error: `${g.name || "This gemach"} doesn't take online requests. Please contact them directly${g.phone ? ` at ${g.phone}` : ""}.` }, 400);
   }
   const phone = formatPhone(rawPhone);

@@ -276,6 +276,8 @@
     .net-controls select { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; font-family: 'Inter', sans-serif; background: var(--white); color: var(--text); }
     .switch-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--muted); }
     .switch-row input { accent-color: var(--navy); width: auto; }
+    .net-status { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; font-size: 0.82rem; color: var(--muted); }
+    .net-status select { flex: 1; min-width: 0; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; font-family: 'Inter', sans-serif; background: var(--white); color: var(--text); }
     .net-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .net-toolbar select { padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; font-family: 'Inter', sans-serif; max-width: 60%; }
     .check-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.6rem; }
@@ -1351,6 +1353,7 @@
           <select id="ng-mode">
             <option value="Full">Online requests</option>
             <option value="Directory">Listing only</option>
+            <option value="Info">Info only</option>
           </select>
         </div>
       </div>
@@ -3362,6 +3365,7 @@
     { title: "Gemach info", extra: "info" },
     { title: "Requests", extra: "requests" },
     { title: "Item filters", extra: "attrs" },
+    { title: "Home page categories", extra: "browsecats" },
   ];
   const SETTINGS_TEMPLATES = [
     { kind: "confirm",     key: "confirmMessage",     label: "Request confirmed" },
@@ -3501,6 +3505,12 @@
           <div class="example-line" id="event-example"></div>
         </div>`;
     }
+    if (group.extra === "browsecats") {
+      inner += `
+        <p class="settings-help" style="margin:0 0 0.6rem">List this gemach under these categories on the home page, even without items online — for <b>Info only</b> and <b>Coming soon</b> gemachs.
+          Gemachs with items are already listed under their items' categories.</p>
+        <div class="attr-chips" id="browse-cats" role="group" aria-label="Home page categories"></div>`;
+    }
     if (group.extra === "attrs") {
       inner += `
         <p class="settings-help" style="margin:0 0 0.6rem">Let borrowers filter your items — e.g. <b>Size</b> and <b>Color</b> for gowns. Most gemachs don't need this.
@@ -3557,11 +3567,14 @@
     // Values are assigned via properties (never interpolated into HTML).
     setEl("title").textContent = g.name || "";
     setEl("slug").textContent = `${g.slug || ""}${g.communityName ? " · " + g.communityName : ""}`;
-    const listing = g.mode === "Directory";
-    setEl("mode").textContent = listing ? "Listing only" : "Online requests";
-    const modeHelp = listing
+    const listing = g.mode === "Directory", infoOnly = g.mode === "Info";
+    setEl("mode").textContent = (infoOnly ? "Info only" : listing ? "Listing only" : "Online requests") + (g.comingSoon ? " · Coming soon" : "");
+    const modeHelp = (infoOnly
+      ? "Your public page shows your General info in a large box with contact buttons; no items or online requests."
+      : listing
       ? "Your public page shows contact details only; borrowers can't send requests online."
-      : "Borrowers can see your items and send requests online.";
+      : "Borrowers can see your items and send requests online.") +
+      (g.comingSoon ? " It's marked Coming soon: listed on the home page, but not in search and not taking requests yet." : "");
     setEl("mode").title = modeHelp;
     setEl("mode-help").textContent = modeHelp + (isNetworkAdmin() ? " Change it in the Network tab." : " Only a network admin can change this.");
     const url = publicUrl(g.slug);
@@ -3622,11 +3635,35 @@
       settingsOriginal[t.key] = el.value;
       updateTemplateState(t);
     });
+    renderBrowseCats(ro);
     ATTR_DRAFT = (g.itemAttributes || []).map(a => ({ name: a.name, values: a.values.join(", ") }));
     settingsOriginal.itemAttributes = attrDefsKey(ATTR_DRAFT);
     renderAttrDefs(ro);
     renderLogoPreview();
     onSettingsInput();
+  }
+
+  // ── Home page categories (Settings) ──
+  let BROWSE_SEL = new Set();
+  const browseKey = set => JSON.stringify([...set].sort());
+  async function renderBrowseCats(ro = !GEMACH?.canEdit) {
+    const box = document.getElementById("browse-cats");
+    if (!box) return;
+    BROWSE_SEL = new Set(GEMACH?.browseCategoryIds || []);
+    settingsOriginal.browseCategoryIds = browseKey(BROWSE_SEL);
+    if (!browseCategories.length) {
+      try { const d = await api("/admin/catalog/categories"); if (Array.isArray(d)) browseCategories = d; } catch {}
+    }
+    const known = new Set(browseCategories.map(c => c.id));
+    box.innerHTML = browseCategories.length
+      ? browseCategories.map(c => `<button type="button" class="attr-chip" data-cat="${esc(c.id)}" aria-pressed="${BROWSE_SEL.has(c.id)}" ${ro ? "disabled" : ""}>${esc((c.icon ? c.icon + " " : "") + c.name)}</button>`).join("")
+      : '<div class="muted-small">No categories yet.</div>';
+    [...BROWSE_SEL].filter(id => !known.has(id)).forEach(id => BROWSE_SEL.delete(id)); // a category that was turned off
+    box.querySelectorAll(".attr-chip[data-cat]").forEach(b => b.onclick = () => {
+      const id = b.dataset.cat;
+      BROWSE_SEL.has(id) ? BROWSE_SEL.delete(id) : BROWSE_SEL.add(id);
+      b.setAttribute("aria-pressed", BROWSE_SEL.has(id));
+    });
   }
 
   // ── Item filters editor (Settings) ──
@@ -3918,6 +3955,7 @@
       const raw = setEl(t.key).value;
       if (raw !== settingsOriginal[t.key]) patch[t.key] = raw.trim();
     });
+    if (document.getElementById("browse-cats") && browseKey(BROWSE_SEL) !== settingsOriginal.browseCategoryIds) patch.browseCategoryIds = [...BROWSE_SEL];
     const attrNow = attrDefsKey(ATTR_DRAFT);
     if (attrNow !== settingsOriginal.itemAttributes) {
       const defs = JSON.parse(attrNow);
@@ -4012,23 +4050,36 @@
       return `<div class="card net-row" id="ng-row-${id}">
         <div class="net-row-head">
           <div style="min-width:0">
-            <div class="card-title">${esc(g.name)}${g.active ? "" : ' <span class="tag tag-amber">Hidden</span>'}</div>
+            <div class="card-title">${esc(g.name)}${!g.active ? ' <span class="tag tag-amber">Hidden</span>' : g.comingSoon ? ' <span class="tag tag-amber">Coming soon</span>' : ""}</div>
             <div class="card-id">${esc(g.slug || "")} · ${esc(g.itemCount)} item${g.itemCount === 1 ? "" : "s"} · ${esc(g.adminCount)} admin${g.adminCount === 1 ? "" : "s"}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="switchGemach(netStore.gemach.get('${id}').slug)">Open</button>
         </div>
         <div class="net-controls">
-          <select aria-label="Requests mode" onchange="netPatchGemach('${id}', { mode: this.value }, this)">
-            <option value="Full"${g.mode !== "Directory" ? " selected" : ""}>Online requests</option>
+          <select aria-label="Gemach type" onchange="netPatchGemach('${id}', { mode: this.value }, this)">
+            <option value="Full"${g.mode !== "Directory" && g.mode !== "Info" ? " selected" : ""}>Online requests</option>
             <option value="Directory"${g.mode === "Directory" ? " selected" : ""}>Listing only</option>
+            <option value="Info"${g.mode === "Info" ? " selected" : ""}>Info only</option>
           </select>
           <select aria-label="Category" onchange="netPatchGemach('${id}', { category: this.value }, this)">${catOpts}</select>
         </div>
-        <label class="switch-row"><input type="checkbox" ${g.active ? "checked" : ""} onchange="netPatchGemach('${id}', { active: this.checked }, this)" /> Visible on whgemachs.org</label>
+        <div class="net-status">
+          <label for="ng-status-${id}">On whgemachs.org</label>
+          <select id="ng-status-${id}" onchange="netPatchGemach('${id}', NET_STATUS[this.value], this)">
+            <option value="live"${g.active && !g.comingSoon ? " selected" : ""}>Live</option>
+            <option value="soon"${g.active && g.comingSoon ? " selected" : ""}>Coming soon — listed, not searchable, no requests</option>
+            <option value="hidden"${!g.active ? " selected" : ""}>Hidden</option>
+          </select>
+        </div>
       </div>`;
     }).join("");
   }
 
+  const NET_STATUS = {
+    live: { active: true, comingSoon: false },
+    soon: { active: true, comingSoon: true },
+    hidden: { active: false, comingSoon: false },
+  };
   async function netPatchGemach(id, patch, control) {
     const g = netStore.gemach.get(id);
     if (!g) return;

@@ -9,7 +9,7 @@ import { parseAttrDefs } from "./attributes.js";
 const gemachMemo = new Map(); // slug -> { g, at }  (plain data only; per-isolate, 60s)
 
 const nonBlank = v => (typeof v === "string" ? (v.trim() ? v : null) : v ?? null);
-const GEMACH_MODES = new Set(["Full", "Directory"]);
+const GEMACH_MODES = new Set(["Full", "Directory", "Info"]); // Online requests / Listing only / Info only
 const CONTACT_METHODS = ["Call", "Text", "WhatsApp", "Email"];
 const REQUEST_STYLES = ["Dates", "Event", "Appointment"];
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
@@ -68,6 +68,8 @@ function gemachFromRecord(r) {
     logoDarkUrl: /^https:\/\//i.test(nonBlank(f["Logo On Dark URL"]) || "") ? nonBlank(f["Logo On Dark URL"]) : null,
     communityIds: (f.Community || []).map(linkedId),
     itemAttributes: parseAttrDefs(f["Item Attributes"]),
+    comingSoon: !!f["Coming Soon"],                              // listed, not searchable, no requests (only meaningful when active)
+    browseCategoryIds: (f["Browse Categories"] || []).map(linkedId).filter(Boolean),
   };
 }
 

@@ -886,7 +886,7 @@ await t("r4 GET /admin/network/gemachs: all gemachs sorted by name with counts",
   const d = await (await req(tokNet, "GET", "/admin/network/gemachs")).json();
   assert.deepEqual(d.map(g => g.name), [...d.map(g => g.name)].sort((a, b) => a.localeCompare(b)));
   const a = d.find(g => g.id === A.id);
-  assert.deepEqual(Object.keys(a).sort(), ["active", "adminCount", "category", "displayOrder", "email", "id", "itemCount", "mode", "name", "slug"]);
+  assert.deepEqual(Object.keys(a).sort(), ["active", "adminCount", "category", "comingSoon", "displayOrder", "email", "id", "itemCount", "mode", "name", "slug"]);
   assert.equal(a.adminCount, 3, "Barry + Demoted + Vol are active admins of A");
   assert.ok(d.some(g => g.slug === "hidden-one" && g.active === false && g.category === "Baby"));
 });
@@ -1671,6 +1671,66 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     const d = await (await call("/public/gemach/wh-medical?attrs=2")).json();
     assert.deepEqual(d.gemach.itemAttributes, []);
     assert.ok(d.items.every(i => !("attributes" in i)));
+  });
+}
+
+// ── Status "Coming soon" + type "Info only" ──
+{
+  const CS = { id: "recCOMINGSOON0001", slug: "soon-gemach" }, IN = { id: "recINFOONLY000001", slug: "info-gemach" };
+  DB.Gemachs.push(
+    rec(CS.id, { Name: "Soon Gemach", Slug: CS.slug, Active: true, Mode: "Full", Email: "soon@example.com", Phone: "(516) 555-0111" }),
+    rec(IN.id, { Name: "Info Gemach", Slug: IN.slug, Active: true, Mode: "Info", Email: "info@example.com", Phone: "(516) 555-0122", "Gemach Info": "Call Sarah for sizes." }));
+  DB["Item Types"].push(
+    rec("recCSTYPE00000001", { Name: "Soon Item", Active: true, Gemach: [CS.id], "Gemach Slug": [CS.slug] }),
+    rec("recINTYPE00000001", { Name: "Info Item", Active: true, Gemach: [IN.id], "Gemach Slug": [IN.slug] }));
+  const HI = { ...auth(tokNet), "X-Gemach": IN.slug, "Content-Type": "application/json" };
+
+  await t("status: Network Admin sets Coming soon; public data carries it; requests refused", async () => {
+    let r = await req(tokNet, "PATCH", `/admin/network/gemachs/${CS.id}`, { comingSoon: true });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).comingSoon, true);
+    assert.equal(DB.Gemachs.find(x => x.id === CS.id).fields["Coming Soon"], true);
+    assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${CS.id}`, { comingSoon: "yes" })).status, 400);
+    __WHG_TEST__.clearMemo();
+    const d = await (await call(`/public/gemach/${CS.slug}?cs=1`)).json();
+    assert.equal(d.gemach.comingSoon, true);
+    assert.equal(d.items.length, 1, "items still shown as a preview");
+    const dir = await (await call("/public/directory?cs=1")).json();
+    assert.equal(dir.gemachs.find(g => g.slug === CS.slug).comingSoon, true);
+    assert.equal(dir.gemachs.find(g => g.slug === "wh-medical").comingSoon, false);
+    r = await post("/submit-request", { gemach: CS.slug, name: "X", phone: "5165551234", preferredContact: "Phone", itemsRequested: ["recCSTYPE00000001"], neededFrom: "2030-01-01" });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /doesn't take online requests/);
+    assert.ok(!DB.Requests.some(x => (x.fields["Gemach Slug"] || [])[0] === CS.slug));
+  });
+
+  await t("type: Info only — no items published, no requests; mode settable by Network Admin", async () => {
+    __WHG_TEST__.clearMemo();
+    const d = await (await call(`/public/gemach/${IN.slug}?in=1`)).json();
+    assert.equal(d.gemach.mode, "Info"); assert.deepEqual(d.items, []);
+    assert.equal(d.gemach.gemachInfo, "Call Sarah for sizes.");
+    const dir = await (await call("/public/directory?in=1")).json();
+    assert.deepEqual(dir.gemachs.find(g => g.slug === IN.slug).items, []);
+    const r = await post("/submit-request", { gemach: IN.slug, name: "X", phone: "5165551234", preferredContact: "Phone", itemsRequested: ["recINTYPE00000001"], neededFrom: "2030-01-01" });
+    assert.equal(r.status, 400);
+    const p = await req(tokNet, "PATCH", `/admin/network/gemachs/${CS.id}`, { mode: "Info" });
+    assert.equal(p.status, 200); assert.equal((await p.json()).mode, "Info");
+    await req(tokNet, "PATCH", `/admin/network/gemachs/${CS.id}`, { mode: "Full" });
+    assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${CS.id}`, { mode: "Other" })).status, 400);
+  });
+
+  await t("browse categories: saved from Settings (active categories only) and published", async () => {
+    let r = await call("/admin/gemach", { method: "PATCH", headers: HI, body: JSON.stringify({ browseCategoryIds: ["recCAT0000000000A", "recCAT0000000000C", "recCAT0000000000A"] }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.deepEqual((await r.json()).browseCategoryIds, ["recCAT0000000000A", "recCAT0000000000C"]);
+    for (const bad of [["recCAT0000000000D"], ["recNOPE0000000000"], ["nope"], "recCAT0000000000A"]) {
+      r = await call("/admin/gemach", { method: "PATCH", headers: HI, body: JSON.stringify({ browseCategoryIds: bad }) });
+      assert.equal(r.status, 400, JSON.stringify(bad));
+    }
+    __WHG_TEST__.clearMemo();
+    const dir = await (await call("/public/directory?bc=1")).json();
+    assert.deepEqual(dir.gemachs.find(g => g.slug === IN.slug).browseCategoryIds, ["recCAT0000000000A", "recCAT0000000000C"]);
+    r = await call("/admin/gemach", { method: "PATCH", headers: HI, body: JSON.stringify({ browseCategoryIds: [] }) });
+    assert.equal(r.status, 200); assert.deepEqual((await r.json()).browseCategoryIds, []);
   });
 }
 

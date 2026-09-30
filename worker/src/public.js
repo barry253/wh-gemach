@@ -74,6 +74,8 @@ function publicGemach(g, communityName) {
     requestStyle: g.requestStyle || "Dates", eventLabel: g.eventLabel || DEFAULT_EVENT_LABEL,
     pickupDaysBefore: g.pickupDaysBefore ?? 1, returnDaysAfter: g.returnDaysAfter ?? 1, shabbosAdjust: !!g.shabbosAdjust,
     itemAttributes: g.itemAttributes || [],
+    comingSoon: !!g.comingSoon,
+    browseCategoryIds: g.browseCategoryIds || [],
   };
 }
 
@@ -130,7 +132,7 @@ async function buildDirectory(db) {
     categories,
     gemachs: gemachs.map(g => ({
       ...publicGemach(g, communityName[g.communityIds[0]]),
-      items: typesByGemach[g.id] || [],
+      items: g.mode === "Info" ? [] : typesByGemach[g.id] || [], // Info only: no online listings
     })),
     generatedAt: new Date().toISOString(),
   };
@@ -153,7 +155,7 @@ function gemachBuilder(db, slug) {
     const g = await loadGemachBySlug(db, slug);
     if (!g || !g.active) return { status: 404, data: { error: "Not found" } };
     const [items, communities, categories] = await Promise.all([
-      loadInventory(db, g, { withCategory: true, withBookings: true }),
+      g.mode === "Info" ? [] : loadInventory(db, g, { withCategory: true, withBookings: true }), // Info only: no online listings
       fetchByIds(db, T.COMMUNITIES, g.communityIds.slice(0, 1), { fields: ["Name"] }),
       loadCategories(db),
     ]);

@@ -766,3 +766,26 @@ fieldset { border: 0; }
 .qty-row .qty-note, .qty-row .field-error { grid-column: 1 / -1; margin: 0; font-size: .8rem; color: var(--muted); }
 .qty-row .qty-note.warn { color: var(--amber); }
 .qty-row .field-error { color: var(--red); }
+
+/* Status "Coming soon" + type "Info only" */
+.chip.chip-soon { background: #FDF1E3; color: #8A4B0F; }
+.badge-soon { color: #8A4B0F; background: #FDF1E3; }
+.soon-banner {
+  display: flex; flex-wrap: wrap; gap: .35rem .6rem; align-items: baseline;
+  background: #FDF1E3; border: 1px solid #F1D3AE; color: #5C2E06; border-radius: var(--radius);
+  padding: .8rem 1rem; margin-top: 1rem; font-size: .93rem;
+}
+.soon-banner strong { font-family: var(--font-display); font-size: 1.05rem; }
+.info-only {
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+  border-top: 4px solid var(--t-strong, var(--primary));
+  padding: 1.4rem 1.3rem; margin-top: 1rem; display: grid; gap: 1rem;
+}
+.info-only h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.45rem; line-height: 1.2; }
+.info-only .io-prose { font-size: 1.05rem; line-height: 1.65; }
+.io-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.io-actions .btn { min-height: 48px; }
+.io-detail { font-weight: 400; opacity: .85; margin-left: .15rem; }
+@media (max-width: 520px) {
+  .io-actions .btn { flex: 1 1 100%; justify-content: center; }
+}

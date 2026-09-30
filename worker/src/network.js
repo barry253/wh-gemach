@@ -61,7 +61,7 @@ function uniqueSlug(base, taken) {
 
 async function netGemachRows(db) {
   const [gemachs, admins] = await Promise.all([
-    db.listAll(T.GEMACHS, { fields: ["Name", "Slug", "Active", "Mode", "Category", "Display Order", "Items", "Email"] }),
+    db.listAll(T.GEMACHS, { fields: ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email"] }),
     db.listAll(T.ADMINS, { fields: ["Gemachs", "Active"] }),
   ]);
   const adminCount = {};
@@ -70,7 +70,7 @@ async function netGemachRows(db) {
     const f = r.fields;
     const mode = selName(f.Mode);
     return {
-      id: r.id, slug: f.Slug || null, name: f.Name || "", active: !!f.Active,
+      id: r.id, slug: f.Slug || null, name: f.Name || "", active: !!f.Active, comingSoon: !!f["Coming Soon"],
       mode: GEMACH_MODES.has(mode) ? mode : "Full", category: selName(f.Category) || null,
       displayOrder: typeof f["Display Order"] === "number" ? f["Display Order"] : null,
       itemCount: (f.Items || []).length, adminCount: adminCount[r.id] || 0, email: f.Email || null,
@@ -99,7 +99,7 @@ async function netCreateGemach(c) {
   if (name.length > 100) return json({ error: "Name is too long (max 100 characters)." }, 400);
   if (!GEMACH_CATEGORIES.includes(body.category)) return json({ error: `Category must be one of: ${GEMACH_CATEGORIES.join(", ")}.` }, 400);
   const mode = body.mode === undefined ? "Full" : body.mode;
-  if (!GEMACH_MODES.has(mode)) return json({ error: "Mode must be Full or Directory." }, 400);
+  if (!GEMACH_MODES.has(mode)) return json({ error: "Mode must be Full, Directory or Info." }, 400);
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
   if (email && (!EMAIL_RE.test(email) || email.length > 200)) return json({ error: "Email doesn't look valid." }, 400);
@@ -161,8 +161,12 @@ async function netUpdateGemach(c, id) {
     if (typeof body.active !== "boolean") return json({ error: "Active must be true or false." }, 400);
     f["Active"] = body.active;
   }
+  if (body.comingSoon !== undefined) { // with Active on: listed as "Coming soon"
+    if (typeof body.comingSoon !== "boolean") return json({ error: "Coming soon must be true or false." }, 400);
+    f["Coming Soon"] = body.comingSoon;
+  }
   if (body.mode !== undefined) {
-    if (!GEMACH_MODES.has(body.mode)) return json({ error: "Mode must be Full or Directory." }, 400);
+    if (!GEMACH_MODES.has(body.mode)) return json({ error: "Mode must be Full, Directory or Info." }, 400);
     f["Mode"] = body.mode;
   }
   if (body.category !== undefined) {

@@ -94,6 +94,14 @@
       g._appt = g._style === "Appointment";
       g.items = Array.isArray(g.items) ? g.items : [];
       g._hay = makeHay([g.name, g.tagline, g.category, g.description, g.communityName]);
+      g._soon = W.isComingSoon(g);
+      g._info = W.isInfoOnly(g);
+      // Categories a gemach is listed under without item matches: its chosen "Browse categories",
+      // plus (Coming soon) the categories of its preview items.
+      g._cats = {};
+      (Array.isArray(g.browseCategoryIds) ? g.browseCategoryIds : []).forEach(function (id) { if (catById(id)) g._cats[id] = 1; });
+      if (g._soon) g.items.forEach(function (it) { if (it.categoryId && catById(it.categoryId)) g._cats[it.categoryId] = 1; });
+      if (g._soon) return; // Coming soon: not in item search
       g.items.forEach(function (it, ii) {
         var c = it.categoryId ? catById(it.categoryId) : null;
         index.push({
@@ -114,6 +122,12 @@
       s.gemachs[e.g.id] = 1;
       s.items++;
       if (!e.g._dir && !e.g._appt) s.avail += Math.max(0, e.item.availableCount || 0);
+    });
+    data.gemachs.forEach(function (g) {
+      Object.keys(g._cats || {}).forEach(function (id) {
+        var s = stats[id] || (stats[id] = { gemachs: {}, avail: 0, items: 0 });
+        s.gemachs[g.id] = 1;
+      });
     });
     var cats = data.categories.filter(function (c) { return stats[c.id]; })
       .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || ""), "en", { sensitivity: "base" }); }); // A–Z
@@ -162,7 +176,12 @@
     gemachList.innerHTML = data.gemachs.map(function (g) {
       var meta = [];
       if (g.category) meta.push('<span class="chip">' + esc(g.category) + "</span>");
-      if (g._appt && !g._dir) {
+      if (g._soon) meta.push('<span class="chip chip-soon">Coming soon</span>');
+      if (g._info) {
+        meta.push('<span class="stat">Contact for details</span>');
+      } else if (g._soon) {
+        meta.push('<span class="stat">' + (g.items.length ? W.plural(g.items.length, "item") + " to preview · " : "") + "Not taking requests yet</span>");
+      } else if (g._appt && !g._dir) {
         meta.push('<span class="stat">' + (g.items.length ? "<strong>" + W.plural(g.items.length, "item") + "</strong> · " : "") + "By appointment</span>");
       } else if (g._dir) {
         meta.push('<span class="stat">' + (g.items.length ? W.plural(g.items.length, "item") + " listed · " : "") + "Contact directly for availability</span>");
@@ -224,8 +243,18 @@
     var gemachOnly = [];
     if (toks.length && !cat) {
       data.gemachs.forEach(function (g) {
+        if (g._soon) return; // Coming soon: not in text search
         var ok = toks.every(function (t) { return tokMatch(t, g._hay); });
         if (ok && !hits.some(function (h) { return h.e.g === g; })) gemachOnly.push(g);
+      });
+    }
+    // Category browsing also lists gemachs linked to the category without matching items
+    // (Info only, Coming soon). With a text search too, only ones whose details match (never Coming soon).
+    if (cat) {
+      data.gemachs.forEach(function (g) {
+        if (!g._cats || !g._cats[cat.id] || hits.some(function (h) { return h.e.g === g; })) return;
+        if (toks.length && (g._soon || !toks.every(function (t) { return tokMatch(t, g._hay); }))) return;
+        gemachOnly.push(g);
       });
     }
 
@@ -250,6 +279,7 @@
     list.sort(function (a, b) {
       return ((b.hasAvail ? 1 : 0) - (a.hasAvail ? 1 : 0)) ||
         ((a.g._dir ? 1 : 0) - (b.g._dir ? 1 : 0)) ||
+        ((a.g._soon ? 1 : 0) - (b.g._soon ? 1 : 0)) ||
         (b.best - a.best) || (a.g._order - b.g._order);
     });
     return { groups: list, count: hits.length, partial: partial, cat: cat };
@@ -339,7 +369,7 @@
           '<span class="result-thumb"><span aria-hidden="true">🏠</span></span>' +
           '<span class="result-main"><span class="result-name">View gemach &amp; contact info</span>' +
           '<span class="result-sub">' + esc(g.tagline || g.name) + "</span></span>" +
-          (g._dir ? '<span class="badge badge-dir">Directory</span>' : "") + W.ICONS.chevron + "</a></li>";
+          (g._soon ? '<span class="badge badge-soon">Coming soon</span>' : g._info ? '<span class="badge badge-dir">Info</span>' : g._dir ? '<span class="badge badge-dir">Directory</span>' : "") + W.ICONS.chevron + "</a></li>";
       }
       return '<section class="result-group" aria-label="' + esc(g.name) + '">' +
         '<div class="result-group-head"><h3>' + esc(g.name) + "</h3>" +

@@ -1,7 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { AirtableError, fetchByIds } from "./airtable.js";
 import { validateAttrDefs } from "./attributes.js";
-import { NETWORK_ADMIN_ROLE, T } from "./config.js";
+import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
 import { CONTACT_METHODS, HEX_RE, REQUEST_STYLES, gemachFromRecord, gemachMemo } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { NAME_TAKEN, gemachNameTaken } from "./network.js";
@@ -95,6 +95,7 @@ const GEMACH_EDITABLE = {
   appointmentMessage: ["Appointment Message", "long"],
   logoUrl:            ["Logo URL", "logo"],
   itemAttributes:     ["Item Attributes", "attrs"],
+  browseCategoryIds:  ["Browse Categories", "cats"],
 };
 const GEMACH_LABELS = {
   tagline: "Tagline", description: "Description", phone: "Phone", email: "Email", whatsapp: "WhatsApp",
@@ -104,7 +105,7 @@ const GEMACH_LABELS = {
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
   depositRequired: "Deposit required", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after",
-  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", logoUrl: "Logo", itemAttributes: "Item filters",
+  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
 const MAX_LINE = 200, MAX_LONG = 2000;
@@ -124,6 +125,12 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
     if (kind === "bool") {
       if (typeof v !== "boolean") return { error: `${label} must be true or false.` };
       fields[field] = v;
+      continue;
+    }
+    if (kind === "cats") { // checked against active categories in handleUpdateAdminGemach
+      if (v === null || v === "") v = [];
+      if (!Array.isArray(v) || v.length > 12 || !v.every(x => typeof x === "string" && REC_RE.test(x))) return { error: "Browse categories must be a list of categories (up to 12)." };
+      fields[field] = [...new Set(v)];
       continue;
     }
     if (kind === "attrs") {
@@ -230,6 +237,11 @@ async function handleUpdateAdminGemach({ db, g, env, user, request }) {
   const { fields, error } = validateGemachPatch(body, { current, logoPrefix: logoPrefixFor(env, g) });
   if (error) return json({ error }, 400);
   if (fields["Name"] !== undefined && await gemachNameTaken(db, fields["Name"], g.id)) return json({ error: NAME_TAKEN }, 409);
+  if (fields["Browse Categories"]?.length) {
+    const cats = await fetchByIds(db, T.PRODUCT_CATEGORIES, fields["Browse Categories"], { fields: ["Active"] });
+    const ok = new Set(cats.filter(r => r.fields?.Active).map(r => r.id));
+    if (fields["Browse Categories"].some(id => !ok.has(id))) return json({ error: "Unknown browse category." }, 400);
+  }
   let rec;
   try {
     rec = await db.update(T.GEMACHS, g.id, fields);
