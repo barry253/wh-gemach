@@ -18,7 +18,8 @@ const RES = [
     itemTypeName: "Family Sweatshirt", itemTypeId: "recTYPEADD0000001", isQuantity: false, isAddon: true, price: 40, quantity: 4, reservationStart: "2026-11-01", reservationEnd: "2026-11-03" },
 ];
 const APPTS = [{ id: "recREQAP000000009", requestId: "R-109", name: "Appt Person", phone: "5165556666", email: "ap@example.com", preferredContact: "Email", appointmentAt: "2026-10-04T23:00:00.000Z", itemNames: [] }];
-const TYPES = [{ id: "recTYPEGOWN000001", name: "Navy A-line", description: "", displayOrder: 1, active: true, itemCount: 0, tracking: "Units", price: null, quantityOwned: 0, outOfService: 0, attributes: { size: ["4"], Color: ["Navy", "Teal"] } }];
+const TYPES = [{ id: "recTYPEGOWN000001", name: "Navy A-line", description: "", displayOrder: 1, active: true, itemCount: 0, tracking: "Units", price: null, quantityOwned: 0, outOfService: 0, attributes: { size: ["4"], Color: ["Navy", "Teal"] } },
+  { id: "recTYPEGOWN000002", name: "Gold Mermaid", description: "", displayOrder: 2, active: true, itemCount: 0, tracking: "Units", price: null, quantityOwned: 0, outOfService: 0, attributes: {}, r2PhotoUrl: "https://photos.test/gold.svg" }];
 const HIST = { records: [{ id: "recH1", timestamp: "nope", eventType: "Loan Created", borrower: "X" }, { id: "recH2", timestamp: null, eventType: "Item Returned" }], offset: null };
 const G = {
   id: "recA", slug: "wh-medical", name: "West Hempstead Medical Gemach", email: "gemach@example.com", phone: "(718) 986-7345",
@@ -36,6 +37,7 @@ async function setup() {
   await page.route("https://accounts.google.com/**", r => r.fulfill({ contentType: "text/javascript", body: "" }));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ body: "" }));
   await page.route("http://admin.test/**", r => r.fulfill({ contentType: "text/html", body: html }));
+  await page.route("https://photos.test/**", r => r.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#c9a"/></svg>' }));
   await page.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
     const req = r.request(); const u = new URL(req.url()); const p = u.pathname;
     let body = null; try { body = JSON.parse(req.postData() || "null"); } catch {}
@@ -116,6 +118,15 @@ await page.screenshot({ path: "shot-status-settings-cats.png" });
 await page.evaluate(() => switchTab("inventory"));
 await page.waitForSelector(".inventory-group");
 ok(/Size 4 · Color Navy/.test(await page.$eval(".inventory-group", e => e.innerText)), "inventory shows values in the gemach's spelling");
+const thumbs = await page.$$eval(".inventory-group", els => els.map(g => { const t = g.querySelector(".inv-thumb"); return t.tagName === "IMG" ? (t.naturalWidth > 0 ? "img:" + t.getAttribute("src") : "img-not-loaded") : t.textContent; }));
+ok(thumbs[0] === "No photo", "missing photo flagged in the row: " + thumbs);
+ok(thumbs[1] === "img:https://photos.test/gold.svg", "photo thumbnail shown in the row: " + thumbs);
+await page.locator("#inventory-list").screenshot({ path: "shot-inventory-thumbs.png" });
+await page.locator(".inventory-group .inv-thumb-missing").first().click();
+await page.waitForSelector("#it-attrs .attr-chip");
+ok(await page.textContent("#item-type-sheet-subtitle") === "Navy A-line", "tapping 'No photo' opens that item type to add one");
+await page.evaluate(() => closeSheet("item-type-sheet"));
+await page.waitForTimeout(300);
 await page.click(".inventory-group [title='Edit item type']");
 await page.waitForSelector("#it-attrs .attr-chip");
 const pressed = await page.$$eval("#it-attrs .attr-chip[aria-pressed=true]", els => els.map(e => e.textContent));

@@ -839,6 +839,10 @@
       text-decoration-color: var(--muted);
     }
 
+    .inv-thumb { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); background: var(--grey, #f4f5f7); display: block; }
+    .inv-thumb-missing { display: inline-flex; align-items: center; justify-content: center; border: 1.5px dashed #D97706; background: #FFFBEB; color: #92400E;
+      font-size: 0.55rem; font-weight: 600; line-height: 1.05; text-align: center; padding: 0; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: 0.02em; }
+    .inventory-group--inactive .inv-thumb { opacity: 0.5; }
     .inventory-group-title {
       font-size: 0.82rem;
       font-weight: 600;
@@ -3136,6 +3140,7 @@
         <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
           <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
             <span class="inventory-group-chevron">▾</span>
+            ${invThumb(type, tid)}
             <span class="inventory-group-title">${esc(type.name)}</span>
             <span class="tag tag-addon">Add-on${type.price != null ? ` · ${esc(fmtMoney(type.price))}` : ""}</span>
             ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
@@ -3154,6 +3159,7 @@
         <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
           <div style="display:flex;align-items:center;gap:0.5rem">
             <span class="inventory-group-chevron">▾</span>
+            ${invThumb(type, tid)}
             <span class="inventory-group-title">${esc(type.name)}</span>
             <span class="badge">${esc(type.quantityOwned)}</span>
             ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
@@ -3179,6 +3185,7 @@
         <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
           <div style="display:flex;align-items:center;gap:0.5rem">
             <span class="inventory-group-chevron">▾</span>
+            ${invThumb(type, tid)}
             <span class="inventory-group-title">${esc(type.name)}</span>
             <span class="badge">${items.length}</span>
             ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
@@ -4423,6 +4430,14 @@
       b.setAttribute("aria-pressed", sel.has(v));
     });
     itemAttrOriginal = itemAttrsJson();
+  }
+  /** Small item-type photo for the Inventory row; a dashed "No photo" box (tap to add one) when missing. */
+  function invThumb(type, tid) {
+    const url = type.r2PhotoUrl || type.photoUrl;
+    const safe = url && /^https:\/\//i.test(url) ? url : null;
+    return safe
+      ? `<img class="inv-thumb" src="${esc(safe)}" alt="" loading="lazy" width="36" height="36" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'inv-thumb inv-thumb-missing',textContent:'Broken',title:'Photo link is broken — edit to replace it'}))" />`
+      : `<button type="button" class="inv-thumb inv-thumb-missing" title="No photo — tap to add one" aria-label="Add a photo for ${esc(type.name)}" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">No photo</button>`;
   }
   function attrSummary(type) {
     const defs = GEMACH?.itemAttributes || [];
