@@ -4019,9 +4019,18 @@
 
   async function loadNetwork() {
     if (!isNetworkAdmin()) return;
-    const [g, a, c] = await Promise.all([
-      api("/admin/network/gemachs"), api("/admin/network/admins"), api("/admin/network/categories"),
-    ].map(p => p.catch(e => ({ error: e.message }))));
+    // Coming back to the tab: show what we have right away, then refresh underneath.
+    if (NET.loadedAt) { renderNetGemachs(); fillAdminFilter(); renderNetAdmins(); renderNetCategories(); }
+    // One request for gemachs + admins + categories (3 Airtable reads instead of ~9 across three requests).
+    let ov = await api("/admin/network/overview").catch(e => ({ error: e.message }));
+    let g, a, c;
+    if (ov && Array.isArray(ov.gemachs)) ({ gemachs: g, admins: a, categories: c } = ov);
+    else if (ov && /not found/i.test(ov.error || "")) { // API not updated yet: the old three calls
+      [g, a, c] = await Promise.all([
+        api("/admin/network/gemachs"), api("/admin/network/admins"), api("/admin/network/categories"),
+      ].map(p => p.catch(e => ({ error: e.message }))));
+    } else g = a = c = ov || { error: "Could not load" };
+    if (Array.isArray(g) && Array.isArray(a) && Array.isArray(c)) NET.loadedAt = Date.now();
     for (const [key, data, el] of [["gemachs", g, "net-gemachs"], ["admins", a, "net-admins"], ["categories", c, "net-categories"]]) {
       if (!Array.isArray(data)) {
         document.getElementById(el).innerHTML = `<div class="empty-state">${esc(data?.error || "Could not load")}</div>`;

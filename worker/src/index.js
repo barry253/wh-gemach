@@ -102,13 +102,16 @@ export default {
     // Keep a copy of a public request's body so a failed save can be alerted with the person's details.
     const submitCopy = isSubmit ? request.clone() : null;
     let res, thrown = null;
+    const started = Date.now();
+    const db = makeDb(env);
     try {
-      res = await route(request, env, ctx, url, path, method);
+      res = await route(request, env, ctx, url, path, method, db);
     } catch (e) {
       thrown = e;
       console.error("Unhandled error:", e && (e.stack || e.message), e && e.detail ? JSON.stringify(e.detail) : "");
       res = json({ error: "Server error" }, 500);
     }
+    res = withTiming(res, db.stats, Date.now() - started, method, path);
     if (res.status >= 500 && path !== "/health") {
       ctx.waitUntil(alertServerError(env, { method, path, res: res.clone(), thrown, submitCopy }).catch(e => console.error("alert failed:", e.message)));
     }
@@ -127,8 +130,25 @@ if (globalThis.__WHG_TEST__) {
   });
 }
 
-async function route(request, env, ctx, url, path, method) {
-  const db = makeDb(env);
+/**
+ * Server-Timing on every response (visible in the browser's Network tab), and a log line for slow
+ * requests (Workers Logs) saying how much of the time was Airtable and whether Airtable rate-limited us.
+ */
+function withTiming(res, st, totalMs, method, path) {
+  const desc = `${st.calls} call${st.calls === 1 ? "" : "s"}${st.retries ? `, ${st.retries} rate-limited` : ""}`;
+  const timing = `total;dur=${totalMs}, airtable;dur=${st.ms};desc="${desc}", queue;dur=${st.waitMs}`;
+  if (totalMs > 2000 && path !== "/health") {
+    console.warn(`slow request ${method} ${path}: ${totalMs}ms — Airtable ${st.calls} calls, ${st.ms}ms total, slowest ${st.slowest}ms (${st.slowestPath}), ` +
+      `${st.retries} rate-limited retries, ${st.waitMs}ms queued`);
+  }
+  try {
+    const out = new Response(res.body, res);
+    out.headers.set("Server-Timing", timing);
+    return out;
+  } catch { return res; }
+}
+
+async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
 
   // Public endpoints
   if (method === "GET"  && path === "/health")           return handleHealth(db);

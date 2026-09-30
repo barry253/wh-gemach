@@ -39,8 +39,23 @@ const median = arr => {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 };
 
+// "How it's going" covers 30–365 days, so a copy up to 5 minutes old is fine; it saves 7+ Airtable reads
+// on every admin page load (per worker isolate). ?fresh=1 skips the copy.
+const STATS_TTL_MS = 5 * 60 * 1000;
+const statsMemo = new Map(); // `${gemachId}|${days}` -> { data, at }
+
 async function handleStats({ db, g, url }) {
   const days = [30, 90, 365].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 90;
+  const key = `${g.id}|${days}`;
+  const hit = statsMemo.get(key);
+  if (hit && Date.now() - hit.at < STATS_TTL_MS && url.searchParams.get("fresh") !== "1") return json({ ...hit.data, cachedAt: new Date(hit.at).toISOString() });
+  const data = await buildStats(db, g, days);
+  statsMemo.set(key, { data, at: Date.now() });
+  if (statsMemo.size > 200) statsMemo.delete(statsMemo.keys().next().value);
+  return json(data);
+}
+
+async function buildStats(db, g, days) {
   const nowMs = Date.now();
   const sinceIso = new Date(nowMs - days * DAY_MS).toISOString();
   const sinceDate = addDays(nyToday(), -days);
@@ -130,7 +145,7 @@ async function handleStats({ db, g, url }) {
     .map(([id, b]) => ({ name: typeName.get(id) || "Item", count: b.neverLent, units: b.units }))
     .sort((a, b) => b.count - a.count);
 
-  return json({
+  return {
     days,
     requests: { received: requests.length, confirmed: count("Converted"), declined: count("Declined"), waiting: count("New") },
     response: {
@@ -143,7 +158,7 @@ async function handleStats({ db, g, url }) {
     loanLength,
     loansReturned: [...lengths.values()].reduce((n, a) => n + a.length, 0),
     neverLent: { count: neverLentTypes.reduce((n, t) => n + t.count, 0), types: neverLentTypes.slice(0, 10) },
-  });
+  };
 }
 
-export { isOverdue, handleDashboard, median, handleStats };
+export { isOverdue, handleDashboard, median, handleStats, statsMemo };

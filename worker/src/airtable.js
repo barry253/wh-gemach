@@ -28,16 +28,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function makeDb(env) {
   const limit = makeLimiter(AIRTABLE_CONCURRENCY);
   const tpath = t => encodeURIComponent(t);
+  // Per-request tally, reported in the Server-Timing header and in the slow-request log line.
+  const stats = { calls: 0, retries: 0, ms: 0, waitMs: 0, slowest: 0, slowestPath: "" };
 
   function request(path, { method = "GET", body } = {}) {
+    const queued = Date.now();
     return limit(async () => {
+      stats.waitMs += Date.now() - queued;
       for (let attempt = 0; ; attempt++) {
+        const t0 = Date.now();
+        stats.calls++;
         const res = await fetch(`${AIRTABLE_API}/${env.AIRTABLE_BASE_ID}/${path}`, {
           method,
           headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}`, "Content-Type": "application/json" },
           body: body ? JSON.stringify(body) : undefined,
         });
+        const took = Date.now() - t0;
+        stats.ms += took;
+        if (took > stats.slowest) { stats.slowest = took; stats.slowestPath = `${method} ${path.split("?")[0]}`; }
         if ((res.status === 429 || res.status === 503) && attempt < 3) {
+          stats.retries++;
+          console.warn(`Airtable ${res.status} (rate limited) on ${method} ${path.split("?")[0]} — retry ${attempt + 1}`);
           await res.text().catch(() => {});
           const ra = Number(res.headers.get("Retry-After"));
           await sleep(ra > 0 ? Math.min(ra, 30) * 1000 : 1000 * 2 ** attempt + Math.random() * 250);
@@ -88,7 +99,7 @@ function makeDb(env) {
   }
 
   return {
-    request, call, listPage, listAll, get,
+    stats, request, call, listPage, listAll, get,
     create: (table, fields) => call(tpath(table), { method: "POST", body: { fields } }),
     update: (table, id, fields) => call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }),
     del: (table, id) => call(`${tpath(table)}/${id}`, { method: "DELETE" }),

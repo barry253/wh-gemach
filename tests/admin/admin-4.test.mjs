@@ -59,6 +59,7 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
     if (p === "/admin/catalog/items/recITEM1" && M === "PATCH") return J({ id: "recITEM1", fields: body });
     if (p === "/admin/catalog/item-types/recT1" && M === "PATCH") return J({ id: "recT1", fields: {} });
     if (p.startsWith("/admin/network/") && role !== "Network Admin") return J({ error: "Network admins only." }, 403);
+    if (p === "/admin/network/overview" && M === "GET") return st.oldApi ? J({ error: "Not found" }, 404) : J({ gemachs: st.netGemachs, admins: st.admins, categories: st.cats });
     if (p === "/admin/network/gemachs" && M === "GET") return J(st.netGemachs);
     if (p === "/admin/network/gemachs" && M === "POST") {
       const g = { id: "recNEW", slug: body.slug || "kallah-gowns", name: body.name, active: false, mode: body.mode, category: body.category, displayOrder: 100, itemCount: 0, adminCount: 0, email: body.email || null };
@@ -163,7 +164,7 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
 
 // ── Network Admin ──
 {
-  const { page, errors, reqs } = await setup("Network Admin");
+  const { page, errors, reqs, st } = await setup("Network Admin");
   const tabs = await page.$$eval(".nav-tab", ts => ts.filter(t => !t.hidden).map(t => t.textContent.trim()));
   ok(JSON.stringify(tabs) === JSON.stringify(["Dashboard", "Requests", "Reservations", "Loans", "Inventory", "History", "Settings", "Network"]), "tab order (network): " + tabs.join(", "));
   const opts = await page.$$eval("#gemach-switcher option", o => o.map(x => x.textContent));
@@ -173,6 +174,20 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.waitForSelector("#ng-row-recA");
   ok((await page.textContent("#net-gemachs")).includes("Hidden <b>Gemach</b>") && await page.$("#net-gemachs b") === null, "gemach names escaped");
   ok((await page.textContent("#ng-row-recA")).includes("12 items · 2 admins"), "counts shown");
+  const netGets = reqs.filter(r => r.method === "GET" && r.path.startsWith("/admin/network/")).map(r => r.path);
+  ok(netGets.includes("/admin/network/overview") && !netGets.some(p => /\/(gemachs|admins|categories)$/.test(p)), "Network tab loads with one overview request (+ searches): " + netGets.join(", "));
+  // Back to the tab: shown straight away from what's loaded, refreshed underneath
+  await page.evaluate(() => switchTab("dashboard"));
+  await page.click("#tab-network");
+  ok(await page.$("#ng-row-recA") !== null, "tab re-shows immediately");
+  // An older API without /overview: falls back to the three calls
+  st.oldApi = true;
+  await page.evaluate(() => switchTab("dashboard"));
+  await page.click("#tab-network");
+  await page.waitForTimeout(400);
+  ok(reqs.some(r => r.path === "/admin/network/gemachs") && reqs.some(r => r.path === "/admin/network/admins") && await page.$("#ng-row-recA") !== null, "fallback to the old endpoints works");
+  st.oldApi = false;
+  for (let i = errors.length - 1; i >= 0; i--) if (/status of 404/.test(errors[i])) errors.splice(i, 1); // the deliberate old-API 404
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: "shot-r4-network-gemachs.png" });
 

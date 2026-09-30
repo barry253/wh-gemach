@@ -4,7 +4,7 @@ import { sendAlert } from "./alerts.js";
 import { purgePublicCache } from "./cache.js";
 import { DEFAULT_ADMIN_URL, LEGACY_SLUG, NETWORK_ADMIN_ROLE, REC_RE, SLUG_RE, T } from "./config.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
-import { DEFAULT_THEME, GEMACH_MODES, byOrderThenName, gemachFromRecord, gemachMemo, gemachRef, liveNetMemo, selName } from "./gemachs.js";
+import { DEFAULT_THEME, GEMACH_MODES, byOrderThenName, gemachFromRecord, gemachMemo, gemachRef, isLiveNetworkAdminMemo, liveNetMemo, selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { netListSearches } from "./search.js";
 import { EMAIL_RE } from "./settings.js";
@@ -24,9 +24,12 @@ async function isLiveNetworkAdmin(db, email) {
 }
 
 async function networkDispatch(c, path, method) {
-  if (c.user.role !== NETWORK_ADMIN_ROLE || !(await isLiveNetworkAdmin(c.db, c.user.email))) {
-    return json({ error: "Network admins only." }, 403);
-  }
+  if (c.user.role !== NETWORK_ADMIN_ROLE) return json({ error: "Network admins only." }, 403);
+  // The overview reads the Admins table anyway and checks the role from it (one Airtable call fewer).
+  if (method === "GET" && path === "/admin/network/overview") return netOverview(c);
+  // Reads use the same ~60s per-isolate memo as gemach-scoped admin calls; changes always re-check live.
+  const live = method === "GET" ? await isLiveNetworkAdminMemo(c.db, c.user.email) : await isLiveNetworkAdmin(c.db, c.user.email);
+  if (!live) return json({ error: "Network admins only." }, 403);
   let m;
   if (method === "GET"   && path === "/admin/network/gemachs")    return netListGemachs(c);
   if (method === "POST"  && path === "/admin/network/gemachs")    return netCreateGemach(c);
@@ -59,9 +62,12 @@ function uniqueSlug(base, taken) {
   for (let i = 2; ; i++) { const s = `${base.slice(0, 60)}-${i}`; if (!taken.has(s)) return s; }
 }
 
-async function netGemachRows(db) {
-  const [gemachs, admins] = await Promise.all([
-    db.listAll(T.GEMACHS, { fields: ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email"] }),
+const NET_GEMACH_FIELDS = ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email"];
+const NET_ADMIN_FIELDS = ["Name", "Email", "Role", "Active", "Gemachs"];
+
+async function netGemachRows(db, pre = null) {
+  const [gemachs, admins] = pre ? [pre.gemachs, pre.admins] : await Promise.all([
+    db.listAll(T.GEMACHS, { fields: NET_GEMACH_FIELDS }),
     db.listAll(T.ADMINS, { fields: ["Gemachs", "Active"] }),
   ]);
   const adminCount = {};
@@ -80,6 +86,30 @@ async function netGemachRows(db) {
 
 async function netListGemachs({ db }) {
   return json(await netGemachRows(db));
+}
+
+/**
+ * GET /admin/network/overview — everything the Network tab shows except the search log, in one request:
+ * 3 Airtable reads in parallel (Gemachs, Admins, Categories) instead of ~9 across three requests.
+ * The Admins read doubles as the live Network-Admin check.
+ */
+async function netOverview({ db, user }) {
+  const [gemachs, admins, cats] = await Promise.all([
+    db.listAll(T.GEMACHS, { fields: NET_GEMACH_FIELDS }),
+    db.listAll(T.ADMINS, { fields: NET_ADMIN_FIELDS }),
+    db.listAll(T.PRODUCT_CATEGORIES, {}),
+  ]);
+  const email = String(user.email || "").toLowerCase();
+  const me = admins.find(r => r.fields.Active && String(r.fields.Email || "").toLowerCase() === email);
+  const ok = selName(me?.fields?.Role) === NETWORK_ADMIN_ROLE;
+  liveNetMemo.set(email, { ok, at: Date.now() });
+  if (!ok) return json({ error: "Network admins only." }, 403);
+  const idx = Object.fromEntries(gemachs.map(r => [r.id, { id: r.id, slug: r.fields.Slug || null, name: r.fields.Name || "", active: !!r.fields.Active }]));
+  return json({
+    gemachs: await netGemachRows(db, { gemachs, admins }),
+    admins: admins.map(r => adminRow(r, idx)).sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email)),
+    categories: cats.map(categoryRow).sort(byOrderThenName),
+  });
 }
 
 /** True when another gemach (not selfId) already uses this name (case-insensitive, trimmed). */
@@ -214,7 +244,7 @@ async function gemachIndex(db) {
 }
 
 async function netListAdmins({ db }) {
-  const [admins, idx] = await Promise.all([db.listAll(T.ADMINS, { fields: ["Name", "Email", "Role", "Active", "Gemachs"] }), gemachIndex(db)]);
+  const [admins, idx] = await Promise.all([db.listAll(T.ADMINS, { fields: NET_ADMIN_FIELDS }), gemachIndex(db)]);
   return json(admins.map(r => adminRow(r, idx)).sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email)));
 }
 
@@ -401,4 +431,4 @@ async function netUpdateCategory(c, id) {
   return json(categoryRow(rec));
 }
 
-export { GEMACH_CATEGORIES, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };
+export { GEMACH_CATEGORIES, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, netOverview, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };

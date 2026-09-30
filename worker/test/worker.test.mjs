@@ -1836,6 +1836,46 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
   });
 }
 
+// ── Speed: Network overview in one request; Server-Timing; stats reused for 5 minutes ──
+{
+  const airtableCalls = () => calls.filter(c => c.url.startsWith("https://api.airtable.com/")).length;
+  await t("network overview: gemachs + admins + categories in one request with 3 Airtable reads; role checked from it", async () => {
+    await Promise.allSettled(waits);
+    const n0 = calls.length;
+    const r = await req(tokNet, "GET", "/admin/network/overview");
+    assert.equal(r.status, 200, await r.clone().text());
+    const tables = new Set(calls.slice(n0).map(c => (c.url.match(/appTEST\/([^/?]+)/) || [])[1]).filter(Boolean).map(decodeURIComponent));
+    assert.deepEqual([...tables].sort(), ["Admins", "Gemachs", "Product Categories"], "reads just three tables (the fake Airtable pages in small chunks, so count tables not calls)");
+    const d = await r.json();
+    const g = await (await req(tokNet, "GET", "/admin/network/gemachs")).json();
+    const a = await (await req(tokNet, "GET", "/admin/network/admins")).json();
+    const c = await (await req(tokNet, "GET", "/admin/network/categories")).json();
+    assert.deepEqual(d.gemachs, g); assert.deepEqual(d.admins, a); assert.deepEqual(d.categories, c);
+    __WHG_TEST__.clearMemo();
+    assert.equal((await req(tokDemoted, "GET", "/admin/network/overview")).status, 403, "stale JWT, Airtable says not a network admin");
+    assert.equal((await req(tokenA, "GET", "/admin/network/overview")).status, 403);
+  });
+
+  await t("every response carries Server-Timing with the Airtable call count", async () => {
+    const r = await req(tokNet, "GET", "/admin/network/overview");
+    assert.match(r.headers.get("Server-Timing") || "", /^total;dur=\d+, airtable;dur=\d+;desc="\d+ calls", queue;dur=\d+$/);
+    const h = await call("/health");
+    assert.match(h.headers.get("Server-Timing") || "", /airtable;dur=\d+;desc="1 call"/);
+  });
+
+  await t("dashboard stats: second load within 5 minutes reuses the first (no Airtable reads); ?fresh=1 rebuilds", async () => {
+    const H = { ...auth(tokenA), "X-Gemach": A.slug };
+    const first = await (await call("/admin/stats?days=30", { headers: H })).json();
+    const n0 = airtableCalls();
+    const second = await (await call("/admin/stats?days=30", { headers: H })).json();
+    assert.ok(airtableCalls() - n0 <= 2, "only the session/gemach checks, not the stats reads");
+    assert.ok(second.cachedAt); assert.deepEqual({ ...second, cachedAt: undefined }, { ...first, cachedAt: undefined });
+    const n1 = airtableCalls();
+    const fresh = await (await call("/admin/stats?days=30&fresh=1", { headers: H })).json();
+    assert.ok(airtableCalls() - n1 >= 5 && !fresh.cachedAt);
+  });
+}
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

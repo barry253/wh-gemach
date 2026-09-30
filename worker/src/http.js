@@ -20,6 +20,7 @@ function withCors(res, request, publicRoute) {
   if (isAllowedOrigin(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.append("Vary", "Origin");
+    headers.set("Timing-Allow-Origin", origin); // lets the admin page read Server-Timing
   } else if (publicRoute) {
     headers.set("Access-Control-Allow-Origin", "*");
   }

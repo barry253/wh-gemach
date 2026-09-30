@@ -16,7 +16,8 @@ async function handleHealth(db) {
       db.listPage(T.GEMACHS, { maxRecords: 1, fields: ["Slug"] }),
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
     ]);
-    return json({ ok: true, airtable: "ok", ms: Date.now() - t0 }, 200, noStore);
+    // rateLimited > 0 means Airtable answered "too many requests" and we waited before retrying.
+    return json({ ok: true, airtable: "ok", ms: Date.now() - t0, airtableMs: db.stats?.slowest ?? null, rateLimited: db.stats?.retries ?? 0 }, 200, noStore);
   } catch (e) {
     console.error("Health check failed:", e.message, e.detail ? JSON.stringify(e.detail) : "");
     return json({ ok: false, airtable: "error" }, 503, noStore);
