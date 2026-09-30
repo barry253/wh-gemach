@@ -70,7 +70,7 @@ function publicGemach(g, communityName) {
     logoUrl: g.logoUrl, logoDarkUrl: g.logoDarkUrl ?? null, communityName: communityName || null, displayOrder: g.displayOrder ?? null,
     primaryContact: g.primaryContact ?? null, secondaryContact: g.secondaryContact ?? null,
     themeColor: g.themeColor || DEFAULT_THEME, accentColor: g.accentColor ?? null,
-    depositRequired: !!g.depositRequired, depositInfo: g.depositInfo ?? null, gemachInfo: g.gemachInfo ?? null,
+    depositRequired: !!g.depositRequired, chargeType: g.chargeType || "Deposit", depositInfo: g.depositInfo ?? null, gemachInfo: g.gemachInfo ?? null,
     requestStyle: g.requestStyle || "Dates", eventLabel: g.eventLabel || DEFAULT_EVENT_LABEL,
     pickupDaysBefore: g.pickupDaysBefore ?? 1, returnDaysAfter: g.returnDaysAfter ?? 1, shabbosAdjust: !!g.shabbosAdjust,
     itemAttributes: g.itemAttributes || [],

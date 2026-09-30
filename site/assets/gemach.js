@@ -220,8 +220,9 @@
   }
   function style() { return W.requestStyle(gemach); }
 
+  function isPayment(g) { return !!g && g.chargeType === "Payment"; } // a fee, not a refundable deposit
   function depositHtml(g) {
-    return "<strong>" + W.ICONS.info + "Deposit required</strong>" +
+    return "<strong>" + W.ICONS.info + (isPayment(g) ? "Payment required" : "Deposit required") + "</strong>" +
       (g.depositInfo ? '<div class="prose">' + W.formatText(g.depositInfo) + "</div>" : "");
   }
   function gemachInfoSection() {
@@ -735,6 +736,7 @@
     $("deposit-group").hidden = !dep;
     $("f-deposit").required = dep;
     if (dep) $("deposit-form-info").innerHTML = depositHtml(gemach);
+    $("deposit-ack-text").textContent = isPayment(gemach) ? "I understand payment is required" : "I understand a deposit is required";
     $("form-note-purpose").textContent = appt ? "your appointment" : "the loan";
     $("f-notes").setAttribute("placeholder", appt ? "e.g. sizes, colors or styles you’re interested in"
       : ev ? "e.g. anything specific you’re looking for" : NOTES_PH);
@@ -955,7 +957,7 @@
       if (until) body.neededUntil = until;
     }
     if (gemach.depositRequired && !$("deposit-group").hidden) {
-      if (!$("f-deposit").checked) bad($("f-deposit"), "Please confirm you understand a deposit is required.");
+      if (!$("f-deposit").checked) bad($("f-deposit"), isPayment(gemach) ? "Please confirm you understand payment is required." : "Please confirm you understand a deposit is required.");
       body.depositAck = true;
     }
     if (errs.length) {

@@ -85,6 +85,7 @@ const GEMACH_EDITABLE = {
   themeColor:         ["Theme Color", "color"],
   accentColor:        ["Accent Color", "color"],
   depositRequired:    ["Deposit Required", "bool"],
+  chargeType:         ["Charge Type", "charge"],
   depositInfo:        ["Deposit Info", "long"],
   gemachInfo:         ["Gemach Info", "long"],
   requestStyle:       ["Request Style", "style"],
@@ -103,7 +104,7 @@ const GEMACH_LABELS = {
   pickupInstructions: "Pickup instructions", confirmMessage: "Confirm message", declineMessage: "Decline message",
   pickupMessage: "Pickup message", name: "Gemach name",
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
-  depositRequired: "Deposit required", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
+  depositRequired: "Deposit required", chargeType: "Deposit or payment", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
 };
@@ -157,6 +158,11 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
         continue;
       }
       if (!CONTACT_METHODS.includes(v)) return { error: `${label} must be one of ${CONTACT_METHODS.join(", ")}.` };
+      fields[field] = v;
+      continue;
+    }
+    if (kind === "charge") {
+      if (!["Deposit", "Payment"].includes(v)) return { error: "Choose deposit or payment." };
       fields[field] = v;
       continue;
     }

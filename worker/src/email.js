@@ -109,7 +109,8 @@ async function sendNotificationEmail(env, g, data) {
     if (tot != null) lines.push(`  Add-ons total: ${money(tot)} (separate payment)`);
     if (!isAppt && neededFrom && availability === null) lines.push("  (Couldn't check availability — please check in admin.)");
   }
-  if (g.depositRequired) lines.push("", `Deposit acknowledged: ${depositAck ? "yes" : "no"}`);
+  const chargeWord = g.chargeType === "Payment" ? "Payment" : "Deposit";
+  if (g.depositRequired) lines.push("", `${chargeWord} acknowledged: ${depositAck ? "yes" : "no"}`);
   lines.push("", `Notes: ${notes || "none"}`, "", `Log in to review: ${link}`);
   const text = lines.join("\n").trim();
 
@@ -131,7 +132,7 @@ async function sendNotificationEmail(env, g, data) {
     if (eventDate) details.push(row(g.eventLabel || DEFAULT_EVENT_LABEL, `<strong>${e(longDate(eventDate))}</strong>`));
     details.push(row("Dates", `<strong>${e(dateRange)}</strong>`));
   }
-  if (g.depositRequired) details.push(row("Deposit", depositAck ? "Acknowledged" : `<span style="color:#b91c1c;">Not acknowledged</span>`));
+  if (g.depositRequired) details.push(row(chargeWord, depositAck ? "Acknowledged" : `<span style="color:#b91c1c;">Not acknowledged</span>`));
 
   const STATUS_STYLE = {
     ok: "background:#dcfce7;color:#166534;", short: "background:#fef3c7;color:#92400e;",

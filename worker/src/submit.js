@@ -117,7 +117,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   // The deposit is for borrowed items: an order of add-ons only doesn't need it.
   const addonsOnly = itemIds.length > 0 && itemIds.every(id => isAddonType(typeMap[id]));
   if (g.depositRequired && !addonsOnly && body.depositAck !== true) {
-    return json({ error: "Please confirm that you understand the deposit requirement." }, 400);
+    return json({ error: `Please confirm that you understand the ${g.chargeType === "Payment" ? "payment" : "deposit"} requirement.` }, 400);
   }
 
   const requestId = await getNextRequestId(db);

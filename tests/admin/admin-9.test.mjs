@@ -44,7 +44,7 @@ async function setup() {
     calls.push({ method: req.method(), path: p, body, gemach: req.headers()["x-gemach"] });
     const J = d => r.fulfill({ contentType: "application/json", body: JSON.stringify(d) });
     if (p === "/admin/me") return J({ email: "b@x", name: "Barry", role: "Owner", gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] });
-    if (p === "/admin/gemach" && req.method() === "PATCH") { if (body.itemAttributes) G.itemAttributes = body.itemAttributes; if (body.browseCategoryIds) G.browseCategoryIds = body.browseCategoryIds; return J(G); }
+    if (p === "/admin/gemach" && req.method() === "PATCH") { Object.assign(G, body); return J(G); }
     if (p === "/admin/gemach") return J(G);
     if (p === "/admin/dashboard") return J({ newRequests: REQS.length, activeLoans: 1, overdueLoans: 0, upcomingReservations: 2 });
     if (p === "/admin/requests") return J(REQS);
@@ -113,6 +113,19 @@ ok(bp && JSON.stringify(bp.body) === '{"browseCategoryIds":["recCATSIMCHA00001"]
 ok(await page.$eval("#browse-cats .attr-chip:has-text('Simchas')", b => b.getAttribute("aria-pressed")) === "true", "choice kept after save");
 await page.evaluate(() => document.getElementById("settings-sec-home-page-categories").scrollIntoView());
 await page.screenshot({ path: "shot-status-settings-cats.png" });
+
+// Settings → deposit or payment
+await page.check("#set-depositRequired");
+ok(await page.isVisible('input[name="set-chargeType"][value="Deposit"]') && await page.isChecked('input[name="set-chargeType"][value="Deposit"]'), "deposit is the default choice");
+await page.check('input[name="set-chargeType"][value="Payment"]');
+await page.fill("#set-depositInfo", "$15 per tablecloth, paid by Zelle");
+await page.evaluate(() => document.getElementById("set-depositRequired").scrollIntoView());
+await page.screenshot({ path: "shot-payment-settings.png" });
+await page.click("#settings-save-btn");
+await page.waitForTimeout(300);
+const pp = calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach").at(-1);
+ok(pp && pp.body.depositRequired === true && pp.body.chargeType === "Payment" && pp.body.depositInfo === "$15 per tablecloth, paid by Zelle", "saves payment + info " + JSON.stringify(pp && pp.body));
+ok(await page.isChecked('input[name="set-chargeType"][value="Payment"]'), "choice kept after save");
 
 // Inventory shows the gown's values; item type sheet has chips
 await page.evaluate(() => switchTab("inventory"));

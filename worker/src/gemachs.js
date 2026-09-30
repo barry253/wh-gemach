@@ -46,6 +46,7 @@ function gemachFromRecord(r) {
     themeColor: HEX_RE.test(String(f["Theme Color"] || "").trim()) ? String(f["Theme Color"]).trim().toUpperCase() : DEFAULT_THEME,
     accentColor: HEX_RE.test(String(f["Accent Color"] || "").trim()) ? String(f["Accent Color"]).trim().toUpperCase() : null,
     depositRequired: !!f["Deposit Required"],
+    chargeType: selName(f["Charge Type"]) === "Payment" ? "Payment" : "Deposit", // Deposit = refundable; Payment = a fee
     depositInfo: nonBlank(f["Deposit Info"]),
     gemachInfo: nonBlank(f["Gemach Info"]),
     requestStyle: REQUEST_STYLES.includes(selName(f["Request Style"])) ? selName(f["Request Style"]) : "Dates",

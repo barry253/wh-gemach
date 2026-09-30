@@ -1876,6 +1876,39 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
   });
 }
 
+// ── Payment (a fee) instead of a refundable deposit ──
+{
+  const G = { id: "recPAYGEMACH00001", slug: "pay-gemach" };
+  DB.Gemachs.push(rec(G.id, { Name: "Pay Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "pay@example.com", "Deposit Required": true, "Deposit Info": "$15 per tablecloth" }));
+  DB["Item Types"].push(rec("recPAYTYPE0000001", { Name: "Gold Tablecloth", Active: true, Tracking: "Quantity", "Quantity Owned": 10, Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const soon = n => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+
+  await t("payment: blank Charge Type means Deposit; Settings switches to Payment; bad value refused", async () => {
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?p=1`)).json()).gemach.chargeType, "Deposit");
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ chargeType: "Payment" }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).chargeType, "Payment");
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Charge Type"], "Payment");
+    assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ chargeType: "Tip" }) })).status, 400);
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?p=2`)).json()).gemach.chargeType, "Payment");
+  });
+
+  await t("payment: request must acknowledge payment; gemach email says 'Payment'", async () => {
+    const base = { gemach: G.slug, name: "Tova", phone: "5165557777", preferredContact: "Phone", itemsRequested: ["recPAYTYPE0000001"], quantities: { recPAYTYPE0000001: 3 }, neededFrom: soon(9) };
+    let r = await post("/submit-request", base);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /payment requirement/);
+    r = await post("/submit-request", { ...base, depositAck: true });
+    assert.equal(r.status, 200, await r.clone().text());
+    await Promise.allSettled(waits);
+    const m = resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1);
+    assert.match(m.text, /Payment acknowledged: yes/); assert.ok(!/Deposit acknowledged/.test(m.text));
+    assert.ok(m.html.includes(">Payment<"));
+  });
+}
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

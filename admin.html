@@ -257,7 +257,7 @@
       font-size: 0.85rem;
     }
     .radio-card input { width: auto !important; margin-top: 0.2rem; accent-color: var(--navy); }
-    .radio-card.selected { border-color: var(--navy); background: var(--teal); }
+    .radio-card.selected, .radio-card:has(input[name="set-chargeType"]:checked) { border-color: var(--navy); background: var(--teal); }
     .radio-card small { display: block; color: var(--muted); font-size: 0.75rem; }
     .example-line { font-size: 0.82rem; background: var(--teal); color: var(--navy); border-radius: 6px; padding: 0.5rem 0.75rem; }
 
@@ -2473,7 +2473,7 @@
           ${isAppt ? "" : `<span>📅 ${esc(dates)}</span>`}
           ${isAppt && r.preferredTimes ? `<span>🕒 ${esc(r.preferredTimes)}</span>` : ""}
           ${r.partySize ? `<span>👥 Party of ${esc(r.partySize)}</span>` : ""}
-          ${r.depositAcknowledged ? `<span>✓ Deposit acknowledged</span>` : ""}
+          ${r.depositAcknowledged ? `<span>✓ ${GEMACH?.chargeType === "Payment" ? "Payment" : "Deposit"} acknowledged</span>` : ""}
           <span>📞 ${esc(r.phone)}</span>
           ${r.notes ? `<span>💬 ${esc(r.notes)}</span>` : ""}
         </div>
@@ -3368,7 +3368,7 @@
     phone:              { label: "Phone",               type: "tel",   max: 200 },
     whatsapp:           { label: "WhatsApp",            type: "tel",   max: 200, hint: "Leave blank to use the phone number for WhatsApp." },
     email:              { label: "Email",               type: "email", max: 200, hint: "Request notifications go here; borrowers' replies too." },
-    depositInfo:        { label: "Deposit info",        type: "area",  max: 2000, rows: 2, placeholder: "e.g. $100 refundable check, returned when the item comes back" },
+    depositInfo:        { label: "Deposit / payment info", type: "area",  max: 2000, rows: 2, placeholder: "e.g. $100 refundable check, returned when the item comes back — or: $15 per tablecloth, paid by Zelle to …", hint: "Shown on your page and on the request form. Say how much, how to pay, and whether it comes back." },
     gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
   };
@@ -3481,9 +3481,17 @@
       inner += `
         <div class="checkbox-row">
           <input type="checkbox" id="set-depositRequired" />
-          <label for="set-depositRequired">Deposit required</label>
+          <label for="set-depositRequired">Borrowers pay a deposit or fee</label>
         </div>
-        <div id="deposit-info-wrap">${fieldHtml("depositInfo")}</div>
+        <div id="deposit-info-wrap">
+          <div class="form-group" role="radiogroup" aria-label="Deposit or payment">
+            <label class="radio-card"><input type="radio" name="set-chargeType" value="Deposit" onchange="onSettingsInput()" />
+              <span>Refundable deposit<small>Given back when the items are returned. Borrowers tick “I understand a deposit is required”.</small></span></label>
+            <label class="radio-card"><input type="radio" name="set-chargeType" value="Payment" onchange="onSettingsInput()" />
+              <span>Payment (a fee)<small>Not given back, e.g. a rental or cleaning fee. Borrowers tick “I understand payment is required”.</small></span></label>
+          </div>
+          ${fieldHtml("depositInfo")}
+        </div>
         ${fieldHtml("gemachInfo")}`;
     }
     if (group.extra === "requests") {
@@ -3620,6 +3628,9 @@
 
     setEl("depositRequired").checked = !!g.depositRequired;
     remember("depositRequired", !!g.depositRequired);
+    const charge = g.chargeType === "Payment" ? "Payment" : "Deposit";
+    document.querySelectorAll('input[name="set-chargeType"]').forEach(r => { r.checked = r.value === charge; r.disabled = ro; });
+    remember("chargeType", charge);
     const style = ["Dates", "Event", "Appointment"].includes(g.requestStyle) ? g.requestStyle : "Dates";
     document.querySelectorAll('input[name="set-requestStyle"]').forEach(r => { r.checked = r.value === style; r.disabled = ro; });
     remember("requestStyle", style);
@@ -3796,7 +3807,7 @@
 
   function updateRequestStyleUi() {
     const style = document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates";
-    document.querySelectorAll(".radio-card").forEach(c => c.classList.toggle("selected", c.id === `rs-card-${style}`));
+    document.querySelectorAll('.radio-card[id^="rs-card-"]').forEach(c => c.classList.toggle("selected", c.id === `rs-card-${style}`));
     document.getElementById("event-options").style.display = style === "Event" ? "" : "none";
     // Live example: the next Sunday at least two weeks out, using the same rule as the server.
     const now = new Date();
@@ -3957,6 +3968,7 @@
     put("themeColor", theme);
     put("accentColor", accent);
     put("depositRequired", setEl("depositRequired").checked);
+    put("chargeType", document.querySelector('input[name="set-chargeType"]:checked')?.value || "Deposit");
     put("requestStyle", document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates");
     for (const k of ["pickupDaysBefore", "returnDaysAfter"]) {
       const raw = setEl(k).value.trim();
