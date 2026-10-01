@@ -1909,6 +1909,49 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
   });
 }
 
+// ── Several photos per item (cover = R2 Photo URL, More Photos = JSON list) ──
+{
+  const G = { id: "recPHOTOGEMACH001", slug: "photo-gemach" };
+  DB.Gemachs.push(rec(G.id, { Name: "Photo Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "ph@example.com" }));
+  DB["Item Types"].push(rec("recPHOTOTYPE00001", { Name: "Lace Tablecloth", Active: true, Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const patch = b => call("/admin/catalog/item-types/recPHOTOTYPE00001", { method: "PATCH", headers: H, body: JSON.stringify(b) });
+  const P = n => `https://assets/${G.slug}/photos/${n}.jpg`;
+
+  await t("photos: cover + up to 9 more, in order; only our own links; cover never repeated", async () => {
+    let r = await patch({ r2PhotoUrl: P(1), morePhotos: [P(2), P(3), P(1), P(2), "https://whgemachs.org/assets/gemachs/photo-gemach/x.jpg"] });
+    assert.equal(r.status, 200, await r.clone().text());
+    const f = DB["Item Types"].find(x => x.id === "recPHOTOTYPE00001").fields;
+    assert.deepEqual(JSON.parse(f["More Photos"]), [P(2), P(3), "https://whgemachs.org/assets/gemachs/photo-gemach/x.jpg"]);
+    for (const bad of [["https://evil.example/a.jpg"], ["http://assets/x.jpg"], Array.from({ length: 10 }, (_, i) => P(i + 10)), "nope", ["https://assets/../x.jpg"]]) {
+      assert.equal((await patch({ morePhotos: bad })).status, 400, JSON.stringify(bad).slice(0, 60));
+    }
+    const types = await (await call("/admin/catalog/item-types", { headers: H })).json();
+    assert.deepEqual(types.find(x => x.id === "recPHOTOTYPE00001").morePhotos.length, 3);
+  });
+
+  await t("photos: gemach page gets the full list (cover first); home page stays light", async () => {
+    __WHG_TEST__.clearMemo();
+    const d = await (await call(`/public/gemach/${G.slug}?ph=1`)).json();
+    const it = d.items.find(i => i.name === "Lace Tablecloth");
+    assert.equal(it.photoUrl, P(1)); assert.deepEqual(it.photos.slice(0, 3), [P(1), P(2), P(3)]);
+    const dir = await (await call("/public/directory?ph=1")).json();
+    assert.ok(!("photos" in dir.gemachs.find(g => g.slug === G.slug).items[0]));
+  });
+
+  await t("photos: making another photo the cover moves the old cover into the list; clearing works", async () => {
+    let r = await patch({ r2PhotoUrl: P(3), morePhotos: [P(1), P(2)] });
+    assert.equal(r.status, 200);
+    const f = DB["Item Types"].find(x => x.id === "recPHOTOTYPE00001").fields;
+    assert.equal(f["R2 Photo URL"], P(3)); assert.deepEqual(JSON.parse(f["More Photos"]), [P(1), P(2)]);
+    r = await patch({ morePhotos: [] });
+    assert.equal(r.status, 200); assert.equal(f["More Photos"], null);
+    __WHG_TEST__.clearMemo();
+    const d = await (await call(`/public/gemach/${G.slug}?ph=2`)).json();
+    assert.ok(!("photos" in d.items.find(i => i.name === "Lace Tablecloth")), "single photo: no list");
+  });
+}
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

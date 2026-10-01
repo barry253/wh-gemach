@@ -19,7 +19,9 @@ const RES = [
 ];
 const APPTS = [{ id: "recREQAP000000009", requestId: "R-109", name: "Appt Person", phone: "5165556666", email: "ap@example.com", preferredContact: "Email", appointmentAt: "2026-10-04T23:00:00.000Z", itemNames: [] }];
 const TYPES = [{ id: "recTYPEGOWN000001", name: "Navy A-line", description: "", displayOrder: 1, active: true, itemCount: 0, tracking: "Units", price: null, quantityOwned: 0, outOfService: 0, attributes: { size: ["4"], Color: ["Navy", "Teal"] } },
-  { id: "recTYPEGOWN000002", name: "Gold Mermaid", description: "", displayOrder: 2, active: true, itemCount: 0, tracking: "Units", price: null, quantityOwned: 0, outOfService: 0, attributes: {}, r2PhotoUrl: "https://photos.test/gold.svg" }];
+  { id: "recTYPEGOWN000002", name: "Gold Mermaid", description: "", displayOrder: 2, active: true, itemCount: 0, tracking: "Units", price: null, quantityOwned: 0, outOfService: 0, attributes: {}, r2PhotoUrl: "https://photos.test/gold.svg",
+    morePhotos: ["https://photos.test/gold-2.svg", "https://photos.test/gold-3.svg"] }];
+const UPLOADS = [];
 const HIST = { records: [{ id: "recH1", timestamp: "nope", eventType: "Loan Created", borrower: "X" }, { id: "recH2", timestamp: null, eventType: "Item Returned" }], offset: null };
 const G = {
   id: "recA", slug: "wh-medical", name: "West Hempstead Medical Gemach", email: "gemach@example.com", phone: "(718) 986-7345",
@@ -45,6 +47,12 @@ async function setup() {
     const J = d => r.fulfill({ contentType: "application/json", body: JSON.stringify(d) });
     if (p === "/admin/me") return J({ email: "b@x", name: "Barry", role: "Owner", gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] });
     if (p === "/admin/gemach" && req.method() === "PATCH") { Object.assign(G, body); return J(G); }
+    if (p === "/admin/catalog/upload-photo") {
+      const raw = req.postDataBuffer() || Buffer.alloc(0);
+      const type = (raw.toString("latin1").match(/Content-Type: (image\/[a-z]+)/i) || [])[1] || null;
+      UPLOADS.push({ type, bytes: raw.length });
+      return J({ success: true, url: `https://photos.test/up-${UPLOADS.length}.svg` });
+    }
     if (p === "/admin/gemach") return J(G);
     if (p === "/admin/dashboard") return J({ newRequests: REQS.length, activeLoans: 1, overdueLoans: 0, upcomingReservations: 2 });
     if (p === "/admin/requests") return J(REQS);
@@ -133,6 +141,7 @@ await page.waitForSelector(".inventory-group");
 ok(/Size 4 · Color Navy/.test(await page.$eval(".inventory-group", e => e.innerText)), "inventory shows values in the gemach's spelling");
 const thumbs = await page.$$eval(".inventory-group", els => els.map(g => { const t = g.querySelector(".inv-thumb"); return t.tagName === "IMG" ? (t.naturalWidth > 0 ? "img:" + t.getAttribute("src") : "img-not-loaded") : t.textContent; }));
 ok(thumbs[0] === "No photo", "missing photo flagged in the row: " + thumbs);
+ok(/3📷/.test(await page.$$eval(".inventory-group", els => els[1].innerText)), "inventory shows the photo count");
 ok(thumbs[1] === "img:https://photos.test/gold.svg", "photo thumbnail shown in the row: " + thumbs);
 await page.locator("#inventory-list").screenshot({ path: "shot-inventory-thumbs.png" });
 await page.locator(".inventory-group .inv-thumb-missing").first().click();
@@ -164,5 +173,39 @@ await page.click("#item-type-submit-btn");
 await page.waitForTimeout(300);
 const pt2 = calls.filter(c => c.method === "PATCH" && /item-types/.test(c.path));
 ok(pt2.length === n + 1 && !("attributes" in pt2.at(-1).body), "unchanged values aren't re-sent");
+// Photo strip on the item type sheet
+await page.evaluate(() => switchTab("inventory"));
+await page.waitForSelector(".inventory-group");
+await page.locator(".inventory-group").nth(1).locator("[title='Edit item type']").click();
+await page.waitForSelector("#it-photos .photo-tile");
+const tiles = () => page.$$eval("#it-photos .photo-tile img", i => i.map(x => x.getAttribute("src").replace("https://photos.test/", "")));
+ok((await tiles()).join(",") === "gold.svg,gold-2.svg,gold-3.svg" && await page.$eval("#it-photos .photo-tile", t => t.classList.contains("is-cover")), "strip shows cover first + the others");
+await page.click("#it-photos .photo-tile:nth-child(3) button[title='Make cover']");
+ok((await tiles()).join(",") === "gold-3.svg,gold.svg,gold-2.svg", "make cover moves it to the front");
+await page.click("#it-photos .photo-tile:nth-child(2) button[title='Move right']");
+ok((await tiles()).join(",") === "gold-3.svg,gold-2.svg,gold.svg", "move right");
+await page.click("#it-photos .photo-tile:nth-child(3) .photo-del");
+ok((await tiles()).join(",") === "gold-3.svg,gold-2.svg", "remove");
+// Two new photos at once: a big one (shrunk to JPEG first) and a small one
+await page.evaluate(async () => {
+  const mk = (w, h) => new Promise(res => { const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d");
+    for (let i = 0; i < 400; i++) { x.fillStyle = `hsl(${i * 7},70%,50%)`; x.fillRect(Math.random() * w, Math.random() * h, 80, 80); } c.toBlob(b => res(b), "image/png"); });
+  const dt = new DataTransfer();
+  dt.items.add(new File([await mk(3200, 2400)], "big.png", { type: "image/png" }));
+  dt.items.add(new File([await mk(300, 200)], "small.png", { type: "image/png" }));
+  const inp = document.getElementById("it-photo-file");
+  inp.files = dt.files;
+  inp.dispatchEvent(new Event("change"));
+});
+await page.waitForFunction(() => /2 photos added/.test(document.getElementById("it-photo-status").textContent), null, { timeout: 15000 });
+ok(UPLOADS.length === 2 && UPLOADS[0].type === "image/jpeg" && UPLOADS[1].type === "image/png", "big photo shrunk to JPEG before upload, small one sent as is: " + JSON.stringify(UPLOADS));
+ok((await tiles()).join(",") === "gold-3.svg,gold-2.svg,up-1.svg,up-2.svg", "uploads added at the end");
+await page.screenshot({ path: "shot-photo-strip.png" });
+await page.click("#item-type-submit-btn");
+await page.waitForTimeout(300);
+const ph = calls.filter(c => c.method === "PATCH" && /item-types\/recTYPEGOWN000002/.test(c.path)).at(-1);
+ok(ph && ph.body.r2PhotoUrl === "https://photos.test/gold-3.svg" && JSON.stringify(ph.body.morePhotos) === JSON.stringify(["https://photos.test/gold-2.svg", "https://photos.test/up-1.svg", "https://photos.test/up-2.svg"]),
+  "save sends cover + the rest in order " + JSON.stringify(ph && { c: ph.body.r2PhotoUrl, m: ph.body.morePhotos }));
+
 ok(!errors.length, "no page errors " + errors.join(" | "));
 await browser.close();

@@ -6,6 +6,7 @@ import { nyToday } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs, loadGemachBySlug, nonBlank } from "./gemachs.js";
 import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
+import { parseMorePhotos } from "./photos.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAvailable } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
@@ -27,6 +28,10 @@ function publicItemType(type, availableIds, { withCategory = false, bookings = n
     hasPhoto: !!photoUrl,
     photoUrl,
   };
+  if (withBookings) { // gemach page only (the home page shows just the cover): cover + more photos, in order
+    const more = photoUrl ? parseMorePhotos(type.fields["More Photos"]) : [];
+    if (more.length) out.photos = [photoUrl, ...more];
+  }
   if (isQtyType(type)) {
     const list = bookings?.[type.id] || [];
     const t = nyToday();

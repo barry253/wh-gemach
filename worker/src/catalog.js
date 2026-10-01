@@ -2,6 +2,7 @@
 import { AirtableError, firstLink, getOwned, linkedId, scopeF } from "./airtable.js";
 import { parseItemAttrs, validateItemAttrs } from "./attributes.js";
 import { gemachFromRecord } from "./gemachs.js";
+import { parseMorePhotos, validateMorePhotos } from "./photos.js";
 import { REC_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { json, readJson } from "./http.js";
@@ -24,6 +25,7 @@ async function handleGetItemTypes({ db, g }) {
       active: r.fields["Active"] || false,
       photoUrl: r.fields["Photo"]?.[0]?.url || null,
       r2PhotoUrl: r.fields["R2 Photo URL"] || null,
+      morePhotos: parseMorePhotos(r.fields["More Photos"]),
       itemCount: (r.fields["Items"] || []).length,
       categoryId: linkedId(firstLink(r.fields["Product Category"])) || null,
       tracking: isAddonType(r) ? "Add-on" : isQtyType(r) ? "Quantity" : "Units",
@@ -137,6 +139,9 @@ async function handleCreateItemType(c) {
     "Gemach": [c.g.id],
   };
   if (body.r2PhotoUrl) fields["R2 Photo URL"] = body.r2PhotoUrl;
+  const more = validateMorePhotos(c.env, body.morePhotos, body.r2PhotoUrl || null);
+  if (more.error) return json({ error: more.error }, 400);
+  if (!more.skip && more.value) fields["More Photos"] = more.value;
   const cat = await resolveCategoryField(c.db, body.categoryId);
   if (cat.error) return json({ error: cat.error }, 400);
   if (!cat.skip && cat.value.length) fields["Product Category"] = cat.value;
@@ -161,6 +166,9 @@ async function handleUpdateItemType(c, id) {
   if (body.displayOrder !== undefined) fields["Display Order"] = body.displayOrder;
   if (body.active !== undefined)       fields["Active"] = body.active;
   if (body.r2PhotoUrl !== undefined)   fields["R2 Photo URL"] = body.r2PhotoUrl;
+  const more = validateMorePhotos(c.env, body.morePhotos, body.r2PhotoUrl !== undefined ? body.r2PhotoUrl : current.fields["R2 Photo URL"] || null);
+  if (more.error) return json({ error: more.error }, 400);
+  if (!more.skip) fields["More Photos"] = more.value;
   const cat = await resolveCategoryField(c.db, body.categoryId);
   if (cat.error) return json({ error: cat.error }, 400);
   if (!cat.skip) fields["Product Category"] = cat.value;

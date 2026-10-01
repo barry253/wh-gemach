@@ -15,9 +15,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap" />
-  <link rel="stylesheet" href="/assets/site.css?v=13" />
+  <link rel="stylesheet" href="/assets/site.css?v=14" />
   <script src="/assets/site.js?v=9" defer></script>
-  <script src="/assets/gemach.js?v=14" defer></script>
+  <script src="/assets/gemach.js?v=15" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -73,7 +73,10 @@
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo" hidden>
   <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Close photo">×</button>
   <img id="lightbox-img" src="data:," alt="" />
-  <div class="lightbox-caption" id="lightbox-caption"></div>
+  <button type="button" class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Previous photo" hidden>‹</button>
+  <button type="button" class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Next photo" hidden>›</button>
+  <div class="lightbox-caption"><span id="lightbox-caption"></span> <span class="lightbox-count" id="lightbox-count" aria-live="polite"></span>
+    <div class="lightbox-dots" id="lightbox-dots" aria-hidden="true"></div></div>
 </div>
 
 <!-- Request modal -->

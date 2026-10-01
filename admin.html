@@ -839,6 +839,17 @@
       text-decoration-color: var(--muted);
     }
 
+    .photo-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem; }
+    .photo-tile { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
+    .photo-tile.is-cover { border: 2px solid var(--navy); }
+    .photo-tile img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+    .photo-cover-tag { position: absolute; top: 4px; left: 4px; background: var(--navy); color: #fff; font-size: 0.62rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
+    .photo-tools { display: flex; justify-content: space-between; border-top: 1px solid var(--border); }
+    .photo-tools button { flex: 1; border: 0; background: #fff; padding: 0.3rem 0; font-size: 0.75rem; cursor: pointer; color: var(--navy); min-height: 32px; }
+    .photo-tools button:disabled { opacity: 0.25; cursor: default; }
+    .photo-tools button:hover:not(:disabled) { background: var(--teal); }
+    .photo-tools .photo-del { color: var(--red); }
+    .inv-photo-count { font-size: 0.68rem; color: var(--muted); font-weight: 600; }
     .inv-thumb { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); background: var(--grey, #f4f5f7); display: block; }
     .inv-thumb-missing { display: inline-flex; align-items: center; justify-content: center; border: 1.5px dashed #D97706; background: #FFFBEB; color: #92400E;
       font-size: 0.55rem; font-weight: 600; line-height: 1.05; text-align: center; padding: 0; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: 0.02em; }
@@ -1765,16 +1776,12 @@
     </div>
 
     <div class="form-group">
-      <label>Photo</label>
-      <div id="it-photo-preview" style="margin-bottom:0.5rem;display:none">
-        <img id="it-photo-img" src="" style="width:100%;max-height:160px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" />
-        <button class="btn btn-ghost btn-sm" style="margin-top:0.35rem;width:100%" onclick="clearPhoto()">Remove photo</button>
-      </div>
-      <div id="it-photo-upload" style="border:2px dashed var(--border);border-radius:6px;padding:1rem;text-align:center">
-        <div style="font-size:0.82rem;color:var(--muted);margin-bottom:0.75rem">Upload a photo or paste a URL</div>
+      <label>Photos <span style="color:var(--muted);font-weight:400">— the first is the cover · up to 10</span></label>
+      <div class="photo-strip" id="it-photos" aria-live="polite"></div>
+      <div id="it-photo-upload" style="border:2px dashed var(--border);border-radius:6px;padding:0.8rem;text-align:center">
         <div style="display:flex;gap:0.5rem;flex-direction:column">
-          <input type="file" id="it-photo-file" accept="image/*" style="display:none" onchange="handleFileSelect(event)" />
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('it-photo-file').click()">📁 Choose file</button>
+          <input type="file" id="it-photo-file" accept="image/*" multiple style="display:none" onchange="handleFileSelect(event)" />
+          <button class="btn btn-ghost btn-sm" id="it-photo-add" onclick="document.getElementById('it-photo-file').click()">📁 Add photos</button>
           <div style="display:flex;gap:0.5rem">
             <input type="url" id="it-photo-url" placeholder="https://example.com/photo.jpg" style="flex:1;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:6px;font-size:0.8rem;font-family:Inter,sans-serif" />
             <button class="btn btn-ghost btn-sm" onclick="handleUrlImport()">Import</button>
@@ -4419,7 +4426,9 @@
     sel.dataset.original = sel.value;
   }
   let editingItemId = null;
-  let pendingPhotoUrl = null;
+  let pendingPhotoUrl = null;      // cover (first photo) — kept for older code paths
+  let PHOTOS = [], photosOrig = "[]"; // all photos in order; [0] is the cover
+  const MAX_PHOTOS = 10;
 
   // Filter values for the item type being edited: { "Size": Set(["8"]) }
   let ITEM_ATTR_SEL = {}, itemAttrOriginal = "{}";
@@ -4464,7 +4473,7 @@
     const url = type.r2PhotoUrl || type.photoUrl;
     const safe = url && /^https:\/\//i.test(url) ? url : null;
     return safe
-      ? `<img class="inv-thumb" src="${esc(safe)}" alt="" loading="lazy" width="36" height="36" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'inv-thumb inv-thumb-missing',textContent:'Broken',title:'Photo link is broken — edit to replace it'}))" />`
+      ? `<img class="inv-thumb" src="${esc(safe)}" alt="" loading="lazy" width="36" height="36" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'inv-thumb inv-thumb-missing',textContent:'Broken',title:'Photo link is broken — edit to replace it'}))" />` + (type.morePhotos?.length ? `<span class="inv-photo-count" title="${type.morePhotos.length + 1} photos">${type.morePhotos.length + 1}📷</span>` : "")
       : `<button type="button" class="inv-thumb inv-thumb-missing" title="No photo — tap to add one" aria-label="Add a photo for ${esc(type.name)}" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">No photo</button>`;
   }
   function attrSummary(type) {
@@ -4480,6 +4489,7 @@
   function openAddItemType() {
     editingItemTypeId = null;
     pendingPhotoUrl = null;
+    setPhotos([]);
     document.getElementById("item-type-sheet-title").textContent = "Add Item Type";
     document.getElementById("item-type-sheet-subtitle").textContent = "";
     document.getElementById("it-name").value = "";
@@ -4524,6 +4534,7 @@
   function openEditItemType(t) {
     editingItemTypeId = t.id;
     pendingPhotoUrl = t.r2PhotoUrl || t.photoUrl || null;
+    setPhotos([pendingPhotoUrl, ...(t.morePhotos || [])].filter(Boolean));
     document.getElementById("item-type-sheet-title").textContent = "Edit Item Type";
     document.getElementById("item-type-sheet-subtitle").textContent = t.name;
     document.getElementById("it-name").value = t.name;
@@ -4534,8 +4545,7 @@
     renderItemAttrPickers(t.attributes || {});
     if (Object.keys(t.attributes || {}).length && itemAttrsJson() === "{}") itemAttrOriginal = "(orphans)";
     setTrackingFields(t);
-    if (pendingPhotoUrl) showPhotoPreview(pendingPhotoUrl);
-    else clearPhotoUI();
+    clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
     openSheet("item-type-sheet");
   }
@@ -4548,8 +4558,9 @@
       description: document.getElementById("it-description").value.trim(),
       displayOrder: parseInt(document.getElementById("it-order").value) || 99,
       active: document.getElementById("it-active").value === "true",
-      r2PhotoUrl: pendingPhotoUrl || null
+      r2PhotoUrl: PHOTOS[0] || null
     };
+    if (JSON.stringify(PHOTOS) !== photosOrig) body.morePhotos = PHOTOS.slice(1);
     const catSel = document.getElementById("it-category");
     if (!editingItemTypeId ? catSel.value : catSel.value !== catSel.dataset.original) body.categoryId = catSel.value;
     const tracking = document.getElementById("it-tracking").value;
@@ -4651,77 +4662,113 @@
     await loadInventory();
   }
 
-  async function handleFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    setPhotoStatus("Uploading…");
-    const formData = new FormData();
-    formData.append("photo", file);
+  // ── Item photos: a strip of thumbnails; first = cover ──
+  function setPhotos(list) {
+    PHOTOS = [...new Set((list || []).filter(Boolean))].slice(0, MAX_PHOTOS);
+    photosOrig = JSON.stringify(PHOTOS);
+    renderPhotoStrip();
+  }
+  function renderPhotoStrip() {
+    pendingPhotoUrl = PHOTOS[0] || null;
+    const strip = document.getElementById("it-photos");
+    strip.innerHTML = PHOTOS.map((u, i) => `
+      <div class="photo-tile${i === 0 ? " is-cover" : ""}">
+        <img src="${esc(u)}" alt="Photo ${i + 1}" loading="lazy" />
+        ${i === 0 ? '<span class="photo-cover-tag">Cover</span>' : ""}
+        <div class="photo-tools">
+          <button type="button" title="Move left" aria-label="Move photo ${i + 1} left" ${i === 0 ? "disabled" : ""} onclick="movePhoto(${i}, -1)">◀</button>
+          ${i === 0 ? "" : `<button type="button" title="Make cover" aria-label="Make photo ${i + 1} the cover" onclick="movePhoto(${i}, -${i})">★</button>`}
+          <button type="button" title="Move right" aria-label="Move photo ${i + 1} right" ${i === PHOTOS.length - 1 ? "disabled" : ""} onclick="movePhoto(${i}, 1)">▶</button>
+          <button type="button" class="photo-del" title="Remove" aria-label="Remove photo ${i + 1}" onclick="removePhoto(${i})">✕</button>
+        </div>
+      </div>`).join("");
+    strip.style.display = PHOTOS.length ? "" : "none";
+    const full = PHOTOS.length >= MAX_PHOTOS;
+    document.getElementById("it-photo-add").disabled = full;
+    document.getElementById("it-photo-add").textContent = full ? "10 photos — remove one to add more" : PHOTOS.length ? "📁 Add more photos" : "📁 Add photos";
+  }
+  function movePhoto(i, by) {
+    const j = i + by;
+    if (j < 0 || j >= PHOTOS.length) return;
+    const [p] = PHOTOS.splice(i, 1);
+    PHOTOS.splice(j, 0, p);
+    renderPhotoStrip();
+  }
+  function removePhoto(i) { PHOTOS.splice(i, 1); renderPhotoStrip(); }
+
+  /** Shrink big photos before upload (long side ≤ 1600px, JPEG). Small ones go as they are. */
+  async function shrinkPhoto(file) {
+    const MAX = 1600;
+    if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(file.type || "")) return file;
     try {
-      const res = await fetch(`${WORKER}/admin/catalog/upload-photo`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}`, ...gemachHeaders() },
-        body: formData
-      });
-      const fresh = res.headers.get("X-Session-Token");
-      if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
-      const data = await res.json();
-      if (data.url) {
-        pendingPhotoUrl = data.url;
-        showPhotoPreview(data.url);
-        setPhotoStatus("Photo uploaded ✓");
-      } else {
-        setPhotoStatus("Upload failed: " + (data.error || "Unknown error"));
-      }
-    } catch(e) {
-      setPhotoStatus("Upload failed: " + e.message);
+      const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+      const scale = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
+      if (scale === 1 && file.size < 1.5e6) { bmp.close?.(); return file; }
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); // transparent PNGs → white, not black
+      ctx.drawImage(bmp, 0, 0, c.width, c.height);
+      bmp.close?.();
+      const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.85));
+      if (!blob || blob.size >= file.size) return file;
+      return new File([blob], String(file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+    } catch { return file; } // older browsers: upload the original
+  }
+
+  async function uploadPhotoBody(body, isJson) {
+    const res = await fetch(`${WORKER}/admin/catalog/upload-photo`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, ...(isJson ? { "Content-Type": "application/json" } : {}), ...gemachHeaders() },
+      body,
+    });
+    const fresh = res.headers.get("X-Session-Token");
+    if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
+    const data = await res.json().catch(() => ({}));
+    if (!data.url) throw new Error(data.error || `Upload failed (${res.status})`);
+    return data.url;
+  }
+
+  async function handleFileSelect(event) {
+    const files = [...(event.target.files || [])];
+    event.target.value = "";
+    if (!files.length) return;
+    const room = MAX_PHOTOS - PHOTOS.length;
+    const todo = files.slice(0, Math.max(0, room));
+    if (!todo.length) { setPhotoStatus("This item already has 10 photos — remove one first."); return; }
+    let done = 0, failed = 0;
+    for (const f of todo) {
+      setPhotoStatus(`Uploading ${done + failed + 1} of ${todo.length}…`);
+      try {
+        const fd = new FormData();
+        fd.append("photo", await shrinkPhoto(f));
+        PHOTOS.push(await uploadPhotoBody(fd, false));
+        done++;
+        renderPhotoStrip();
+      } catch (e) { failed++; console.warn("photo upload failed:", e.message); }
     }
+    const skipped = files.length - todo.length;
+    setPhotoStatus(`${done ? `${done} photo${done === 1 ? "" : "s"} added ✓` : ""}${failed ? ` · ${failed} failed — try again` : ""}${skipped ? ` · ${skipped} skipped (10 max)` : ""} — remember to Save`.replace(/^ · /, ""));
   }
 
   async function handleUrlImport() {
     const url = document.getElementById("it-photo-url").value.trim();
     if (!url) return;
+    if (PHOTOS.length >= MAX_PHOTOS) { setPhotoStatus("This item already has 10 photos — remove one first."); return; }
     setPhotoStatus("Importing from URL…");
     try {
-      const res = await fetch(`${WORKER}/admin/catalog/upload-photo`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-          ...gemachHeaders()
-        },
-        body: JSON.stringify({ url })
-      });
-      const fresh = res.headers.get("X-Session-Token");
-      if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
-      const data = await res.json();
-      if (data.url) {
-        pendingPhotoUrl = data.url;
-        showPhotoPreview(data.url);
-        setPhotoStatus("Photo imported ✓");
-        document.getElementById("it-photo-url").value = "";
-      } else {
-        setPhotoStatus("Import failed: " + (data.error || "Unknown error"));
-      }
-    } catch(e) {
+      PHOTOS.push(await uploadPhotoBody(JSON.stringify({ url }), true));
+      renderPhotoStrip();
+      setPhotoStatus("Photo imported ✓ — remember to Save");
+      document.getElementById("it-photo-url").value = "";
+    } catch (e) {
       setPhotoStatus("Import failed: " + e.message);
     }
   }
 
-  function showPhotoPreview(url) {
-    document.getElementById("it-photo-img").src = url;
-    document.getElementById("it-photo-preview").style.display = "block";
-    document.getElementById("it-photo-upload").style.display = "none";
-  }
-
-  function clearPhoto() {
-    pendingPhotoUrl = null;
-    clearPhotoUI();
-  }
-
+  function showPhotoPreview(url) { if (url && !PHOTOS.includes(url)) PHOTOS.unshift(url); renderPhotoStrip(); }
+  function clearPhoto() { PHOTOS = []; renderPhotoStrip(); clearPhotoUI(); }
   function clearPhotoUI() {
-    document.getElementById("it-photo-preview").style.display = "none";
-    document.getElementById("it-photo-upload").style.display = "block";
     document.getElementById("it-photo-file").value = "";
     document.getElementById("it-photo-url").value = "";
     setPhotoStatus("");

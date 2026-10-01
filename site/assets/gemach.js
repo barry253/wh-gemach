@@ -326,7 +326,8 @@
     var id = esc(it.id);
     var photo = it.photoUrl && W.safeUrl(it.photoUrl) ? it.photoUrl : null;
     var thumb = photo
-      ? '<button type="button" class="item-thumb" data-photo="' + id + '" aria-label="View photo of ' + esc(it.name) + '"><img src="' + esc(photo) + '" alt="" loading="lazy" width="92" height="72" /></button>'
+      ? '<button type="button" class="item-thumb" data-photo="' + id + '" aria-label="View ' + (photoList(it).length > 1 ? photoList(it).length + " photos" : "photo") + " of " + esc(it.name) + '"><img src="' + esc(photo) + '" alt="" loading="lazy" width="92" height="72" />' +
+        (photoList(it).length > 1 ? '<span class="thumb-count" aria-hidden="true">' + W.ICONS.photo + photoList(it).length + "</span>" : "") + "</button>"
       : '<div class="item-thumb" aria-hidden="true">' + W.ICONS.photo + "</div>";
     var attrs = attrDefs().map(function (d) {
       var v = itemVals(it, d.name);
@@ -526,7 +527,7 @@
     var photoBtn = t.closest("[data-photo]");
     if (photoBtn) {
       var it = items.filter(function (i) { return i.id === photoBtn.getAttribute("data-photo"); })[0];
-      if (it) openLightbox(it.photoUrl, it.name, photoBtn);
+      if (it) openLightbox(photoList(it), it.name, photoBtn);
       return;
     }
     var descBtn = t.closest(".item-desc-toggle");
@@ -606,21 +607,65 @@
 
   // ── Lightbox ──
   var lb = $("lightbox");
-  function openLightbox(url, name, opener) {
+  // ── Photo viewer: one photo or a gallery (swipe / arrows / ← → keys) ──
+  /** An item's photos in order (cover first); only our own safe links. */
+  function photoList(it) {
+    var list = Array.isArray(it.photos) && it.photos.length ? it.photos : (it.photoUrl ? [it.photoUrl] : []);
+    return list.filter(function (u) { return W.safeUrl(u); });
+  }
+  var gal = { list: [], i: 0, name: "" };
+  function showPhoto(i) {
+    var n = gal.list.length;
+    gal.i = (i + n) % n;
+    $("lightbox-img").src = gal.list[gal.i];
+    $("lightbox-img").alt = gal.name + (n > 1 ? " — photo " + (gal.i + 1) + " of " + n : "");
+    $("lightbox-count").textContent = n > 1 ? (gal.i + 1) + " of " + n : "";
+    var dots = $("lightbox-dots").children;
+    for (var k = 0; k < dots.length; k++) dots[k].classList.toggle("on", k === gal.i);
+    if (n > 1) { var pre = new Image(); pre.src = gal.list[(gal.i + 1) % n]; } // next one ready
+  }
+  function openLightbox(list, name, opener) {
     lastFocus = opener || document.activeElement;
-    $("lightbox-img").src = url;
-    $("lightbox-img").alt = name;
+    gal = { list: Array.isArray(list) ? list : [list], i: 0, name: name };
+    var many = gal.list.length > 1;
     $("lightbox-caption").textContent = name;
+    $("lightbox-prev").hidden = $("lightbox-next").hidden = !many;
+    $("lightbox-dots").innerHTML = many ? gal.list.map(function () { return "<span></span>"; }).join("") : "";
+    showPhoto(0);
     lb.hidden = false; lb.classList.add("open"); lockScroll(true);
-    $("lightbox-close").focus();
+    document.body.classList.add("lb-open");
+    (many ? $("lightbox-next") : $("lightbox-close")).focus();
   }
   function closeLightbox() {
     lb.classList.remove("open"); lb.hidden = true; lockScroll(false);
+    document.body.classList.remove("lb-open");
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
   $("lightbox-close").addEventListener("click", closeLightbox);
-  lb.addEventListener("click", function (e) { if (e.target === lb || e.target === $("lightbox-img")) closeLightbox(); });
-  lb.addEventListener("keydown", function (e) { if (e.key === "Escape") closeLightbox(); trap(e, lb); });
+  $("lightbox-prev").addEventListener("click", function () { showPhoto(gal.i - 1); });
+  $("lightbox-next").addEventListener("click", function () { showPhoto(gal.i + 1); });
+  lb.addEventListener("click", function (e) {
+    if (e.target === lb) closeLightbox();
+    else if (e.target === $("lightbox-img") && gal.list.length < 2) closeLightbox(); // with a gallery, tapping the photo doesn't close it
+  });
+  // Keys work while the viewer is open even if focus has left it (e.g. after tapping the photo).
+  document.addEventListener("keydown", function (e) {
+    if (lb.hidden) return;
+    if (e.key === "Escape") closeLightbox();
+    else if (e.key === "ArrowRight" && gal.list.length > 1) { e.preventDefault(); showPhoto(gal.i + 1); }
+    else if (e.key === "ArrowLeft" && gal.list.length > 1) { e.preventDefault(); showPhoto(gal.i - 1); }
+    else if (e.key === "Tab" && !lb.contains(document.activeElement)) { e.preventDefault(); $("lightbox-close").focus(); }
+    else trap(e, lb);
+  });
+  // Swipe left / right on phones
+  var touchX = null, touchY = null;
+  lb.addEventListener("touchstart", function (e) { if (e.touches.length === 1) { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; } }, { passive: true });
+  lb.addEventListener("touchend", function (e) {
+    if (touchX === null || gal.list.length < 2) return;
+    var dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY;
+    touchX = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) showPhoto(gal.i + (dx < 0 ? 1 : -1));
+  });
 
   // ── Modal ──
   var modal = $("modal");
