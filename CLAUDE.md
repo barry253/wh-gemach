@@ -18,4 +18,5 @@ Rules:
 - Other Claude sessions may work on this repo at the same time: always `git fetch` and rebase before pushing; never force-push `main`.
 - Never put secrets or personal data in the repo. Plain vars and secrets are managed in the Cloudflare dashboard (`keep_vars = true`).
 - Airtable base `appo390Vl4QKVTdu2`; every gemach-scoped table has a `Gemach` link + `Gemach Slug` lookup, and every query must be scoped (`scopeF(g)`).
+- If the live worker doesn't change after a merge, check the Workers Builds result: `curl -s https://api.github.com/repos/barry253/wh-gemach/commits/<sha>/check-runs` (look for "Workers Builds: wh-gemach"). The build log itself is only in the Cloudflare dashboard (Workers → wh-gemach → Deployments/Builds). A failed build leaves the previous worker live while Pages may already have the new site — keep changes backwards compatible.
 - To confirm what is live, read the deployed code with the Cloudflare connector (`workers_get_worker_code` for `wh-gemach`) and compare with `worker/src` bundled via `npm run check`.
