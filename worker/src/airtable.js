@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AIRTABLE_API, AIRTABLE_CONCURRENCY, ID_CHUNK, REC_RE } from "./config.js";
+import { AIRTABLE_API, AIRTABLE_CONCURRENCY, AIRTABLE_HEDGE_MAX, AIRTABLE_HEDGE_MS, ID_CHUNK, REC_RE } from "./config.js";
 
 // ─── Airtable data layer (per-request: concurrency limit + 429 retry + paging) ─
 
@@ -29,7 +29,30 @@ function makeDb(env) {
   const limit = makeLimiter(AIRTABLE_CONCURRENCY);
   const tpath = t => encodeURIComponent(t);
   // Per-request tally, reported in the Server-Timing header and in the slow-request log line.
-  const stats = { calls: 0, retries: 0, ms: 0, waitMs: 0, slowest: 0, slowestPath: "" };
+  const stats = { calls: 0, retries: 0, ms: 0, waitMs: 0, slowest: 0, slowestPath: "", hedges: 0, hedgeWins: 0 };
+  const hedgeMs = Number(env.AIRTABLE_HEDGE_MS) > 0 ? Number(env.AIRTABLE_HEDGE_MS) : AIRTABLE_HEDGE_MS;
+
+  // One HTTP call. For reads, a call still unanswered after hedgeMs gets a duplicate; the first
+  // response wins and the other is aborted. Network errors only count if both copies fail.
+  async function send(url, init, isRead) {
+    const one = () => { const ac = new AbortController(); return { ac, p: fetch(url, { ...init, signal: ac.signal }) }; };
+    const a = one();
+    if (!isRead || stats.hedges >= AIRTABLE_HEDGE_MAX) return a.p;
+    let timer;
+    const late = new Promise(r => { timer = setTimeout(() => r("late"), hedgeMs); });
+    const first = await Promise.race([a.p.then(() => "a", () => "a"), late]);
+    clearTimeout(timer);
+    if (first === "a") return a.p;
+    stats.hedges++; stats.calls++;
+    const b = one();
+    const tag = (x, name) => x.p.then(res => ({ res, name }));
+    try {
+      const { res, name } = await Promise.any([tag(a, "a"), tag(b, "b")]);
+      (name === "a" ? b : a).ac.abort();
+      if (name === "b") stats.hedgeWins++;
+      return res;
+    } catch (e) { throw e.errors?.[0] || e; }
+  }
 
   function request(path, { method = "GET", body } = {}) {
     const queued = Date.now();
@@ -38,11 +61,12 @@ function makeDb(env) {
       for (let attempt = 0; ; attempt++) {
         const t0 = Date.now();
         stats.calls++;
-        const res = await fetch(`${AIRTABLE_API}/${env.AIRTABLE_BASE_ID}/${path}`, {
+        const isRead = method === "GET" || (method === "POST" && path.split("?")[0].endsWith("/listRecords"));
+        const res = await send(`${AIRTABLE_API}/${env.AIRTABLE_BASE_ID}/${path}`, {
           method,
           headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}`, "Content-Type": "application/json" },
           body: body ? JSON.stringify(body) : undefined,
-        });
+        }, isRead);
         const took = Date.now() - t0;
         stats.ms += took;
         if (took > stats.slowest) { stats.slowest = took; stats.slowestPath = `${method} ${path.split("?")[0]}`; }

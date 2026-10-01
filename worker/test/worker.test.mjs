@@ -45,6 +45,7 @@ const DB = {
 const calls = [];
 let resendFail = false, airtableFail = null;
 let fail429Once = false;
+let stallOnce = null; // (method, table, id) => ms: that call hangs for ms (or until aborted)
 const PAGE = 2; // small page size to exercise offset paging
 
 function evalFilter(table, f, r) {
@@ -90,6 +91,10 @@ globalThis.fetch = async (input, init = {}) => {
   const m = url.match(/^https:\/\/api\.airtable\.com\/v0\/appTEST\/([^/?]+)(?:\/([^/?]+))?/);
   if (!m) throw new Error("unexpected fetch " + url);
   if (airtableFail && airtableFail(method, decodeURIComponent(m[1]), m[2])) return new Response('{"error":{"type":"TEST_FAIL"}}', { status: 422 });
+  if (stallOnce && stallOnce(method, decodeURIComponent(m[1]), m[2])) {
+    const ms = stallOnce(method, decodeURIComponent(m[1]), m[2]); stallOnce = null;
+    await new Promise((res, rej) => { const t = setTimeout(res, ms); init.signal?.addEventListener("abort", () => { clearTimeout(t); rej(new Error("aborted")); }); });
+  }
   if (fail429Once) { fail429Once = false; return new Response("{}", { status: 429, headers: { "Retry-After": "0" } }); }
   const table = decodeURIComponent(m[1]);
   const rows = DB[table];
@@ -1248,6 +1253,28 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     j = await (await call("/health?probe=1")).json();
     assert.equal(j.probe, undefined, "second probe within 20 s falls back to the plain health check");
     assert.equal(j.ok, true);
+  });
+  await t("airtable: a read that stalls is sent again and the first answer wins; writes are never resent", async () => {
+    const fast = { ...env, AIRTABLE_HEDGE_MS: "40" };
+    const go = (path, init = {}) => worker.fetch(new Request("https://wh-gemach.example.workers.dev" + path, init), fast, ctx);
+    stallOnce = (m, table, id) => table === "Gemachs" && id === "listRecords" ? 3000 : 0;
+    let before = calls.length, t0 = Date.now();
+    const r = await go("/health");
+    const j = await r.json();
+    assert.ok(Date.now() - t0 < 1500, "answered by the second copy, not after the stall");
+    assert.equal(j.ok, true); assert.equal(j.resent, 1);
+    assert.equal(calls.slice(before).filter(c => c.url.includes("/Gemachs/listRecords")).length, 2);
+    assert.match(r.headers.get("Server-Timing"), /1 resent \(1 faster\)/);
+    // A write that is slow is waited for, never duplicated.
+    const loan = DB.Loans[0];
+    stallOnce = (m, table, id) => m === "PATCH" ? 150 : 0;
+    before = calls.length;
+    const { makeDbForTest } = globalThis.__WHG_TEST__;
+    const db = makeDbForTest(fast);
+    await db.update("Loans", loan.id, {});
+    assert.equal(calls.slice(before).filter(c => c.method === "PATCH").length, 1);
+    assert.equal(db.stats.hedges, 0);
+    stallOnce = null;
   });
   const base = { gemach: A.slug, name: "Failing Person", phone: "516-555-9999", email: "fp@example.com", preferredContact: "Phone", itemsRequested: ["recTYPEA000000002"], neededFrom: SOON, notes: "please call" };
   await t("alerts: failed request save emails the person's details (every time, not throttled)", async () => {

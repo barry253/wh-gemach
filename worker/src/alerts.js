@@ -42,7 +42,7 @@ async function handleHealth(db, env, request, url) {
   if (env && url?.searchParams.get("probe") === "1" && Date.now() - probeLast >= PROBE_EVERY_MS) {
     probeLast = Date.now();
     const steps = await runProbe(db, env);
-    return json({ ok: true, probe: true, colo, totalMs: Date.now() - t0, rateLimited: db.stats?.retries ?? 0, steps }, 200, noStore);
+    return json({ ok: true, probe: true, colo, totalMs: Date.now() - t0, rateLimited: db.stats?.retries ?? 0, resent: db.stats?.hedges ?? 0, steps }, 200, noStore);
   }
   try {
     await Promise.race([
@@ -50,7 +50,7 @@ async function handleHealth(db, env, request, url) {
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
     ]);
     // rateLimited > 0 means Airtable answered "too many requests" and we waited before retrying.
-    return json({ ok: true, airtable: "ok", ms: Date.now() - t0, airtableMs: db.stats?.slowest ?? null, rateLimited: db.stats?.retries ?? 0, colo }, 200, noStore);
+    return json({ ok: true, airtable: "ok", ms: Date.now() - t0, airtableMs: db.stats?.slowest ?? null, rateLimited: db.stats?.retries ?? 0, resent: db.stats?.hedges ?? 0, colo }, 200, noStore);
   } catch (e) {
     console.error("Health check failed:", e.message, e.detail ? JSON.stringify(e.detail) : "");
     return json({ ok: false, airtable: "error" }, 503, noStore);

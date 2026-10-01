@@ -126,6 +126,7 @@ if (globalThis.__WHG_TEST__) {
     eventDates: (...a) => eventDates(...a), buildIcs: (...a) => buildIcs(...a), nyLocalToUtc: (...a) => nyLocalToUtc(...a),
     nyToday: (...a) => nyToday(...a), formatNy: (...a) => formatNy(...a), textColorFor: (...a) => textColorFor(...a),
     contrastRatio: (...a) => contrastRatio(...a), buildEmailHtml: (...a) => buildEmailHtml(...a),
+    makeDbForTest: e => makeDb(e),
     clearMemo: () => { gemachMemo.clear(); liveNetMemo.clear(); },
   });
 }
@@ -135,11 +136,11 @@ if (globalThis.__WHG_TEST__) {
  * requests (Workers Logs) saying how much of the time was Airtable and whether Airtable rate-limited us.
  */
 function withTiming(res, st, totalMs, method, path) {
-  const desc = `${st.calls} call${st.calls === 1 ? "" : "s"}${st.retries ? `, ${st.retries} rate-limited` : ""}`;
+  const desc = `${st.calls} call${st.calls === 1 ? "" : "s"}${st.retries ? `, ${st.retries} rate-limited` : ""}${st.hedges ? `, ${st.hedges} resent (${st.hedgeWins} faster)` : ""}`;
   const timing = `total;dur=${totalMs}, airtable;dur=${st.ms};desc="${desc}", queue;dur=${st.waitMs}`;
   if (totalMs > 2000 && path !== "/health") {
     console.warn(`slow request ${method} ${path}: ${totalMs}ms — Airtable ${st.calls} calls, ${st.ms}ms total, slowest ${st.slowest}ms (${st.slowestPath}), ` +
-      `${st.retries} rate-limited retries, ${st.waitMs}ms queued`);
+      `${st.retries} rate-limited retries, ${st.hedges || 0} slow reads resent (${st.hedgeWins || 0} faster), ${st.waitMs}ms queued`);
   }
   try {
     const out = new Response(res.body, res);

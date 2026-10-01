@@ -48,6 +48,11 @@ const CACHE_TTL_MS = 60 * 1000;          // serve fresh for 60s
 const CACHE_MAX_STALE_MS = 24 * 60 * 60 * 1000; // serve stale (+ background refresh) up to 24h; older copies only if Airtable fails
 
 const AIRTABLE_CONCURRENCY = 4; // Airtable allows 5 req/s per base
+// Airtable sometimes stalls a single call for 2–3 s while the same call a moment later takes ~0.1 s.
+// A read that hasn't answered after HEDGE_MS is sent a second time and the first answer wins.
+// Reads only (never writes), and at most HEDGE_MAX per incoming request so a slow Airtable isn't doubled.
+const AIRTABLE_HEDGE_MS = 1000;
+const AIRTABLE_HEDGE_MAX = 4;
 const ID_CHUNK = 40;            // record ids per OR(RECORD_ID()=...) query
 
-export { AIRTABLE_API, DEFAULT_GOOGLE_CLIENT_ID, DEFAULT_FROM_EMAIL, DEFAULT_ADMIN_URL, DEFAULT_CACHE_ORIGIN, LEGACY_SLUG, NETWORK_ADMIN_ROLE, JWT_TTL_MS, JWT_REFRESH_MS, T, ALLOWED_ORIGINS, LOCALHOST_RE, PAGES_PREVIEW_RE, SLUG_RE, REC_RE, DATE_RE, safeDecode, EVENT_TYPES, CACHE_TTL_MS, CACHE_MAX_STALE_MS, AIRTABLE_CONCURRENCY, ID_CHUNK };
+export { AIRTABLE_API, DEFAULT_GOOGLE_CLIENT_ID, DEFAULT_FROM_EMAIL, DEFAULT_ADMIN_URL, DEFAULT_CACHE_ORIGIN, LEGACY_SLUG, NETWORK_ADMIN_ROLE, JWT_TTL_MS, JWT_REFRESH_MS, T, ALLOWED_ORIGINS, LOCALHOST_RE, PAGES_PREVIEW_RE, SLUG_RE, REC_RE, DATE_RE, safeDecode, EVENT_TYPES, CACHE_TTL_MS, CACHE_MAX_STALE_MS, AIRTABLE_CONCURRENCY, AIRTABLE_HEDGE_MS, AIRTABLE_HEDGE_MAX, ID_CHUNK };
