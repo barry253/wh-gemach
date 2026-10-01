@@ -151,7 +151,7 @@ function withTiming(res, st, totalMs, method, path) {
 async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
 
   // Public endpoints
-  if (method === "GET"  && path === "/health")           return handleHealth(db);
+  if (method === "GET"  && path === "/health")           return handleHealth(db, env, request, url);
   if (method === "GET"  && path === "/inventory")        return handleLegacyInventory(db);
   if (method === "GET"  && path === "/public/directory") return handleDirectory(db, env, ctx);
   if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)));

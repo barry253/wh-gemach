@@ -86,6 +86,7 @@ globalThis.fetch = async (input, init = {}) => {
     if (resendFail && to !== "alerts@example.com") return new Response('{"message":"boom"}', { status: 500 });
     return new Response("{}");
   }
+  if (url === "https://api.airtable.com/v0/meta/whoami") return new Response('{"id":"usrTEST"}');
   const m = url.match(/^https:\/\/api\.airtable\.com\/v0\/appTEST\/([^/?]+)(?:\/([^/?]+))?/);
   if (!m) throw new Error("unexpected fetch " + url);
   if (airtableFail && airtableFail(method, decodeURIComponent(m[1]), m[2])) return new Response('{"error":{"type":"TEST_FAIL"}}', { status: 422 });
@@ -102,6 +103,7 @@ globalThis.fetch = async (input, init = {}) => {
     const next = start + size < all.length && !(b.maxRecords && start + size >= b.maxRecords) ? String(start + size) : undefined;
     return new Response(JSON.stringify({ records: page, offset: next }));
   }
+  if (!m[2] && method === "GET") return new Response(JSON.stringify({ records: rows.slice(0, 1) })); // GET list (health probe)
   if (m[2]) {
     const r = rows.find(x => x.id === m[2]);
     if (!r) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404 });
@@ -1235,6 +1237,17 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     r = await call("/health"); airtableFail = null;
     assert.equal(r.status, 503); assert.equal((await r.json()).ok, false);
     await settle(); assert.equal(alerts().length, n, "health failures are for the uptime monitor, not alert emails");
+  });
+  await t("health: ?probe=1 times several kinds of Airtable call, at most once per 20 s", async () => {
+    const before = calls.length;
+    let j = await (await call("/health?probe=1")).json();
+    assert.equal(j.probe, true);
+    for (const k of ["whoami", "listPost", "listGet", "getOne", "smallTable", "whoamiAgain"]) assert.equal(typeof j.steps[k].ms, "number", k);
+    assert.equal(j.steps.getOne.status, 200);
+    assert.ok(calls.slice(before).some(c => c.url.endsWith("/meta/whoami")));
+    j = await (await call("/health?probe=1")).json();
+    assert.equal(j.probe, undefined, "second probe within 20 s falls back to the plain health check");
+    assert.equal(j.ok, true);
   });
   const base = { gemach: A.slug, name: "Failing Person", phone: "516-555-9999", email: "fp@example.com", preferredContact: "Phone", itemsRequested: ["recTYPEA000000002"], neededFrom: SOON, notes: "please call" };
   await t("alerts: failed request save emails the person's details (every time, not throttled)", async () => {
