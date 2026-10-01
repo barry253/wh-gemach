@@ -1952,6 +1952,16 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
   });
 }
 
+await t("borrower email: pickup address is our own Maps link (instructions not swallowed); web links clickable", async () => {
+  const g = { name: "WH Medical", pickupAddress: "507 Walton Court", phone: "(718) 986-7345", email: "g@example.com" };
+  const msg = "Hi Binyamin, great news.\n\nPickup is at 507 Walton Court. In the driveway.\n\nManage or cancel: https://whgemachs.org/r/recAAAAAAAAAAAAAA.p0LoBdlHI_hcYLEp9QRaKK";
+  const html = __WHG_TEST__.buildEmailHtml(g, msg, { signature: true });
+  assert.ok(html.includes('<a href="https://www.google.com/maps/search/?api=1&amp;query=507%20Walton%20Court" style="color:#1B3A4B;">507 Walton Court</a>. In the driveway.'), "only the address is linked");
+  assert.ok(html.includes('<a href="https://whgemachs.org/r/recAAAAAAAAAAAAAA.p0LoBdlHI_hcYLEp9QRaKK" style="color:#1B3A4B;">https://whgemachs.org/r/recAAAAAAAAAAAAAA.p0LoBdlHI_hcYLEp9QRaKK</a>'), "manage link clickable");
+  const tricky = __WHG_TEST__.buildEmailHtml({ name: "X", pickupAddress: "5 Elm St <b>" }, "See https://example.org/a?x=1&y=2. Pickup at 5 Elm St <b>.", { signature: false });
+  assert.ok(tricky.includes('href="https://example.org/a?x=1&amp;y=2"') && tricky.includes("</a>. Pickup") && !tricky.includes("<b>") && tricky.includes("5 Elm St &lt;b&gt;</a>"), "escaped; trailing period outside the link");
+});
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

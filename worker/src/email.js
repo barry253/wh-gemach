@@ -210,6 +210,29 @@ function textColorFor(bg) {
   return contrastRatio(hex, "#FFFFFF") >= contrastRatio(hex, "#111111") ? "#FFFFFF" : "#111111";
 }
 
+const LINK_STYLE = "color:#1B3A4B;";
+
+/**
+ * A plain-text message as email HTML: escaped, line breaks kept, web links clickable, and the gemach's
+ * pickup address linked to Google Maps by us. Mail apps (Gmail especially) otherwise guess where an
+ * address ends and swallow what follows ("507 Walton Court. In the driveway" → one map link).
+ */
+function messageHtml(message, g) {
+  let html = escHtml(message);
+  // Web links (escaped text, so "&" is "&amp;" — fine inside href). Trailing punctuation stays outside the link.
+  html = html.replace(/https?:\/\/[^\s<>"']+/g, url => {
+    const m = url.match(/^(.*?)([.,;:!?)]*)$/);
+    return `<a href="${m[1]}" style="${LINK_STYLE}">${m[1]}</a>${m[2]}`;
+  });
+  const addr = String(g?.pickupAddress || "").trim();
+  if (addr) {
+    const esc = escHtml(addr);
+    const href = escHtml(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`);
+    html = html.split(esc).join(`<a href="${href}" style="${LINK_STYLE}">${esc}</a>`);
+  }
+  return html.replace(/\r\n?|\n/g, "<br>");
+}
+
 function buildEmailHtml(g, message, { signature = true, bodyHtml = null } = {}) {
   const bg = HEX_RE.test(g?.themeColor || "") ? g.themeColor : DEFAULT_THEME;
   const fg = textColorFor(bg);
@@ -218,7 +241,7 @@ function buildEmailHtml(g, message, { signature = true, bodyHtml = null } = {}) 
   if (g?.logoUrl && /^https:\/\//i.test(g.logoUrl)) {
     logo = `<img src="${escHtml(g.logoUrl)}" width="64" height="64" alt="" style="display:block;width:64px;height:64px;border-radius:12px;border:0;margin:0 0 10px 0;background:#ffffff;">`;
   }
-  const body = bodyHtml ?? escHtml(message).replace(/\r\n?|\n/g, "<br>"); // bodyHtml: pre-escaped markup built by the caller
+  const body = bodyHtml ?? messageHtml(message, g); // bodyHtml: pre-escaped markup built by the caller
   const contact = [g?.phone, g?.email].map(v => String(v || "").trim()).filter(Boolean).map(escHtml).join(" · ");
   const footer = signature
     ? `<tr><td style="padding:16px 24px;border-top:1px solid #e5e7eb;color:#555555;font-size:13px;line-height:1.5;">${name}${contact ? `<br>${contact}` : ""}</td></tr>`
@@ -233,4 +256,4 @@ function buildEmailHtml(g, message, { signature = true, bodyHtml = null } = {}) 
     `</table></td></tr></table></body></html>`;
 }
 
-export { sendEmail, longDate, shortDate, availabilityText, sendNotificationEmail, escHtml, relLuminance, contrastRatio, textColorFor, buildEmailHtml };
+export { messageHtml, sendEmail, longDate, shortDate, availabilityText, sendNotificationEmail, escHtml, relLuminance, contrastRatio, textColorFor, buildEmailHtml };
