@@ -2,7 +2,7 @@
 import { AirtableError, fetchByIds } from "./airtable.js";
 import { validateAttrDefs } from "./attributes.js";
 import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
-import { CONTACT_METHODS, HEX_RE, REQUEST_STYLES, gemachFromRecord, gemachMemo } from "./gemachs.js";
+import { CONTACT_METHODS, HEX_RE, ITEM_VIEWS, REQUEST_STYLES, gemachFromRecord, gemachMemo } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { NAME_TAKEN, gemachNameTaken } from "./network.js";
 import { publicGemach } from "./public.js";
@@ -86,6 +86,7 @@ const GEMACH_EDITABLE = {
   accentColor:        ["Accent Color", "color"],
   depositRequired:    ["Deposit Required", "bool"],
   chargeType:         ["Charge Type", "charge"],
+  itemView:           ["Item View", "view"],
   depositInfo:        ["Deposit Info", "long"],
   gemachInfo:         ["Gemach Info", "long"],
   requestStyle:       ["Request Style", "style"],
@@ -104,7 +105,7 @@ const GEMACH_LABELS = {
   pickupInstructions: "Pickup instructions", confirmMessage: "Confirm message", declineMessage: "Decline message",
   pickupMessage: "Pickup message", name: "Gemach name",
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
-  depositRequired: "Deposit required", chargeType: "Deposit or payment", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
+  depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
 };
@@ -158,6 +159,11 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
         continue;
       }
       if (!CONTACT_METHODS.includes(v)) return { error: `${label} must be one of ${CONTACT_METHODS.join(", ")}.` };
+      fields[field] = v;
+      continue;
+    }
+    if (kind === "view") {
+      if (!ITEM_VIEWS.includes(v)) return { error: `Item view must be one of ${ITEM_VIEWS.join(", ")}.` };
       fields[field] = v;
       continue;
     }

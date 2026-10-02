@@ -1936,6 +1936,21 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.equal((await (await call(`/public/gemach/${G.slug}?p=2`)).json()).gemach.chargeType, "Payment");
   });
 
+  await t("item view: blank = List; Settings sets Grid/Photos; bad value refused", async () => {
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?v=1`)).json()).gemach.itemView, "List");
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ itemView: "Grid" }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).itemView, "Grid");
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Item View"], "Grid");
+    assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ itemView: "Carousel" }) })).status, 400);
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?v=2`)).json()).gemach.itemView, "Grid");
+    await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ itemView: "Photos" }) });
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?v=3`)).json()).gemach.itemView, "Photos");
+  });
+
   await t("payment: request must acknowledge payment; gemach email says 'Payment'", async () => {
     const base = { gemach: G.slug, name: "Tova", phone: "5165557777", preferredContact: "Phone", itemsRequested: ["recPAYTYPE0000001"], quantities: { recPAYTYPE0000001: 3 }, neededFrom: soon(9) };
     let r = await post("/submit-request", base);

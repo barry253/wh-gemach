@@ -10,6 +10,7 @@ const gemachMemo = new Map(); // slug -> { g, at }  (plain data only; per-isolat
 
 const nonBlank = v => (typeof v === "string" ? (v.trim() ? v : null) : v ?? null);
 const GEMACH_MODES = new Set(["Full", "Directory", "Info"]); // Online requests / Listing only / Info only
+const ITEM_VIEWS = ["List", "Grid", "Photos"]; // Gemachs.Item View: public page layout (List = classic rows)
 const CONTACT_METHODS = ["Call", "Text", "WhatsApp", "Email"];
 const REQUEST_STYLES = ["Dates", "Event", "Appointment"];
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
@@ -47,6 +48,7 @@ function gemachFromRecord(r) {
     accentColor: HEX_RE.test(String(f["Accent Color"] || "").trim()) ? String(f["Accent Color"]).trim().toUpperCase() : null,
     depositRequired: !!f["Deposit Required"],
     chargeType: selName(f["Charge Type"]) === "Payment" ? "Payment" : "Deposit", // Deposit = refundable; Payment = a fee
+    itemView: ITEM_VIEWS.includes(selName(f["Item View"])) ? selName(f["Item View"]) : "List", // how items first show on the public page
     depositInfo: nonBlank(f["Deposit Info"]),
     gemachInfo: nonBlank(f["Gemach Info"]),
     requestStyle: REQUEST_STYLES.includes(selName(f["Request Style"])) ? selName(f["Request Style"]) : "Dates",
@@ -144,4 +146,4 @@ async function isLiveNetworkAdminMemo(db, email) {
   return ok;
 }
 
-export { gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo };
+export { ITEM_VIEWS, gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo };

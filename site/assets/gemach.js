@@ -370,6 +370,87 @@
       availBadge(it) + "</div>" + desc + "</div>" + check + "</li>";
   }
 
+  // ── Item views: List (rows), Grid (photo tiles), Photos (large, swipe through an item's photos) ──
+  var VIEWS = ["List", "Grid", "Photos"];
+  var VIEW_ICONS = {
+    List: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="6" height="6" rx="1"/><rect x="3" y="14" width="6" height="6" rx="1"/><path d="M13 6h8M13 9h5M13 16h8M13 19h5"/></svg>',
+    Grid: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>',
+    Photos: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="3" width="16" height="14" rx="1.5"/><path d="M8 21h8"/></svg>'
+  };
+  var VIEW_NAMES = { List: "List", Grid: "Grid", Photos: "Large photos" };
+  function anyPhotos() { return items.some(function (it) { return photoList(it).length > 0; }); }
+  function viewKey() { return "whg_view:" + (gemach && gemach.slug || ""); }
+  /** The visitor's own choice (remembered per gemach on this device), else the gemach's default. No photos at all: List. */
+  function currentView() {
+    if (!anyPhotos()) return "List";
+    var v = null;
+    try { v = localStorage.getItem(viewKey()); } catch (e) { /* ignore */ }
+    if (VIEWS.indexOf(v) !== -1) return v;
+    return gemach && VIEWS.indexOf(gemach.itemView) !== -1 ? gemach.itemView : "List";
+  }
+  function viewSwitcher(v) {
+    if (!anyPhotos()) return "";
+    return '<div class="view-seg" role="group" aria-label="Show items as">' + VIEWS.map(function (x) {
+      return '<button type="button" class="view-btn" data-view="' + x + '" aria-pressed="' + (x === v) + '" aria-label="' + VIEW_NAMES[x] + '" title="' + VIEW_NAMES[x] + '">' + VIEW_ICONS[x] + "</button>";
+    }).join("") + "</div>";
+  }
+  function attrsLine(it) {
+    var v = attrDefs().map(function (d) { var x = itemVals(it, d.name); return x.length ? d.name + " " + x.join(", ") : ""; }).filter(Boolean);
+    return v.length ? '<div class="tile-attrs">' + esc(v.join(" · ")) + "</div>" : "";
+  }
+  function checkBox(it, cls) {
+    return '<label class="item-check' + (cls ? " " + cls : "") + '"><input type="checkbox" data-id="' + esc(it.id) + '"' + (selected.has(it.id) ? " checked" : "") +
+      ' aria-label="Select ' + esc(it.name) + '" /></label>';
+  }
+  function itemTile(it) {
+    var dir = !W.acceptsRequests(gemach), id = esc(it.id), list = photoList(it), n = list.length, sel = selected.has(it.id);
+    var media = n
+      ? '<button type="button" class="tile-photo" data-photo="' + id + '" aria-label="View ' + (n > 1 ? n + " photos" : "photo") + " of " + esc(it.name) + '"><img src="' + esc(list[0]) + '" alt="" loading="lazy" /></button>' +
+        (n > 1 ? '<span class="tile-count" aria-hidden="true">' + W.ICONS.photo + n + "</span>" : "")
+      : '<div class="tile-photo tile-nophoto" aria-hidden="true">' + W.ICONS.photo + "</div>";
+    return '<li class="item-tile' + (dir ? "" : " selectable") + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
+      '<div class="tile-media">' + media + (dir ? "" : checkBox(it, "tile-check")) + "</div>" +
+      '<div class="tile-name">' + esc(it.name) + "</div>" + attrsLine(it) +
+      '<div class="tile-meta">' + availBadge(it) + "</div></li>";
+  }
+  function itemPost(it) {
+    var dir = !W.acceptsRequests(gemach), id = esc(it.id), list = photoList(it), n = list.length, sel = selected.has(it.id);
+    var media = n
+      ? '<div class="post-track">' + list.map(function (u, k) {
+          return '<button type="button" class="post-photo" data-photo="' + id + '" data-pi="' + k + '" aria-label="View ' + esc(it.name) + (n > 1 ? ", photo " + (k + 1) + " of " + n : "") + '">' +
+            '<img src="' + esc(u) + '" alt="" loading="lazy" /></button>';
+        }).join("") + "</div>" +
+        (n > 1 ? '<span class="post-num" aria-hidden="true">1/' + n + "</span>" +
+          '<button type="button" class="post-nav prev" data-step="-1" aria-label="Previous photo" hidden>‹</button>' +
+          '<button type="button" class="post-nav next" data-step="1" aria-label="Next photo">›</button>' : "")
+      : '<div class="post-nophoto" aria-hidden="true">' + W.ICONS.photo + "</div>";
+    var dots = n > 1 ? '<div class="post-dots" aria-hidden="true">' + list.map(function (_, k) { return "<span" + (k ? "" : ' class="on"') + "></span>"; }).join("") + "</div>" : "";
+    var units = isAddon(it) ? '<div class="item-units">Made to order · paid separately</div>'
+      : typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
+      ? '<div class="item-units">' + (isQty(it) ? it.totalUnits : W.plural(it.totalUnits, "unit")) + " in the gemach" + (pkgSize(it) > 1 ? " · " + esc(pkgPhrase(it)) : "") + "</div>" : "";
+    var d = it.description ? String(it.description) : "";
+    var long = d.length > 110 || /\n/.test(d);
+    var desc = d ? '<p class="post-desc' + (long ? " clamp" : "") + '" id="desc-' + id + '">' + esc(d).replace(/\r?\n/g, "<br>") + "</p>" +
+      (long ? '<button type="button" class="post-more" aria-controls="desc-' + id + '" aria-expanded="false">more</button>' : "") : "";
+    var add = dir ? "" : '<label class="post-add"><input type="checkbox" data-id="' + id + '"' + (sel ? " checked" : "") + ' aria-label="Add ' + esc(it.name) + ' to your request" />' +
+      '<span class="pa-off" aria-hidden="true">+ Add to request</span><span class="pa-on" aria-hidden="true">✓ Added to your request</span></label>';
+    return '<li class="item-post' + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
+      '<div class="post-media">' + media + "</div>" + dots +
+      '<div class="post-body"><div class="item-top"><div class="item-name">' + esc(it.name) + "</div>" + availBadge(it) + "</div>" +
+      attrsLine(it) + units + desc + add + "</div></li>";
+  }
+  function updateTrack(tr) {
+    var post = tr.closest(".item-post");
+    if (!post || !tr.clientWidth) return;
+    var n = tr.children.length, i = Math.max(0, Math.min(n - 1, Math.round(tr.scrollLeft / tr.clientWidth)));
+    var num = post.querySelector(".post-num"); if (num) num.textContent = (i + 1) + "/" + n;
+    var dots = post.querySelectorAll(".post-dots span");
+    for (var k = 0; k < dots.length; k++) dots[k].classList.toggle("on", k === i);
+    var prev = post.querySelector(".post-nav.prev"), next = post.querySelector(".post-nav.next");
+    if (prev) prev.hidden = i === 0;
+    if (next) next.hidden = i === n - 1;
+  }
+
   function renderInventory() {
     var dir = !W.acceptsRequests(gemach);
     var soon = W.isComingSoon(gemach) && !W.isDirectory(gemach);
@@ -407,9 +488,9 @@
     if (addons.items.length) order.push(addons);
     var showHeads = order.length > 1 || order[0] !== other;
 
-    var st = style();
-    html += '<div class="inv-head"><h2 class="section-title">' + (dir || st !== "Dates" ? "Items" : "Equipment") + "</h2>" +
-      (dir || st === "Appointment" ? "" : '<span class="section-sub">Availability updates in real time</span>') + "</div>";
+    var st = style(), view = currentView();
+    html += '<div class="inv-head"><div class="inv-title"><h2 class="section-title">' + (dir || st !== "Dates" ? "Items" : "Equipment") + "</h2>" +
+      (dir || st === "Appointment" ? "" : '<span class="section-sub">Availability updates in real time</span>') + "</div>" + viewSwitcher(view) + "</div>";
     var help = {
       Dates: "Tap the items you need, then send one request. Items on loan can still be requested — the gemach will let you know.",
       Event: "Tap the items you need, then send one request with your " + esc(eventLabel().toLowerCase()) + ". Items on loan can still be requested — the gemach will let you know.",
@@ -427,7 +508,8 @@
     html += order.map(function (b) {
       return '<section class="cat-block" aria-label="' + esc(b.c.name) + '">' +
         (showHeads ? '<h3><span class="ci" aria-hidden="true">' + esc(b.c.icon || "•") + "</span>" + esc(b.c.name) + "</h3>" : "") +
-        '<ul class="item-list">' + b.items.map(itemRow).join("") + "</ul></section>";
+        '<ul class="item-list' + (view === "List" ? "" : " item-" + view.toLowerCase()) + '">' +
+        b.items.map(view === "Grid" ? itemTile : view === "Photos" ? itemPost : itemRow).join("") + "</ul></section>";
     }).join("");
     return html;
   }
@@ -542,10 +624,32 @@
       return;
     }
     if (t.closest(".af-clear")) { attrFilter = {}; rerenderInventory("#af-bar .af-chip"); return; }
+    var vb = t.closest(".view-btn");
+    if (vb) {
+      var v = vb.getAttribute("data-view");
+      try { localStorage.setItem(viewKey(), v); } catch (err) { /* ignore */ }
+      rerenderInventory('.view-btn[data-view="' + v + '"]');
+      return;
+    }
+    var nav = t.closest(".post-nav");
+    if (nav) {
+      var tr = nav.parentNode.querySelector(".post-track");
+      if (tr) tr.scrollBy({ left: Number(nav.getAttribute("data-step")) * tr.clientWidth, behavior: "smooth" });
+      return;
+    }
+    var more = t.closest(".post-more");
+    if (more) {
+      var pd = document.getElementById(more.getAttribute("aria-controls"));
+      var open = more.getAttribute("aria-expanded") !== "true";
+      if (pd) pd.classList.toggle("clamp", !open);
+      more.setAttribute("aria-expanded", open ? "true" : "false");
+      more.textContent = open ? "less" : "more";
+      return;
+    }
     var photoBtn = t.closest("[data-photo]");
     if (photoBtn) {
       var it = items.filter(function (i) { return i.id === photoBtn.getAttribute("data-photo"); })[0];
-      if (it) openLightbox(photoList(it), it.name, photoBtn);
+      if (it) openLightbox(photoList(it), it.name, photoBtn, Number(photoBtn.getAttribute("data-pi")) || 0);
       return;
     }
     var descBtn = t.closest(".item-desc-toggle");
@@ -559,10 +663,18 @@
     if (t.closest("a, button")) return;
     var chk = t.closest('input[type="checkbox"][data-id]');
     if (chk) { toggleItem(chk.getAttribute("data-id"), chk.checked); return; }
-    if (t.closest(".item-check")) return; // label click forwards to checkbox
-    var row = t.closest(".item-row.selectable");
+    if (t.closest(".item-check, .post-add")) return; // label click forwards to checkbox
+    var row = t.closest(".item-row.selectable, .item-tile.selectable");
     if (row) toggleItem(row.getAttribute("data-id"));
   });
+
+  var trackRaf = 0;
+  $("g-body").addEventListener("scroll", function (e) {
+    var tr = e.target;
+    if (!tr.classList || !tr.classList.contains("post-track")) return;
+    cancelAnimationFrame(trackRaf);
+    trackRaf = requestAnimationFrame(function () { updateTrack(tr); });
+  }, true);
 
   $("cta-clear").addEventListener("click", function () {
     var ids = Array.from(selected); selected.clear();
@@ -642,14 +754,14 @@
     for (var k = 0; k < dots.length; k++) dots[k].classList.toggle("on", k === gal.i);
     if (n > 1) { var pre = new Image(); pre.src = gal.list[(gal.i + 1) % n]; } // next one ready
   }
-  function openLightbox(list, name, opener) {
+  function openLightbox(list, name, opener, start) {
     lastFocus = opener || document.activeElement;
     gal = { list: Array.isArray(list) ? list : [list], i: 0, name: name };
     var many = gal.list.length > 1;
     $("lightbox-caption").textContent = name;
     $("lightbox-prev").hidden = $("lightbox-next").hidden = !many;
     $("lightbox-dots").innerHTML = many ? gal.list.map(function () { return "<span></span>"; }).join("") : "";
-    showPhoto(0);
+    showPhoto(Math.min(start || 0, gal.list.length - 1));
     lb.hidden = false; lb.classList.add("open"); lockScroll(true);
     document.body.classList.add("lb-open");
     (many ? $("lightbox-next") : $("lightbox-close")).focus();

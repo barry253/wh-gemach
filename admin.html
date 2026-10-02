@@ -257,7 +257,7 @@
       font-size: 0.85rem;
     }
     .radio-card input { width: auto !important; margin-top: 0.2rem; accent-color: var(--navy); }
-    .radio-card.selected, .radio-card:has(input[name="set-chargeType"]:checked) { border-color: var(--navy); background: var(--teal); }
+    .radio-card.selected, .radio-card:has(input[name="set-chargeType"]:checked), .radio-card:has(input[name="set-itemView"]:checked) { border-color: var(--navy); background: var(--teal); }
     .radio-card small { display: block; color: var(--muted); font-size: 0.75rem; }
     .example-line { font-size: 0.82rem; background: var(--teal); color: var(--navy); border-radius: 6px; padding: 0.5rem 0.75rem; }
 
@@ -3511,6 +3511,7 @@
     { title: "Branding", extra: "branding" },
     { title: "Gemach info", extra: "info" },
     { title: "Requests", extra: "requests" },
+    { title: "How items look", extra: "view" },
     { title: "Item filters", extra: "attrs" },
     { title: "Home page categories", extra: "browsecats" },
   ];
@@ -3666,6 +3667,18 @@
           Gemachs with items are already listed under their items' categories.</p>
         <div class="attr-chips" id="browse-cats" role="group" aria-label="Home page categories"></div>`;
     }
+    if (group.extra === "view") {
+      inner += `
+        <p class="settings-help" style="margin:0 0 0.6rem">How visitors first see your items. They can switch on the page, and their choice is remembered on their device.</p>
+        <div class="form-group" role="radiogroup" aria-label="How items look" style="margin-bottom:0">
+          <label class="radio-card"><input type="radio" name="set-itemView" value="List" onchange="onSettingsInput()" />
+            <span>List<small>A small photo beside each item's details. Best for equipment.</small></span></label>
+          <label class="radio-card"><input type="radio" name="set-itemView" value="Grid" onchange="onSettingsInput()" />
+            <span>Grid<small>Photo tiles, two across on a phone. Good for browsing many looks, like gowns or tablecloths.</small></span></label>
+          <label class="radio-card"><input type="radio" name="set-itemView" value="Photos" onchange="onSettingsInput()" />
+            <span>Large photos<small>One item at a time across the screen; swipe through its photos.</small></span></label>
+        </div>`;
+    }
     if (group.extra === "attrs") {
       inner += `
         <p class="settings-help" style="margin:0 0 0.6rem">Let borrowers filter your items — e.g. <b>Size</b> and <b>Color</b> for gowns. Most gemachs don't need this.
@@ -3764,6 +3777,9 @@
     const charge = g.chargeType === "Payment" ? "Payment" : "Deposit";
     document.querySelectorAll('input[name="set-chargeType"]').forEach(r => { r.checked = r.value === charge; r.disabled = ro; });
     remember("chargeType", charge);
+    const view = ["List", "Grid", "Photos"].includes(g.itemView) ? g.itemView : "List";
+    document.querySelectorAll('input[name="set-itemView"]').forEach(r => { r.checked = r.value === view; r.disabled = ro; });
+    remember("itemView", view);
     const style = ["Dates", "Event", "Appointment"].includes(g.requestStyle) ? g.requestStyle : "Dates";
     document.querySelectorAll('input[name="set-requestStyle"]').forEach(r => { r.checked = r.value === style; r.disabled = ro; });
     remember("requestStyle", style);
@@ -4102,6 +4118,7 @@
     put("accentColor", accent);
     put("depositRequired", setEl("depositRequired").checked);
     put("chargeType", document.querySelector('input[name="set-chargeType"]:checked')?.value || "Deposit");
+    put("itemView", document.querySelector('input[name="set-itemView"]:checked')?.value || "List");
     put("requestStyle", document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates");
     for (const k of ["pickupDaysBefore", "returnDaysAfter"]) {
       const raw = setEl(k).value.trim();

@@ -207,5 +207,15 @@ const ph = calls.filter(c => c.method === "PATCH" && /item-types\/recTYPEGOWN000
 ok(ph && ph.body.r2PhotoUrl === "https://photos.test/gold-3.svg" && JSON.stringify(ph.body.morePhotos) === JSON.stringify(["https://photos.test/gold-2.svg", "https://photos.test/up-1.svg", "https://photos.test/up-2.svg"]),
   "save sends cover + the rest in order " + JSON.stringify(ph && { c: ph.body.r2PhotoUrl, m: ph.body.morePhotos }));
 
+// Settings → How items look
+await page.click("text=Settings");
+await page.waitForSelector('input[name="set-itemView"]');
+ok(await page.isChecked('input[name="set-itemView"][value="List"]'), "item view: blank = List");
+await page.check('input[name="set-itemView"][value="Grid"]');
+await page.click("#settings-save-btn");
+await page.waitForFunction(() => document.body.textContent.includes("Settings saved"));
+const vp = calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach").at(-1);
+ok(vp && vp.body.itemView === "Grid", "item view saved: " + JSON.stringify(vp && vp.body));
+
 ok(!errors.length, "no page errors " + errors.join(" | "));
 await browser.close();
