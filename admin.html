@@ -695,6 +695,11 @@
       font-size: 0.875rem;
     }
 
+    /* Inventory: reservations that don't have a unit yet */
+    .inv-holds { font-size: 0.8rem; line-height: 1.4; padding: 0.45rem 0.65rem; border-radius: 8px; background: #EEF3F6; color: var(--text, #1B3A4B); margin: 0.35rem 0 0.5rem; }
+    .inv-holds.warn { background: #FEF3C7; color: #92400E; }
+    .inv-holds strong { font-weight: 600; display: block; margin-bottom: 0.15rem; }
+
     /* Last saved copy shown while fresh data loads: actions wait for the fresh copy. */
     .is-stale { position: relative; }
     .is-stale::before {
@@ -3128,13 +3133,14 @@
 
   // ── Inventory ─────────────────────────────────────────────────────────────
   let inventoryData = [];
+  let inventoryHolds = []; // reservations for numbered types with no unit picked yet (unit is chosen at pickup)
   let catalogItemTypes = [];
   let inventoryFilter = "all";
 
   async function loadInventory() {
     await snapLoad("inventory", document.getElementById("inventory-list"), showInventory, async () => {
       const [inv, types, items, cats] = await Promise.all([
-        api("/admin/inventory"),
+        api("/admin/inventory?holds=1"),
         api("/admin/catalog/item-types"),
         api("/admin/catalog/items"),
         api("/admin/catalog/categories").catch(() => null)
@@ -3145,7 +3151,10 @@
     });
   }
   function showInventory(d) {
-    const invData = d.error ? (Array.isArray(d.inv) ? d.inv : null) : d.inv;
+    // Newer API: { items, holds }; older API (or an old saved copy): just the list of units.
+    const invRaw = d.inv && !Array.isArray(d.inv) && Array.isArray(d.inv.items) ? d.inv.items : d.inv;
+    inventoryHolds = d.inv && Array.isArray(d.inv.holds) ? d.inv.holds : [];
+    const invData = Array.isArray(invRaw) ? invRaw : null;
     const typesData = Array.isArray(d.types) ? d.types : null, itemsData = d.items && !d.items.error ? d.items : null, catsData = d.cats;
     browseCategories = Array.isArray(catsData) ? catsData : [];
     inventoryData = invData || [];
@@ -3157,6 +3166,30 @@
     select.innerHTML = '<option value="">Select type…</option>' +
       types.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
     renderInventory();
+  }
+
+  /** "Reserved: Moshe Wasserman (from Fri, Oct 2)" under a numbered item type, amber when the reservations
+   *  starting within a week use up every unit that's ready to lend. */
+  function holdsHtml(type) {
+    const hs = inventoryHolds.filter(h => h.itemTypeId === type.id);
+    if (!hs.length) return "";
+    const d = new Date(), pad = n => String(n).padStart(2, "0");
+    const iso = x => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+    const weekOut = iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7));
+    const soon = hs.filter(h => !h.reservationStart || h.reservationStart <= weekOut).length;
+    const ready = inventoryData.filter(i => (i.itemTypeId ? i.itemTypeId === type.id : i.itemTypeName === type.name)
+      && i.status === "Available" && i.active !== false && i.condition !== "Needs Repair").length;
+    const who = hs.slice(0, 3).map(h => `${esc(h.borrowerName || "Someone")}${h.reservationStart ? ` (from ${esc(fmtDay(h.reservationStart))})` : ""}`).join(", ")
+      + (hs.length > 3 ? ` +${hs.length - 3} more` : "");
+    const units = n => `${n} available unit${n === 1 ? "" : "s"}`;
+    const upcoming = n => `${n} upcoming reservation${n === 1 ? "" : "s"}`;
+    const warn = soon && soon >= ready
+      ? (ready === 0 ? `No units available for ${upcoming(soon)}.`
+        : soon === ready ? (ready === 1 ? "The available unit is spoken for." : `All ${units(ready)} are spoken for.`)
+        : `Only ${units(ready)} for ${upcoming(soon)}.`)
+      : "";
+    return `<div class="inv-holds${warn ? " warn" : ""}">${warn ? `<strong>⚠ ${warn}</strong>` : ""}` +
+      `📅 Reserved (unit picked at pickup): ${who}</div>`;
   }
 
   function renderInventory() {
@@ -3289,7 +3322,7 @@
           </div>
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddItem('${tid}', rec('type','${tid}').name)">+ Add Item</button>
         </div>
-        <div class="inventory-group-body">${attrSummary(type)}${itemsHtml}</div>
+        <div class="inventory-group-body">${attrSummary(type)}${holdsHtml(type)}${itemsHtml}</div>
       </div>`;
     }).join("");
   }

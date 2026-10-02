@@ -2002,6 +2002,26 @@ await t("borrower email: pickup address is our own Maps link (instructions not s
   assert.ok(tricky.includes('href="https://example.org/a?x=1&amp;y=2"') && tricky.includes("</a>. Pickup") && !tricky.includes("<b>") && tricky.includes("5 Elm St &lt;b&gt;</a>"), "escaped; trailing period outside the link");
 });
 
+await t("inventory ?holds=1: reservations without a unit yet, per numbered item type", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  DB.Borrowers.push(rec("recBORRHOLD000001", { Name: "Moshe Wasserman", ...sc }));
+  DB.Loans.push(
+    rec("recLOANHOLD000001", { "Loan ID": "L-901", Status: "Reserved", Borrower: ["recBORRHOLD000001"], "Item to Reserve": ["recTYPEA000000001"], "Reservation Start": "2026-10-02", ...sc }),
+    rec("recLOANHOLD000002", { "Loan ID": "L-902", Status: "Reserved", Borrower: ["recBORRHOLD000001"], "Item to Reserve": ["recTYPEA000000001"], Item: ["recITEMA000000001"], "Reservation Start": "2026-10-03", ...sc }), // unit already chosen
+    rec("recLOANHOLD000003", { "Loan ID": "L-903", Status: "Cancelled", Borrower: ["recBORRHOLD000001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }));
+  const plain = await (await call("/admin/inventory", { headers: H })).json();
+  assert.ok(Array.isArray(plain), "without ?holds the old list shape is kept");
+  assert.equal(plain.find(i => i.itemId === "WC-001").itemTypeId, "recTYPEA000000001");
+  const d = await (await call("/admin/inventory?holds=1", { headers: H })).json();
+  assert.ok(Array.isArray(d.items) && d.items.length === plain.length);
+  const mine = d.holds.filter(h => h.borrowerName === "Moshe Wasserman");
+  assert.deepEqual(mine.map(h => h.loanId), ["L-901"], "only the reservation with no unit, not cancelled");
+  assert.equal(mine[0].itemTypeId, "recTYPEA000000001"); assert.equal(mine[0].itemTypeName, "Wheelchair"); assert.equal(mine[0].reservationStart, "2026-10-02");
+  assert.ok(!d.holds.some(h => /Sweatshirt|Folding|Table/.test(h.itemTypeName || "")), "quantity and add-on types are left out");
+  DB.Loans = DB.Loans.filter(l => !/^recLOANHOLD/.test(l.id));
+});
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

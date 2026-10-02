@@ -3,19 +3,30 @@ import { fAnd, fetchByIds, firstLink, linkedId, scopeF } from "./airtable.js";
 import { T } from "./config.js";
 import { json } from "./http.js";
 import { borrowerInfo } from "./loans.js";
+import { isAddonType, isQtyType } from "./quantity.js";
 
 // ─── Admin inventory ──────────────────────────────────────────────────────────
 
-async function handleAdminInventory({ db, g }) {
+/**
+ * Admin inventory: every unit with its current loan. With ?holds=1 the answer is { items, holds }, where
+ * holds are reservations for a numbered item type that don't have a unit yet (the unit is picked at
+ * pickup), so admin can show "1 reserved" on the type even though every unit still says Available.
+ * Without it the answer stays the plain list older admin pages expect.
+ */
+async function handleAdminInventory({ db, g, url }) {
   const [items, itemTypes, activeLoans] = await Promise.all([
     db.listAll(T.ITEMS, { filter: scopeF(g), sort: [{ field: "Item ID", direction: "asc" }] }),
-    db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name"] }),
+    db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name", "Tracking"] }),
     db.listAll(T.LOANS, {
       filter: fAnd(scopeF(g), `OR({Status}="Active",{Status}="Reserved")`),
       sort: [{ field: "Loan ID", direction: "asc" }],
     }),
   ]);
   const itemTypeMap = Object.fromEntries(itemTypes.map(r => [r.id, r.fields["Name"]]));
+  const wantHolds = url?.searchParams.get("holds") === "1";
+  const unitTypes = new Set(itemTypes.filter(r => !isQtyType(r) && !isAddonType(r)).map(r => r.id));
+  const holdLoans = wantHolds ? activeLoans.filter(l => l.fields["Status"] === "Reserved" && !(l.fields["Item"] || []).length
+    && unitTypes.has(linkedId(firstLink(l.fields["Item to Reserve"])))) : [];
 
   const loanByItem = {};
   activeLoans.forEach(l => {
@@ -34,7 +45,8 @@ async function handleAdminInventory({ db, g }) {
     }
   });
 
-  const borrowers = await fetchByIds(db, T.BORROWERS, Object.values(loanByItem).map(l => l.borrowerId), { g });
+  const borrowerIds = [...Object.values(loanByItem).map(l => l.borrowerId), ...holdLoans.map(l => linkedId(firstLink(l.fields["Borrower"])))];
+  const borrowers = await fetchByIds(db, T.BORROWERS, [...new Set(borrowerIds.filter(Boolean))], { g });
   const borrowerMap = Object.fromEntries(borrowers.map(r => [r.id, borrowerInfo(r)]));
 
   const records = items.map(r => {
@@ -54,6 +66,7 @@ async function handleAdminInventory({ db, g }) {
     return {
       id: r.id,
       itemId: r.fields["Item ID"],
+      itemTypeId: itemTypeId || null,
       itemTypeName: itemTypeMap[itemTypeId] || itemTypeId || "Unknown",
       condition: r.fields["Condition"] || "Unknown",
       status: r.fields["Status"] || "Unknown",
@@ -62,7 +75,19 @@ async function handleAdminInventory({ db, g }) {
       currentLoan,
     };
   });
-  return json(records);
+  if (!wantHolds) return json(records);
+  const holds = holdLoans.map(l => {
+    const typeId = linkedId(firstLink(l.fields["Item to Reserve"]));
+    const b = borrowerMap[linkedId(firstLink(l.fields["Borrower"]))] || {};
+    return {
+      loanRecId: l.id, loanId: l.fields["Loan ID"] || null,
+      itemTypeId: typeId, itemTypeName: itemTypeMap[typeId] || null,
+      borrowerName: b.name || null,
+      reservationStart: l.fields["Reservation Start"] || null,
+      reservationEnd: l.fields["Reservation End"] || null,
+    };
+  }).sort((a, b) => String(a.reservationStart || "9999").localeCompare(String(b.reservationStart || "9999")));
+  return json({ items: records, holds });
 }
 
 export { handleAdminInventory };

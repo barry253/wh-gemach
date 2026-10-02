@@ -14,6 +14,14 @@ let REQS = [req(101, "Old Person")];
 let LOANS = [{ id: "recLOAN0000000001", loanId: "L-1", borrowerName: "Loan One", borrowerPhone: "5165553333", borrowerContact: "Text", itemTypeName: "Walker", dateBorrowed: "2026-09-01", daysOut: 30 },
   { id: "recLOAN0000000002", loanId: "L-2", borrowerName: "Loan Two", borrowerPhone: "5165553334", borrowerContact: "Text", itemTypeName: "Wheelchair", dateBorrowed: "2026-09-02", daysOut: 29 }];
 let delay = 0, meDelay = 0;
+const TYPES = [{ id: "recTYPEWC00000001", name: "Wheelchair", tracking: "Units", active: true, displayOrder: 1, itemCount: 2 },
+  { id: "recTYPEWALK000001", name: "Walker", tracking: "Units", active: true, displayOrder: 2, itemCount: 3 }];
+const unit = (n, type, typeName, status, condition = "Good") => ({ id: "recITEM" + n, itemId: n, itemTypeId: type, itemTypeName: typeName, condition, status, active: true, notes: null });
+const UNITS = [unit("WC-001", "recTYPEWC00000001", "Wheelchair", "Available"), unit("WC-002", "recTYPEWC00000001", "Wheelchair", "On Loan"),
+  unit("WK-001", "recTYPEWALK000001", "Walker", "Available"), unit("WK-002", "recTYPEWALK000001", "Walker", "Available"), unit("WK-003", "recTYPEWALK000001", "Walker", "Available", "Needs Repair")];
+const todayIso = new Date().toLocaleDateString("en-CA");
+const HOLDS = [{ loanRecId: "recLH1", loanId: "L-901", itemTypeId: "recTYPEWC00000001", itemTypeName: "Wheelchair", borrowerName: "Moshe Wasserman", reservationStart: todayIso, reservationEnd: null },
+  { loanRecId: "recLH2", loanId: "L-902", itemTypeId: "recTYPEWALK000001", itemTypeName: "Walker", borrowerName: "Cynthia Berdy", reservationStart: "2099-01-05", reservationEnd: null }];
 const G = { id: "recA", slug: "wh-medical", name: "West Hempstead Medical Gemach", templates: {}, rawTemplates: {}, canEdit: true };
 
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -34,6 +42,9 @@ await page.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
   if (p === "/admin/requests") return J(REQS);
   if (p === "/admin/loans") return J(LOANS);
   if (/\/decline$/.test(p)) return J({ success: true }, 0);
+  if (p === "/admin/catalog/item-types") return J(TYPES);
+  if (p === "/admin/catalog/items") return J({ items: [], itemTypes: TYPES.map(t => ({ id: t.id, name: t.name })) });
+  if (p === "/admin/inventory") return J(new URL(rq.url()).searchParams.get("holds") === "1" ? { items: UNITS, holds: HOLDS } : UNITS);
   return J([]);
 });
 await page.addInitScript(() => {
@@ -87,6 +98,16 @@ await page.waitForFunction(() => /Loan Three/.test(document.getElementById("loan
 t = await page.textContent("#loans-list");
 ok(/Loan One/.test(t) && /Loan Three/.test(t) && !/Loan Two/.test(t), "filter kept after the fresh list arrives");
 delay = 0;
+
+// 4b. Inventory: reservations without a unit show on the type; amber when they use up the ready units.
+await page.click(".nav-tab:has-text('Inventory')");
+await page.waitForSelector(".inv-holds");
+const wc = await page.textContent("#inventory-list .inventory-group:has-text('Wheelchair') .inv-holds");
+ok(/The available unit is spoken for/.test(wc) && /Moshe Wasserman \(from /.test(wc), "wheelchair: reservation shown, warning: " + wc);
+ok(await page.evaluate(() => document.querySelector(".inventory-group .inv-holds").classList.contains("warn")), "amber when spoken for");
+const wk = await page.textContent("#inventory-list .inventory-group:has-text('Walker') .inv-holds");
+ok(/Cynthia Berdy/.test(wk) && !/spoken for|Only/.test(wk), "walker: far-off reservation is just noted (2 ready units; the one needing repair doesn't count)");
+await page.screenshot({ path: "shot-inventory-holds.png" });
 
 // 5. Any change clears every saved copy, so a pre-change list never reappears.
 ok((await snapKeys()).length >= 2, "several saved copies before the change");
