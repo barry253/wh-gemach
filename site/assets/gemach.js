@@ -178,12 +178,18 @@
     $("f-deposit").required = dep;
     if (!qi.length || style() === "Appointment") { group.hidden = true; list.innerHTML = ""; return; }
     // keep what's typed; rebuild only when the set of rows changes
-    var have = Array.prototype.map.call(list.querySelectorAll("input[data-qty]"), function (i) { return i.getAttribute("data-qty"); }).join(",");
+    var have = Array.prototype.map.call(list.querySelectorAll("[data-qty]"), function (i) { return i.getAttribute("data-qty"); }).join(",");
     if (have !== qi.map(function (it) { return it.id; }).join(",")) {
       list.innerHTML = qi.map(function (it) {
         var id = esc(it.id);
-        return '<div class="qty-row"><label for="q-' + id + '">' + esc(it.name) + "</label>" +
-          '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (isAddon(it) ? 500 : (it.totalUnits || 1)) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || (isAddon(it) ? "1" : "")) + '" aria-describedby="qn-' + id + '" />' +
+        var field = pkgSize(it) > 1
+          ? '<select id="q-' + id + '" data-qty="' + id + '" aria-describedby="qn-' + id + '"><option value="">Choose…</option>' +
+            pkgChoices(it).map(function (n) {
+              var v = String(n);
+              return '<option value="' + v + '"' + (qtyVals[it.id] === v ? " selected" : "") + ">" + n + " (" + esc(pkgCount(it, n / pkgSize(it))) + ")</option>";
+            }).join("") + "</select>"
+          : '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (isAddon(it) ? 500 : (it.totalUnits || 1)) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || (isAddon(it) ? "1" : "")) + '" aria-describedby="qn-' + id + '" />';
+        return '<div class="qty-row"><label for="q-' + id + '">' + esc(it.name) + "</label>" + field +
           '<p class="qty-note" id="qn-' + id + '" aria-live="polite"></p></div>';
       }).join("");
     }
@@ -192,7 +198,7 @@
   }
   function updateQtyNotes() {
     var w = formWindow();
-    Array.prototype.forEach.call($("qty-list").querySelectorAll("input[data-qty]"), function (inp) {
+    Array.prototype.forEach.call($("qty-list").querySelectorAll("[data-qty]"), function (inp) {
       var it = items.filter(function (x) { return x.id === inp.getAttribute("data-qty"); })[0];
       var note = $("qn-" + inp.getAttribute("data-qty"));
       if (!it || !note) return;
@@ -214,11 +220,22 @@
         else txt = free + " of " + total + " free for your dates";
       }
       if (n > total) { warn = true; txt = "The gemach has " + total + " in total."; }
+      if (pkgSize(it) > 1) txt = "Lent in " + unitsWord(it.packageUnit || "package") + " of " + pkgSize(it) + ". " + txt;
       note.textContent = txt;
       note.classList.toggle("warn", warn);
     });
   }
   function style() { return W.requestStyle(gemach); }
+
+  // Quantity items lent in whole packages (it.packageSize > 1, e.g. bags of 6 tablecloths).
+  // Counts are single pieces; borrowers choose 6, 12, … from a list.
+  function pkgSize(it) { return isQty(it) && it.packageSize > 1 ? it.packageSize : 1; }
+  function unitsWord(u) { return /(s|x|z|ch|sh)$/i.test(u) ? u + "es" : u + "s"; } // bag → bags, box → boxes
+  function pkgCount(it, n) { var u = it.packageUnit || "package"; return W.plural(n, u, unitsWord(u)); }
+  /** "Lent in bags of 6" */
+  function pkgPhrase(it) { return "lent in " + unitsWord(it.packageUnit || "package") + " of " + pkgSize(it); }
+  /** Whole packages that fit in what the gemach lends: [6, 12] */
+  function pkgChoices(it) { var ps = pkgSize(it), out = []; for (var n = ps; n <= (it.totalUnits || 0); n += ps) out.push(n); return out; }
 
   function isPayment(g) { return !!g && g.chargeType === "Payment"; } // a fee, not a refundable deposit
   function depositHtml(g) {
@@ -337,6 +354,7 @@
     var units = isAddon(it) ? '<div class="item-units">Made to order · paid separately' + (dir ? "" : " · choose how many when you request") + "</div>"
       : typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
       ? '<div class="item-units">' + (isQty(it) ? it.totalUnits : W.plural(it.totalUnits, "unit")) + " in the gemach" +
+        (pkgSize(it) > 1 ? " · " + esc(pkgPhrase(it)) : "") +
         (isQty(it) ? " · choose how many when you request" : "") + "</div>" : "";
     var desc = it.description
       ? '<button type="button" class="item-desc-toggle" aria-expanded="false" aria-controls="desc-' + id + '"><span class="arr" aria-hidden="true">▸</span> Details</button>' +
@@ -746,13 +764,15 @@
     toggleItem(cb.value, cb.checked);
     renderQty();
   });
-  $("qty-list").addEventListener("input", function (e) {
+  $("qty-list").addEventListener("change", function (e) { if (e.target.tagName === "SELECT") onQtyInput(e); });
+  $("qty-list").addEventListener("input", onQtyInput);
+  function onQtyInput(e) {
     var id = e.target.getAttribute("data-qty");
     if (!id) return;
     qtyVals[id] = e.target.value;
     if (e.target.getAttribute("aria-invalid") === "true") clearFieldError(e.target);
     updateQtyNotes();
-  });
+  }
   ["f-from", "f-until", "f-event"].forEach(function (id) {
     $(id).addEventListener("input", updateQtyNotes);
     $(id).addEventListener("change", updateQtyNotes);
@@ -955,11 +975,12 @@
     if (st !== "Appointment" && !ids.length && firstItem) bad(firstItem, "Please select at least one item.");
     if (st !== "Appointment") {
       var quantities = {};
-      Array.prototype.forEach.call($("qty-list").querySelectorAll("input[data-qty]"), function (inp) {
+      Array.prototype.forEach.call($("qty-list").querySelectorAll("[data-qty]"), function (inp) {
         var it = items.filter(function (x) { return x.id === inp.getAttribute("data-qty"); })[0];
         if (!it || ids.indexOf(it.id) < 0) return;
         var v = inp.value.trim(), n = +v;
         if (!v) bad(inp, "How many " + it.name + " do you need?");
+        else if (pkgSize(it) > 1 && n % pkgSize(it)) bad(inp, "Please choose " + pkgSize(it) + ", " + (pkgSize(it) * 2) + "…");
         else if (!/^\d+$/.test(v) || n < 1) bad(inp, "Please enter a whole number, 1 or more.");
         else if (isAddon(it) && n > 500) bad(inp, "Please enter 500 or fewer.");
         else if (!isAddon(it) && it.totalUnits && n > it.totalUnits) bad(inp, "The gemach has " + it.totalUnits + " " + it.name + " in total.");

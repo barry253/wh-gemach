@@ -22,6 +22,35 @@ const loanQty = f => { const n = Number(f?.["Quantity"]); return Number.isIntege
 /** Lendable pieces: Quantity Owned − Out of Service. */
 const lendableQty = rec => Math.max(0, wholeNum(rec?.fields?.["Quantity Owned"]) - wholeNum(rec?.fields?.["Out of Service"]));
 const MAX_QTY = 10000;
+/**
+ * Package size for quantity types lent in sets, e.g. tablecloths in bags of 6:
+ * Item Types."Package Size" (blank/1 = single pieces) and optional "Package Unit" ("bag").
+ * Counts (Quantity Owned, loan Quantity) stay in single pieces; borrowers may only ask for
+ * whole packages. Admin can always set any count (e.g. a bag that's down to 4).
+ */
+const PACKAGE_UNIT_MAX = 30, PACKAGE_SIZE_MAX = 1000;
+const packageSize = rec => isQtyType(rec) ? Math.max(1, Math.min(PACKAGE_SIZE_MAX, wholeNum(rec?.fields?.["Package Size"]))) : 1;
+const packageUnit = rec => String(rec?.fields?.["Package Unit"] || "").trim() || null;
+/** body.packageSize / body.packageUnit from admin → { fields } | { error } (only the keys that were sent). */
+function packageFields(body) {
+  const fields = {};
+  if (body.packageSize !== undefined) {
+    const v = body.packageSize;
+    if (v === null || v === "" || Number(v) === 1) fields["Package Size"] = null;
+    else {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1 || n > PACKAGE_SIZE_MAX) return { error: `Package size must be a whole number from 1 to ${PACKAGE_SIZE_MAX}.` };
+      fields["Package Size"] = n;
+    }
+  }
+  if (body.packageUnit !== undefined) {
+    const u = String(body.packageUnit ?? "").trim();
+    if (u.length > PACKAGE_UNIT_MAX) return { error: `The package word can be up to ${PACKAGE_UNIT_MAX} characters.` };
+    fields["Package Unit"] = u || null;
+  }
+  return { fields };
+}
+
 /** "Chairs × 40" for quantity types, plain name otherwise. */
 const qtyLabel = (name, n) => (n ? `${name} × ${n}` : name);
 const LOAN_WINDOW_FIELDS = ["Item to Reserve", "Status", "Quantity", "Reservation Start", "Reservation End", "Date Borrowed", "Expected Return", "Gemach"];
@@ -164,4 +193,4 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
   return out;
 }
 
-export { isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money };
+export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money };

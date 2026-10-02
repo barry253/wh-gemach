@@ -762,7 +762,7 @@ fieldset { border: 0; }
 #qty-list { display: grid; gap: .6rem; }
 .qty-row { display: grid; grid-template-columns: 1fr 7rem; align-items: center; gap: .15rem .75rem; }
 .qty-row label { font-size: .9rem; font-weight: 500; }
-.form-group .qty-row input[type="number"] { max-width: none; }
+.form-group .qty-row input[type="number"], .form-group .qty-row select { max-width: none; }
 .qty-row .qty-note, .qty-row .field-error { grid-column: 1 / -1; margin: 0; font-size: .8rem; color: var(--muted); }
 .qty-row .qty-note.warn { color: var(--amber); }
 .qty-row .field-error { color: var(--red); }

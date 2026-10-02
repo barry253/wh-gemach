@@ -1762,13 +1762,24 @@
     <div class="form-row" id="it-qty-row" style="display:none">
       <div class="form-group">
         <label for="it-owned">How many you own</label>
-        <input type="number" id="it-owned" min="0" step="1" inputmode="numeric" placeholder="e.g. 60" />
+        <input type="number" id="it-owned" min="0" step="1" inputmode="numeric" placeholder="e.g. 60" oninput="updatePkgHint()" />
       </div>
       <div class="form-group">
         <label for="it-oos">Out of service</label>
         <input type="number" id="it-oos" min="0" step="1" inputmode="numeric" placeholder="0" />
       </div>
     </div>
+    <div class="form-row" id="it-pkg-row" style="display:none">
+      <div class="form-group">
+        <label for="it-pkg-size">Lent in packages of</label>
+        <input type="number" id="it-pkg-size" min="1" step="1" inputmode="numeric" placeholder="1" oninput="updatePkgHint()" />
+      </div>
+      <div class="form-group">
+        <label for="it-pkg-unit">Package word <span style="color:var(--muted);font-weight:400">— optional</span></label>
+        <input type="text" id="it-pkg-unit" maxlength="30" placeholder="e.g. bag" oninput="updatePkgHint()" />
+      </div>
+    </div>
+    <div class="muted-small" id="it-pkg-hint" style="display:none;margin:-0.4rem 0 0.9rem"></div>
     <div class="form-row">
       <div class="form-group">
         <label>Display Order</label>
@@ -4603,7 +4614,32 @@
     document.getElementById("it-owned").value = t.tracking === "Quantity" ? (t.quantityOwned ?? "") : "";
     document.getElementById("it-oos").value = t.tracking === "Quantity" && t.outOfService ? t.outOfService : "";
     document.getElementById("it-price").value = t.price != null ? t.price : "";
+    document.getElementById("it-pkg-size").value = t.tracking === "Quantity" && t.packageSize > 1 ? t.packageSize : "";
+    document.getElementById("it-pkg-unit").value = t.tracking === "Quantity" ? (t.packageUnit || "") : "";
+    pkgOriginal = pkgFromSheet();
     updateTrackingUi();
+  }
+  let pkgOriginal = "";
+  const unitsWord = u => /(s|x|z|ch|sh)$/i.test(u) ? u + "es" : u + "s"; // bag → bags, box → boxes
+  function pkgFromSheet() {
+    const size = document.getElementById("it-pkg-size").value.trim();
+    return JSON.stringify({ size: /^\d+$/.test(size) && Number(size) > 1 ? Number(size) : 1, unit: document.getElementById("it-pkg-unit").value.trim() });
+  }
+  function updatePkgHint() {
+    const el = document.getElementById("it-pkg-hint");
+    const p = JSON.parse(pkgFromSheet());
+    const owned = Number(document.getElementById("it-owned").value || 0);
+    const word = unitsWord(p.unit || "package");
+    if (document.getElementById("it-tracking").value !== "Quantity") { el.style.display = "none"; return; }
+    el.style.display = "";
+    el.style.color = "";
+    if (p.size <= 1) { el.textContent = "Leave blank if people can ask for any number. For sets (e.g. bags of 6 tablecloths), enter the set size — counts above stay in single pieces."; return; }
+    const lendable = owned - (owned % p.size);
+    el.textContent = `Borrowers choose ${p.size}, ${p.size * 2}… (lent in ${word} of ${p.size}). You can still change the count on any loan.`;
+    if (owned && owned % p.size) {
+      el.style.color = "var(--amber, #B45309)";
+      el.textContent = `${owned} isn't a multiple of ${p.size} — borrowers can only request up to ${lendable}. ` + el.textContent;
+    }
   }
   function updateTrackingUi() {
     const sel = document.getElementById("it-tracking");
@@ -4611,6 +4647,8 @@
     const addon = sel.value === "Add-on";
     const units = Number(sel.dataset.itemCount || 0);
     document.getElementById("it-qty-row").style.display = qty ? "" : "none";
+    document.getElementById("it-pkg-row").style.display = qty ? "" : "none";
+    updatePkgHint();
     document.getElementById("it-price-row").style.display = addon ? "" : "none";
     const mustDelete = (qty || addon) && editingTracking === "Units" && units
       ? `This type has ${units} numbered unit${units === 1 ? "" : "s"}. Delete ${units === 1 ? "it" : "them"} first, then switch.` : "";
@@ -4664,6 +4702,10 @@
       if (Number(oos || 0) > Number(owned)) { showToast("Out of service can't be more than you own"); return; }
       body.quantityOwned = Number(owned);
       body.outOfService = Number(oos || 0);
+      const pkgSize = document.getElementById("it-pkg-size").value.trim();
+      if (pkgSize && !/^\d+$/.test(pkgSize)) { showToast("Package size must be a whole number"); return; }
+      const pk = pkgFromSheet();
+      if (!editingItemTypeId || pk !== pkgOriginal) { const p = JSON.parse(pk); body.packageSize = p.size; body.packageUnit = p.unit; }
     }
     if (tracking === "Add-on") {
       const price = document.getElementById("it-price").value.trim();

@@ -7,7 +7,7 @@ import { REC_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { json, readJson } from "./http.js";
 import { generateNextItemId } from "./ids.js";
-import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAvailable, wholeNum } from "./quantity.js";
+import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageFields, packageSize, packageUnit, qtyAvailable, wholeNum } from "./quantity.js";
 
 // ─── Catalog — Item Types ─────────────────────────────────────────────────────
 
@@ -33,6 +33,8 @@ async function handleGetItemTypes({ db, g }) {
       quantityOwned: wholeNum(r.fields["Quantity Owned"]),
       outOfService: wholeNum(r.fields["Out of Service"]),
       attributes: parseItemAttrs(r.fields["Attributes"]),
+      packageSize: packageSize(r),
+      packageUnit: packageUnit(r),
     };
     if (isQtyType(r)) {
       // Counts for the inventory card: out now, reserved ahead, free today.
@@ -151,6 +153,9 @@ async function handleCreateItemType(c) {
   const q = await itemTypeQtyFields(c.db, c.g, body);
   if (q.error) return json({ error: q.error }, 400);
   Object.assign(fields, q.fields);
+  const pk = packageFields(body);
+  if (pk.error) return json({ error: pk.error }, 400);
+  for (const [k, v] of Object.entries(pk.fields)) if (v != null) fields[k] = v;
   return airtableResult(c.db.create(T.ITEM_TYPES, fields));
 }
 
@@ -160,7 +165,9 @@ async function handleUpdateItemType(c, id) {
   if (!current) return json({ error: "Not found" }, 404);
   const q = await itemTypeQtyFields(c.db, c.g, body, current);
   if (q.error) return json({ error: q.error }, 400);
-  const fields = { ...q.fields };
+  const pk = packageFields(body);
+  if (pk.error) return json({ error: pk.error }, 400);
+  const fields = { ...q.fields, ...pk.fields };
   if (body.name !== undefined)         fields["Name"] = body.name;
   if (body.description !== undefined)  fields["Description"] = body.description;
   if (body.displayOrder !== undefined) fields["Display Order"] = body.displayOrder;

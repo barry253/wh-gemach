@@ -2002,6 +2002,77 @@ await t("borrower email: pickup address is our own Maps link (instructions not s
   assert.ok(tricky.includes('href="https://example.org/a?x=1&amp;y=2"') && tricky.includes("</a>. Pickup") && !tricky.includes("<b>") && tricky.includes("5 Elm St &lt;b&gt;</a>"), "escaped; trailing period outside the link");
 });
 
+// ── Package size: quantity items lent in whole packages (e.g. bags of 6 tablecloths) ──
+{
+  const G = { id: "recPKGGEMACH00001", slug: "pkg-gemach" };
+  DB.Gemachs.push(rec(G.id, { Name: "Package Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "pk@example.com" }));
+  DB["Item Types"].push(rec("recPKGTYPE0000001", { Name: "Gold Jacquard · Round", Active: true, Tracking: "Quantity", "Quantity Owned": 12, "Package Size": 6, "Package Unit": "bag", Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  DB["Item Types"].push(rec("recPKGTYPE0000002", { Name: "Folding Chairs", Active: true, Tracking: "Quantity", "Quantity Owned": 10, Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  DB["Item Types"].push(rec("recPKGTYPE0000003", { Name: "Odd Lot", Active: true, Tracking: "Quantity", "Quantity Owned": 10, "Package Size": 6, Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  DB["Item Types"].push(rec("recPKGTYPE0000004", { Name: "Wheel Chair", Active: true, "Package Size": 6, Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const patch = (id, b) => call(`/admin/catalog/item-types/${id}`, { method: "PATCH", headers: H, body: JSON.stringify(b) });
+  const fieldsOf = id => DB["Item Types"].find(x => x.id === id).fields;
+  const soon = n => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const base = { gemach: G.slug, name: "Tova", phone: "5165557777", preferredContact: "Phone", neededFrom: soon(9) };
+
+  await t("package: admin item types list size + word (1 / null by default; numbered units always 1)", async () => {
+    const types = await (await call("/admin/catalog/item-types", { headers: H })).json();
+    const by = id => types.find(x => x.id === id);
+    assert.equal(by("recPKGTYPE0000001").packageSize, 6); assert.equal(by("recPKGTYPE0000001").packageUnit, "bag");
+    assert.equal(by("recPKGTYPE0000002").packageSize, 1); assert.equal(by("recPKGTYPE0000002").packageUnit, null);
+    assert.equal(by("recPKGTYPE0000004").packageSize, 1);
+  });
+
+  await t("package: PATCH sets / clears; bad values refused", async () => {
+    let r = await patch("recPKGTYPE0000002", { packageSize: 4, packageUnit: " box " });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(fieldsOf("recPKGTYPE0000002")["Package Size"], 4); assert.equal(fieldsOf("recPKGTYPE0000002")["Package Unit"], "box");
+    for (const bad of [0, 2.5, "x", 1001]) assert.equal((await patch("recPKGTYPE0000002", { packageSize: bad })).status, 400, String(bad));
+    assert.equal((await patch("recPKGTYPE0000002", { packageUnit: "x".repeat(31) })).status, 400);
+    r = await patch("recPKGTYPE0000002", { packageSize: 1, packageUnit: "" });
+    assert.equal(r.status, 200);
+    assert.equal(fieldsOf("recPKGTYPE0000002")["Package Size"], null); assert.equal(fieldsOf("recPKGTYPE0000002")["Package Unit"], null);
+    r = await patch("recPKGTYPE0000002", { name: "Folding Chairs" });
+    assert.equal(r.status, 200); assert.ok(!("Package Size" in (DB["Item Types"].find(x => x.id === "recPKGTYPE0000002").fields)) || fieldsOf("recPKGTYPE0000002")["Package Size"] == null);
+  });
+
+  await t("package: create with a package size", async () => {
+    const r = await call("/admin/catalog/item-types", { method: "POST", headers: H, body: JSON.stringify({ name: "Lilac Velvet · Rectangle", tracking: "Quantity", quantityOwned: 12, packageSize: 6, packageUnit: "bag" }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    const f = DB["Item Types"].find(x => x.fields.Name === "Lilac Velvet · Rectangle").fields;
+    assert.equal(f["Package Size"], 6); assert.equal(f["Package Unit"], "bag");
+  });
+
+  await t("package: public page carries size + word on packaged quantity items only", async () => {
+    __WHG_TEST__.clearMemo();
+    const d = await (await call(`/public/gemach/${G.slug}?pkg=1`)).json();
+    const items = d.items || [];
+    const q = items.find(x => x.id === "recPKGTYPE0000001");
+    assert.equal(q.packageSize, 6); assert.equal(q.packageUnit, "bag"); assert.equal(q.totalUnits, 12);
+    assert.equal(items.find(x => x.id === "recPKGTYPE0000002").packageSize, undefined);
+    assert.equal(items.find(x => x.id === "recPKGTYPE0000004").packageSize, undefined);
+  });
+
+  await t("package: requests must be whole packages; total capped at whole packages", async () => {
+    const q = (id, n) => post("/submit-request", { ...base, itemsRequested: [id], quantities: n == null ? {} : { [id]: n } });
+    let r = await q("recPKGTYPE0000001", 7);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /come in bags of 6 — please ask for 6, 12/);
+    r = await q("recPKGTYPE0000001", 18);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /12 or fewer/);
+    r = await q("recPKGTYPE0000003", 12);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /6 Odd Lot to lend in total/);
+    r = await q("recPKGTYPE0000001", 12);
+    assert.equal(r.status, 200, await r.clone().text());
+    r = await q("recPKGTYPE0000001", null); // no count sent → one package
+    assert.equal(r.status, 200, await r.clone().text());
+    const last = DB.Requests.filter(x => (x.fields.Gemach || [])[0] === G.id).at(-1);
+    assert.deepEqual(JSON.parse(last.fields["Item Quantities"]), { recPKGTYPE0000001: 6 });
+    r = await q("recPKGTYPE0000002", 7); // no package size: any count
+    assert.equal(r.status, 200, await r.clone().text());
+  });
+}
+
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];
 await t("activity log entries stamped with Gemach", async () => {

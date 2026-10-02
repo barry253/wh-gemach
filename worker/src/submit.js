@@ -8,7 +8,7 @@ import { buildEmailHtml, escHtml, sendEmail, sendNotificationEmail } from "./ema
 import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
 import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
-import { addonPrice, isAddonType, isQtyType, lendableQty, qtyLabel, requestAvailability } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, packageSize, packageUnit, qtyLabel, requestAvailability } from "./quantity.js";
 import { EMAIL_RE, emailSignature } from "./settings.js";
 import { manageUrl } from "./manage.js";
 
@@ -107,8 +107,11 @@ async function handleSubmitRequest(request, db, env, ctx) {
       const name = t.fields.Name || "items";
       const max = lendableQty(t);
       if (max < 1) return json({ error: `${name} aren't available from this gemach right now. Please contact them directly.` }, 400);
-      const n = rawQty[id] == null || rawQty[id] === "" ? 1 : Number(rawQty[id]);
+      const ps = packageSize(t); // borrowers ask for whole packages (admin can still change the count)
+      const n = rawQty[id] == null || rawQty[id] === "" ? ps : Number(rawQty[id]);
       if (!Number.isInteger(n) || n < 1) return json({ error: `Please enter how many ${name} you need.` }, 400);
+      if (ps > 1 && n % ps) return json({ error: `${name} ${packageUnit(t) ? `come in ${packageUnit(t)}s of ${ps}` : `are lent in sets of ${ps}`} — please ask for ${ps}, ${ps * 2}, and so on.` }, 400);
+      if (ps > 1 && n > max - (max % ps)) return json({ error: max >= ps ? `The gemach has ${max - (max % ps)} ${name} to lend in total — please ask for ${max - (max % ps)} or fewer.` : `${name} aren't available from this gemach right now. Please contact them directly.` }, 400);
       if (n > max) return json({ error: `The gemach has ${max} ${name} in total — please ask for ${max} or fewer.` }, 400);
       qtyMap[id] = n;
     }

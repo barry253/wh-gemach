@@ -7,7 +7,7 @@ import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs,
 import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
 import { parseMorePhotos } from "./photos.js";
-import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, qtyAvailable } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageSize, packageUnit, qtyAvailable } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
 
@@ -39,6 +39,8 @@ function publicItemType(type, availableIds, { withCategory = false, bookings = n
     out.totalUnits = lendableQty(type);
     out.availableCount = qtyAvailable(out.totalUnits, list, t, t);
     if (withBookings) out.bookings = list.map(b => ({ from: b.from, to: b.to, qty: b.qty }));
+    const ps = packageSize(type); // lent in whole packages, e.g. bags of 6 tablecloths
+    if (ps > 1) { out.packageSize = ps; out.packageUnit = packageUnit(type); }
   }
   if (isAddonType(type)) { // made to order for purchase: no stock, never "on loan"
     out.tracking = "addon";
