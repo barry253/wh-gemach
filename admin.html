@@ -695,6 +695,14 @@
       font-size: 0.875rem;
     }
 
+    /* Last saved copy shown while fresh data loads: actions wait for the fresh copy. */
+    .is-stale { position: relative; }
+    .is-stale::before {
+      content: "Updating…"; display: block; text-align: right;
+      font-size: 0.75rem; color: var(--muted); margin-bottom: 0.25rem;
+    }
+    .is-stale > * { pointer-events: none; opacity: 0.75; }
+
     /* ── Modal / Sheet ── */
     .sheet-overlay {
       display: none;
@@ -2057,6 +2065,9 @@
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app").style.display = "block";
     document.getElementById("admin-name").textContent = adminName || "";
+    // Remembered gemach: start the dashboard alongside the sign-in check instead of after it.
+    const earlySlug = gemachSlug;
+    if (earlySlug) loadDashboard().catch(() => {});
     try {
       await loadGemachContext();
     } catch (e) {
@@ -2065,7 +2076,7 @@
       showToast("Couldn't load gemach settings — using defaults");
     }
     if (!token) return;
-    loadDashboard();
+    if (gemachSlug !== earlySlug) loadDashboard();
   }
 
   async function loadGemachContext() {
@@ -2304,6 +2315,7 @@
   }
 
   function signOut(explicit) {
+    snapClear();
     localStorage.removeItem("gemach_token");
     localStorage.removeItem("gemach_name");
     if (explicit === true) localStorage.removeItem("gemach_slug");
@@ -2326,7 +2338,55 @@
     const fresh = res.headers.get("X-Session-Token");
     if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
     if (res.status === 401) { signOut(); return null; }
+    if (method !== "GET" && res.ok) snapClear(); // something changed: never show a pre-change copy
     return res.json();
+  }
+
+  // ── Saved copies ("snapshots") ────────────────────────────────────────────
+  // Each list's last good answer is kept on this device (per gemach, up to 7 days, cleared on sign-out
+  // and after any change). Opening a tab shows it at once, marked "Updating…" with its buttons paused,
+  // then swaps in the fresh answer — so a slow moment at Airtable doesn't leave a blank screen.
+  const SNAP_PREFIX = "whg_snap:";
+  const SNAP_MAX_AGE = 7 * 864e5;
+  const snapKey = path => `${SNAP_PREFIX}${gemachSlug || ""}|${path}`;
+  function snapGet(path) {
+    try {
+      const s = JSON.parse(localStorage.getItem(snapKey(path)) || "null");
+      if (s && Date.now() - s.at < SNAP_MAX_AGE) return s.data;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function snapPut(path, data) {
+    try { localStorage.setItem(snapKey(path), JSON.stringify({ at: Date.now(), data })); }
+    catch (e) { snapClear(); } // storage full: drop them all
+  }
+  function snapClear() {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(SNAP_PREFIX)) localStorage.removeItem(k);
+      }
+    } catch (e) { /* ignore */ }
+  }
+  /** Show the saved copy (if any) right away, then the fresh one. render(data) must not await. */
+  async function snapLoad(path, el, render, fetcher = () => api(path)) {
+    const old = snapGet(path);
+    const slug = gemachSlug;
+    if (old) { render(old); el?.classList.add("is-stale"); }
+    else if (el) el.innerHTML = '<div class="loading">Loading…</div>';
+    let data;
+    try { data = await fetcher(); }
+    catch (e) {
+      el?.classList.remove("is-stale");
+      if (old) { showToast("Couldn't refresh — showing the last saved copy"); return; }
+      throw e;
+    }
+    el?.classList.remove("is-stale");
+    if (data == null || slug !== gemachSlug) return; // signing out, or the gemach changed meanwhile
+    const ok = !data.error;
+    if (ok) snapPut(path, data);
+    if (old && ok && JSON.stringify(old) === JSON.stringify(data)) return; // nothing changed: keep what's on screen
+    render(data);
   }
 
   // ── Tab switching ─────────────────────────────────────────────────────────
@@ -2348,8 +2408,10 @@
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   async function loadDashboard() {
-    const data = await api("/admin/dashboard");
-    if (!data) return;
+    await snapLoad("/admin/dashboard", null, renderDashboard);
+  }
+  function renderDashboard(data) {
+    if (!data || data.error) return;
     document.getElementById("stat-new-requests").textContent = data.newRequests;
     document.getElementById("stat-overdue").textContent = data.overdueLoans;
     document.getElementById("stat-active").textContent = data.activeLoans;
@@ -2382,11 +2444,21 @@
     if (!force && key === STATS_KEY && Date.now() - STATS_AT < 60000) return;
     STATS_KEY = key; STATS_AT = Date.now();
     const body = document.getElementById("stats-body");
-    body.innerHTML = '<div class="loading">Loading…</div>';
+    const path = `/admin/stats?days=${encodeURIComponent(days)}`;
+    const old = snapGet(path);
+    if (old) { renderStats(old); body.classList.add("is-stale"); }
+    else body.innerHTML = '<div class="loading">Loading…</div>';
     let d;
-    try { d = await api(`/admin/stats?days=${encodeURIComponent(days)}`); } catch (e) { d = { error: "Couldn't load stats right now." }; }
+    try { d = await api(path); } catch (e) { d = { error: "Couldn't load stats right now." }; }
     if (key !== STATS_KEY) return; // a newer load started
-    if (!d || d.error) { STATS_KEY = ""; body.innerHTML = `<div class="empty-state">${esc(d?.error || "Could not load stats")}</div>`; return; }
+    body.classList.remove("is-stale");
+    if (!d || d.error) {
+      STATS_KEY = "";
+      if (old) { if (d) showToast("Couldn't refresh stats — showing the last saved copy"); return; }
+      body.innerHTML = `<div class="empty-state">${esc(d?.error || "Could not load stats")}</div>`; return;
+    }
+    snapPut(path, d);
+    if (old && JSON.stringify(old) === JSON.stringify(d)) return;
     renderStats(d);
   }
   function renderStats(d) {
@@ -2434,9 +2506,10 @@
 
   // ── Requests ──────────────────────────────────────────────────────────────
   async function loadRequests() {
+    await snapLoad("/admin/requests", document.getElementById("requests-list"), renderRequests);
+  }
+  function renderRequests(data) {
     const list = document.getElementById("requests-list");
-    list.innerHTML = '<div class="loading">Loading…</div>';
-    const data = await api("/admin/requests");
     if (!data?.length) {
       list.innerHTML = '<div class="empty-state"><div class="icon">✓</div>No new requests</div>';
       return;
@@ -2652,17 +2725,18 @@
   let loanFilterOverdue = false;
 
   async function loadLoans() {
+    let first = true;
+    await snapLoad("/admin/loans", document.getElementById("loans-list"), data => { showLoans(data, first); first = false; });
+  }
+  function showLoans(data, resetFilters) {
     const list = document.getElementById("loans-list");
-    list.innerHTML = '<div class="loading">Loading…</div>';
-    const data = await api("/admin/loans");
     if (!data?.length) {
       list.innerHTML = '<div class="empty-state"><div class="icon">✓</div>No active loans</div>';
       document.getElementById("loans-filter-bar").style.display = "none";
       return;
     }
     allLoans = data;
-    loanFilterType = null;
-    loanFilterOverdue = false;
+    if (resetFilters) { loanFilterType = null; loanFilterOverdue = false; }
     buildLoanFilterChips();
     renderLoans();
   }
@@ -2845,9 +2919,10 @@
 
   async function loadReservations() {
     loadAppointments();
+    await snapLoad("/admin/reservations", document.getElementById("reservations-list"), renderReservations);
+  }
+  function renderReservations(data) {
     const list = document.getElementById("reservations-list");
-    list.innerHTML = '<div class="loading">Loading…</div>';
-    const data = await api("/admin/reservations");
     if (!data?.length) {
       list.innerHTML = '<div class="empty-state"><div class="icon">📅</div>No upcoming reservations</div>';
       document.getElementById("reservations-section-label").textContent = "Upcoming reservations";
@@ -3057,14 +3132,21 @@
   let inventoryFilter = "all";
 
   async function loadInventory() {
-    const container = document.getElementById("inventory-list");
-    container.innerHTML = '<div class="loading">Loading…</div>';
-    const [invData, typesData, itemsData, catsData] = await Promise.all([
-      api("/admin/inventory"),
-      api("/admin/catalog/item-types"),
-      api("/admin/catalog/items"),
-      api("/admin/catalog/categories").catch(() => null)
-    ]);
+    await snapLoad("inventory", document.getElementById("inventory-list"), showInventory, async () => {
+      const [inv, types, items, cats] = await Promise.all([
+        api("/admin/inventory"),
+        api("/admin/catalog/item-types"),
+        api("/admin/catalog/items"),
+        api("/admin/catalog/categories").catch(() => null)
+      ]);
+      if (inv == null || types == null || items == null) return null; // signing out
+      const bad = [inv, types, items].find(x => x && x.error);
+      return bad ? { error: bad.error, inv, types, items, cats } : { inv, types, items, cats };
+    });
+  }
+  function showInventory(d) {
+    const invData = d.error ? (Array.isArray(d.inv) ? d.inv : null) : d.inv;
+    const typesData = Array.isArray(d.types) ? d.types : null, itemsData = d.items && !d.items.error ? d.items : null, catsData = d.cats;
     browseCategories = Array.isArray(catsData) ? catsData : [];
     inventoryData = invData || [];
     catalogItemTypes = (typesData || []).slice().sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
@@ -4039,11 +4121,19 @@
   async function loadNetwork() {
     if (!isNetworkAdmin()) return;
     // Coming back to the tab: show what we have right away, then refresh underneath.
-    if (NET.loadedAt) { renderNetGemachs(); fillAdminFilter(); renderNetAdmins(); renderNetCategories(); }
+    if (!NET.loadedAt) { // first visit this session: the saved copy from last time, if any
+      const snap = snapGet("/admin/network/overview");
+      if (snap && Array.isArray(snap.gemachs)) { NET.gemachs = snap.gemachs; NET.admins = snap.admins || []; NET.categories = snap.categories || []; NET.fromSnap = true; }
+    }
+    if (NET.loadedAt || NET.fromSnap) { renderNetGemachs(); fillAdminFilter(); renderNetAdmins(); renderNetCategories(); }
+    const netEls = ["net-gemachs", "net-admins", "net-categories"].map(id => document.getElementById(id));
+    if (NET.fromSnap) netEls.forEach(el => el?.classList.add("is-stale"));
     // One request for gemachs + admins + categories (3 Airtable reads instead of ~9 across three requests).
     let ov = await api("/admin/network/overview").catch(e => ({ error: e.message }));
     let g, a, c;
-    if (ov && Array.isArray(ov.gemachs)) ({ gemachs: g, admins: a, categories: c } = ov);
+    NET.fromSnap = false;
+    netEls.forEach(el => el?.classList.remove("is-stale"));
+    if (ov && Array.isArray(ov.gemachs)) { ({ gemachs: g, admins: a, categories: c } = ov); snapPut("/admin/network/overview", ov); }
     else if (ov && /not found/i.test(ov.error || "")) { // API not updated yet: the old three calls
       [g, a, c] = await Promise.all([
         api("/admin/network/gemachs"), api("/admin/network/admins"), api("/admin/network/categories"),
