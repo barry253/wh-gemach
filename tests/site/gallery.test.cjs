@@ -89,6 +89,7 @@ const lbSrc = p => p.$eval('#lightbox-img', i => i.getAttribute('src'));
 
       await page.click('#row-recGal1 .item-thumb');
       assert(await page.isVisible('#lightbox-next') && await page.isVisible('#lightbox-prev') && (await lbSrc(page)).endsWith('/1.jpg'), `${label} gallery opens on the cover with arrows`);
+      assert(await page.isHidden('#lightbox-desc'), `${label} no description: nothing extra under the name`);
       assert(await page.textContent('#lightbox-count') === '1 of 3' && await page.$$eval('#lightbox-dots span', d => d.length) === 3, `${label} 1 of 3 + dots`);
       await page.click('#lightbox-next');
       assert((await lbSrc(page)).endsWith('/2.jpg') && await page.textContent('#lightbox-count') === '2 of 3', `${label} next`);

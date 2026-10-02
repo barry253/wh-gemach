@@ -99,6 +99,10 @@ const cols = (p, sel) => p.$eval(sel, el => getComputedStyle(el).gridTemplateCol
 
     await page.click('#row-recVw1 .tile-photo');
     assert(await page.isVisible('#lightbox') && (await lbSrc(page)).endsWith('/1.jpg') && await page.textContent('#lightbox-count') === '1 of 3', 'grid: tapping the photo opens the full-screen viewer');
+    assert(await page.isVisible('#lightbox-desc') && /cathedral train/.test(await page.textContent('#lightbox-desc')), 'viewer shows the description under the name');
+    const lbBox = await page.evaluate(() => { const i = document.getElementById('lightbox-img').getBoundingClientRect(), c = document.querySelector('.lightbox-caption').getBoundingClientRect(); return { imgBottom: i.bottom, capTop: c.top, capBottom: c.bottom, imgH: i.height }; });
+    assert(lbBox.imgBottom <= lbBox.capTop + 1 && lbBox.capBottom <= 844 && lbBox.imgH > 200, 'photo sits above the caption, nothing off screen ' + JSON.stringify(lbBox));
+    await page.screenshot({ path: path.join(SHOTS, 'm-viewer-desc.png') });
     await page.keyboard.press('Escape');
     assert(!(await page.$eval('#row-recVw1', el => el.classList.contains('selected'))), 'opening photos does not select');
     await page.click('#row-recVw1 .tile-check input');

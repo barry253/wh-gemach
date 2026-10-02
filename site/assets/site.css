@@ -982,3 +982,9 @@ fieldset { border: 0; }
 .item-post.selected .post-add { background: var(--t-strong); color: #fff; }
 .item-post.selected .pa-on { display: inline; }
 .item-post.selected .pa-off { display: none; }
+
+/* Photo viewer with the item's description under its name: caption in the flow, photo shrinks to fit above it. */
+.lightbox-desc { margin: .4rem auto 0; max-width: 36rem; font-size: .88rem; line-height: 1.5; color: rgba(255,255,255,.82); white-space: pre-line; }
+.lightbox.has-desc { flex-direction: column; padding-bottom: calc(1rem + env(safe-area-inset-bottom)); gap: .75rem; }
+.lightbox.has-desc img { flex: 1 1 0; min-height: 0; width: 100%; max-height: none; object-fit: contain; background: transparent; }
+.lightbox.has-desc .lightbox-caption { position: static; flex: 0 0 auto; max-height: 34vh; overflow-y: auto; width: 100%; }

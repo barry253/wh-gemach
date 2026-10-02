@@ -649,7 +649,7 @@
     var photoBtn = t.closest("[data-photo]");
     if (photoBtn) {
       var it = items.filter(function (i) { return i.id === photoBtn.getAttribute("data-photo"); })[0];
-      if (it) openLightbox(photoList(it), it.name, photoBtn, Number(photoBtn.getAttribute("data-pi")) || 0);
+      if (it) openLightbox(photoList(it), it.name, photoBtn, Number(photoBtn.getAttribute("data-pi")) || 0, it.description);
       return;
     }
     var descBtn = t.closest(".item-desc-toggle");
@@ -754,11 +754,16 @@
     for (var k = 0; k < dots.length; k++) dots[k].classList.toggle("on", k === gal.i);
     if (n > 1) { var pre = new Image(); pre.src = gal.list[(gal.i + 1) % n]; } // next one ready
   }
-  function openLightbox(list, name, opener, start) {
+  function openLightbox(list, name, opener, start, desc) {
     lastFocus = opener || document.activeElement;
     gal = { list: Array.isArray(list) ? list : [list], i: 0, name: name };
     var many = gal.list.length > 1;
     $("lightbox-caption").textContent = name;
+    // The item's description under its name (text only; line breaks kept by CSS).
+    var d = typeof desc === "string" ? desc.trim() : "";
+    $("lightbox-desc").textContent = d;
+    $("lightbox-desc").hidden = !d;
+    lb.classList.toggle("has-desc", !!d);
     $("lightbox-prev").hidden = $("lightbox-next").hidden = !many;
     $("lightbox-dots").innerHTML = many ? gal.list.map(function () { return "<span></span>"; }).join("") : "";
     showPhoto(Math.min(start || 0, gal.list.length - 1));
