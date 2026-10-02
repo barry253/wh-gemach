@@ -400,7 +400,38 @@
     renderGemachs();
     renderResults();
     revealActiveChip();
+    layoutPeek();
   }
+
+  // ── Phones: categories start collapsed (2 rows + a faded third row under "Show all") ──
+  var PEEK_MAX = 6, phone = window.matchMedia ? window.matchMedia("(max-width: 639px)") : null;
+  var catsOpen = false;
+  try { catsOpen = sessionStorage.getItem("whg_cats_open") === "1"; } catch (e) { /* ignore */ }
+  function layoutPeek() {
+    var sec = $("cats-section"), n = catGrid.querySelectorAll(".cat-tile").length;
+    var canCollapse = n > PEEK_MAX;
+    sec.classList.toggle("cats-collapsed", canCollapse && !catsOpen);
+    sec.classList.toggle("cats-expanded", canCollapse && catsOpen);
+    $("cat-more-btn").firstChild.nodeValue = "Show all " + n + " categories ";
+    if (!canCollapse || catsOpen || !phone || !phone.matches || document.body.classList.contains("filtering")) return;
+    // Fade ends a little past the middle of the third row.
+    var lis = catGrid.children, li = lis[PEEK_MAX - 2];
+    if (!li) return;
+    var top = li.getBoundingClientRect().top - catGrid.getBoundingClientRect().top;
+    catGrid.style.setProperty("--peek-h", Math.round(top + li.offsetHeight * 0.55) + "px");
+  }
+  function setCatsOpen(open) {
+    catsOpen = open;
+    try { sessionStorage.setItem("whg_cats_open", open ? "1" : "0"); } catch (e) { /* ignore */ }
+    layoutPeek();
+    if (open) { var t = catGrid.children[PEEK_MAX]; /* first tile that was hidden */ var b = t && t.querySelector("button"); if (b) b.focus({ preventScroll: true }); }
+    else { $("cat-more-btn").focus({ preventScroll: true }); var r = $("cats-section").getBoundingClientRect(); if (r.top < 0) $("cats-section").scrollIntoView({ block: "start" }); }
+  }
+  $("cat-more-btn").addEventListener("click", function () { setCatsOpen(true); });
+  $("cat-less-btn").addEventListener("click", function () { setCatsOpen(false); });
+  var peekRaf = 0;
+  window.addEventListener("resize", function () { cancelAnimationFrame(peekRaf); peekRaf = requestAnimationFrame(layoutPeek); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(layoutPeek);
 
   // ── URL state ──
   function readUrl() {
@@ -421,7 +452,7 @@
     writeUrl(push);
     if (qMini && qMini.value !== state.q) qMini.value = state.q;
     if (data) renderResults(); else clearBtn.hidden = !state.q;
-    if (data) syncTilePressed();
+    if (data) { syncTilePressed(); layoutPeek(); }
   }
   function revealActiveChip() {
     if (!document.body.classList.contains("filtering")) return;
@@ -520,7 +551,7 @@
   });
   window.addEventListener("popstate", function () {
     readUrl(); searchPushed = false;
-    if (data) { renderResults(); syncTilePressed(); revealActiveChip(); }
+    if (data) { renderResults(); syncTilePressed(); revealActiveChip(); layoutPeek(); }
   });
 
   // ── Boot ──
