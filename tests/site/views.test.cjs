@@ -90,6 +90,7 @@ const cols = (p, sel) => p.$eval(sel, el => getComputedStyle(el).gridTemplateCol
     await page.goto(BASE + '/g/gowns', { waitUntil: 'networkidle' });
     assert(await page.$('.item-list.item-grid') && await page.getAttribute('.view-btn[data-view="Grid"]', 'aria-pressed') === 'true', 'gemach default Grid is used');
     assert(await cols(page, '.item-list.item-grid') === 2, 'phone grid: 2 across');
+    assert((await page.textContent('.inv-head h2')).trim() === 'Gemach Inventory', 'heading says Gemach Inventory');
     assert(/3/.test(await page.textContent('#row-recVw1 .tile-count')) && !(await page.$('#row-recVw2 .tile-count')), 'photo count only on multi-photo tiles');
     assert(await page.$('#row-recVw3 .tile-nophoto'), 'item without a photo gets a plain tile');
     assert((await page.textContent('#row-recVw1 .tile-attrs')).trim() === 'Size 6', 'filter values under the name');

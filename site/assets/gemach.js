@@ -489,7 +489,7 @@
     var showHeads = order.length > 1 || order[0] !== other;
 
     var st = style(), view = currentView();
-    html += '<div class="inv-head"><div class="inv-title"><h2 class="section-title">' + (dir || st !== "Dates" ? "Items" : "Equipment") + "</h2>" +
+    html += '<div class="inv-head"><div class="inv-title"><h2 class="section-title">Gemach Inventory</h2>' +
       (dir || st === "Appointment" ? "" : '<span class="section-sub">Availability updates in real time</span>') + "</div>" + viewSwitcher(view) + "</div>";
     var help = {
       Dates: "Tap the items you need, then send one request. Items on loan can still be requested — the gemach will let you know.",
