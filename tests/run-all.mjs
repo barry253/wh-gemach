@@ -22,6 +22,11 @@ for (const t of tests) {
   if (!ok) failed++;
   console.log(`${ok ? "✓" : "✗"} ${t}`);
   if (!ok) console.log((fails.length ? fails.join("\n") : out.slice(-3000)).replace(/^/gm, "    "));
+  // On GitHub Actions, also report it as an annotation (readable from the API without the full log).
+  if (!ok && process.env.GITHUB_ACTIONS) {
+    const msg = (fails.length ? fails.join(" | ") : out.slice(-1500)).replace(/%/g, "%25").replace(/\r?\n/g, "%0A");
+    console.log(`::error title=${t}::${msg.slice(0, 3000)}`);
+  }
 }
 console.log(failed ? `\n${failed} of ${tests.length} browser test files failed` : `\nAll ${tests.length} browser test files passed`);
 process.exit(failed ? 1 : 0);
