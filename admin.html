@@ -300,6 +300,8 @@
     }
     .url-box code { font-size: 0.8rem; color: var(--navy); word-break: break-all; flex: 1 1 100%; }
     .net-row { display: flex; flex-direction: column; gap: 0.5rem; }
+    .net-row-btns { display: flex; gap: 0.35rem; flex-shrink: 0; }
+    #eg-slug:disabled { background: #F3F4F6; color: var(--muted); }
     .net-admin-filters { flex: 1 1 100%; display: flex; gap: 0.5rem; flex-wrap: wrap; }
     .net-admin-filters select { flex: 1 1 12rem; min-width: 0; }
     .team-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -1406,6 +1408,43 @@
 </div>
 
 <!-- Network: New Gemach Sheet -->
+<div class="sheet-overlay" id="net-gemach-edit-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('net-gemach-edit-sheet')">×</button>
+    <h3>Edit gemach</h3>
+    <p class="sheet-subtitle" id="eg-subtitle"></p>
+    <div class="form-group">
+      <label for="eg-name">Name <span style="color:var(--red)">*</span></label>
+      <input type="text" id="eg-name" maxlength="100" />
+    </div>
+    <div class="form-group">
+      <label for="eg-slug">Web address</label>
+      <input type="text" id="eg-slug" maxlength="64" />
+      <div class="muted-small" style="margin-top:0.3rem" id="eg-slug-note"></div>
+    </div>
+    <div class="settings-grid2">
+      <div class="form-group">
+        <label for="eg-email">Email</label>
+        <input type="email" id="eg-email" maxlength="200" />
+      </div>
+      <div class="form-group">
+        <label for="eg-phone">Phone</label>
+        <input type="tel" id="eg-phone" maxlength="50" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="eg-order">Display order <span class="muted-small">(optional — lower shows first on the home page)</span></label>
+      <input type="number" id="eg-order" step="1" style="max-width:8rem" />
+    </div>
+    <p class="muted-small" style="margin:0 0 0.75rem">Type, category and whether it's live are in the list. For the description, hours, pickup, logo, messages and the rest, <a href="#" id="eg-more" onclick="return false">open the gemach's Settings</a>.</p>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('net-gemach-edit-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="eg-submit-btn">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-overlay" id="net-gemach-sheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -2200,6 +2239,10 @@
     }
     if (!token) return;
     if (gemachSlug !== earlySlug) loadDashboard();
+    // "Open the gemach's Settings" from the Network tab's Edit sheet lands here after the reload.
+    let openTab = null;
+    try { openTab = sessionStorage.getItem("whg_open_tab"); sessionStorage.removeItem("whg_open_tab"); } catch (e) { /* ignore */ }
+    if (openTab === "settings" && GEMACH) switchTab("settings");
   }
 
   async function loadGemachContext() {
@@ -2325,7 +2368,9 @@
     }
   }
 
-  function switchGemach(slug) {
+  function switchGemach(slug, tab) {
+    if (tab === "settings" && slug === gemachSlug) { switchTab("settings"); showSettingsArea("profile"); return; }
+    if (tab) try { sessionStorage.setItem("whg_open_tab", tab); } catch (e) { /* ignore */ }
     if (!slug || slug === gemachSlug) return;
     localStorage.setItem("gemach_slug", slug);
     location.reload(); // reload so no data from the previous gemach lingers in memory
@@ -4662,7 +4707,10 @@
             <div class="card-title">${esc(g.name)}${!g.active ? ' <span class="tag tag-amber">Hidden</span>' : g.comingSoon ? ' <span class="tag tag-amber">Coming soon</span>' : ""}</div>
             <div class="card-id">${esc(g.slug || "")} · ${esc(g.itemCount)} item${g.itemCount === 1 ? "" : "s"} · ${esc(g.adminCount)} admin${g.adminCount === 1 ? "" : "s"}</div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="switchGemach(netStore.gemach.get('${id}').slug)">Open</button>
+          <div class="net-row-btns">
+            <button class="btn btn-ghost btn-sm" onclick="openEditGemach('${id}')">Edit</button>
+            <button class="btn btn-ghost btn-sm" onclick="switchGemach(netStore.gemach.get('${id}').slug)">Open</button>
+          </div>
         </div>
         <div class="net-controls">
           <select aria-label="Gemach type" onchange="netPatchGemach('${id}', { mode: this.value }, this)">
@@ -4703,6 +4751,52 @@
       renderNetGemachs();
       showToast("Saved");
     } finally { if (control) control.disabled = false; }
+  }
+
+  // Edit a gemach's basics from the Network tab (everything else is in that gemach's own Settings).
+  function openEditGemach(id) {
+    const g = netStore.gemach.get(id);
+    if (!g) return;
+    document.getElementById("eg-subtitle").textContent = g.name;
+    document.getElementById("eg-name").value = g.name || "";
+    const slug = document.getElementById("eg-slug");
+    slug.value = g.slug || ""; slug.disabled = !!g.active;
+    document.getElementById("eg-slug-note").textContent = g.active
+      ? "Can only be changed while the gemach is Hidden, so links people already have keep working."
+      : `whgemachs.org/g/${g.slug || ""}`;
+    document.getElementById("eg-email").value = g.email || "";
+    document.getElementById("eg-phone").value = g.phone || "";
+    document.getElementById("eg-order").value = g.displayOrder ?? "";
+    document.getElementById("eg-more").onclick = () => { closeSheet("net-gemach-edit-sheet"); try { sessionStorage.setItem("whg_settings_area", "profile"); } catch (e) {} switchGemach(g.slug, "settings"); };
+    document.getElementById("eg-submit-btn").onclick = () => saveEditGemach(id);
+    openSheet("net-gemach-edit-sheet");
+  }
+  async function saveEditGemach(id) {
+    const g = netStore.gemach.get(id);
+    if (!g) return;
+    const val = k => document.getElementById(`eg-${k}`).value.trim();
+    const patch = {};
+    if (!val("name")) { showToast("Name is required"); return; }
+    if (val("name") !== g.name) patch.name = val("name");
+    if (!g.active && val("slug").toLowerCase() !== (g.slug || "")) patch.slug = val("slug").toLowerCase();
+    if (val("email") !== (g.email || "")) patch.email = val("email");
+    if (val("phone") !== (g.phone || "")) patch.phone = val("phone");
+    const order = val("order");
+    if (order !== String(g.displayOrder ?? "")) patch.displayOrder = order === "" ? null : Number(order);
+    if (!Object.keys(patch).length) { closeSheet("net-gemach-edit-sheet"); return; }
+    const btn = document.getElementById("eg-submit-btn");
+    btn.disabled = true;
+    try {
+      const res = await api(`/admin/network/gemachs/${id}`, "PATCH", patch);
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
+      NET.gemachs = NET.gemachs.map(x => (x.id === res.id ? res : x));
+      const mine = MY_GEMACHS.find(x => x.id === res.id);
+      if (mine) { mine.active = res.active; mine.name = res.name; mine.slug = res.slug; renderGemachSwitcher(); }
+      renderNetGemachs(); fillAdminFilter();
+      closeSheet("net-gemach-edit-sheet");
+      showToast("Saved");
+    } finally { btn.disabled = false; }
   }
 
   let ngSlugTouched = false;

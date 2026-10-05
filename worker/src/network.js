@@ -64,7 +64,7 @@ function uniqueSlug(base, taken) {
   for (let i = 2; ; i++) { const s = `${base.slice(0, 60)}-${i}`; if (!taken.has(s)) return s; }
 }
 
-const NET_GEMACH_FIELDS = ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email"];
+const NET_GEMACH_FIELDS = ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email", "Phone"];
 const NET_ADMIN_FIELDS = ["Name", "Email", "Role", "Active", "Gemachs", "Last Active"];
 
 async function netGemachRows(db, pre = null) {
@@ -81,7 +81,7 @@ async function netGemachRows(db, pre = null) {
       id: r.id, slug: f.Slug || null, name: f.Name || "", active: !!f.Active, comingSoon: !!f["Coming Soon"],
       mode: GEMACH_MODES.has(mode) ? mode : "Full", category: selName(f.Category) || null,
       displayOrder: typeof f["Display Order"] === "number" ? f["Display Order"] : null,
-      itemCount: (f.Items || []).length, adminCount: adminCount[r.id] || 0, email: f.Email || null,
+      itemCount: (f.Items || []).length, adminCount: adminCount[r.id] || 0, email: f.Email || null, phone: f.Phone || null,
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -210,6 +210,18 @@ async function netUpdateGemach(c, id) {
     else if (!Number.isFinite(Number(body.displayOrder)) || Math.abs(Number(body.displayOrder)) > 1e6) return json({ error: "Display order must be a number." }, 400);
     else f["Display Order"] = Number(body.displayOrder);
   }
+  // Contact email/phone can be changed here; clearing them is left to the gemach's own Settings, which
+  // checks they aren't the gemach's contact method.
+  for (const [key, field, label] of [["email", "Email", "Email"], ["phone", "Phone", "Phone"]]) {
+    if (body[key] === undefined) continue;
+    const v = typeof body[key] === "string" ? body[key].trim() : null;
+    if (v === null) return json({ error: `${label} must be text.` }, 400);
+    if (v === (rec.fields[field] || "")) continue;
+    if (!v) return json({ error: `To remove the ${label.toLowerCase()}, open the gemach and change it in Settings.` }, 400);
+    if (key === "email" && (!EMAIL_RE.test(v) || v.length > 200)) return json({ error: "Enter a valid email address." }, 400);
+    if (key === "phone" && v.length > 50) return json({ error: "Phone is too long." }, 400);
+    f[field] = v;
+  }
   const oldSlug = rec.fields.Slug || null;
   if (body.slug !== undefined && String(body.slug).trim().toLowerCase() !== oldSlug) {
     const slug = String(body.slug || "").trim().toLowerCase();
@@ -219,7 +231,7 @@ async function netUpdateGemach(c, id) {
     if (clash.some(r => r.id !== id)) return json({ error: `The web address “${slug}” is already taken.` }, 409);
     f["Slug"] = slug;
   }
-  if (!Object.keys(f).length) return json({ error: "Nothing to update." }, 400);
+  if (!Object.keys(f).length) return json((await netGemachRows(db)).find(r => r.id === id) || { id }); // nothing changed
   try { await db.update(T.GEMACHS, id, f); }
   catch (e) {
     if (!(e instanceof AirtableError)) throw e;

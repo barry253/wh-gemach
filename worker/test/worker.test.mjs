@@ -903,7 +903,7 @@ await t("r4 GET /admin/network/gemachs: all gemachs sorted by name with counts",
   const d = await (await req(tokNet, "GET", "/admin/network/gemachs")).json();
   assert.deepEqual(d.map(g => g.name), [...d.map(g => g.name)].sort((a, b) => a.localeCompare(b)));
   const a = d.find(g => g.id === A.id);
-  assert.deepEqual(Object.keys(a).sort(), ["active", "adminCount", "category", "comingSoon", "displayOrder", "email", "id", "itemCount", "mode", "name", "slug"]);
+  assert.deepEqual(Object.keys(a).sort(), ["active", "adminCount", "category", "comingSoon", "displayOrder", "email", "id", "itemCount", "mode", "name", "phone", "slug"]);
   assert.equal(a.adminCount, 4, "Barry + v@ + Demoted + Vol are active admins of A");
   assert.ok(d.some(g => g.slug === "hidden-one" && g.active === false && g.category === "Baby"));
 });
@@ -2255,6 +2255,20 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
     assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ reminderDaysBefore: 15 }) })).status, 400);
   });
 }
+
+await t("network: edit a gemach's name, email, phone, display order; email/phone not blanked here", async () => {
+  DB.Gemachs.push(rec("recNETEDITGEMACH1", { Name: "Edit Me", Slug: "edit-me", Active: true, Mode: "Full", Email: "old@example.com", Phone: "111" }));
+  X.clearMemo();
+  let r = await req(tokNet, "PATCH", "/admin/network/gemachs/recNETEDITGEMACH1", { name: "Edited Gemach", email: " new@example.com ", phone: "516-555-1212", displayOrder: 5 });
+  assert.equal(r.status, 200, await r.clone().text());
+  const d = await r.json();
+  assert.deepEqual([d.name, d.email, d.phone, d.displayOrder], ["Edited Gemach", "new@example.com", "516-555-1212", 5]);
+  assert.equal((await req(tokNet, "PATCH", "/admin/network/gemachs/recNETEDITGEMACH1", { email: "" })).status, 400);
+  assert.equal((await req(tokNet, "PATCH", "/admin/network/gemachs/recNETEDITGEMACH1", { email: "nope" })).status, 400);
+  r = await req(tokNet, "PATCH", "/admin/network/gemachs/recNETEDITGEMACH1", { name: "Edited Gemach", email: "new@example.com" });
+  assert.equal(r.status, 200, "unchanged values are fine");
+  assert.equal((await req(tokNet, "PATCH", "/admin/network/gemachs/recNETEDITGEMACH1", { slug: "other-addr" })).status, 400, "web address only while hidden");
+});
 
 // ─── Team: owners manage their gemach's admins ─────────────────────────────────
 {

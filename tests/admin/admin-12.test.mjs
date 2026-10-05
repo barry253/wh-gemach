@@ -52,7 +52,8 @@ async function open(role, gemach) {
       return J({ ...cur, ...body });
     }
     if ((mm = p.match(/^\/admin\/team\/(rec\w+)$/)) && m === "DELETE") return J({ ok: true, id: mm[1], deactivated: true });
-    if (p === "/admin/network/overview") return J({ gemachs: [{ id: "recA", slug: "wh-medical", name: G.name, active: true, adminCount: 3, itemCount: 0 }], admins: NET_ADMINS, categories: [] });
+    if (p === "/admin/network/gemachs/recA" && m === "PATCH") return J({ id: "recA", slug: "wh-medical", name: body.name || G.name, active: true, adminCount: 3, itemCount: 0, email: body.email || "whm@x", phone: "516", displayOrder: body.displayOrder ?? null, mode: "Full", category: "Medical" });
+    if (p === "/admin/network/overview") return J({ gemachs: [{ id: "recA", slug: "wh-medical", name: G.name, active: true, adminCount: 3, itemCount: 0, email: "whm@x", phone: "516", mode: "Full", category: "Medical" }], admins: NET_ADMINS, categories: [] });
     if (p === "/admin/network/searches") return J({ days: 30, total: 0, top: [], misses: [] });
     return J([]);
   });
@@ -142,7 +143,7 @@ async function open(role, gemach) {
 
 // Network admin: owners and network admins by default
 {
-  const { page, errors } = await open("Network Admin", G);
+  const { page, errors, calls } = await open("Network Admin", G);
   await page.click(".nav-tab:has-text('Network')");
   await page.waitForSelector("#net-admins .net-row");
   const names = async () => (await page.$$eval("#net-admins .net-row .card-title", e => e.map(x => x.textContent.trim()))).join("|");
@@ -156,6 +157,17 @@ async function open(role, gemach) {
   ok(await names() === "Vic Volunteer", "role filter");
   await page.selectOption("#net-admin-role", "inactive");
   ok(/Otto Off/.test(await names()), "turned-off admins");
+  // Edit a gemach from the Network tab
+  await page.click("#ng-row-recA button:has-text('Edit')");
+  ok(await page.inputValue("#eg-name") === G.name && await page.isDisabled("#eg-slug") && await page.inputValue("#eg-email") === "whm@x", "edit sheet filled; web address locked while live");
+  await page.fill("#eg-name", "WH Medical Gemach");
+  await page.fill("#eg-order", "3");
+  await page.screenshot({ path: "shot-network-edit-gemach.png" });
+  await page.click("#eg-submit-btn");
+  await page.waitForFunction(() => /WH Medical Gemach/.test(document.getElementById("net-gemachs").textContent));
+  const pg = calls.filter(c => c.method === "PATCH" && c.path === "/admin/network/gemachs/recA").at(-1);
+  ok(pg && JSON.stringify(pg.body) === JSON.stringify({ name: "WH Medical Gemach", displayOrder: 3 }), "only changed fields sent: " + JSON.stringify(pg?.body));
+  ok((await page.textContent("#gemach-switcher")).includes("WH Medical Gemach"), "switcher shows the new name");
   ok(!errors.length, "no page errors: " + errors.join(" | "));
   await page.close();
 }
