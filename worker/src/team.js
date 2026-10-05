@@ -176,6 +176,7 @@ async function resendInvite(c, id) {
   const rec = await loadMember(c, id);
   if (!rec) return json({ error: "Not found" }, 404);
   const f = rec.fields;
+  if (lc(f.Email) === lc(c.user.email)) return json({ error: "That's you — you're already signed in." }, 400);
   const ok = await sendAdminInvite(c.env, { name: f.Name || f.Email, email: lc(f.Email), role: selName(f.Role), gemachs: [{ id: c.g.id, name: c.g.name }], by: c.user.name || null });
   return ok ? json({ ok: true }) : json({ error: "The email couldn't be sent. Please try again later." }, 422);
 }

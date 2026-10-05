@@ -2364,6 +2364,7 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
     const before = resendCalls().length;
     assert.equal((await team(tokOwner, "POST", "/admin/team/recTEAMMGR0000001/invite")).status, 200);
     assert.deepEqual(resendCalls().slice(before).at(-1).to, ["moe@example.com"]);
+    assert.equal((await team(tokOwner, "POST", "/admin/team/recTEAMOWNER00001/invite")).status, 400, "not to yourself");
     row("recTEAMOWNER00001").Role = "Manager"; // demoted by a network admin; the token still says Owner
     X.clearMemo();
     assert.equal((await team(tokOwner, "GET", "/admin/team")).status, 403);

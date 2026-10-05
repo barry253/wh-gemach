@@ -74,7 +74,7 @@ async function open(role, gemach) {
   await page.waitForSelector("#team-list .team-row");
   ok((await page.$$eval("#team-list .team-row .card-title", e => e.map(x => x.textContent.trim()))).join("|") === "Barry You|Moe Manager|Sam Shared", "team listed, you marked");
   ok(/Also on the team at Tablecloth Gemach/.test(await page.textContent("#team-row-recADMSHARED00001")), "shows other gemachs");
-  ok(!(await page.$("#team-row-recADMOWNER000001 button:has-text('Remove')")), "can't remove yourself");
+  ok(!(await page.$("#team-row-recADMOWNER000001 button:has-text('Remove')")) && !(await page.$("#team-row-recADMOWNER000001 button:has-text('Resend invite')")), "your own row: no Remove or Resend invite");
   ok(await page.isHidden("#settings-savebar"), "no save bar for team changes");
   await page.screenshot({ path: "shot-team-list.png" });
 

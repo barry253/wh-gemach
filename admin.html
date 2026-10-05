@@ -4381,8 +4381,8 @@
         ${m.otherGemachs?.length ? `<div class="muted-small">Also on the team at ${esc(m.otherGemachs.join(", "))}</div>` : ""}
         <div class="team-actions">
           <button class="btn btn-ghost btn-sm" type="button" onclick="openTeamSheet('${id}')">Edit</button>
-          <button class="btn btn-ghost btn-sm" type="button" onclick="resendTeamInvite('${id}', this)">Resend invite</button>
-          ${m.you ? "" : `<button class="btn btn-ghost btn-sm btn-danger-text" type="button" onclick="removeTeamMember('${id}', this)">Remove</button>`}
+          ${m.you ? "" : `<button class="btn btn-ghost btn-sm" type="button" onclick="resendTeamInvite('${id}', this)">Resend invite</button>
+          <button class="btn btn-ghost btn-sm btn-danger-text" type="button" onclick="removeTeamMember('${id}', this)">Remove</button>`}
         </div>
       </div>`;
     }).join("");
