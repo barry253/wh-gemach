@@ -82,6 +82,7 @@ import { handleSearchLog } from "./search.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
 import { handleDashboard, handleStats } from "./stats.js";
 import { handleSubmitRequest } from "./submit.js";
+import { runReminders } from "./reminders.js";
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 export default {
@@ -116,6 +117,10 @@ export default {
       ctx.waitUntil(alertServerError(env, { method, path, res: res.clone(), thrown, submitCopy }).catch(e => console.error("alert failed:", e.message)));
     }
     return withCors(res, request, isPublicRoute);
+  },
+  // Daily cron (wrangler.toml [triggers]): automatic return reminder emails.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runReminders(env, ctx).catch(e => console.error("reminders failed:", e && (e.stack || e.message))));
   },
 };
 

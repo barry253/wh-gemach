@@ -2855,6 +2855,7 @@
             ${l.isQuantity ? `<span class="loan-row-code">× ${esc(l.quantity)}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
             ${l.readyToReturnAt ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
+            ${l.reminderSentAt ? `<span class="tag tag-amber loan-row-tag" title="Return reminder ${esc(reminderVia(l.reminderSentVia))} ${esc(timeAgo(l.reminderSentAt))}">⏰ Reminded ${esc(timeAgo(l.reminderSentAt))}</span>` : ""}
           </div>
           <span class="loan-row-date">${esc(fmt(l.dateBorrowed) || "—")}</span>
           ${tag}
@@ -2863,7 +2864,7 @@
           ${l.readyToReturnAt ? `<div class="loan-notes request-note"><span class="note-label">Ready to return:</span> the borrower let us know ${esc(timeAgo(l.readyToReturnAt))} — arrange the return.</div>` : ""}
           ${l.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(l.requestNote)}</div>` : ""}
           ${l.notes ? `<div class="loan-notes">💬 ${esc(l.notes)}</div>` : ""}
-          ${l.reminderSentAt ? `<div class="loan-notes">⏰ Return reminder sent ${esc(timeAgo(l.reminderSentAt))}</div>` : ""}
+          ${l.reminderSentAt ? `<div class="loan-notes">⏰ Return reminder ${esc(reminderVia(l.reminderSentVia))} ${esc(timeAgo(l.reminderSentAt))}</div>` : ""}
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openReturn(rec('loan','${lid}'))">✓ Returned</button>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openReturnReminder(rec('loan','${lid}'))">⏰ Return reminder</button>
@@ -3163,13 +3164,18 @@
     openSheet("pickup-sheet");
   }
 
+  /** "emailed automatically" / "sent by WhatsApp" / "sent" — how the last reminder went out. */
+  function reminderVia(v) {
+    if (!v) return "sent";
+    return /automatic/i.test(v) ? "emailed automatically" : `sent by ${v}`;
+  }
   // "Time to return" reminder: the gemach's Return reminder template filled with this loan's details,
   // editable, sent from the admin's own WhatsApp / texts / email; the server stamps the loan and logs it.
   function openReturnReminder(l) {
     const items = l.isQuantity && l.quantity ? `${l.itemTypeName} × ${l.quantity}` : (l.itemTypeName || "item");
     document.getElementById("reminder-subtitle").textContent = [l.borrowerName, items,
       l.expectedReturn ? `due ${fmtDay(l.expectedReturn, true)}` : (l.dateBorrowed ? `out since ${fmtDay(l.dateBorrowed, true)}` : "")].filter(Boolean).join(" · ");
-    document.getElementById("reminder-last").textContent = l.reminderSentAt ? `Last reminder sent ${timeAgo(l.reminderSentAt)}.` : "";
+    document.getElementById("reminder-last").textContent = l.reminderSentAt ? `Last reminder ${reminderVia(l.reminderSentVia)} ${timeAgo(l.reminderSentAt)}.` : "";
     document.getElementById("reminder-message").value = renderMessage("returnReminder", String(l.borrowerName || "").split(" ")[0], items,
       { manageUrl: l.manageUrl, borrowedDate: l.dateBorrowed, returnDate: l.expectedReturn, daysOut: l.daysOut });
     setupSendBy("reminder", { ...l, phone: l.borrowerPhone, email: l.borrowerEmail, preferredContact: l.borrowerContact },
@@ -3181,6 +3187,7 @@
       const res = await api(`/admin/loans/${safeId(l.id)}/reminder`, "POST", { via: choice, borrower: l.borrowerName, loanId: l.loanId, itemType: l.itemTypeName }).catch(() => null);
       if (res && res.success) {
         l.reminderSentAt = res.reminderSentAt;
+        l.reminderSentVia = res.reminderSentVia || null;
         renderLoans();
         showToast("Reminder noted on the loan");
       } else showToast("Message opened — couldn't note it on the loan");
@@ -3571,6 +3578,7 @@
     { title: "Branding", extra: "branding" },
     { title: "Gemach info", extra: "info" },
     { title: "Requests", extra: "requests" },
+    { title: "Return reminders", extra: "reminders" },
     { title: "How items look", extra: "view" },
     { title: "Item filters", extra: "attrs" },
     { title: "Home page categories", extra: "browsecats" },
@@ -3688,6 +3696,27 @@
           ${fieldHtml("depositInfo")}
         </div>
         ${fieldHtml("gemachInfo")}`;
+    }
+    if (group.extra === "reminders") {
+      inner += `
+        <div class="checkbox-row">
+          <input type="checkbox" id="set-autoReminders" />
+          <label for="set-autoReminders">Email borrowers a return reminder automatically</label>
+        </div>
+        <div class="form-row" id="auto-reminder-days">
+          <div class="form-group">
+            <label for="set-reminderDaysBefore">Days before the due date</label>
+            <input type="number" id="set-reminderDaysBefore" min="0" max="14" step="1" inputmode="numeric" />
+          </div>
+          <div class="form-group">
+            <label for="set-reminderRepeatDays">Then, while overdue, every … days</label>
+            <input type="number" id="set-reminderRepeatDays" min="0" max="30" step="1" inputmode="numeric" />
+          </div>
+        </div>
+        <p class="settings-help" style="margin:0">Sent each morning to borrowers who gave an email address, for loans with a return date
+          (0 days before = on the due date; 0 for overdue = no overdue reminders). The first overdue reminder goes the day after the due date.
+          The wording is the <b>Return reminder</b> message template below. For borrowers without email, use <b>Loans → Return reminder</b>
+          to send it by WhatsApp or text — any reminder you send counts, so they won't get a second one the same day.</p>`;
     }
     if (group.extra === "requests") {
       const styles = [
@@ -3850,9 +3879,15 @@
     remember("pickupDaysBefore", Number(g.pickupDaysBefore ?? 1));
     remember("returnDaysAfter", Number(g.returnDaysAfter ?? 1));
     remember("shabbosAdjust", !!g.shabbosAdjust);
+    setEl("autoReminders").checked = !!g.autoReminders; setEl("autoReminders").disabled = ro;
+    setEl("reminderDaysBefore").value = g.reminderDaysBefore ?? 2; setEl("reminderDaysBefore").disabled = ro;
+    setEl("reminderRepeatDays").value = g.reminderRepeatDays ?? 7; setEl("reminderRepeatDays").disabled = ro;
+    remember("autoReminders", !!g.autoReminders);
+    remember("reminderDaysBefore", Number(g.reminderDaysBefore ?? 2));
+    remember("reminderRepeatDays", Number(g.reminderRepeatDays ?? 7));
 
     ["primaryContact", "secondaryContact", "themePicker", "themeHex", "accentPicker", "accentHex", "depositRequired",
-     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust"].forEach(k => {
+     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "autoReminders", "reminderDaysBefore", "reminderRepeatDays"].forEach(k => {
       const el = setEl(k);
       el.disabled = ro;
       el.addEventListener("input", onSettingsInput);
@@ -4188,6 +4223,12 @@
       put(k, n);
     }
     put("shabbosAdjust", setEl("shabbosAdjust").checked);
+    put("autoReminders", setEl("autoReminders").checked);
+    for (const [k, max, label] of [["reminderDaysBefore", 14, "Days before the due date"], ["reminderRepeatDays", 30, "Overdue reminder days"]]) {
+      const raw = setEl(k).value.trim(), n = Number(raw);
+      if (raw === "" || !Number.isInteger(n) || n < 0 || n > max) return { error: `${label} must be a whole number from 0 to ${max}.` };
+      put(k, n);
+    }
     SETTINGS_TEMPLATES.forEach(t => {
       const raw = setEl(t.key).value;
       if (raw !== settingsOriginal[t.key]) patch[t.key] = raw.trim();

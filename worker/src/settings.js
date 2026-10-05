@@ -55,6 +55,7 @@ async function adminGemachPayload(db, g, user) {
     rawTemplates: { ...g.rawTemplates },
     placeholders: TEMPLATE_PLACEHOLDERS,
     canEdit: canEditGemach(user),
+    autoReminders: !!g.autoReminders, reminderDaysBefore: g.reminderDaysBefore, reminderRepeatDays: g.reminderRepeatDays,
   };
 }
 
@@ -99,6 +100,9 @@ const GEMACH_EDITABLE = {
   shabbosAdjust:      ["Shabbos Adjust", "bool"],
   appointmentMessage: ["Appointment Message", "long"],
   returnReminderMessage: ["Return Reminder Message", "long"],
+  autoReminders:      ["Auto Reminders", "bool"],
+  reminderDaysBefore: ["Reminder Days Before", "days"],
+  reminderRepeatDays: ["Reminder Repeat Days", "repeat"],
   logoUrl:            ["Logo URL", "logo"],
   itemAttributes:     ["Item Attributes", "attrs"],
   browseCategoryIds:  ["Browse Categories", "cats"],
@@ -111,7 +115,7 @@ const GEMACH_LABELS = {
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
   depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after",
-  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
+  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
 const MAX_LINE = 200, MAX_LONG = 2000;
@@ -143,6 +147,12 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
       const r = validateAttrDefs(v);
       if (r.error) return { error: r.error };
       fields[field] = r.value;
+      continue;
+    }
+    if (kind === "repeat") {
+      if (typeof v === "string" && v.trim() !== "") v = Number(v);
+      if (!Number.isInteger(v) || v < 0 || v > 30) return { error: `${label} must be a whole number of days from 0 to 30.` };
+      fields[field] = v;
       continue;
     }
     if (kind === "days") {

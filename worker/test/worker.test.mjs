@@ -60,6 +60,9 @@ function evalFilter(table, f, r) {
   if (/\{Slug\}!=""/.test(f) && !r.fields.Slug) return false;
   if ((m = f.match(/LOWER\(\{Email\}\)="([^"]+)"/)) && (r.fields.Email || "").toLowerCase() !== m[1]) return false;
   if (/\{Active\}=1/.test(f) && !r.fields.Active) return false;
+  if (/AND\(\{Active\},/.test(f) && !r.fields.Active) return false;
+  if (/\{Auto Reminders\}/.test(f) && !r.fields["Auto Reminders"]) return false;
+  if (/NOT\(\{Expected Return\}=BLANK\(\)\)/.test(f) && !r.fields["Expected Return"]) return false;
   if (/\{Status\}="Available"/.test(f) && r.fields.Status !== "Available") return false;
   if (/\{Status\}="New"/.test(f) && r.fields.Status !== "New") return false;
   if (/\{Status\}="Returned"/.test(f) && r.fields.Status !== "Returned") return false;
@@ -2130,6 +2133,95 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
   assert.equal(DB.Gemachs.find(g => g.id === A.id).fields["Return Reminder Message"], "Hi {first_name}, please bring back {items}.");
   DB.Loans = DB.Loans.filter(l => !/^recLOANREMIND/.test(l.id));
 });
+
+{
+  const R = await import("../src/reminders.js");
+  await t("reminders: which reminder is due (before / overdue / repeat / never twice a day)", async () => {
+    const due = (expected, today, lastSent, before = 2, repeat = 7) => R.reminderDue({ expected, today, lastSent, before, repeat });
+    assert.equal(due("2026-10-10", "2026-10-07", null), null, "3 days out: too early");
+    assert.equal(due("2026-10-10", "2026-10-08", null), "before", "2 days before");
+    assert.equal(due("2026-10-10", "2026-10-09", null), "before", "missed yesterday: still sent");
+    assert.equal(due("2026-10-10", "2026-10-09", "2026-10-08"), null, "already reminded in the window");
+    assert.equal(due("2026-10-10", "2026-10-09", "2026-10-01"), "before", "an older reminder doesn't count");
+    assert.equal(due("2026-10-10", "2026-10-10", null, 0), "before", "0 = on the due date");
+    assert.equal(due("2026-10-10", "2026-10-11", "2026-10-08"), "overdue", "first overdue: the day after");
+    assert.equal(due("2026-10-10", "2026-10-11", "2026-10-11"), null, "never twice a day");
+    assert.equal(due("2026-10-10", "2026-10-15", "2026-10-11"), null, "repeat not yet");
+    assert.equal(due("2026-10-10", "2026-10-18", "2026-10-11"), "overdue", "repeat after 7 days");
+    assert.equal(due("2026-10-10", "2026-10-11", null, 2, 0), null, "repeat 0: no overdue reminders");
+    assert.equal(due("", "2026-10-11", null), null, "no due date: never");
+  });
+  await t("reminders: template filling matches admin (dates, blanks dropped, link)", async () => {
+    const g = { name: "WH Medical", rawTemplates: {} };
+    const m = R.reminderMessage(g, { firstName: "Moshe", items: "Wheelchair", borrowed: "2026-09-04", expected: "2026-10-01", today: "2026-10-05", link: "https://whgemachs.org/r/x" });
+    assert.match(m, /^Hi Moshe, a friendly reminder from the WH Medical: the Wheelchair you borrowed on Fri, Sep 4 was due back on Thu, Oct 1\. Please let us know/);
+    assert.match(m, /Manage your loan: https:\/\/whgemachs\.org\/r\/x\n\nThank you!$/);
+    const n = R.reminderMessage(g, { firstName: "Leah", items: "Chairs × 40", borrowed: "2026-10-03", expected: "2026-10-07", today: "2026-10-05", link: null });
+    assert.match(n, /Chairs × 40 you borrowed on Sat, Oct 3 is due back on Wed, Oct 7\./);
+    assert.ok(!/Manage your loan/.test(n), "no link: the line is dropped");
+    const c = R.reminderMessage({ name: "X", rawTemplates: { returnReminder: "Hi {first_name}, {items} {due_back}. Out {days_out} days." } }, { firstName: "A", items: "Walker", borrowed: "2026-10-01", expected: "2026-10-05", today: "2026-10-05", link: "https://l" });
+    assert.equal(c, "Hi A, Walker is due back today. Out 4 days.\n\nManage your loan: https://l", "custom template; link line added when the template has none");
+  });
+  await t("reminders: daily run emails due/overdue borrowers once, stamps + logs, dry run sends nothing", async () => {
+    const G = { id: "recREMGEMACH00001", slug: "rem-gemach" };
+    const sc = { Gemach: [G.id], "Gemach Slug": [G.slug] };
+    DB.Gemachs.push(rec(G.id, { Name: "Reminder Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "rem@example.com", "Auto Reminders": true, "Reminder Days Before": 2, "Reminder Repeat Days": 7 }),
+      rec("recREMGEMACHOFF01", { Name: "No Reminders", Slug: "no-rem", Active: true, Mode: "Full" }));
+    DB["Item Types"].push(rec("recREMTYPE0000001", { Name: "Walker", Active: true, ...sc }), rec("recREMTYPE0000002", { Name: "Folding Chair", Active: true, Tracking: "Quantity", "Quantity Owned": 50, ...sc }));
+    DB.Borrowers.push(rec("recREMBORROWER001", { Name: "Dina Katz", Email: "dina@example.com", ...sc }), rec("recREMBORROWER002", { Name: "Phone Only", Phone: "5165550000", ...sc }));
+    const L = (id, f) => rec(id, { Status: "Active", Borrower: ["recREMBORROWER001"], "Item to Reserve": ["recREMTYPE0000001"], "Date Borrowed": "2026-09-20", ...sc, ...f });
+    DB.Loans.push(
+      L("recREMLOAN0000001", { "Loan ID": "L-R1", "Expected Return": "2026-10-07" }),                                    // 2 days out → before
+      L("recREMLOAN0000002", { "Loan ID": "L-R2", "Expected Return": "2026-10-04", "Item to Reserve": ["recREMTYPE0000002"], Quantity: 20 }), // overdue 1 day → overdue
+      L("recREMLOAN0000003", { "Loan ID": "L-R3", "Expected Return": "2026-10-01", "Reminder Sent At": "2026-10-03T14:00:00.000Z" }), // repeat not yet
+      L("recREMLOAN0000004", { "Loan ID": "L-R4", "Expected Return": "2026-10-06", Borrower: ["recREMBORROWER002"] }),     // no email
+      L("recREMLOAN0000005", { "Loan ID": "L-R5" }),                                                                     // open-ended: never
+      L("recREMLOAN0000006", { "Loan ID": "L-R6", "Expected Return": "2026-10-20" }),                                    // too early
+      rec("recREMLOAN0000007", { "Loan ID": "L-R7", Status: "Active", Borrower: ["recREMBORROWER001"], "Expected Return": "2026-10-06", Gemach: ["recREMGEMACHOFF01"], "Gemach Slug": ["no-rem"] })); // gemach has it off
+    const now = Date.parse("2026-10-05T14:00:00Z");
+    const before = resendCalls().length;
+    const dry = await R.runReminders(env, ctx, { now, dryRun: true });
+    assert.deepEqual(dry.sent.map(x => x.loanId).sort(), ["L-R1", "L-R2"]);
+    assert.equal(dry.noEmail, 1);
+    assert.equal(resendCalls().length, before, "dry run sends nothing");
+    assert.ok(!DB.Loans.find(l => l.id === "recREMLOAN0000001").fields["Reminder Sent At"], "dry run changes nothing");
+
+    const run = await R.runReminders(env, ctx, { now });
+    await Promise.allSettled(waits);
+    assert.deepEqual(run.sent.map(x => [x.loanId, x.kind]).sort(), [["L-R1", "before"], ["L-R2", "overdue"]]);
+    const mails = resendCalls().slice(before);
+    assert.equal(mails.length, 2);
+    const m1 = mails.find(m => /Walker/.test(m.subject));
+    assert.equal(m1.to[0], "dina@example.com"); assert.equal(m1.reply_to, "rem@example.com");
+    assert.match(m1.subject, /^Reminder: Walker due back Wed, Oct 7 — Reminder Gemach$/);
+    assert.match(m1.text, /^Hi Dina, a friendly reminder from the Reminder Gemach: the Walker you borrowed on Sun, Sep 20 is due back on Wed, Oct 7\./);
+    const m2 = mails.find(m => /Folding Chair/.test(m.subject));
+    assert.match(m2.subject, /^Reminder: please return the Folding Chair × 20/);
+    assert.match(m2.text, /was due back on Sun, Oct 4/);
+    const l1 = DB.Loans.find(l => l.id === "recREMLOAN0000001").fields;
+    assert.equal(l1["Reminder Sent At"], new Date(now).toISOString()); assert.equal(l1["Reminder Sent Via"], "Email (automatic)");
+    const lg = DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields["Event Type"] === "Return Reminder Sent" && x.fields.Admin === "Automatic");
+    assert.ok(lg.some(x => x.fields["Loan ID"] === "L-R2" && /\(overdue\)/.test(x.fields.Notes)) && lg.every(x => x.fields.Gemach[0] === G.id));
+
+    const again = await R.runReminders(env, ctx, { now: now + 3600e3 });
+    assert.equal(again.sent.length, 0, "a second run the same day sends nothing");
+    assert.equal(typeof worker.scheduled, "function", "daily cron handler exported");
+    const loans = await (await call("/admin/loans", { headers: { ...auth(await sign({ email: "n@x", name: "N", role: "Network Admin", gemachs: [] })), "X-Gemach": G.slug } })).json();
+    const v = Array.isArray(loans) ? loans.find(l => l.id === "recREMLOAN0000001") : null;
+    assert.equal(v && v.reminderSentVia, "Email (automatic)", "admin sees how it was sent");
+    DB.Loans = DB.Loans.filter(l => !/^recREMLOAN/.test(l.id));
+  });
+  await t("reminders: settings — on/off, days before, repeat; validated", async () => {
+    const tokNet2 = await sign({ email: "n@x", name: "N", role: "Network Admin", gemachs: [] });
+    const H = { ...auth(tokNet2), "X-Gemach": "rem-gemach", "Content-Type": "application/json" };
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ autoReminders: false, reminderDaysBefore: 3, reminderRepeatDays: 0 }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    const d = await r.json();
+    assert.equal(d.autoReminders, false); assert.equal(d.reminderDaysBefore, 3); assert.equal(d.reminderRepeatDays, 0);
+    assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ reminderRepeatDays: 31 }) })).status, 400);
+    assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ reminderDaysBefore: 15 }) })).status, 400);
+  });
+}
 
 await Promise.allSettled(waits);
 const logs = DB["tblC3PY7f5sXQDMJK"];

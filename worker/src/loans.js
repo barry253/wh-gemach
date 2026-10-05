@@ -96,7 +96,8 @@ async function handleGetLoans({ db, g, env }) {
       notes: f["Notes"] || null,
       requestNote: (f["Request Note"] || []).join("") || null,
       readyToReturnAt: f["Ready To Return At"] || null, // borrower tapped "Ready to return" on their manage page
-      reminderSentAt: f["Reminder Sent At"] || null,     // admin last sent a "time to return" reminder
+      reminderSentAt: f["Reminder Sent At"] || null,     // last "time to return" reminder (manual or automatic)
+      reminderSentVia: f["Reminder Sent Via"] || null,
       manageUrl: await sourceManageUrl(env, f),
     };
   }));
@@ -143,14 +144,14 @@ async function handleLoanReminder(c, id) {
   if (selName(loan.fields.Status) !== "Active") return json({ error: "This loan isn't out right now." }, 409);
   const via = { whatsapp: "WhatsApp", sms: "text message", email: "email" }[body.via] || null;
   const now = new Date().toISOString();
-  await db.update(T.LOANS, id, { "Reminder Sent At": now });
+  await db.update(T.LOANS, id, { "Reminder Sent At": now, ...(via ? { "Reminder Sent Via": via } : {}) });
   logEvent(ctx, db, g, {
     eventType: "Return Reminder Sent",
     ...(await loanLogDetails(db, g, loan, body)),
     admin: c.adminName || null,
     notes: via ? `Sent by ${via}` : null,
   });
-  return json({ success: true, reminderSentAt: now });
+  return json({ success: true, reminderSentAt: now, reminderSentVia: via });
 }
 
 async function handleReturnLoan(c, id) {

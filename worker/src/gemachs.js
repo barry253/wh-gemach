@@ -56,6 +56,9 @@ function gemachFromRecord(r) {
     pickupDaysBefore: clampInt(f["Pickup Days Before"], 0, 14, 1),
     returnDaysAfter: clampInt(f["Return Days After"], 0, 14, 1),
     shabbosAdjust: !!f["Shabbos Adjust"],
+    autoReminders: !!f["Auto Reminders"],                                   // emailed return reminders (reminders.js)
+    reminderDaysBefore: clampInt(f["Reminder Days Before"], 0, 14, 2),
+    reminderRepeatDays: clampInt(f["Reminder Repeat Days"], 0, 30, 7),
     logoUrlField: nonBlank(f["Logo URL"]),
     displayOrder: f["Display Order"] != null && f["Display Order"] !== "" && Number.isFinite(order) ? order : null,
     pickupAddress: nonBlank(f["Pickup Address"]),

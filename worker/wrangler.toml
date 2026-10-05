@@ -20,6 +20,10 @@ routes = [
 binding = "ASSETS_BUCKET"
 bucket_name = "wh-gemach-assets"
 
+# Daily at 14:00 UTC (10am New York in summer, 9am in winter): automatic return reminder emails (src/reminders.js).
+[triggers]
+crons = ["0 14 * * *"]
+
 # Workers Logs (Observability tab).
 [observability]
 enabled = true
