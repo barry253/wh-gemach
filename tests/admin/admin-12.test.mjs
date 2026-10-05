@@ -10,13 +10,14 @@ const ok = (c, m) => { console.log(c ? "PASS" : "FAIL", m); if (!c) process.exit
 
 const G = { id: "recA", slug: "wh-medical", name: "West Hempstead Medical Gemach", canEdit: true, canManageTeam: true, primaryContact: "Text", phone: "5165551212", rawTemplates: {}, templates: {}, placeholders: [] };
 let TEAM = [
-  { id: "recADMOWNER000001", name: "Barry", email: "b@x", role: "Owner", you: true, otherGemachs: [] },
-  { id: "recADMMGR00000001", name: "Moe Manager", email: "moe@example.com", role: "Manager", you: false, otherGemachs: [] },
+  { id: "recADMOWNER000001", name: "Barry", email: "b@x", role: "Owner", you: true, otherGemachs: [], lastActive: new Date().toISOString() },
+  { id: "recADMNETLINKED01", name: "Nate Net", email: "nate@x", role: "Network Admin", you: false, otherGemachs: [], network: true, lastActive: new Date(Date.now() - 3 * 86400e3).toISOString() },
+  { id: "recADMMGR00000001", name: "Moe Manager", email: "moe@example.com", role: "Manager", you: false, otherGemachs: [], lastActive: new Date(Date.now() - 5 * 3600e3).toISOString() },
   { id: "recADMSHARED00001", name: "Sam Shared", email: "sam@example.com", role: "Volunteer", you: false, otherGemachs: ["Tablecloth Gemach"] },
 ];
 const NET_ADMINS = [
   { id: "recN1", name: "Nina Net", email: "nina@x", role: "Network Admin", active: true, gemachs: [] },
-  { id: "recN2", name: "Olivia Owner", email: "o@x", role: "Owner", active: true, gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] },
+  { id: "recN2", name: "Olivia Owner", email: "o@x", role: "Owner", active: true, lastActive: new Date(Date.now() - 2 * 3600e3).toISOString(), gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] },
   { id: "recN3", name: "Moe Manager", email: "moe@example.com", role: "Manager", active: true, gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] },
   { id: "recN4", name: "Vic Volunteer", email: "vic@x", role: "Volunteer", active: true, gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] },
   { id: "recN5", name: "Otto Off", email: "otto@x", role: "Owner", active: false, gemachs: [] },
@@ -72,7 +73,10 @@ async function open(role, gemach) {
   ok(await page.$eval(".set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all five tabs fit on a phone " + await page.$eval(".set-tabs", el => el.scrollWidth + "/" + el.clientWidth));
   await page.click("#set-tab-team");
   await page.waitForSelector("#team-list .team-row");
-  ok((await page.$$eval("#team-list .team-row .card-title", e => e.map(x => x.textContent.trim()))).join("|") === "Barry You|Moe Manager|Sam Shared", "team listed, you marked");
+  ok((await page.$$eval("#team-list .team-row .card-title", e => e.map(x => x.textContent.trim()))).join("|") === "Barry You|Nate Net|Moe Manager|Sam Shared", "team listed, you marked, linked network admin after owners");
+  ok(!(await page.$("#team-row-recADMNETLINKED01 button")), "network admin row: no buttons (managed on the Network tab)");
+  ok(/Active in the last hour/.test(await page.textContent("#team-row-recADMOWNER000001")) && /Last active 5h ago/.test(await page.textContent("#team-row-recADMMGR00000001")) && /Hasn't signed in yet/.test(await page.textContent("#team-row-recADMSHARED00001")), "last active shown");
+  ok(!(await page.$("#team-row-recADMMGR00000001 button:has-text('Resend invite')")) && !!(await page.$("#team-row-recADMSHARED00001 button:has-text('Resend invite')")), "Resend invite only for people who haven't signed in");
   ok(/Also on the team at Tablecloth Gemach/.test(await page.textContent("#team-row-recADMSHARED00001")), "shows other gemachs");
   ok(!(await page.$("#team-row-recADMOWNER000001 button:has-text('Remove')")) && !(await page.$("#team-row-recADMOWNER000001 button:has-text('Resend invite')")), "your own row: no Remove or Resend invite");
   ok(await page.isHidden("#settings-savebar"), "no save bar for team changes");
@@ -91,7 +95,7 @@ async function open(role, gemach) {
   const add = calls.find(c => c.method === "POST" && c.path === "/admin/team");
   ok(add && add.body.name === "Vera Vol" && add.body.email === "Vera@Example.com" && add.body.role === "Manager" && add.body.sendInvite === true, "add sends name, email, role, invite: " + JSON.stringify(add?.body));
   ok(/Vera Vol added · invite sent/.test(await page.textContent("body")), "toast says the invite went");
-  ok((await page.$$eval("#team-list .team-row .card-title", e => e.map(x => x.textContent.trim()))).join("|") === "Barry You|Moe Manager|Vera Vol|Sam Shared", "sorted by role then name");
+  ok((await page.$$eval("#team-list .team-row .card-title", e => e.map(x => x.textContent.trim()))).join("|") === "Barry You|Nate Net|Moe Manager|Vera Vol|Sam Shared", "sorted by role then name");
   // An error from the server is shown and the sheet stays open
   await page.click("button:has-text('+ Add person')");
   await page.fill("#team-name", "Ella"); await page.fill("#team-email", "taken@example.com");
@@ -143,6 +147,7 @@ async function open(role, gemach) {
   await page.waitForSelector("#net-admins .net-row");
   const names = async () => (await page.$$eval("#net-admins .net-row .card-title", e => e.map(x => x.textContent.trim()))).join("|");
   ok(await names() === "Nina Net|Olivia Owner", "default: owners + network admins (active): " + await names());
+  ok(/Last active 2h ago/.test(await page.textContent("#net-admins")) && /Hasn't signed in yet/.test(await page.textContent("#net-admins")), "network list shows last active");
   ok(/Showing 2 of 5/.test(await page.textContent("#net-admin-count")), "says how many are hidden");
   await page.screenshot({ path: "shot-network-admins-owners.png" });
   await page.click("#net-admin-count a");

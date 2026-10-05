@@ -2360,6 +2360,36 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
     assert.equal((await team(tokOwner, "DELETE", "/admin/team/recTEAMSHARED0001")).status, 404, "already off");
   });
 
+  await t("team: network admins linked to the gemach are listed (read-only); Last Active stamped by /admin/me at most hourly", async () => {
+    DB.Admins.push(rec("recTEAMNETLINKED1", { Name: "Nate Net", Email: "nate@example.com", Active: true, Role: "Network Admin", Gemachs: [G.id] }));
+    X.clearMemo();
+    let d = await (await team(tokOwner, "GET", "/admin/team")).json();
+    const nate = d.members.find(m => m.email === "nate@example.com");
+    assert.ok(nate && nate.network === true && nate.role === "Network Admin", "linked network admin listed");
+    assert.equal(d.members.findIndex(m => m.network), d.members.filter(m => m.role === "Owner").length, "right after the owners");
+    assert.ok(!d.members.some(m => m.email === "net@example.com"), "unlinked network admins not listed");
+    assert.equal((await team(tokOwner, "PATCH", "/admin/team/recTEAMNETLINKED1", { name: "x" })).status, 404, "not editable here");
+    assert.equal((await team(tokOwner, "DELETE", "/admin/team/recTEAMNETLINKED1")).status, 404, "not removable here");
+    // Last Active
+    const o = row("recTEAMOWNER00001");
+    delete o["Last Active"];
+    const writes = () => calls.filter(c => c.method === "PATCH" && c.url.includes("/Admins") && /Last Active/.test(c.body || "")).length;
+    const before = writes();
+    await call("/admin/me", { headers: auth(tokOwner) }); await Promise.allSettled(waits);
+    assert.ok(o["Last Active"] && Date.now() - Date.parse(o["Last Active"]) < 60000, "stamped");
+    assert.equal(writes(), before + 1);
+    await call("/admin/me", { headers: auth(tokOwner) }); await Promise.allSettled(waits);
+    assert.equal(writes(), before + 1, "not again within the hour");
+    o["Last Active"] = new Date(Date.now() - 2 * 3600e3).toISOString();
+    await call("/admin/me", { headers: auth(tokOwner) }); await Promise.allSettled(waits);
+    assert.equal(writes(), before + 2, "again after an hour");
+    d = await (await team(tokOwner, "GET", "/admin/team")).json();
+    assert.ok(d.members.find(m => m.you).lastActive, "team list carries lastActive");
+    assert.equal(d.members.find(m => m.email === "moe@example.com").lastActive, null);
+    const na = await (await call("/admin/network/admins", { headers: auth(tokNet) })).json();
+    assert.ok(na.find(a => a.email === "olivia@example.com").lastActive, "network list carries lastActive");
+  });
+
   await t("team: resend invite; a removed owner can't manage the team any more", async () => {
     const before = resendCalls().length;
     assert.equal((await team(tokOwner, "POST", "/admin/team/recTEAMMGR0000001/invite")).status, 200);

@@ -23,10 +23,12 @@ function memberRow(r, g, idx, me) {
   const others = (f.Gemachs || []).map(linkedId).filter(id => id !== g.id).map(id => idx?.[id]?.name).filter(Boolean);
   return {
     id: r.id, name: f.Name || "", email: f.Email || "", role: selName(f.Role) || null,
-    you: lc(f.Email) === lc(me), otherGemachs: others,
+    you: lc(f.Email) === lc(me), otherGemachs: others, lastActive: f["Last Active"] || null,
+    network: selName(f.Role) === NETWORK_ADMIN_ROLE, // shown for completeness; managed on the Network tab
   };
 }
-const byRoleThenName = (a, b) => TEAM_ROLES.indexOf(a.role) - TEAM_ROLES.indexOf(b.role) || a.name.localeCompare(b.name) || a.email.localeCompare(b.email);
+const LIST_ORDER = ["Owner", NETWORK_ADMIN_ROLE, "Manager", "Volunteer"];
+const byRoleThenName = (a, b) => LIST_ORDER.indexOf(a.role) - LIST_ORDER.indexOf(b.role) || a.name.localeCompare(b.name) || a.email.localeCompare(b.email);
 
 /** Live check for changes: the acting admin is an active Network Admin, or an active Owner of this gemach. */
 async function actorCanManage(c) {
@@ -49,10 +51,14 @@ async function teamDispatch(c, path, method) {
 
 const onTeam = (r, g) => !!r?.fields?.Active && (r.fields.Gemachs || []).map(linkedId).includes(g.id) && selName(r.fields.Role) !== NETWORK_ADMIN_ROLE;
 
-/** GET /admin/team → { members: [...] } (Owners first, then Managers, Volunteers). */
+// Network Admins linked to this gemach are listed too (read-only here), so e.g. the person who set the
+// gemach up sees themselves; Network Admins who aren't linked stay out of the list.
+const linkedHere = (r, g) => !!r?.fields?.Active && (r.fields.Gemachs || []).map(linkedId).includes(g.id);
+
+/** GET /admin/team → { members: [...] } (Owners first, then linked Network Admins, Managers, Volunteers). */
 async function listTeam({ db, g, user }) {
   const [admins, idx] = await Promise.all([db.listAll(T.ADMINS, { fields: NET_ADMIN_FIELDS }), gemachIndex(db)]);
-  const members = admins.filter(r => onTeam(r, g)).map(r => memberRow(r, g, idx, user.email)).sort(byRoleThenName);
+  const members = admins.filter(r => linkedHere(r, g)).map(r => memberRow(r, g, idx, user.email)).sort(byRoleThenName);
   return json({ members, roles: TEAM_ROLES });
 }
 

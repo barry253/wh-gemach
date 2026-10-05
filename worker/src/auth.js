@@ -6,7 +6,7 @@ import { json, readJson } from "./http.js";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-async function handleLogin(request, db, env) {
+async function handleLogin(request, db, env, ctx) {
   const { googleToken } = await readJson(request);
   if (!googleToken || typeof googleToken !== "string") return json({ error: "Missing Google token" }, 400);
 
@@ -31,6 +31,7 @@ async function handleLogin(request, db, env) {
   if (!session.ok) return json({ error: session.error }, 403);
 
   const p = session.payload;
+  noteActive(db, ctx, session);
   const token = await signJWT(p, env);
   return json({ token, name: p.name, email, role: p.role, gemachs: p.gemachs });
 }
@@ -55,12 +56,24 @@ async function lookupAdminSession(db, email) {
       .sort((a, b) => a.name.localeCompare(b.name));
     if (!gemachs.length) return { ok: false, error: "No gemach assigned to this admin" };
   }
-  return { ok: true, payload: { email, name: admin.Name || email, role, gemachs } };
+  return { ok: true, payload: { email, name: admin.Name || email, role, gemachs }, recId: admins[0].id, lastActive: admin["Last Active"] || null };
+}
+
+// Admins."Last Active": stamped when the admin signs in or opens the admin page, at most once an hour
+// (written after the response, so it never slows the page). Shown in Settings → Team and on the Network tab.
+const ACTIVE_EVERY_MS = 60 * 60 * 1000;
+function noteActive(db, ctx, session, now = Date.now()) {
+  if (!session?.ok || !session.recId) return;
+  const last = Date.parse(session.lastActive || "");
+  if (Number.isFinite(last) && now - last < ACTIVE_EVERY_MS) return;
+  const p = db.update(T.ADMINS, session.recId, { "Last Active": new Date(now).toISOString() })
+    .catch(e => console.error("Last Active update failed:", e.message));
+  if (ctx?.waitUntil) ctx.waitUntil(p);
 }
 
 // Live view of the admin (role + gemachs read from Airtable now), so a role change or slug rename shows
 // up without re-login. When it differs from the JWT, a fresh token is handed back in X-Session-Token.
-async function handleMe(db, user, env) {
+async function handleMe(db, user, env, ctx) {
   let session;
   try { session = await lookupAdminSession(db, user.email); }
   catch (e) { console.error("Admin lookup failed:", e.message); session = { transient: true }; }
@@ -71,6 +84,7 @@ async function handleMe(db, user, env) {
   }
   if (!session.ok) return json({ error: "Unauthorized" }, 401);
   const p = session.payload;
+  noteActive(db, ctx, session);
   const sig = u => JSON.stringify([u.role || null, u.name || null, (u.gemachs || []).map(x => [x.id, x.slug, x.name, !!x.active])]);
   const headers = sig(p) === sig(user) ? {} : { "X-Session-Token": await signJWT(p, env) };
   liveNetMemo.delete(p.email);
@@ -134,4 +148,4 @@ async function verifyJWTToken(token, env) {
   return payload;
 }
 
-export { handleLogin, lookupAdminSession, handleMe, verifyJWT, enc, dec, b64urlEncode, b64urlDecode, hmacKey, signJWT, verifyJWTToken };
+export { handleLogin, lookupAdminSession, handleMe, verifyJWT, enc, dec, b64urlEncode, b64urlDecode, hmacKey, signJWT, verifyJWTToken, noteActive };

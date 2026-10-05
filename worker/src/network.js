@@ -65,7 +65,7 @@ function uniqueSlug(base, taken) {
 }
 
 const NET_GEMACH_FIELDS = ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email"];
-const NET_ADMIN_FIELDS = ["Name", "Email", "Role", "Active", "Gemachs"];
+const NET_ADMIN_FIELDS = ["Name", "Email", "Role", "Active", "Gemachs", "Last Active"];
 
 async function netGemachRows(db, pre = null) {
   const [gemachs, admins] = pre ? [pre.gemachs, pre.admins] : await Promise.all([
@@ -235,7 +235,7 @@ async function netUpdateGemach(c, id) {
 function adminRow(r, gemachById) {
   const f = r.fields;
   return {
-    id: r.id, name: f.Name || "", email: f.Email || "", role: selName(f.Role) || null, active: !!f.Active,
+    id: r.id, name: f.Name || "", email: f.Email || "", role: selName(f.Role) || null, active: !!f.Active, lastActive: f["Last Active"] || null,
     gemachs: (f.Gemachs || []).map(linkedId).map(id => gemachById[id]).filter(Boolean).map(g => ({ id: g.id, slug: g.slug, name: g.name })),
   };
 }

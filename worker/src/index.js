@@ -175,7 +175,7 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
   }
 
   // Auth endpoint
-  if (method === "POST" && path === "/admin/login")      return handleLogin(request, db, env);
+  if (method === "POST" && path === "/admin/login")      return handleLogin(request, db, env, ctx);
 
   if (!path.startsWith("/admin/")) return new Response("Not found", { status: 404 });
 
@@ -208,7 +208,7 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
 }
 
 async function adminDispatch(request, env, ctx, url, path, method, db, user) {
-  if (method === "GET" && path === "/admin/me") return handleMe(db, user, env);
+  if (method === "GET" && path === "/admin/me") return handleMe(db, user, env, ctx);
   if (path.startsWith("/admin/network/")) return networkDispatch({ request, env, ctx, db, url, user, adminName: user.name || user.email }, path, method);
 
   const resolved = await resolveAdminGemach(request, url, db, user);

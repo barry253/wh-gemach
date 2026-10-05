@@ -4370,6 +4370,12 @@
     if (!TEAM.length) { el.innerHTML = '<div class="empty-state">No one yet</div>'; return; }
     el.innerHTML = TEAM.map(m => {
       const id = safeId(m.id); teamStore.set(id, m);
+      // Network admins linked to this gemach are shown but managed on the Network tab.
+      const actions = m.network ? "" : [
+        `<button class="btn btn-ghost btn-sm" type="button" onclick="openTeamSheet('${id}')">Edit</button>`,
+        m.you || m.lastActive ? "" : `<button class="btn btn-ghost btn-sm" type="button" onclick="resendTeamInvite('${id}', this)">Resend invite</button>`,
+        m.you ? "" : `<button class="btn btn-ghost btn-sm btn-danger-text" type="button" onclick="removeTeamMember('${id}', this)">Remove</button>`,
+      ].join("");
       return `<div class="card net-row team-row" id="team-row-${id}">
         <div class="net-row-head">
           <div style="min-width:0">
@@ -4378,14 +4384,17 @@
           </div>
           <span class="tag tag-navy">${esc(m.role || "—")}</span>
         </div>
-        ${m.otherGemachs?.length ? `<div class="muted-small">Also on the team at ${esc(m.otherGemachs.join(", "))}</div>` : ""}
-        <div class="team-actions">
-          <button class="btn btn-ghost btn-sm" type="button" onclick="openTeamSheet('${id}')">Edit</button>
-          ${m.you ? "" : `<button class="btn btn-ghost btn-sm" type="button" onclick="resendTeamInvite('${id}', this)">Resend invite</button>
-          <button class="btn btn-ghost btn-sm btn-danger-text" type="button" onclick="removeTeamMember('${id}', this)">Remove</button>`}
-        </div>
+        <div class="muted-small team-active">${esc(lastActiveText(m.lastActive))}${m.otherGemachs?.length ? ` · Also on the team at ${esc(m.otherGemachs.join(", "))}` : ""}</div>
+        ${actions ? `<div class="team-actions">${actions}</div>` : ""}
       </div>`;
     }).join("");
+  }
+  /** "Last active 3h ago" / "Active in the last hour" / "Hasn't signed in yet" (Admins."Last Active", stamped hourly at most). */
+  function lastActiveText(iso) {
+    const t = Date.parse(iso || "");
+    if (!Number.isFinite(t)) return "Hasn't signed in yet";
+    if (Date.now() - t < 3600e3) return "Active in the last hour";
+    return `Last active ${fmtHistoryTime(iso)}`;
   }
   function openTeamSheet(id) {
     const m = id ? teamStore.get(id) : null;
@@ -4424,9 +4433,9 @@
       const res = await api(m ? `/admin/team/${safeId(m.id)}` : "/admin/team", m ? "PATCH" : "POST", body);
       if (!res) return;
       if (res.error) { showToast(res.error); return; }
-      const row = { id: res.id, name: res.name, email: res.email, role: res.role, you: res.you, otherGemachs: res.otherGemachs || [] };
+      const row = { id: res.id, name: res.name, email: res.email, role: res.role, you: res.you, otherGemachs: res.otherGemachs || [], lastActive: res.lastActive || null, network: !!res.network };
       TEAM = m ? TEAM.map(x => (x.id === row.id ? row : x)) : [...TEAM, row];
-      const order = ["Owner", "Manager", "Volunteer"];
+      const order = ["Owner", "Network Admin", "Manager", "Volunteer"];
       TEAM.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role) || (a.name || "").localeCompare(b.name || ""));
       renderTeam();
       closeSheet("team-sheet");
@@ -4783,6 +4792,7 @@
           <span class="tag tag-navy">${esc(a.role || "—")}</span>
         </div>
         <div class="muted-small">${esc(gs)}</div>
+        <div class="muted-small">${esc(lastActiveText(a.lastActive))}</div>
         <div><button class="btn btn-ghost btn-sm" onclick="openAdminSheet('${id}')">Edit</button></div>
       </div>`;
     }).join("");
