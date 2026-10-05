@@ -3209,12 +3209,27 @@
     document.getElementById("reminder-message").value = renderMessage("returnReminder", String(l.borrowerName || "").split(" ")[0], items,
       { manageUrl: l.manageUrl, borrowedDate: l.dateBorrowed, returnDate: l.expectedReturn, daysOut: l.daysOut });
     setupSendBy("reminder", { ...l, phone: l.borrowerPhone, email: l.borrowerEmail, preferredContact: l.borrowerContact },
-      "reminder-send-btn", { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Open email", none: "Close" }, { noNone: true, mailto: true });
-    document.getElementById("reminder-send-btn").onclick = async () => {
+      "reminder-send-btn", { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Send email", none: "Close" }, { noNone: true });
+    const btn = document.getElementById("reminder-send-btn");
+    btn.onclick = async () => {
       const { choice, c } = SEND_BY["reminder"];
-      if (choice !== "none") openOutbound(choice, c, document.getElementById("reminder-message").value); // before any await
+      const message = document.getElementById("reminder-message").value;
+      const body = { via: choice, borrower: l.borrowerName, loanId: l.loanId, itemType: l.itemTypeName };
+      if (choice === "email") { // we send it (branded, from noreply, replies to the gemach); recorded only if it went
+        if (!message.trim()) { showToast("Write a message first"); return; }
+        btn.disabled = true; btn.textContent = "Sending…";
+        const res = await api(`/admin/loans/${safeId(l.id)}/reminder`, "POST", { ...body, message }).catch(() => null);
+        btn.disabled = false; btn.textContent = "Send email";
+        if (!res || !res.success) { showToast(res?.error || "The email didn't go through. Try again, or use WhatsApp or text."); return; }
+        closeSheet("reminder-sheet");
+        l.reminderSentAt = res.reminderSentAt; l.reminderSentVia = res.reminderSentVia || "email";
+        renderLoans();
+        showToast("Reminder emailed");
+        return;
+      }
+      if (choice !== "none") openOutbound(choice, c, message); // before any await
       closeSheet("reminder-sheet");
-      const res = await api(`/admin/loans/${safeId(l.id)}/reminder`, "POST", { via: choice, borrower: l.borrowerName, loanId: l.loanId, itemType: l.itemTypeName }).catch(() => null);
+      const res = await api(`/admin/loans/${safeId(l.id)}/reminder`, "POST", body).catch(() => null);
       if (res && res.success) {
         l.reminderSentAt = res.reminderSentAt;
         l.reminderSentVia = res.reminderSentVia || null;
@@ -3230,10 +3245,22 @@
     const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName, { manageUrl: r.manageUrl });
     document.getElementById("pickup-instructions-message").value = msg;
     setupSendBy("pickup-instructions", r, "pickup-instructions-send-btn",
-      { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Open email", none: "Close" }, { noNone: true, mailto: true });
-    document.getElementById("pickup-instructions-send-btn").onclick = () => {
+      { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Send email", none: "Close" }, { noNone: true });
+    const btn = document.getElementById("pickup-instructions-send-btn");
+    btn.onclick = async () => {
       const { choice, c } = SEND_BY["pickup-instructions"];
-      if (choice !== "none") openOutbound(choice, c, document.getElementById("pickup-instructions-message").value);
+      const message = document.getElementById("pickup-instructions-message").value;
+      if (choice === "email") { // sent by us, like confirmations
+        if (!message.trim()) { showToast("Write a message first"); return; }
+        btn.disabled = true; btn.textContent = "Sending…";
+        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message }).catch(() => null);
+        btn.disabled = false; btn.textContent = "Send email";
+        if (!res || !res.success) { showToast(res?.error || "The email didn't go through. Try again, or use WhatsApp or text."); return; }
+        closeSheet("pickup-instructions-sheet");
+        showToast("Pickup details emailed");
+        return;
+      }
+      if (choice !== "none") openOutbound(choice, c, message);
       closeSheet("pickup-instructions-sheet");
     };
     openSheet("pickup-instructions-sheet");

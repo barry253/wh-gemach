@@ -73,7 +73,7 @@ import { buildEmailHtml, contrastRatio, textColorFor } from "./email.js";
 import { gemachMemo, liveNetMemo, resolveAdminGemach } from "./gemachs.js";
 import { json, withCors } from "./http.js";
 import { handleAdminInventory } from "./inventory.js";
-import { handleAssignItem, handleCancelReservation, handleGetLoans, handleLoanReminder, handleGetReservations, handleMarkPickedUp, handleReturnLoan, handleUpdateReservation } from "./loans.js";
+import { handleAssignItem, handleCancelReservation, handleGetLoans, handleLoanReminder, handlePickupEmail, handleGetReservations, handleMarkPickedUp, handleReturnLoan, handleUpdateReservation } from "./loans.js";
 import { networkDispatch } from "./network.js";
 import { handleDirectory, handleLegacyInventory, handlePublicGemach, loadCategories } from "./public.js";
 import { handleGetAppointments, handleGetRequests, handleRequestDecision } from "./requests.js";
@@ -232,6 +232,7 @@ async function adminRoute(c, path, method) {
   if (method === "GET"  && path === "/admin/loans")        return handleGetLoans(c);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/return$/)))     return handleReturnLoan(c, m[1]);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/reminder$/)))   return handleLoanReminder(c, m[1]);
+  if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/pickup-email$/))) return handlePickupEmail(c, m[1]);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/pickup$/)))     return handleMarkPickedUp(c, m[1]);
   if (method === "GET"  && path === "/admin/reservations") return handleGetReservations(c);
   if (method === "PATCH" && (m = path.match(/^\/admin\/reservations\/([^/]+)$/)))       return handleUpdateReservation(c, m[1]);

@@ -10,6 +10,8 @@ import { getNextLoanId } from "./ids.js";
 import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loanQty, wholeNum } from "./quantity.js";
 import { itemTypeNameMap } from "./requests.js";
 import { manageUrl } from "./manage.js";
+import { buildEmailHtml, sendEmail } from "./email.js";
+import { emailSignature } from "./settings.js";
 
 // ─── Loans / reservations shared lookups ──────────────────────────────────────
 
@@ -135,7 +137,43 @@ async function loanLogDetails(db, g, loan, body = {}, { itemRecId = null } = {})
   };
 }
 
-/** An admin sent (from their own phone/email) a "time to return" reminder: stamp the loan and log it. */
+const MAX_MESSAGE = 5000;
+
+/** "Wheelchair" / "Folding Chair × 40" for a loan. */
+async function loanItemLabel(db, g, loan) {
+  const d = await loanLogDetails(db, g, loan, {});
+  const q = loanQty(loan.fields);
+  return (d.itemType || "item") + (!(loan.fields["Item"] || []).length && q > 1 ? ` × ${q}` : "");
+}
+
+/** Email the loan's borrower an admin-written message (the borrower's address comes from Airtable, never the request). */
+async function emailBorrower(c, loan, message, subject) {
+  const { db, g, env } = c;
+  const text = String(message ?? "").trim();
+  if (!text) return { error: "Write a message first.", status: 400 };
+  if (text.length > MAX_MESSAGE) return { error: "That message is too long.", status: 400 };
+  const bId = linkedId(firstLink(loan.fields["Borrower"]));
+  const [b] = bId ? await fetchByIds(db, T.BORROWERS, [bId], { g }) : [];
+  const to = String(b?.fields?.Email || "").trim();
+  if (!to) return { error: "This borrower has no email address.", status: 400 };
+  const ok = await sendEmail(env, g, { to, subject, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true }) });
+  if (!ok) return { error: "The email didn't go through. Try again, or send it by WhatsApp or text.", status: 422 }; // the admin sees it right away; not a server error
+  return { ok: true, to };
+}
+
+/** POST /admin/loans/:id/pickup-email — email the pickup details (admin-edited) to the borrower of a reservation. */
+async function handlePickupEmail(c, id) {
+  const { db, g } = c;
+  const body = await readJson(c.request);
+  const loan = await getOwned(db, T.LOANS, id, g);
+  if (!loan) return json({ error: "Not found" }, 404);
+  if (!["Reserved", "Active"].includes(selName(loan.fields.Status))) return json({ error: "This reservation isn't open any more." }, 409);
+  const sent = await emailBorrower(c, loan, body.message, `Pickup details — ${g.name || "Gemach"}`);
+  if (sent.error) return json({ error: sent.error }, sent.status);
+  return json({ success: true });
+}
+
+/** An admin sent a "time to return" reminder (email from us, or WhatsApp / text from their phone): stamp the loan and log it. */
 async function handleLoanReminder(c, id) {
   const { db, g, ctx } = c;
   const body = await readJson(c.request);
@@ -143,6 +181,11 @@ async function handleLoanReminder(c, id) {
   if (!loan) return json({ error: "Not found" }, 404);
   if (selName(loan.fields.Status) !== "Active") return json({ error: "This loan isn't out right now." }, 409);
   const via = { whatsapp: "WhatsApp", sms: "text message", email: "email" }[body.via] || null;
+  // Email is sent by us (branded, from noreply, replies to the gemach); WhatsApp / text are sent from the admin's phone.
+  if (body.via === "email") {
+    const sent = await emailBorrower(c, loan, body.message, `Reminder: please return the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`);
+    if (sent.error) return json({ error: sent.error }, sent.status);
+  }
   const now = new Date().toISOString();
   await db.update(T.LOANS, id, { "Reminder Sent At": now, ...(via ? { "Reminder Sent Via": via } : {}) });
   logEvent(ctx, db, g, {
@@ -466,4 +509,4 @@ async function handleAssignItem(c, itemRecId) {
   return json({ success: true, loanId, data: loanData });
 }
 
-export { handleLoanReminder, borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem };
+export { handlePickupEmail, handleLoanReminder, borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem };

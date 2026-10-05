@@ -2131,6 +2131,34 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
   assert.equal(r.status, 200, await r.clone().text());
   assert.equal((await r.json()).templates.returnReminder, "Hi {first_name}, please bring back {items}.");
   assert.equal(DB.Gemachs.find(g => g.id === A.id).fields["Return Reminder Message"], "Hi {first_name}, please bring back {items}.");
+  // Email is sent by the server to the borrower's address on file
+  DB.Borrowers.push(rec("recBORRMAIL000001", { Name: "Mail Person", Email: "mail.person@example.com", Gemach: [A.id], "Gemach Slug": [A.slug] }));
+  DB.Loans.push(rec("recLOANREMIND0003", { "Loan ID": "L-953", Status: "Active", Borrower: ["recBORRMAIL000001"], "Item to Reserve": ["recTYPEA000000001"], Gemach: [A.id], "Gemach Slug": [A.slug] }),
+    rec("recLOANREMIND0004", { "Loan ID": "L-954", Status: "Reserved", Borrower: ["recBORRMAIL000001"], "Item to Reserve": ["recTYPEA000000001"], Gemach: [A.id], "Gemach Slug": [A.slug] }));
+  const n0 = resendCalls().length;
+  assert.equal((await call("/admin/loans/recLOANREMIND0003/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "  " }) })).status, 400, "empty message refused");
+  r = await call("/admin/loans/recLOANREMIND0003/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Hi Mail, please return the Wheelchair.", email: "attacker@example.com" }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  const mail = resendCalls().slice(n0).filter(m => m.to[0] !== "alerts@example.com");
+  assert.equal(mail.length, 1); assert.equal(mail[0].to[0], "mail.person@example.com", "address from Airtable, not the request");
+  assert.match(mail[0].subject, /^Reminder: please return the Wheelchair — /);
+  assert.match(mail[0].text, /^Hi Mail, please return the Wheelchair\./); assert.ok(mail[0].html.includes("please return the Wheelchair"));
+  assert.equal(DB.Loans.find(l => l.id === "recLOANREMIND0003").fields["Reminder Sent Via"], "email");
+  assert.equal((await call("/admin/loans/recLOANREMIND0001/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "x" }) })).status, 400, "borrower without email");
+  resendFail = true;
+  const before = DB.Loans.find(l => l.id === "recLOANREMIND0003").fields["Reminder Sent At"];
+  r = await call("/admin/loans/recLOANREMIND0003/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "again" }) });
+  resendFail = false;
+  assert.equal(r.status, 422); assert.match((await r.json()).error, /didn't go through/);
+  assert.equal(DB.Loans.find(l => l.id === "recLOANREMIND0003").fields["Reminder Sent At"], before, "failed email isn't recorded");
+  // Pickup details by email
+  const n1 = resendCalls().length;
+  r = await call("/admin/loans/recLOANREMIND0004/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ message: "Your Wheelchair is ready at 507 Walton Court." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  const pm = resendCalls().slice(n1).filter(m => m.to[0] !== "alerts@example.com");
+  assert.equal(pm.length, 1); assert.equal(pm[0].to[0], "mail.person@example.com"); assert.match(pm[0].subject, /^Pickup details — /);
+  assert.equal((await call("/admin/loans/recLOANREMIND0002/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ message: "x" }) })).status, 409, "returned loan");
+  assert.equal((await call("/admin/loans/recLOANREMIND0004/pickup-email", { method: "POST", headers: { ...auth(tokenA), "X-Gemach": B.slug, "Content-Type": "application/json" }, body: JSON.stringify({ message: "x" }) })).status >= 400, true, "other gemach can't");
   DB.Loans = DB.Loans.filter(l => !/^recLOANREMIND/.test(l.id));
 });
 

@@ -54,6 +54,7 @@ async function setup() {
     if (p === "/admin/appointments") return J(APPTS);
     if (p === "/admin/history") return J(HIST);
     if (/\/confirm$|\/decline$/.test(p)) return J({ success: true });
+    if (/\/pickup-email$/.test(p)) return J({ success: true });
     return J([]);
   });
   await page.addInitScript(() => {
@@ -186,10 +187,13 @@ ok(JSON.stringify(resDates) === JSON.stringify(["Dates TBD", "Oct 2 → Open ret
 await page.evaluate(() => openPickupInstructions(rec("res", "recRES00000000002")));
 await page.waitForTimeout(200);
 const popts = await page.$$eval("#pickup-instructions-send-by [data-send]", bs => bs.map(b => b.dataset.send));
-ok(JSON.stringify(popts) === JSON.stringify(["email"]) && await page.textContent("#pickup-instructions-send-btn") === "Open email", "pickup: email only → Open email " + popts);
+ok(JSON.stringify(popts) === JSON.stringify(["email"]) && await page.textContent("#pickup-instructions-send-btn") === "Send email", "pickup: email only → Send email " + popts);
+ok(/Sent from noreply@whgemachs\.org to rb@example\.com/.test(await page.textContent("#pickup-instructions-send-by")), "says we send it");
 await page.click("#pickup-instructions-send-btn");
+await page.waitForFunction(() => document.body.textContent.includes("Pickup details emailed"));
 opened = await page.evaluate(() => window.__opened.splice(0));
-ok(opened.length === 1 && opened[0].url.startsWith("mailto:rb@example.com?body=Hi%20Res%2C%20pick%20up%20at%20507%20Walton%20Court"), "pickup mailto with message " + JSON.stringify(opened));
+const pe = calls.find(c => c.method === "POST" && c.path === "/admin/loans/recRES00000000002/pickup-email");
+ok(!opened.length && pe && /^Hi Res, pick up at 507 Walton Court/.test(pe.body.message), "pickup email sent by the server with the message " + JSON.stringify(pe && pe.body));
 await page.evaluate(() => openPickupInstructions(rec("res", "recRES00000000001")));
 ok(await page.textContent("#pickup-instructions-send-btn") === "Open WhatsApp", "pickup WA label");
 await page.click(`#pickup-instructions-send-by [data-send="sms"]`);

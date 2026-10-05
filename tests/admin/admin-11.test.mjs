@@ -79,12 +79,18 @@ await page.click("#loans-list .loan-row:has-text('Leah')");
 await page.click("#loans-list button:has-text('Return reminder') >> nth=1").catch(async () => { await page.click("button:has-text('Return reminder') >> visible=true"); });
 const m2 = await page.inputValue("#reminder-message");
 ok(/the Folding Chair × 40 you borrowed on .* is due back on /.test(m2) && !/Manage your loan/.test(m2), "due soon: 'is due back on', no link when there's none: " + m2.split("\n")[0]);
-ok((await page.textContent("#reminder-send-btn")).trim() === "Open email", "email-only borrower: email");
-ok(/Last reminder emailed automatically 2d ago/.test(await page.textContent("#reminder-last")), "sheet says the last one was automatic");
+ok((await page.textContent("#reminder-send-btn")).trim() === "Send email", "email-only borrower: email, sent by us");
+await page.click("#reminder-send-btn");
+await page.waitForFunction(() => document.body.textContent.includes("Reminder emailed"));
+const re = calls.filter(c => c.method === "POST" && c.path === "/admin/loans/recLOANCHAIRS0001/reminder").at(-1);
+ok(re && re.body.via === "email" && /Folding Chair × 40/.test(re.body.message), "email reminder sent by the server with the message");
+await page.click("#loans-list .loan-row:has-text('Leah')").catch(() => {});
+await page.evaluate(() => openReturnReminder(rec("loan", [...document.querySelectorAll("#loans-list .loan-row")].find(r => /Leah/.test(r.textContent)).id.replace("loan-row-", ""))));
+ok(/Last reminder sent by email just now/.test(await page.textContent("#reminder-last")), "sheet says how the last one went: " + await page.textContent("#reminder-last"));
 await page.click("#reminder-sheet .btn-ghost");
 
 await page.click("#loans-list .loan-row:has-text('Leah')");
-ok(/Return reminder emailed automatically 2d ago/.test(await page.textContent("#loans-list")), "panel says how it was sent");
+ok(/Return reminder sent by email just now/.test(await page.textContent("#loans-list")), "panel says how it was sent");
 await page.screenshot({ path: "shot-loans-reminded.png" });
 // Settings: the template is editable
 await page.click(".nav-tab:has-text('Settings')");
