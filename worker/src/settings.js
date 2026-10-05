@@ -44,6 +44,8 @@ function emailSignature(g) {
 
 const ADMIN_EDIT_ROLES = new Set(["Owner", "Manager", NETWORK_ADMIN_ROLE]);
 const canEditGemach = user => ADMIN_EDIT_ROLES.has(user?.role);
+/** Owners (and Network Admins) add, change and remove the gemach's team. */
+const canManageTeam = user => user?.role === "Owner" || user?.role === NETWORK_ADMIN_ROLE;
 
 async function adminGemachPayload(db, g, user) {
   const communities = await fetchByIds(db, T.COMMUNITIES, g.communityIds.slice(0, 1), { fields: ["Name"] });
@@ -55,6 +57,7 @@ async function adminGemachPayload(db, g, user) {
     rawTemplates: { ...g.rawTemplates },
     placeholders: TEMPLATE_PLACEHOLDERS,
     canEdit: canEditGemach(user),
+    canManageTeam: canManageTeam(user),
     autoReminders: !!g.autoReminders, reminderDaysBefore: g.reminderDaysBefore, reminderRepeatDays: g.reminderRepeatDays,
   };
 }
@@ -323,4 +326,4 @@ async function handleUploadLogo(c) {
   return json(await adminGemachPayload(db, gemachFromRecord(rec), user));
 }
 
-export { TEMPLATE_PLACEHOLDERS, DEFAULT_TEMPLATES, effectiveTemplates, emailSignature, ADMIN_EDIT_ROLES, canEditGemach, adminGemachPayload, handleGetAdminGemach, GEMACH_EDITABLE, GEMACH_LABELS, CONTACT_NEEDS, MAX_LINE, MAX_LONG, EMAIL_RE, validateGemachPatch, logoPrefixFor, handleUpdateAdminGemach, MAX_LOGO_BYTES, LOGO_TYPES, sniffImageType, handleUploadLogo };
+export { TEMPLATE_PLACEHOLDERS, DEFAULT_TEMPLATES, effectiveTemplates, emailSignature, ADMIN_EDIT_ROLES, canEditGemach, canManageTeam, adminGemachPayload, handleGetAdminGemach, GEMACH_EDITABLE, GEMACH_LABELS, CONTACT_NEEDS, MAX_LINE, MAX_LONG, EMAIL_RE, validateGemachPatch, logoPrefixFor, handleUpdateAdminGemach, MAX_LOGO_BYTES, LOGO_TYPES, sniffImageType, handleUploadLogo };

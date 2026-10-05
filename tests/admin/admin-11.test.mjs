@@ -112,7 +112,8 @@ ok(sp && sp.body.returnReminderMessage === "Hi {first_name}, please return the {
 ok(sp && sp.body.autoReminders === true && sp.body.reminderDaysBefore === 3 && sp.body.reminderRepeatDays === 5, "auto reminder settings saved: " + JSON.stringify(sp && sp.body));
 
 // Settings areas: four tabs, one save bar for all, dots on areas with changes, discard, leave warning
-ok((await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Your page|Requests|Messages", "four areas (short names on a phone)");
+await page.waitForFunction(() => [...document.querySelectorAll(".set-tab")].map(x => x.innerText.trim()).join("|") === "Profile|Page|Requests|Messages", null, { timeout: 3000 }).catch(() => {});
+ok((await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages", "four areas (short names on a phone): " + (await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|"));
 ok(await page.$eval(".set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all four tabs fit on a phone " + await page.$eval(".set-tabs", el => el.scrollWidth + "/" + el.clientWidth + " " + [...el.children].map(c => Math.round(c.getBoundingClientRect().width)).join(",")));
 ok(await page.isHidden("#settings-savebar"), "no save bar after saving");
 await page.click("#set-tab-profile");

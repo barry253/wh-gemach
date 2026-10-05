@@ -223,7 +223,8 @@
     .savebar-msg { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
     .savebar-msg b { font-size: 0.88rem; color: #92400E; }
     .savebar-msg span { font-size: 0.78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    @media (max-width: 479px) { .set-tab-more { display: none; } .set-tabs { gap: 0.3rem; } .set-tab { padding: 0 0.65rem; font-size: 0.85rem; } }
+    .set-tab-phone { display: none; }
+    @media (max-width: 479px) { .set-tab-full { display: none; } .set-tab-phone { display: inline; } .set-tabs { gap: 0.25rem; } .set-tab { padding: 0 0.5rem; font-size: 0.85rem; } }
     body.settings-dirty #settings-body { padding-bottom: 5rem; }
     .settings-help {
       font-size: 0.78rem;
@@ -299,6 +300,18 @@
     }
     .url-box code { font-size: 0.8rem; color: var(--navy); word-break: break-all; flex: 1 1 100%; }
     .net-row { display: flex; flex-direction: column; gap: 0.5rem; }
+    .net-admin-filters { flex: 1 1 100%; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .net-admin-filters select { flex: 1 1 12rem; min-width: 0; }
+    .team-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .btn-danger-text { color: var(--red, #B91C1C); }
+    .team-roles { display: flex; flex-direction: column; gap: 0.4rem; }
+    .form-group .team-roles input { width: auto; flex: none; padding: 0; min-height: 0; }
+    .form-group .team-roles label { display: flex; align-items: flex-start; gap: 0.6rem; border: 1.5px solid var(--border, #E5E7EB); border-radius: 10px; padding: 0.6rem 0.75rem; cursor: pointer; font-weight: 400; margin: 0; }
+    .form-group .team-roles label:has(input:checked) { border-color: var(--navy, #1B3A4B); background: #F4F7F9; }
+    .form-group .team-roles label:has(input:disabled) { cursor: default; opacity: 0.7; }
+    .team-roles input { margin-top: 0.2rem; }
+    .team-roles b { display: block; font-size: 0.95rem; }
+    .team-roles small { display: block; color: var(--muted); font-size: 0.8rem; }
     .net-row-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
     .net-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
     .net-controls select { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; font-family: 'Inter', sans-serif; background: var(--white); color: var(--text); }
@@ -1297,8 +1310,18 @@
       <div class="net-toolbar">
         <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-admins">Admins</div>
         <button class="btn btn-primary btn-sm" onclick="openAdminSheet(null)">+ Add admin</button>
-        <select id="net-admin-filter" aria-label="Filter admins by gemach" onchange="renderNetAdmins()" style="flex:1 1 100%;max-width:100%"></select>
+        <div class="net-admin-filters">
+          <select id="net-admin-role" aria-label="Filter admins by role" onchange="renderNetAdmins()">
+            <option value="owners" selected>Owners &amp; network admins</option>
+            <option value="">Everyone</option>
+            <option value="Manager">Managers</option>
+            <option value="Volunteer">Volunteers</option>
+            <option value="inactive">Turned off</option>
+          </select>
+          <select id="net-admin-filter" aria-label="Filter admins by gemach" onchange="renderNetAdmins()"></select>
+        </div>
       </div>
+      <div class="muted-small" id="net-admin-count" style="margin:-0.35rem 0 0.6rem"></div>
       <div class="card-list" id="net-admins" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
 
       <div class="net-toolbar">
@@ -1437,6 +1460,40 @@
 </div>
 
 <!-- Network: Admin Sheet -->
+<div class="sheet-overlay" id="team-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('team-sheet')">×</button>
+    <h3 id="team-title">Add a person</h3>
+    <p class="sheet-subtitle" id="team-subtitle"></p>
+    <div class="form-group">
+      <label for="team-name">Name <span style="color:var(--red)">*</span></label>
+      <input type="text" id="team-name" maxlength="100" />
+    </div>
+    <div class="form-group" id="team-email-group">
+      <label for="team-email">Google account email <span style="color:var(--red)">*</span></label>
+      <input type="email" id="team-email" maxlength="200" />
+    </div>
+    <div class="form-group">
+      <label id="team-role-label">Role</label>
+      <div class="team-roles" id="team-roles" role="radiogroup" aria-labelledby="team-role-label">
+        <label><input type="radio" name="team-role" value="Owner" /> <span><b>Owner</b><small>Everything, including settings and the team</small></span></label>
+        <label><input type="radio" name="team-role" value="Manager" /> <span><b>Manager</b><small>Requests, loans, items and settings</small></span></label>
+        <label><input type="radio" name="team-role" value="Volunteer" checked /> <span><b>Volunteer</b><small>Requests, loans and items</small></span></label>
+      </div>
+      <p class="muted-small" id="team-role-note" hidden style="margin:0.4rem 0 0"></p>
+    </div>
+    <div class="checkbox-row" id="team-invite-row">
+      <input type="checkbox" id="team-invite" checked />
+      <label for="team-invite">Email them an invite to sign in</label>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('team-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="team-submit-btn">Add</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-overlay" id="net-admin-sheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -3632,10 +3689,12 @@
   // Settings are split into four areas (sub-tabs); one Save covers all of them.
   const SETTINGS_AREAS = [
     { id: "profile",  name: "Profile" },
-    { id: "page",     name: "Your page" },
-    { id: "requests", name: "Requests & pickup", short: "Requests" },
+    { id: "page",     name: "Your page", phone: "Page" },
+    { id: "requests", name: "Requests & pickup", phone: "Requests" },
     { id: "messages", name: "Messages" },
+    { id: "team",     name: "Team", owners: true }, // only for the gemach's owners (and network admins)
   ];
+  const visibleSettingsAreas = () => SETTINGS_AREAS.filter(a => !a.owners || GEMACH?.canManageTeam);
   const SETTINGS_GROUPS = [
     { area: "profile",  title: "Profile", fields: ["name", "tagline", "description", "website"] },
     { area: "profile",  title: "Contact", fields: ["phone", "whatsapp", "email"], extra: "contact" },
@@ -3870,8 +3929,8 @@
     const areaGroups = a => SETTINGS_GROUPS.filter(gr => gr.area === a).map(gr => settingsGroupHtml(gr, ro)).join("");
     body.innerHTML = `
       ${ro ? `<div class="settings-note">View only — only an Owner or Manager can change these settings.</div>` : ""}
-      <div class="set-tabs" role="tablist" aria-label="Settings areas">${SETTINGS_AREAS.map(a =>
-        `<button type="button" role="tab" class="set-tab" id="set-tab-${a.id}" data-area="${a.id}" aria-controls="set-area-${a.id}" onclick="showSettingsArea('${a.id}')">${a.short ? `${a.short}<span class="set-tab-more"> ${a.name.slice(a.short.length).trim()}</span>` : a.name}<span class="set-dot" hidden aria-label="unsaved changes"></span></button>`).join("")}</div>
+      <div class="set-tabs" role="tablist" aria-label="Settings areas">${visibleSettingsAreas().map(a =>
+        `<button type="button" role="tab" class="set-tab" id="set-tab-${a.id}" data-area="${a.id}" aria-controls="set-area-${a.id}" onclick="showSettingsArea('${a.id}')">${a.phone ? `<span class="set-tab-full">${a.name}</span><span class="set-tab-phone">${a.phone}</span>` : a.name}<span class="set-dot" hidden aria-label="unsaved changes"></span></button>`).join("")}</div>
       <div class="set-area" id="set-area-profile" role="tabpanel" aria-labelledby="set-tab-profile">
       <div class="card" style="margin-bottom:1.25rem">
         <div class="card-header" style="margin-bottom:0">
@@ -3908,6 +3967,14 @@
           </div>
         </details>`).join("")}
       </div>
+      ${g.canManageTeam ? `<div class="set-area" id="set-area-team" role="tabpanel" aria-labelledby="set-tab-team">
+        <div class="net-toolbar">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="settings-sec-team">Team</div>
+          <button class="btn btn-primary btn-sm" type="button" onclick="openTeamSheet(null)">+ Add person</button>
+        </div>
+        <p class="settings-help">People who can sign in to manage this gemach with their Google account. <b>Owners</b> can also change settings and manage the team. <b>Managers</b> can change settings. <b>Volunteers</b> handle requests, loans and items. Changes here are saved right away.</p>
+        <div class="card-list" id="team-list"><div class="loading">Loading…</div></div>
+      </div>` : ""}
       ${ro ? "" : `<div class="settings-savebar" id="settings-savebar" hidden role="region" aria-label="Unsaved changes">
         <span class="savebar-msg"><b>Unsaved changes</b><span id="settings-dirty-msg"></span></span>
         <button class="btn btn-ghost btn-sm" type="button" onclick="discardSettings()">Discard</button>
@@ -4269,7 +4336,7 @@
   }
 
   function showSettingsArea(id, quiet) {
-    if (!SETTINGS_AREAS.some(a => a.id === id)) id = "profile";
+    if (!visibleSettingsAreas().some(a => a.id === id)) id = "profile";
     SETTINGS_AREA = id;
     try { sessionStorage.setItem("whg_settings_area", id); } catch (e) { /* ignore */ }
     SETTINGS_AREAS.forEach(a => {
@@ -4278,6 +4345,115 @@
       if (panel) panel.hidden = a.id !== id;
     });
     if (!quiet) { const tabs = document.querySelector(".set-tabs"); if (tabs && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: "start" }); }
+    if (id === "team") loadTeam();
+  }
+
+  // ── Team (Settings → Team; owners and network admins) ──────────────────────
+  // Each person has one role in all their gemachs, so someone who is also on another gemach's team keeps
+  // their role here (a network admin can change it). Removing someone only takes them off this gemach.
+  let TEAM = [];
+  const teamStore = new Map();
+  async function loadTeam() {
+    const el = document.getElementById("team-list");
+    if (!el) return;
+    try {
+      await snapLoad("/admin/team", el, d => {
+        if (d.error) { el.innerHTML = `<div class="empty-state">${esc(d.error)}</div>`; return; }
+        TEAM = d.members || []; renderTeam();
+      });
+    } catch (e) { el.innerHTML = '<div class="empty-state">Couldn\'t load the team. Please try again.</div>'; }
+  }
+  function renderTeam() {
+    const el = document.getElementById("team-list");
+    if (!el) return;
+    teamStore.clear();
+    if (!TEAM.length) { el.innerHTML = '<div class="empty-state">No one yet</div>'; return; }
+    el.innerHTML = TEAM.map(m => {
+      const id = safeId(m.id); teamStore.set(id, m);
+      return `<div class="card net-row team-row" id="team-row-${id}">
+        <div class="net-row-head">
+          <div style="min-width:0">
+            <div class="card-title">${esc(m.name || m.email)}${m.you ? ' <span class="tag tag-green">You</span>' : ""}</div>
+            <div class="card-id">${esc(m.email)}</div>
+          </div>
+          <span class="tag tag-navy">${esc(m.role || "—")}</span>
+        </div>
+        ${m.otherGemachs?.length ? `<div class="muted-small">Also on the team at ${esc(m.otherGemachs.join(", "))}</div>` : ""}
+        <div class="team-actions">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="openTeamSheet('${id}')">Edit</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="resendTeamInvite('${id}', this)">Resend invite</button>
+          ${m.you ? "" : `<button class="btn btn-ghost btn-sm btn-danger-text" type="button" onclick="removeTeamMember('${id}', this)">Remove</button>`}
+        </div>
+      </div>`;
+    }).join("");
+  }
+  function openTeamSheet(id) {
+    const m = id ? teamStore.get(id) : null;
+    document.getElementById("team-title").textContent = m ? "Edit team member" : "Add a person";
+    document.getElementById("team-subtitle").textContent = m ? m.email : "They sign in with this Google account.";
+    document.getElementById("team-name").value = m?.name || "";
+    const emailEl = document.getElementById("team-email");
+    emailEl.value = m?.email || ""; emailEl.disabled = !!m;
+    document.getElementById("team-email-group").hidden = !!m;
+    const roleLocked = m && (m.you || m.otherGemachs?.length);
+    document.querySelectorAll('#team-roles input[name="team-role"]').forEach(r => { r.checked = r.value === (m?.role || "Volunteer"); r.disabled = !!roleLocked; });
+    const note = document.getElementById("team-role-note");
+    note.textContent = !m ? "" : m.you ? "You can't change your own role. Another owner can." :
+      m.otherGemachs?.length ? `Their role also applies at ${m.otherGemachs.join(", ")}, so only the network admin can change it.` : "";
+    note.hidden = !note.textContent;
+    document.getElementById("team-invite-row").hidden = !!m;
+    document.getElementById("team-invite").checked = true;
+    const btn = document.getElementById("team-submit-btn");
+    btn.textContent = m ? "Save" : "Add";
+    btn.onclick = () => saveTeamMember(m);
+    openSheet("team-sheet");
+  }
+  async function saveTeamMember(m) {
+    const role = document.querySelector('#team-roles input[name="team-role"]:checked')?.value;
+    const body = { name: document.getElementById("team-name").value.trim() };
+    if (!body.name) { showToast("Name is required"); return; }
+    if (!m || role !== m.role) body.role = role;
+    if (!m) {
+      body.email = document.getElementById("team-email").value.trim();
+      body.sendInvite = document.getElementById("team-invite").checked;
+      if (!safeEmail(body.email)) { showToast("Enter a valid email address"); return; }
+    }
+    const btn = document.getElementById("team-submit-btn");
+    btn.disabled = true;
+    try {
+      const res = await api(m ? `/admin/team/${safeId(m.id)}` : "/admin/team", m ? "PATCH" : "POST", body);
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
+      const row = { id: res.id, name: res.name, email: res.email, role: res.role, you: res.you, otherGemachs: res.otherGemachs || [] };
+      TEAM = m ? TEAM.map(x => (x.id === row.id ? row : x)) : [...TEAM, row];
+      const order = ["Owner", "Manager", "Volunteer"];
+      TEAM.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role) || (a.name || "").localeCompare(b.name || ""));
+      renderTeam();
+      closeSheet("team-sheet");
+      showToast(m ? "Saved" : res.invited ? `${row.name} added · invite sent` : `${row.name} added`);
+    } finally { btn.disabled = false; }
+  }
+  async function resendTeamInvite(id, btn) {
+    const m = teamStore.get(id); if (!m) return;
+    if (!confirm(`Email ${m.name || m.email} the sign-in invite again?`)) return;
+    btn.disabled = true;
+    try {
+      const res = await api(`/admin/team/${safeId(m.id)}/invite`, "POST");
+      if (res) showToast(res.error || `Invite sent to ${m.email}`);
+    } finally { btn.disabled = false; }
+  }
+  async function removeTeamMember(id, btn) {
+    const m = teamStore.get(id); if (!m) return;
+    if (!confirm(`Remove ${m.name || m.email} from ${GEMACH?.name || "this gemach"}? They won't be able to sign in to manage it any more.`)) return;
+    btn.disabled = true;
+    try {
+      const res = await api(`/admin/team/${safeId(m.id)}`, "DELETE");
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
+      TEAM = TEAM.filter(x => x.id !== m.id);
+      renderTeam();
+      showToast(`${m.name || m.email} removed`);
+    } finally { btn.disabled = false; }
   }
   /** Shows the save bar and a dot on each area with changes. Called on every edit in Settings. */
   function refreshSettingsDirty() {
@@ -4285,8 +4461,8 @@
     if (!bar || !GEMACH?.canEdit) return false;
     let res;
     try { res = collectSettingsPatch(); } catch (e) { res = { error: e.message }; }
-    const areas = new Set(Object.keys(res.patch || {}).map(k => settingsKeyArea(k) || SETTINGS_AREA));
-    if (res.error) areas.add(SETTINGS_AREA);
+    const areas = new Set(Object.keys(res.patch || {}).map(k => settingsKeyArea(k) || (SETTINGS_AREA === "team" ? "profile" : SETTINGS_AREA)));
+    if (res.error && SETTINGS_AREA !== "team") areas.add(SETTINGS_AREA); // Team changes save on their own
     SETTINGS_AREAS.forEach(a => { const d = document.querySelector(`#set-tab-${a.id} .set-dot`); if (d) d.hidden = !areas.has(a.id); });
     bar.hidden = areas.size === 0;
     document.getElementById("settings-dirty-msg").textContent = SETTINGS_AREAS.filter(a => areas.has(a.id)).map(a => a.name).join(", ");
@@ -4583,8 +4759,17 @@
   function renderNetAdmins() {
     netStore.admin.clear();
     const f = document.getElementById("net-admin-filter").value;
-    const list = NET.admins.filter(a => !f || (f === "__network" ? a.role === "Network Admin" : a.gemachs.some(g => g.id === f)));
+    // By default just the people who run things: Owners and network admins (managers and volunteers are
+    // managed by each gemach's owners in Settings → Team). "Everyone" shows all.
+    const rf = document.getElementById("net-admin-role").value;
+    const roleOk = a => !rf ? true : rf === "inactive" ? !a.active
+      : rf === "owners" ? a.active && (a.role === "Owner" || a.role === "Network Admin") : a.active && a.role === rf;
+    const inGemach = NET.admins.filter(a => !f || (f === "__network" ? a.role === "Network Admin" : a.gemachs.some(g => g.id === f)));
+    const list = inGemach.filter(roleOk);
     const el = document.getElementById("net-admins");
+    const cnt = document.getElementById("net-admin-count");
+    if (cnt) cnt.innerHTML = list.length < inGemach.length
+      ? `Showing ${list.length} of ${inGemach.length} · <a href="#" onclick="document.getElementById('net-admin-role').value='';renderNetAdmins();return false">Show everyone</a>` : "";
     if (!list.length) { el.innerHTML = '<div class="empty-state">No admins</div>'; return; }
     el.innerHTML = list.map(a => {
       const id = safeId(a.id); netStore.admin.set(id, a);
@@ -4649,6 +4834,7 @@
       NET.admins = a ? NET.admins.map(x => (x.id === res.id ? res : x)) : [...NET.admins, res];
       NET.admins.sort((x, y) => (x.name || "").localeCompare(y.name || ""));
       renderNetAdmins();
+      if (!document.getElementById(`na-row-${safeId(res.id)}`)) { document.getElementById("net-admin-role").value = ""; renderNetAdmins(); } // keep it in view
       closeSheet("net-admin-sheet");
       showToast(a ? "Admin updated" : res.invited ? "Admin added · invite sent" : "Admin added");
     } finally { btn.disabled = false; }

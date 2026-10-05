@@ -40,6 +40,7 @@
  *            (PATCH: Owner/Manager/Network Admin); POST /admin/gemach/logo (multipart "logo", ≤2 MB, png/jpeg/webp).
  *            GET /admin/appointments — upcoming confirmed appointments.
  *            GET /admin/catalog/categories — active Product Categories (for the item-type "Browse category" select).
+ *            /admin/team — the gemach's Owners/Managers/Volunteers (Owner or Network Admin; see team.js).
  *   Network: /admin/network/{gemachs,admins,categories} — role "Network Admin" only, re-checked live in Airtable.
  *   Contract: see API.md (v2) + API-v3.md (request styles, appointments, branding, HTML emails + .ics).
  *
@@ -70,7 +71,8 @@ import { handleCreateItem, handleCreateItemType, handleDeleteItem, handleGetCata
 import { JWT_REFRESH_MS, safeDecode } from "./config.js";
 import { buildIcs, eventDates, formatNy, nyLocalToUtc, nyToday } from "./dates.js";
 import { buildEmailHtml, contrastRatio, textColorFor } from "./email.js";
-import { gemachMemo, liveNetMemo, resolveAdminGemach } from "./gemachs.js";
+import { forgetAllLiveAdmins, gemachMemo, liveNetMemo, resolveAdminGemach } from "./gemachs.js";
+import { teamDispatch } from "./team.js";
 import { json, withCors } from "./http.js";
 import { handleAdminInventory } from "./inventory.js";
 import { handleAssignItem, handleCancelReservation, handleGetLoans, handleLoanReminder, handlePickupEmail, handleGetReservations, handleMarkPickedUp, handleReturnLoan, handleUpdateReservation } from "./loans.js";
@@ -132,7 +134,7 @@ if (globalThis.__WHG_TEST__) {
     nyToday: (...a) => nyToday(...a), formatNy: (...a) => formatNy(...a), textColorFor: (...a) => textColorFor(...a),
     contrastRatio: (...a) => contrastRatio(...a), buildEmailHtml: (...a) => buildEmailHtml(...a),
     makeDbForTest: e => makeDb(e),
-    clearMemo: () => { gemachMemo.clear(); liveNetMemo.clear(); },
+    clearMemo: () => { gemachMemo.clear(); liveNetMemo.clear(); forgetAllLiveAdmins(); },
   });
 }
 
@@ -211,7 +213,9 @@ async function adminDispatch(request, env, ctx, url, path, method, db, user) {
 
   const resolved = await resolveAdminGemach(request, url, db, user);
   if (resolved.error) return json({ error: resolved.error, gemachs: resolved.gemachs }, resolved.status);
-  const c = { request, env, ctx, db, url, user, g: resolved.g, adminName: user.name || user.email };
+  // The role checked live (when available) decides what this admin may do in this gemach.
+  const liveUser = resolved.role !== undefined && resolved.role !== user.role ? { ...user, role: resolved.role } : user;
+  const c = { request, env, ctx, db, url, user: liveUser, g: resolved.g, adminName: user.name || user.email };
 
   const res = await adminRoute(c, path, method);
   if (method !== "GET" && res.status < 400) purgePublicCache(env, ctx, c.g.slug);
@@ -252,6 +256,7 @@ async function adminRoute(c, path, method) {
   if (method === "POST"  && path === "/admin/catalog/upload-photo") return handleUploadPhoto(c);
 
   if (method === "GET"  && path === "/admin/history")      return handleGetHistory(c);
+  if (path === "/admin/team" || path.startsWith("/admin/team/")) return teamDispatch(c, path, method);
 
   return json({ error: "Not found" }, 404);
 }

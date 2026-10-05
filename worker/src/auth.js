@@ -1,7 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { fStr, fetchByIds } from "./airtable.js";
 import { DEFAULT_GOOGLE_CLIENT_ID, JWT_TTL_MS, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
-import { gemachRef, listAllGemachs, liveNetMemo } from "./gemachs.js";
+import { forgetLiveAdmin, gemachRef, listAllGemachs, liveNetMemo } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -74,6 +74,7 @@ async function handleMe(db, user, env) {
   const sig = u => JSON.stringify([u.role || null, u.name || null, (u.gemachs || []).map(x => [x.id, x.slug, x.name, !!x.active])]);
   const headers = sig(p) === sig(user) ? {} : { "X-Session-Token": await signJWT(p, env) };
   liveNetMemo.delete(p.email);
+  forgetLiveAdmin(p.email);
   return json({ email: p.email, name: p.name, role: p.role || null, gemachs: p.gemachs }, 200, headers);
 }
 

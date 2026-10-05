@@ -22,7 +22,12 @@ const DB = {
     rec("recCAT0000000000D", { Name: "Hidden", Active: false, "Display Order": 1 }),
   ],
   "Admins": [rec("recADMIN000000001", { Name: "Bárry ✡", Email: "barry@example.com", Active: true, Role: "Owner", Gemachs: [A.id] }),
-             rec("recADMINNX0000001", { Name: "N", Email: "n@x", Active: true, Role: "Network Admin", Gemachs: [] })],
+             rec("recADMINNX0000001", { Name: "N", Email: "n@x", Active: true, Role: "Network Admin", Gemachs: [] }),
+             // Gemach admins are re-checked live, so every test token's email has a row.
+             rec("recADMINV00000001", { Name: "Vol", Email: "v@example.com", Active: true, Role: "Volunteer", Gemachs: [A.id] }),
+             rec("recADMINB00000001", { Name: "Bee", Email: "b@example.com", Active: true, Role: "Manager", Gemachs: [B.id] }),
+             rec("recADMINVB0000001", { Name: "V", Email: "v@b", Active: true, Role: "Volunteer", Gemachs: [B.id] }),
+             rec("recADMINB20000001", { Name: "B2", Email: "b2@example.com", Active: true, Role: "Manager", Gemachs: [B.id] })],
   "Item Types": [
     rec("recTYPEA000000001", { Name: "Wheelchair", Active: true, "Product Category": ["recCAT0000000000A"], Items: ["recITEMA000000001", "recITEMA000000002"], Gemach: [A.id], "Gemach Slug": [A.slug] }),
     rec("recTYPEA000000002", { Name: "Walker", Active: true, Items: [], Gemach: [A.id], "Gemach Slug": [A.slug] }),
@@ -180,11 +185,11 @@ await t("/api prefix stripping works", async () => {
   assert.ok(Array.isArray(await r.json()));
 });
 
-await t("admin JWT for gemach A requesting ?g=B -> 403 (only a Gemachs lookup, no scoped data read)", async () => {
+await t("admin JWT for gemach A requesting ?g=B -> 403 (only the Gemachs + live Admins lookups, no scoped data read)", async () => {
   const before = calls.length;
   const r = await call(`/api/admin/dashboard?g=${B.slug}`, { headers: auth(tokenA) });
   assert.equal(r.status, 403);
-  assert.ok(calls.slice(before).every(c => c.url.includes("/Gemachs/")), "only gemach lookup");
+  assert.ok(calls.slice(before).every(c => c.url.includes("/Gemachs/") || c.url.includes("/Admins/")), "only gemach + admin lookups");
   const r2 = await call(`/admin/dashboard`, { headers: { ...auth(tokenA), "X-Gemach": B.slug } });
   assert.equal(r2.status, 403);
 });
@@ -899,7 +904,7 @@ await t("r4 GET /admin/network/gemachs: all gemachs sorted by name with counts",
   assert.deepEqual(d.map(g => g.name), [...d.map(g => g.name)].sort((a, b) => a.localeCompare(b)));
   const a = d.find(g => g.id === A.id);
   assert.deepEqual(Object.keys(a).sort(), ["active", "adminCount", "category", "comingSoon", "displayOrder", "email", "id", "itemCount", "mode", "name", "slug"]);
-  assert.equal(a.adminCount, 3, "Barry + Demoted + Vol are active admins of A");
+  assert.equal(a.adminCount, 4, "Barry + v@ + Demoted + Vol are active admins of A");
   assert.ok(d.some(g => g.slug === "hidden-one" && g.active === false && g.category === "Baby"));
 });
 
@@ -2248,6 +2253,121 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
     assert.equal(d.autoReminders, false); assert.equal(d.reminderDaysBefore, 3); assert.equal(d.reminderRepeatDays, 0);
     assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ reminderRepeatDays: 31 }) })).status, 400);
     assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ reminderDaysBefore: 15 }) })).status, 400);
+  });
+}
+
+// ─── Team: owners manage their gemach's admins ─────────────────────────────────
+{
+  DB.Gemachs.push(rec("recTEAMGEMACH0001", { Name: "Team Gemach", Slug: "team-gemach", Active: true, Mode: "Full" }),
+                  rec("recTEAMOTHER00001", { Name: "Other Team Gemach", Slug: "team-other", Active: true, Mode: "Full" }));
+  DB.Admins.push(
+    rec("recTEAMOWNER00001", { Name: "Olivia Owner", Email: "olivia@example.com", Active: true, Role: "Owner", Gemachs: ["recTEAMGEMACH0001"] }),
+    rec("recTEAMMGR0000001", { Name: "Moe Manager", Email: "moe@example.com", Active: true, Role: "Manager", Gemachs: ["recTEAMGEMACH0001"] }),
+    rec("recTEAMSHARED0001", { Name: "Sam Shared", Email: "sam@example.com", Active: true, Role: "Volunteer", Gemachs: ["recTEAMGEMACH0001", "recTEAMOTHER00001"] }),
+    rec("recTEAMELSEWHERE1", { Name: "Ella Else", Email: "ella@example.com", Active: true, Role: "Manager", Gemachs: ["recTEAMOTHER00001"] }),
+    rec("recTEAMGONE000001", { Name: "Gus Gone", Email: "gus@example.com", Active: false, Role: "Volunteer", Gemachs: [] }),
+    rec("recTEAMOFF0000001", { Name: "Otto Off", Email: "otto@example.com", Active: false, Role: "Volunteer", Gemachs: ["recTEAMOTHER00001"] }),
+  );
+  X.clearMemo();
+  const G = { id: "recTEAMGEMACH0001", slug: "team-gemach", name: "Team Gemach" };
+  const tokOwner = await sign({ email: "olivia@example.com", name: "Olivia Owner", role: "Owner", gemachs: [G] });
+  const tokMgr = await sign({ email: "moe@example.com", name: "Moe Manager", role: "Manager", gemachs: [G] });
+  const TH = (tok, extra) => ({ ...auth(tok), "X-Gemach": G.slug, "Content-Type": "application/json", ...extra });
+  const team = (tok, method, path, body) => call(path, { method, headers: TH(tok), body: body === undefined ? undefined : JSON.stringify(body) });
+  const row = id => DB.Admins.find(r => r.id === id).fields;
+
+  await t("team: only owners (and network admins) can see or change it; canManageTeam in the gemach payload", async () => {
+    assert.equal((await team(tokMgr, "GET", "/admin/team")).status, 403);
+    assert.equal((await team(tokMgr, "POST", "/admin/team", { name: "X", email: "x@example.com", role: "Volunteer" })).status, 403);
+    assert.equal((await (await team(tokMgr, "GET", "/admin/gemach")).json()).canManageTeam, false);
+    assert.equal((await (await team(tokOwner, "GET", "/admin/gemach")).json()).canManageTeam, true);
+    const r = await team(tokOwner, "GET", "/admin/team");
+    assert.equal(r.status, 200);
+    const d = await r.json();
+    assert.deepEqual(d.members.map(m => m.email), ["olivia@example.com", "moe@example.com", "sam@example.com"], "owners first; not other gemachs' people, not turned off");
+    assert.equal(d.members[0].you, true);
+    assert.deepEqual(d.members[2].otherGemachs, ["Other Team Gemach"]);
+    const net = await call("/admin/team", { headers: { ...auth(tokNet), "X-Gemach": G.slug } });
+    assert.equal(net.status, 200, "network admin too");
+  });
+
+  await t("team: add a new person (invite email names the role and who added them); duplicates refused", async () => {
+    const before = resendCalls().length;
+    let r = await team(tokOwner, "POST", "/admin/team", { name: "Vera Vol", email: " Vera@Example.com ", role: "Volunteer", sendInvite: true });
+    assert.equal(r.status, 201, await r.clone().text());
+    const d = await r.json();
+    assert.equal(d.email, "vera@example.com"); assert.equal(d.role, "Volunteer"); assert.equal(d.invited, true); assert.equal(d.linked, false);
+    const added = DB.Admins.find(x => x.fields.Email === "vera@example.com").fields;
+    assert.deepEqual(added.Gemachs, [G.id]); assert.equal(added.Active, true);
+    const mail = resendCalls().slice(before).at(-1);
+    assert.deepEqual(mail.to, ["vera@example.com"]);
+    assert.match(mail.text, /Olivia Owner added you as an admin of Team Gemach/);
+    assert.match(mail.text, /Your role: Volunteer/);
+    assert.equal((await team(tokOwner, "POST", "/admin/team", { name: "Vera", email: "vera@example.com", role: "Volunteer" })).status, 409, "already on the team");
+    assert.equal((await team(tokOwner, "POST", "/admin/team", { name: "N", email: "net@example.com", role: "Owner" })).status, 409, "network admin");
+    assert.equal((await team(tokOwner, "POST", "/admin/team", { name: "", email: "q@example.com", role: "Owner" })).status, 400);
+    assert.equal((await team(tokOwner, "POST", "/admin/team", { name: "Q", email: "nope", role: "Owner" })).status, 400);
+    assert.equal((await team(tokOwner, "POST", "/admin/team", { name: "Q", email: "q@example.com", role: "Network Admin" })).status, 400, "owners can't make network admins");
+  });
+
+  await t("team: someone from another gemach is linked, keeping their one role; removed people come back; turned-off accounts don't", async () => {
+    let r = await team(tokOwner, "POST", "/admin/team", { name: "Ella", email: "ella@example.com", role: "Volunteer" });
+    assert.equal(r.status, 409, "different role than they have elsewhere");
+    assert.equal((await r.json()).role, "Manager");
+    r = await team(tokOwner, "POST", "/admin/team", { name: "Ella", email: "ella@example.com", role: "Manager" });
+    assert.equal(r.status, 201);
+    assert.equal((await r.json()).linked, true);
+    assert.deepEqual(row("recTEAMELSEWHERE1").Gemachs, ["recTEAMOTHER00001", G.id]);
+    assert.equal(row("recTEAMELSEWHERE1").Name, "Ella Else", "existing name kept");
+    r = await team(tokOwner, "POST", "/admin/team", { name: "Gus G", email: "gus@example.com", role: "Owner" });
+    assert.equal(r.status, 201);
+    assert.deepEqual([row("recTEAMGONE000001").Active, row("recTEAMGONE000001").Role, row("recTEAMGONE000001").Name], [true, "Owner", "Gus G"]);
+    assert.equal((await team(tokOwner, "POST", "/admin/team", { name: "Otto", email: "otto@example.com", role: "Volunteer" })).status, 409, "turned off by a network admin");
+    assert.equal(row("recTEAMOFF0000001").Active, false);
+  });
+
+  await t("team: edit name/role; not your own role; not the role of someone on another team", async () => {
+    let r = await team(tokOwner, "PATCH", "/admin/team/recTEAMMGR0000001", { name: "Moe M", role: "Owner" });
+    assert.equal(r.status, 200);
+    assert.deepEqual([row("recTEAMMGR0000001").Name, row("recTEAMMGR0000001").Role], ["Moe M", "Owner"]);
+    assert.equal((await team(tokOwner, "PATCH", "/admin/team/recTEAMOWNER00001", { role: "Manager" })).status, 400, "own role");
+    assert.equal((await team(tokOwner, "PATCH", "/admin/team/recTEAMOWNER00001", { name: "Olivia O" })).status, 200, "own name ok");
+    assert.equal((await team(tokOwner, "PATCH", "/admin/team/recTEAMSHARED0001", { role: "Manager" })).status, 409, "shared with another gemach");
+    assert.equal((await team(tokOwner, "PATCH", "/admin/team/recTEAMSHARED0001", { role: "Volunteer" })).status, 200, "same role is fine");
+    assert.equal((await team(tokOwner, "PATCH", "/admin/team/recTEAMMGR0000001", { role: "Boss" })).status, 400);
+    assert.equal((await team(tokOwner, "PATCH", "/admin/team/recADMIN000000001", { name: "Not mine" })).status, 404, "other gemach's admin");
+    // promoted Moe is an owner now: his (stale Manager) token is checked live
+    assert.equal((await team(tokMgr, "GET", "/admin/team")).status, 200);
+    row("recTEAMMGR0000001").Role = "Manager"; X.clearMemo();
+  });
+
+  await t("team: remove unlinks this gemach (account off when it was the only one) and takes effect without re-login", async () => {
+    const tokVera = await sign({ email: "vera@example.com", name: "Vera Vol", role: "Volunteer", gemachs: [G] });
+    assert.equal((await team(tokVera, "GET", "/admin/dashboard")).status, 200);
+    const vera = DB.Admins.find(x => x.fields.Email === "vera@example.com");
+    let r = await team(tokOwner, "DELETE", `/admin/team/${vera.id}`);
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).deactivated, true);
+    assert.deepEqual([vera.fields.Active, vera.fields.Gemachs], [false, []]);
+    assert.equal((await team(tokVera, "GET", "/admin/dashboard")).status, 401, "lost access right away");
+    r = await team(tokOwner, "DELETE", "/admin/team/recTEAMSHARED0001");
+    assert.equal((await r.json()).deactivated, false);
+    assert.deepEqual([row("recTEAMSHARED0001").Active, row("recTEAMSHARED0001").Gemachs], [true, ["recTEAMOTHER00001"]]);
+    const tokSam = await sign({ email: "sam@example.com", name: "Sam", role: "Volunteer", gemachs: [G, { id: "recTEAMOTHER00001", slug: "team-other", name: "Other" }] });
+    assert.equal((await team(tokSam, "GET", "/admin/dashboard")).status, 403, "not on this team any more");
+    assert.equal((await call("/admin/dashboard", { headers: { ...auth(tokSam), "X-Gemach": "team-other" } })).status, 200, "still on the other one");
+    assert.equal((await team(tokOwner, "DELETE", "/admin/team/recTEAMOWNER00001")).status, 400, "not yourself");
+    assert.equal((await team(tokOwner, "DELETE", "/admin/team/recTEAMSHARED0001")).status, 404, "already off");
+  });
+
+  await t("team: resend invite; a removed owner can't manage the team any more", async () => {
+    const before = resendCalls().length;
+    assert.equal((await team(tokOwner, "POST", "/admin/team/recTEAMMGR0000001/invite")).status, 200);
+    assert.deepEqual(resendCalls().slice(before).at(-1).to, ["moe@example.com"]);
+    row("recTEAMOWNER00001").Role = "Manager"; // demoted by a network admin; the token still says Owner
+    X.clearMemo();
+    assert.equal((await team(tokOwner, "GET", "/admin/team")).status, 403);
+    row("recTEAMOWNER00001").Role = "Owner"; X.clearMemo();
   });
 }
 

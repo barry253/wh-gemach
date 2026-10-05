@@ -4,7 +4,7 @@ import { sendAlert } from "./alerts.js";
 import { purgePublicCache } from "./cache.js";
 import { DEFAULT_ADMIN_URL, LEGACY_SLUG, NETWORK_ADMIN_ROLE, REC_RE, SLUG_RE, T } from "./config.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
-import { DEFAULT_THEME, GEMACH_MODES, byOrderThenName, gemachFromRecord, gemachMemo, gemachRef, isLiveNetworkAdminMemo, liveNetMemo, selName } from "./gemachs.js";
+import { DEFAULT_THEME, GEMACH_MODES, byOrderThenName, gemachFromRecord, gemachMemo, gemachRef, isLiveNetworkAdminMemo, liveNetMemo, selName, forgetLiveAdmin } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { netListSearches } from "./search.js";
 import { EMAIL_RE } from "./settings.js";
@@ -295,26 +295,40 @@ async function netCreateAdmin(c) {
     console.error("Create admin failed:", JSON.stringify(e.detail));
     return json({ error: "Could not add the admin. Please try again." }, 502);
   }
-  let invited = false;
-  if (body.sendInvite) {
-    const gs = fields.Gemachs.map(id => idx[id]).filter(Boolean);
-    const names = gs.map(g => g.name).filter(Boolean);
-    const list = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-    const what = list || "the gemach network";
-    const signIn = env.ADMIN_URL || DEFAULT_ADMIN_URL;
-    const text = `Hi ${fields.Name},\n\nYou've been added as an admin of ${what} on whgemachs.org. Sign in with this Google account at ${signIn}` +
-      (fields.Role === NETWORK_ADMIN_ROLE ? "\n\nYou have network admin access to all gemachs." : "") + `\n\nThank you!`;
-    const from = gs.length === 1 ? gemachFromRecord({ id: gs[0].id, fields: { Name: gs[0].name } }) : { name: "whgemachs.org", themeColor: DEFAULT_THEME };
-    invited = (await sendEmail(env, from, {
-      to: email,
-      subject: `You've been added as an admin on whgemachs.org`,
-      text,
-      html: buildEmailHtml(from, text, { signature: false }),
-    })) === true;
-    if (!invited) await sendAlert(env, { key: "invite", subject: "Admin invite email failed", text: `The "you've been added as an admin" email to ${email} didn't send. The admin was still added; let them know to sign in at ${signIn}.` });
-  }
+  const invited = body.sendInvite
+    ? await sendAdminInvite(env, { name: fields.Name, email, role: fields.Role, gemachs: fields.Gemachs.map(id => idx[id]).filter(Boolean) })
+    : false;
   return json({ ...adminRow(rec, idx), invited }, 201);
 }
+
+/**
+ * "You've been added as an admin" email. gemachs: [{id, name}] the person can now manage.
+ * Returns true when sent; on failure alerts the network admins and returns false.
+ */
+async function sendAdminInvite(env, { name, email, role, gemachs, by }) {
+  const names = gemachs.map(g => g.name).filter(Boolean);
+  const list = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const what = list || "the gemach network";
+  const signIn = env.ADMIN_URL || DEFAULT_ADMIN_URL;
+  const roleLine = role === NETWORK_ADMIN_ROLE ? "\n\nYou have network admin access to all gemachs."
+    : role ? `\n\nYour role: ${role}${ROLE_BLURB[role] ? ` (${ROLE_BLURB[role]})` : ""}.` : "";
+  const text = `Hi ${name},\n\n${by ? `${by} added you` : "You've been added"} as an admin of ${what} on whgemachs.org. Sign in with this Google account at ${signIn}` +
+    roleLine + `\n\nThank you!`;
+  const from = gemachs.length === 1 ? gemachFromRecord({ id: gemachs[0].id, fields: { Name: gemachs[0].name } }) : { name: "whgemachs.org", themeColor: DEFAULT_THEME };
+  const ok = (await sendEmail(env, from, {
+    to: email,
+    subject: `You've been added as an admin on whgemachs.org`,
+    text,
+    html: buildEmailHtml(from, text, { signature: false }),
+  })) === true;
+  if (!ok) await sendAlert(env, { key: "invite", subject: "Admin invite email failed", text: `The "you've been added as an admin" email to ${email} didn't send. The admin was still added; let them know to sign in at ${signIn}.` });
+  return ok;
+}
+const ROLE_BLURB = {
+  Owner: "you can change settings and manage the team",
+  Manager: "you can handle requests, loans and items, and change settings",
+  Volunteer: "you can handle requests, loans and items",
+};
 
 async function netUpdateAdmin(c, id) {
   const { db, user } = c;
@@ -341,6 +355,7 @@ async function netUpdateAdmin(c, id) {
     return json({ error: "Could not save. Please try again." }, 502);
   }
   liveNetMemo.clear(); // role/active may have changed
+  forgetLiveAdmin(rec.fields.Email);
   return json(adminRow(updated, idx));
 }
 
@@ -433,4 +448,4 @@ async function netUpdateCategory(c, id) {
   return json(categoryRow(rec));
 }
 
-export { GEMACH_CATEGORIES, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, netOverview, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };
+export { GEMACH_CATEGORIES, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, netOverview, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, sendAdminInvite, NET_ADMIN_FIELDS, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };

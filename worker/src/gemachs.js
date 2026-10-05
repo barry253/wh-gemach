@@ -131,14 +131,46 @@ async function resolveAdminGemach(request, url, db, user) {
   // client sign in again and pick up its current role/gemachs.
   if (isNet && !(await isLiveNetworkAdminMemo(db, user.email))) return { status: 401, error: "Unauthorized" };
 
-  const g = await loadGemachBySlug(db, slug);
-  // Record id is the source of truth (the JWT's slugs go stale when a gemach's slug is renamed).
-  const assigned = g ? jwtG.find(x => x.id === g.id) : null;
+  // Gemach admins: their role and gemachs are also re-checked live (memoized ~60s), so an owner removing
+  // someone from the team, or changing their role, takes effect within a minute rather than at the 12h
+  // token refresh. If Airtable is having a moment, the token's own role/gemachs are used.
+  const [g, live] = await Promise.all([
+    loadGemachBySlug(db, slug),
+    isNet ? undefined : liveAdminMemo(db, user.email).catch(() => undefined),
+  ]);
+  if (live === null || (live && !live.active)) return { status: 401, error: "Unauthorized" };
   if (!g) return isNet ? { status: 404, error: "Unknown gemach" } : { status: 403, error: "Forbidden for this gemach" };
-  if (!assigned && !isNet) return { status: 403, error: "Forbidden for this gemach" };
-  if (!assigned && !g.active && !isNet) return { status: 403, error: "Gemach is not active" };
-  return { g };
+  if (isNet) return { g, role: NETWORK_ADMIN_ROLE };
+  if (live && live.role === NETWORK_ADMIN_ROLE) return { status: 401, error: "Unauthorized" }; // promoted: sign in again
+  // Record id is the source of truth (the JWT's slugs go stale when a gemach's slug is renamed).
+  const assigned = live ? live.gemachIds.includes(g.id) : jwtG.some(x => x.id === g.id);
+  if (!assigned) return { status: 403, error: "Forbidden for this gemach" };
+  return { g, role: live ? live.role : (user.role || null) };
 }
+
+// ─── Live admin record (per-isolate memo, 60s; concurrent lookups share one Airtable call) ──
+const liveAdminMap = new Map(); // email -> { at, p: Promise<{id,name,role,active,gemachIds}|null> }
+async function fetchLiveAdmin(db, email) {
+  const rows = await db.listAll(T.ADMINS, {
+    filter: `AND(LOWER({Email})=${fStr(email)},{Active}=1)`, maxRecords: 1, fields: ["Name", "Role", "Active", "Gemachs"],
+  });
+  const r = rows[0];
+  if (!r) return null;
+  return { id: r.id, name: r.fields.Name || "", role: selName(r.fields.Role) || null, active: !!r.fields.Active, gemachIds: (r.fields.Gemachs || []).map(linkedId) };
+}
+function liveAdminMemo(db, email) {
+  const key = String(email || "").toLowerCase();
+  if (!key) return Promise.resolve(null);
+  const hit = liveAdminMap.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.p;
+  const p = fetchLiveAdmin(db, key);
+  liveAdminMap.set(key, { at: Date.now(), p });
+  p.catch(() => liveAdminMap.delete(key));
+  return p;
+}
+/** Forget the memo for these emails (after a team or admin change in this isolate). */
+function forgetLiveAdmin(...emails) { for (const e of emails) liveAdminMap.delete(String(e || "").toLowerCase()); }
+const forgetAllLiveAdmins = () => liveAdminMap.clear();
 
 const liveNetMemo = new Map(); // email -> { ok, at }  (per-isolate, 60s)
 async function isLiveNetworkAdminMemo(db, email) {
@@ -150,4 +182,4 @@ async function isLiveNetworkAdminMemo(db, email) {
   return ok;
 }
 
-export { ITEM_VIEWS, gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo };
+export { ITEM_VIEWS, gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo, liveAdminMemo, fetchLiveAdmin, forgetLiveAdmin, forgetAllLiveAdmins };

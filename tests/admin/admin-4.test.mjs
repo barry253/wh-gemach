@@ -235,6 +235,8 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.click("#net-gemach-sheet .sheet-close");
 
   // admins
+  ok(!(await page.textContent("#net-admins")).includes("Rivka O'Neil"), "managers hidden by default (owners + network admins only)");
+  await page.selectOption("#net-admin-role", "");
   ok((await page.textContent("#net-admins")).includes("Rivka O'Neil"), "admins listed");
   await page.selectOption("#net-admin-filter", "recH");
   ok((await page.textContent("#net-admins")).includes("No admins"), "filter by gemach");
