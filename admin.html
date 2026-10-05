@@ -549,6 +549,11 @@
     .loan-row.overdue { border-left: 3px solid var(--red); }
     .loan-row.warning { border-left: 3px solid var(--amber); }
 
+    /* Item photo on loan / reservation rows and request cards */
+    .row-thumb { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 7px; object-fit: cover; border: 1px solid var(--border); background: #F3F4F6; display: block; }
+    .row-thumb-none { display: inline-flex; align-items: center; justify-content: center; color: #9CA3AF; font-size: 1rem; }
+    .req-thumbs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.15rem 0 0.6rem; }
+    .req-thumbs .row-thumb { width: 56px; height: 56px; flex-basis: 56px; }
     .loan-row-main {
       flex: 1;
       min-width: 0;
@@ -2716,6 +2721,7 @@
         .map(i => `Only ${i.available} ${i.name} free for these dates (asked for ${i.quantity})`);
       // whatsappUrl removed — using waUrl() instead
 
+      const photos = (r.items || []).filter(i => i.photo && /^https:\/\//i.test(i.photo));
       return `<div class="card" id="req-${rid}">
         <div class="card-header">
           <div>
@@ -2726,6 +2732,7 @@
             <span class="tag ${isAppt ? "tag-amber" : "tag-green"}">${isAppt ? "Appointment" : "Loan"}</span>
           </div>
         </div>
+        ${photos.length ? `<div class="req-thumbs">${photos.map(i => `<img class="row-thumb" src="${esc(i.photo)}" alt="${esc(i.name)}" title="${esc(i.name)}" loading="lazy" width="56" height="56" onerror="this.remove()" />`).join("")}</div>` : ""}
         <div class="card-meta">
           ${items ? `<span>📦 ${esc(items)}</span>` : ""}
           ${addonText ? `<span>🛍 ${esc(addonText)}</span>` : ""}
@@ -2945,6 +2952,13 @@
     renderLoans();
   }
 
+  /** 40px item photo for a loan / reservation row; a plain box when the item type has no photo. */
+  function rowThumb(url, name) {
+    const safe = url && /^https:\/\//i.test(url) ? url : null;
+    return safe
+      ? `<img class="row-thumb" src="${esc(safe)}" alt="${esc(name || "")}" loading="lazy" width="40" height="40" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'row-thumb row-thumb-none',textContent:'▫'}))" />`
+      : `<span class="row-thumb row-thumb-none" aria-hidden="true">▫</span>`;
+  }
   function renderLoans() {
     let loans = allLoans;
     if (loanFilterType) loans = loans.filter(l => l.itemTypeName === loanFilterType);
@@ -2980,6 +2994,7 @@
       const hasNote = l.notes || l.requestNote;
       return `
         <div class="loan-row ${cls}" id="loan-row-${lid}" onclick="toggleLoanActions('${lid}')">
+          ${rowThumb(l.photo, l.itemTypeName)}
           <div class="loan-row-main">
             <span class="loan-row-name">${esc(l.borrowerName)}</span>
             <span class="loan-row-item">${esc(l.itemTypeName || "")}</span>
@@ -3126,6 +3141,7 @@
 
       return `
         <div class="loan-row" id="res-row-${rid}" onclick="toggleResActions('${rid}')">
+          ${rowThumb(r.photo, r.itemTypeName)}
           <div class="loan-row-main">
             <span class="loan-row-name">${esc(r.borrowerName)}</span>
             <span class="loan-row-item">${esc(r.itemTypeName || "Item TBD")}</span>

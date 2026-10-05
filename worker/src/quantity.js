@@ -121,10 +121,19 @@ function qtyAvailable(total, bookings, from, to = from) {
 }
 
 /** Item type facts for ids (scoped): { id: { name, qty: bool, lendable, owned, outOfService } }. */
+/** The item type's cover photo for admin lists: our own (R2) copy, else Airtable's small thumbnail (those links expire after a few hours). */
+function typePhoto(r) {
+  const own = r.fields["R2 Photo URL"];
+  if (typeof own === "string" && /^https:\/\//i.test(own)) return own;
+  const a = r.fields["Photo"]?.[0];
+  return a?.thumbnails?.large?.url || a?.url || null;
+}
+
 async function itemTypeInfoMap(db, ids, g) {
-  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Tracking", "Quantity Owned", "Out of Service", "Price"] });
+  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Tracking", "Quantity Owned", "Out of Service", "Price", "R2 Photo URL", "Photo"] });
   return Object.fromEntries(recs.map(r => [r.id, {
     name: r.fields.Name || r.id,
+    photo: typePhoto(r),
     qty: isQtyType(r),
     addon: isAddonType(r),
     price: addonPrice(r),
@@ -193,4 +202,4 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
   return out;
 }
 
-export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money };
+export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto };

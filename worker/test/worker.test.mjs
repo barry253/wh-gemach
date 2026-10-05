@@ -2270,6 +2270,31 @@ await t("network: edit a gemach's name, email, phone, display order; email/phone
   assert.equal((await req(tokNet, "PATCH", "/admin/network/gemachs/recNETEDITGEMACH1", { slug: "other-addr" })).status, 400, "web address only while hidden");
 });
 
+await t("list photos: loans, reservations and requests carry the item type's photo (R2 first, else Airtable thumbnail)", async () => {
+  const wc = DB["Item Types"].find(r => r.id === "recTYPEA000000001").fields;
+  const walker = DB["Item Types"].find(r => r.id === "recTYPEA000000002").fields;
+  const before = [wc["R2 Photo URL"], wc.Photo, walker["R2 Photo URL"], walker.Photo];
+  wc["R2 Photo URL"] = "https://pub-x.r2.dev/wh/photos/wc.jpg";
+  walker.Photo = [{ url: "https://dl.airtable.com/full.jpg", thumbnails: { large: { url: "https://dl.airtable.com/large.jpg" } } }];
+  delete walker["R2 Photo URL"];
+  try {
+    const H = { headers: { ...auth(tokenA), "X-Gemach": A.slug } };
+    const all = [...await (await call("/admin/loans", H)).json(), ...await (await call("/admin/reservations", H)).json()];
+    const byType = id => all.filter(l => l.itemTypeId === id);
+    assert.ok(byType("recTYPEA000000001").length, "fixture has wheelchair loans/reservations");
+    assert.ok(byType("recTYPEA000000001").every(l => l.photo === "https://pub-x.r2.dev/wh/photos/wc.jpg"), "R2 photo");
+    assert.ok(all.every(l => "photo" in l), "every row has a photo key");
+    const reqs = await (await call("/admin/requests", H)).json();
+    const items = reqs.flatMap(r => r.items);
+    assert.ok(items.length && items.every(i => "photo" in i), "request items carry photo");
+    const w = items.find(i => i.id === "recTYPEA000000002");
+    if (w) assert.equal(w.photo, "https://dl.airtable.com/large.jpg", "Airtable thumbnail when no R2 copy");
+  } finally {
+    [wc["R2 Photo URL"], wc.Photo, walker["R2 Photo URL"], walker.Photo] = before;
+    for (const [o, k] of [[wc, "R2 Photo URL"], [wc, "Photo"], [walker, "R2 Photo URL"], [walker, "Photo"]]) if (o[k] === undefined) delete o[k];
+  }
+});
+
 // ─── Team: owners manage their gemach's admins ─────────────────────────────────
 {
   DB.Gemachs.push(rec("recTEAMGEMACH0001", { Name: "Team Gemach", Slug: "team-gemach", Active: true, Mode: "Full" }),
