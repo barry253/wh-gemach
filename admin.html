@@ -197,6 +197,34 @@
     .gemach-switcher option { color: var(--text); }
 
     /* ── Settings ── */
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .set-tabs { position: sticky; top: 0; z-index: 20; display: flex; gap: 0.4rem; overflow-x: auto; scrollbar-width: none;
+      background: var(--bg, #F6F7F9); padding: 0.6rem 0 0.6rem; margin: -0.25rem 0 0.5rem; }
+    .set-tabs::-webkit-scrollbar { display: none; }
+    .set-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 40px; padding: 0 0.95rem; border-radius: 999px;
+      border: 1px solid var(--border, #D1D5DB); background: #fff; color: var(--text, #374151); font: inherit; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+    .set-tab.active { background: var(--navy, #1B3A4B); border-color: var(--navy, #1B3A4B); color: #fff; }
+    .set-tab:focus-visible { outline: 2px solid var(--amber, #D97706); outline-offset: 2px; }
+    .set-tab { position: relative; }
+    .set-dot { position: absolute; top: 5px; right: 6px; width: 8px; height: 8px; border-radius: 99px; background: #D97706; box-shadow: 0 0 0 2px #fff; }
+    .set-dot[hidden] { display: none; }
+    .tpl-item { background: #fff; border: 1px solid var(--border, #E5E7EB); border-radius: 10px; margin-bottom: 0.5rem; }
+    .tpl-item summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+      padding: 0.8rem 0.9rem; font-weight: 600; min-height: 44px; box-sizing: border-box; }
+    .tpl-item summary::-webkit-details-marker { display: none; }
+    .tpl-item summary::after { content: "▾"; color: var(--muted); font-weight: 400; }
+    .tpl-item[open] summary::after { content: "▴"; }
+    .tpl-state { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 0.82rem; }
+    .tpl-body { padding: 0 0.9rem 0.9rem; }
+    .settings-savebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; align-items: center; gap: 0.5rem;
+      background: #fff; border-top: 1px solid var(--border, #E5E7EB); box-shadow: 0 -4px 16px rgba(0,0,0,.08);
+      padding: 0.7rem max(1rem, calc(50vw - 330px)) calc(0.8rem + env(safe-area-inset-bottom)); }
+    .settings-savebar[hidden] { display: none; }
+    .savebar-msg { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+    .savebar-msg b { font-size: 0.88rem; color: #92400E; }
+    .savebar-msg span { font-size: 0.78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 479px) { .set-tab-more { display: none; } .set-tabs { gap: 0.3rem; } .set-tab { padding: 0 0.65rem; font-size: 0.85rem; } }
+    body.settings-dirty #settings-body { padding-bottom: 5rem; }
     .settings-help {
       font-size: 0.78rem;
       color: var(--muted);
@@ -2440,6 +2468,8 @@
 
   // ── Tab switching ─────────────────────────────────────────────────────────
   function switchTab(name) {
+    if (name !== "settings" && settingsUnsaved() && !confirm("You have unsaved settings. Leave without saving?")) return;
+    if (name !== "settings") document.body.classList.remove("settings-dirty");
     document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add("active");
@@ -3572,17 +3602,42 @@
     gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
   };
-  const SETTINGS_GROUPS = [
-    { title: "Profile", fields: ["name", "tagline", "description", "website", "donationUrl", "donationInfo", "hours", "pickupAddress", "pickupInstructions"] },
-    { title: "Contact", fields: ["phone", "whatsapp", "email"], extra: "contact" },
-    { title: "Branding", extra: "branding" },
-    { title: "Gemach info", extra: "info" },
-    { title: "Requests", extra: "requests" },
-    { title: "Return reminders", extra: "reminders" },
-    { title: "How items look", extra: "view" },
-    { title: "Item filters", extra: "attrs" },
-    { title: "Home page categories", extra: "browsecats" },
+  // Settings are split into four areas (sub-tabs); one Save covers all of them.
+  const SETTINGS_AREAS = [
+    { id: "profile",  name: "Profile" },
+    { id: "page",     name: "Your page" },
+    { id: "requests", name: "Requests & pickup", short: "Requests" },
+    { id: "messages", name: "Messages" },
   ];
+  const SETTINGS_GROUPS = [
+    { area: "profile",  title: "Profile", fields: ["name", "tagline", "description", "website"] },
+    { area: "profile",  title: "Contact", fields: ["phone", "whatsapp", "email"], extra: "contact" },
+    { area: "profile",  title: "Branding", extra: "branding" },
+    { area: "profile",  title: "Donations", fields: ["donationUrl", "donationInfo"] },
+    { area: "page",     title: "Gemach info", fields: ["hours"], extra: "info" },
+    { area: "page",     title: "How items look", extra: "view" },
+    { area: "page",     title: "Item filters", extra: "attrs" },
+    { area: "page",     title: "Home page categories", extra: "browsecats" },
+    { area: "requests", title: "Requests", extra: "requests" },
+    { area: "requests", title: "Pickup", fields: ["pickupAddress", "pickupInstructions"] },
+    { area: "messages", title: "Return reminders", extra: "reminders" },
+  ];
+  // Which area each saved key belongs to (for the "unsaved" dots).
+  const EXTRA_KEYS = {
+    contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
+    info: ["depositRequired", "chargeType", "depositInfo", "gemachInfo"],
+    requests: ["requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust"],
+    reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView"],
+    attrs: ["itemAttributes"], browsecats: ["browseCategoryIds"],
+  };
+  function settingsKeyArea(key) {
+    for (const gr of SETTINGS_GROUPS) {
+      if ((gr.fields || []).includes(key) || (EXTRA_KEYS[gr.extra] || []).includes(key)) return gr.area;
+    }
+    return /Message$/.test(key) ? "messages" : null;
+  }
+  let SETTINGS_AREA = "profile";
+  try { SETTINGS_AREA = sessionStorage.getItem("whg_settings_area") || "profile"; } catch (e) { /* ignore */ }
   const SETTINGS_TEMPLATES = [
     { kind: "confirm",     key: "confirmMessage",     label: "Request confirmed" },
     { kind: "decline",     key: "declineMessage",     label: "Request declined" },
@@ -3785,8 +3840,12 @@
     const body = document.getElementById("settings-body");
     const ro = !g.canEdit;
     const placeholders = (g.placeholders || []).map(p => `<code>{${esc(p)}}</code>`).join(" ");
+    const areaGroups = a => SETTINGS_GROUPS.filter(gr => gr.area === a).map(gr => settingsGroupHtml(gr, ro)).join("");
     body.innerHTML = `
       ${ro ? `<div class="settings-note">View only — only an Owner or Manager can change these settings.</div>` : ""}
+      <div class="set-tabs" role="tablist" aria-label="Settings areas">${SETTINGS_AREAS.map(a =>
+        `<button type="button" role="tab" class="set-tab" id="set-tab-${a.id}" data-area="${a.id}" aria-controls="set-area-${a.id}" onclick="showSettingsArea('${a.id}')">${a.short ? `${a.short}<span class="set-tab-more"> ${a.name.slice(a.short.length).trim()}</span>` : a.name}<span class="set-dot" hidden aria-label="unsaved changes"></span></button>`).join("")}</div>
+      <div class="set-area" id="set-area-profile" role="tabpanel" aria-labelledby="set-tab-profile">
       <div class="card" style="margin-bottom:1.25rem">
         <div class="card-header" style="margin-bottom:0">
           <div>
@@ -3806,21 +3865,28 @@
           </div>
         </div>
       </div>
-      ${SETTINGS_GROUPS.map(gr => settingsGroupHtml(gr, ro)).join("")}
-      <div class="section-label" id="settings-sec-templates">Message templates</div>
-      <p class="settings-help">Placeholders: ${placeholders}. Blank values are left out.</p>
-      <div class="card">
-        ${SETTINGS_TEMPLATES.map(t => `<div class="form-group">
-          <div class="settings-label-row">
-            <label for="set-${t.key}">${t.label} <span style="color:var(--muted);font-weight:400" id="set-${t.key}-state"></span></label>
-            ${ro ? "" : `<button class="btn btn-ghost btn-sm" type="button" onclick="resetTemplate('${t.kind}')">Reset to default</button>`}
-          </div>
-          <textarea id="set-${t.key}" rows="5" maxlength="2000"></textarea>
-        </div>`).join("")}
+      ${areaGroups("profile")}
       </div>
-      ${ro ? "" : `<div class="sheet-actions" style="margin-bottom:1.5rem">
-        <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()">Save settings</button>
+      ${["page", "requests"].map(a => `<div class="set-area" id="set-area-${a}" role="tabpanel" aria-labelledby="set-tab-${a}">${areaGroups(a)}</div>`).join("")}
+      <div class="set-area" id="set-area-messages" role="tabpanel" aria-labelledby="set-tab-messages">
+      ${areaGroups("messages")}
+      <div class="section-label" id="settings-sec-templates">Message templates</div>
+      <p class="settings-help">Tap a message to edit it. Placeholders: ${placeholders}. Blank values are left out.</p>
+      ${SETTINGS_TEMPLATES.map(t => `<details class="tpl-item" id="tpl-${t.kind}">
+          <summary><span class="tpl-name">${t.label}</span> <span class="tpl-state" id="set-${t.key}-state"></span></summary>
+          <div class="tpl-body">
+            <label class="sr-only" for="set-${t.key}">${t.label}</label>
+            <textarea id="set-${t.key}" rows="6" maxlength="2000"></textarea>
+            ${ro ? "" : `<div style="text-align:right;margin-top:0.4rem"><button class="btn btn-ghost btn-sm" type="button" onclick="resetTemplate('${t.kind}')">Reset to default</button></div>`}
+          </div>
+        </details>`).join("")}
+      </div>
+      ${ro ? "" : `<div class="settings-savebar" id="settings-savebar" hidden role="region" aria-label="Unsaved changes">
+        <span class="savebar-msg"><b>Unsaved changes</b><span id="settings-dirty-msg"></span></span>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="discardSettings()">Discard</button>
+        <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()">Save</button>
       </div>`}`;
+    showSettingsArea(SETTINGS_AREA, true);
 
     // Values are assigned via properties (never interpolated into HTML).
     setEl("title").textContent = g.name || "";
@@ -4175,11 +4241,47 @@
     state.textContent = isDefault ? "· default" : "· custom";
   }
 
+  function showSettingsArea(id, quiet) {
+    if (!SETTINGS_AREAS.some(a => a.id === id)) id = "profile";
+    SETTINGS_AREA = id;
+    try { sessionStorage.setItem("whg_settings_area", id); } catch (e) { /* ignore */ }
+    SETTINGS_AREAS.forEach(a => {
+      const tab = document.getElementById(`set-tab-${a.id}`), panel = document.getElementById(`set-area-${a.id}`);
+      if (tab) { tab.classList.toggle("active", a.id === id); tab.setAttribute("aria-selected", a.id === id ? "true" : "false"); }
+      if (panel) panel.hidden = a.id !== id;
+    });
+    if (!quiet) { const tabs = document.querySelector(".set-tabs"); if (tabs && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: "start" }); }
+  }
+  /** Shows the save bar and a dot on each area with changes. Called on every edit in Settings. */
+  function refreshSettingsDirty() {
+    const bar = document.getElementById("settings-savebar");
+    if (!bar || !GEMACH?.canEdit) return false;
+    let res;
+    try { res = collectSettingsPatch(); } catch (e) { res = { error: e.message }; }
+    const areas = new Set(Object.keys(res.patch || {}).map(k => settingsKeyArea(k) || SETTINGS_AREA));
+    if (res.error) areas.add(SETTINGS_AREA);
+    SETTINGS_AREAS.forEach(a => { const d = document.querySelector(`#set-tab-${a.id} .set-dot`); if (d) d.hidden = !areas.has(a.id); });
+    bar.hidden = areas.size === 0;
+    document.getElementById("settings-dirty-msg").textContent = SETTINGS_AREAS.filter(a => areas.has(a.id)).map(a => a.name).join(", ");
+    document.body.classList.toggle("settings-dirty", areas.size > 0);
+    return areas.size > 0;
+  }
+  function discardSettings() { renderSettings(); showToast("Changes discarded"); }
+  function settingsUnsaved() {
+    return document.getElementById("screen-settings")?.classList.contains("active") && !document.getElementById("settings-savebar")?.hidden;
+  }
+  window.addEventListener("beforeunload", e => { if (settingsUnsaved()) { e.preventDefault(); e.returnValue = ""; } });
+  ["input", "change", "click"].forEach(ev => document.getElementById("settings-body").addEventListener(ev, e => {
+    if (e.target.closest && e.target.closest("#settings-savebar, .set-tabs")) return;
+    setTimeout(refreshSettingsDirty, 0);
+  }));
+
   function resetTemplate(kind) {
     const t = SETTINGS_TEMPLATES.find(x => x.kind === kind);
     const el = document.getElementById(`set-${t.key}`);
     el.value = ""; // cleared -> the built-in default is used (shown as placeholder)
     updateTemplateState(t);
+    refreshSettingsDirty();
   }
 
   async function copyPublicUrl() {
@@ -4267,7 +4369,7 @@
       showToast("Save failed: " + e.message);
     } finally {
       const b = document.getElementById("settings-save-btn");
-      if (b) { b.disabled = false; b.textContent = "Save settings"; }
+      if (b) { b.disabled = false; b.textContent = "Save"; }
     }
   }
 
@@ -4603,7 +4705,7 @@
     const toast = document.createElement("div");
     toast.textContent = msg;
     Object.assign(toast.style, {
-      position: "fixed", bottom: "1.5rem", left: "50%",
+      position: "fixed", bottom: document.body.classList.contains("settings-dirty") ? "5.5rem" : "1.5rem", left: "50%", // above the save bar
       transform: "translateX(-50%)",
       background: var_navy(), color: "white",
       padding: "0.6rem 1.25rem", borderRadius: "20px",

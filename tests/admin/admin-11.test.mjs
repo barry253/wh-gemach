@@ -88,6 +88,8 @@ ok(/Return reminder emailed automatically 2d ago/.test(await page.textContent("#
 await page.screenshot({ path: "shot-loans-reminded.png" });
 // Settings: the template is editable
 await page.click(".nav-tab:has-text('Settings')");
+await page.click("#set-tab-messages");
+await page.click("#tpl-returnReminder summary");
 await page.waitForSelector("#set-returnReminderMessage");
 ok(/\{due_back\}/.test(await page.getAttribute("#set-returnReminderMessage", "placeholder")), "Settings shows the Return reminder template (default as placeholder)");
 ok(!(await page.isChecked("#set-autoReminders")) && await page.inputValue("#set-reminderDaysBefore") === "2" && await page.inputValue("#set-reminderRepeatDays") === "7", "auto reminders: off, 2 days before, every 7 days by default");
@@ -102,6 +104,38 @@ await page.waitForFunction(() => document.body.textContent.includes("Settings sa
 const sp = calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach").at(-1);
 ok(sp && sp.body.returnReminderMessage === "Hi {first_name}, please return the {items} — it {due_back}.", "template saved");
 ok(sp && sp.body.autoReminders === true && sp.body.reminderDaysBefore === 3 && sp.body.reminderRepeatDays === 5, "auto reminder settings saved: " + JSON.stringify(sp && sp.body));
+
+// Settings areas: four tabs, one save bar for all, dots on areas with changes, discard, leave warning
+ok((await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Your page|Requests|Messages", "four areas (short names on a phone)");
+ok(await page.$eval(".set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all four tabs fit on a phone " + await page.$eval(".set-tabs", el => el.scrollWidth + "/" + el.clientWidth + " " + [...el.children].map(c => Math.round(c.getBoundingClientRect().width)).join(",")));
+ok(await page.isHidden("#settings-savebar"), "no save bar after saving");
+await page.click("#set-tab-profile");
+ok(await page.isVisible("#set-name") && await page.isHidden("#set-returnReminderMessage") && await page.isHidden("#set-pickupAddress"), "only the chosen area shows");
+await page.fill("#set-tagline", "Changed tagline");
+await page.waitForTimeout(50);
+ok(await page.isVisible("#settings-savebar") && (await page.textContent("#settings-dirty-msg")).trim() === "Profile", "save bar appears, names the area");
+ok(await page.isVisible("#set-tab-profile .set-dot") && await page.isHidden("#set-tab-messages .set-dot"), "dot on the changed area only");
+await page.click("#set-tab-requests");
+await page.fill("#set-pickupAddress", "12 New Street");
+await page.waitForTimeout(50);
+ok((await page.textContent("#settings-dirty-msg")).trim() === "Profile, Requests & pickup", "changes in two areas listed");
+await page.screenshot({ path: "shot-settings-areas.png" });
+let dialogs = 0;
+page.once("dialog", d => { dialogs++; d.dismiss(); });
+await page.click(".nav-tab:has-text('Loans')");
+ok(dialogs === 1 && await page.isVisible("#settings-savebar"), "leaving with unsaved changes asks first; Cancel stays");
+await page.click("#settings-savebar button:has-text('Discard')");
+ok(await page.isHidden("#settings-savebar") && await page.inputValue("#set-pickupAddress") === "507 Walton Court", "Discard restores saved values");
+ok(await page.isVisible("#set-pickupAddress"), "Discard keeps you in the same area");
+await page.fill("#set-pickupAddress", "9 Elm Street");
+await page.click("#settings-save-btn");
+await page.waitForFunction(() => document.body.textContent.includes("Settings saved"));
+const ap = calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach").at(-1);
+ok(ap && JSON.stringify(ap.body) === JSON.stringify({ pickupAddress: "9 Elm Street" }), "Save from the bar sends only the change: " + JSON.stringify(ap && ap.body));
+await page.reload(); await page.waitForTimeout(500);
+await page.click(".nav-tab:has-text('Settings')");
+await page.waitForSelector(".set-tab");
+ok(await page.isVisible("#set-pickupAddress"), "comes back to the last area");
 
 ok(!errors.length, "no page errors " + errors.join(" | "));
 await browser.close();

@@ -90,6 +90,7 @@ const { page, errors, calls } = await setup();
 
 // Settings → Item filters
 await page.click("text=Settings");
+await page.click("#set-tab-page");
 await page.waitForSelector("#attr-defs .attr-def");
 ok(await page.inputValue("#attr-name-0") === "Size" && await page.inputValue("#attr-values-0") === "2, 4, 6, 8", "existing filters shown");
 ok(/\+ Length/.test(await page.textContent("#attr-presets")) && !/\+ Size/.test(await page.textContent("#attr-presets")), "presets offered for filters not yet added");
@@ -209,6 +210,7 @@ ok(ph && ph.body.r2PhotoUrl === "https://photos.test/gold-3.svg" && JSON.stringi
 
 // Settings → How items look
 await page.click("text=Settings");
+await page.click("#set-tab-page");
 await page.waitForSelector('input[name="set-itemView"]');
 ok(await page.isChecked('input[name="set-itemView"][value="List"]'), "item view: blank = List");
 await page.check('input[name="set-itemView"][value="Grid"]');
