@@ -432,8 +432,9 @@ await t("v2 GET /admin/gemach: private fields, default templates, placeholders, 
   assert.match(d.templates.confirm, /^Hi \{first_name\}, great news/);
   assert.match(d.templates.confirm, /Pickup is at \{pickup_address\}\. \{pickup_instructions\}/);
   assert.equal(d.templates.pickup, "SECRET TPL {first_name}");
-  assert.deepEqual(d.rawTemplates, { confirm: null, decline: null, pickup: "SECRET TPL {first_name}", appointment: null });
-  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link"]);
+  assert.deepEqual(d.rawTemplates, { confirm: null, decline: null, pickup: "SECRET TPL {first_name}", appointment: null, returnReminder: null });
+  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out"]);
+  assert.match(d.templates.returnReminder, /^Hi \{first_name\}, a friendly reminder .*\{due_back\}/);
   assert.equal(d.canEdit, true);
   const v = await (await call(`/admin/gemach`, { headers: { ...auth(tokenVol), "X-Gemach": A.slug } })).json();
   assert.equal(v.canEdit, false);
@@ -2105,6 +2106,29 @@ await t("inventory ?holds=1: reservations without a unit yet, per numbered item 
   assert.equal(mine[0].itemTypeId, "recTYPEA000000001"); assert.equal(mine[0].itemTypeName, "Wheelchair"); assert.equal(mine[0].reservationStart, "2026-10-02");
   assert.ok(!d.holds.some(h => /Sweatshirt|Folding|Table/.test(h.itemTypeName || "")), "quantity and add-on types are left out");
   DB.Loans = DB.Loans.filter(l => !/^recLOANHOLD/.test(l.id));
+});
+
+await t("return reminder: stamps the loan, logs it, only for loans that are out; template saved in Settings", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  DB.Loans.push(rec("recLOANREMIND0001", { "Loan ID": "L-951", Status: "Active", "Item to Reserve": ["recTYPEA000000001"], "Date Borrowed": "2026-09-01", "Expected Return": "2026-09-20", ...sc }),
+    rec("recLOANREMIND0002", { "Loan ID": "L-952", Status: "Returned", ...sc }));
+  let r = await call("/admin/loans/recLOANREMIND0001/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "whatsapp" }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  const at = (await r.json()).reminderSentAt;
+  assert.equal(DB.Loans.find(l => l.id === "recLOANREMIND0001").fields["Reminder Sent At"], at);
+  await Promise.allSettled(waits);
+  const log = DB["tblC3PY7f5sXQDMJK"].find(l => l.fields["Event Type"] === "Return Reminder Sent" && l.fields["Loan ID"] === "L-951");
+  assert.ok(log && log.fields.Notes === "Sent by WhatsApp" && log.fields.Gemach[0] === A.id);
+  const loans = await (await call("/admin/loans", { headers: H })).json();
+  assert.equal(loans.find(l => l.id === "recLOANREMIND0001").reminderSentAt, at);
+  assert.equal((await call("/admin/loans/recLOANREMIND0002/reminder", { method: "POST", headers: H, body: "{}" })).status, 409);
+  assert.equal((await call("/admin/loans/recLOANREMIND0001/reminder", { method: "POST", headers: { ...auth(tokenA), "X-Gemach": B.slug, "Content-Type": "application/json" }, body: "{}" })).status >= 400, true, "other gemach can't");
+  r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ returnReminderMessage: "Hi {first_name}, please bring back {items}." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal((await r.json()).templates.returnReminder, "Hi {first_name}, please bring back {items}.");
+  assert.equal(DB.Gemachs.find(g => g.id === A.id).fields["Return Reminder Message"], "Hi {first_name}, please bring back {items}.");
+  DB.Loans = DB.Loans.filter(l => !/^recLOANREMIND/.test(l.id));
 });
 
 await Promise.allSettled(waits);

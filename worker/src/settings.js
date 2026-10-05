@@ -9,7 +9,7 @@ import { publicGemach } from "./public.js";
 
 // ─── Gemach profile & message templates (admin) ───────────────────────────────
 
-const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link"];
+const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out"];
 const DEFAULT_TEMPLATES = {
   confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
   confirmNoAddress: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
@@ -17,6 +17,8 @@ const DEFAULT_TEMPLATES = {
   pickup: "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
   pickupNoAddress: "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
   appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
+  // Return reminder (admin Loans). {due_back} = "is due back on Fri, Oct 9" / "is due back today" / "was due back on Fri, Oct 2" (blank if no date).
+  returnReminder: "Hi {first_name}, a friendly reminder from the {gemach}: the {items} you borrowed on {borrowed_date} {due_back}. Please let us know when you can return it, or if you need it a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
   appointmentNoAddress: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
 };
 
@@ -28,6 +30,7 @@ function effectiveTemplates(g) {
     decline: raw.decline || DEFAULT_TEMPLATES.decline,
     pickup: raw.pickup || (g.pickupAddress ? DEFAULT_TEMPLATES.pickup : DEFAULT_TEMPLATES.pickupNoAddress),
     appointment: raw.appointment || (g.pickupAddress ? DEFAULT_TEMPLATES.appointment : DEFAULT_TEMPLATES.appointmentNoAddress),
+    returnReminder: raw.returnReminder || DEFAULT_TEMPLATES.returnReminder,
   };
 }
 
@@ -95,6 +98,7 @@ const GEMACH_EDITABLE = {
   returnDaysAfter:    ["Return Days After", "days"],
   shabbosAdjust:      ["Shabbos Adjust", "bool"],
   appointmentMessage: ["Appointment Message", "long"],
+  returnReminderMessage: ["Return Reminder Message", "long"],
   logoUrl:            ["Logo URL", "logo"],
   itemAttributes:     ["Item Attributes", "attrs"],
   browseCategoryIds:  ["Browse Categories", "cats"],
@@ -107,7 +111,7 @@ const GEMACH_LABELS = {
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
   depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after",
-  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
+  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
 const MAX_LINE = 200, MAX_LONG = 2000;

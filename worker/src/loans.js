@@ -3,6 +3,7 @@ import { logEvent } from "./activity.js";
 import { AirtableError, fAnd, fetchByIds, firstLink, getOwned, linkedId, linkedName, scopeF, today } from "./airtable.js";
 import { findOrCreateBorrower } from "./borrowers.js";
 import { DATE_RE, T } from "./config.js";
+import { selName } from "./gemachs.js";
 import { isValidDate } from "./dates.js";
 import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
@@ -95,6 +96,7 @@ async function handleGetLoans({ db, g, env }) {
       notes: f["Notes"] || null,
       requestNote: (f["Request Note"] || []).join("") || null,
       readyToReturnAt: f["Ready To Return At"] || null, // borrower tapped "Ready to return" on their manage page
+      reminderSentAt: f["Reminder Sent At"] || null,     // admin last sent a "time to return" reminder
       manageUrl: await sourceManageUrl(env, f),
     };
   }));
@@ -130,6 +132,25 @@ async function loanLogDetails(db, g, loan, body = {}, { itemRecId = null } = {})
     itemType: typeNames[typeId] || linkedName(firstLink(f["Item to Reserve"])) || str(body.itemType),
     loanId: f["Loan ID"] || str(body.loanId),
   };
+}
+
+/** An admin sent (from their own phone/email) a "time to return" reminder: stamp the loan and log it. */
+async function handleLoanReminder(c, id) {
+  const { db, g, ctx } = c;
+  const body = await readJson(c.request);
+  const loan = await getOwned(db, T.LOANS, id, g);
+  if (!loan) return json({ error: "Not found" }, 404);
+  if (selName(loan.fields.Status) !== "Active") return json({ error: "This loan isn't out right now." }, 409);
+  const via = { whatsapp: "WhatsApp", sms: "text message", email: "email" }[body.via] || null;
+  const now = new Date().toISOString();
+  await db.update(T.LOANS, id, { "Reminder Sent At": now });
+  logEvent(ctx, db, g, {
+    eventType: "Return Reminder Sent",
+    ...(await loanLogDetails(db, g, loan, body)),
+    admin: c.adminName || null,
+    notes: via ? `Sent by ${via}` : null,
+  });
+  return json({ success: true, reminderSentAt: now });
 }
 
 async function handleReturnLoan(c, id) {
@@ -444,4 +465,4 @@ async function handleAssignItem(c, itemRecId) {
   return json({ success: true, loanId, data: loanData });
 }
 
-export { borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem };
+export { handleLoanReminder, borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem };

@@ -1588,6 +1588,26 @@
   </div>
 </div>
 
+<div class="sheet-overlay" id="reminder-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('reminder-sheet')">×</button>
+    <h3>Return reminder</h3>
+    <p class="sheet-subtitle" id="reminder-subtitle"></p>
+    <p class="muted-small" id="reminder-last" style="margin:0.25rem 0 0"></p>
+    <div class="form-group" style="margin-top:0.75rem">
+      <label for="reminder-message">Message</label>
+      <textarea id="reminder-message" rows="7"></textarea>
+      <div class="settings-help" style="margin:0.3rem 0 0">Change the wording for every reminder in Settings → Message templates → Return reminder.</div>
+    </div>
+    <div class="form-group" id="reminder-send-by"></div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('reminder-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="reminder-send-btn">Open WhatsApp</button>
+    </div>
+  </div>
+</div>
+
 <!-- Assign Item Sheet -->
 <div class="sheet-overlay" id="assign-item-sheet">
   <div class="sheet">
@@ -1892,6 +1912,7 @@
     decline: "Hi {first_name}, thank you for reaching out to the {gemach}. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.",
     pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
+    returnReminder: "Hi {first_name}, a friendly reminder from the {gemach}: the {items} you borrowed on {borrowed_date} {due_back}. Please let us know when you can return it, or if you need it a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
   };
   // Used when the gemach has no pickup address (or /admin/gemach could not be loaded)
   const DEFAULT_TEMPLATES_NO_ADDRESS = {
@@ -1899,6 +1920,7 @@
     decline: DEFAULT_TEMPLATES.decline,
     pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
+    returnReminder: DEFAULT_TEMPLATES.returnReminder,
   };
   function defaultTemplate(kind) {
     return (GEMACH?.pickupAddress ? DEFAULT_TEMPLATES : DEFAULT_TEMPLATES_NO_ADDRESS)[kind];
@@ -2230,7 +2252,7 @@
 
   // ── Message templates ─────────────────────────────────────────────────────
   // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
-  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link"]);
+  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out"]);
 
   function fillTemplate(template, vars) {
     const has = k => Object.prototype.hasOwnProperty.call(vars, k);
@@ -2270,11 +2292,22 @@
     return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
+  /** {due_back}: "is due back on Fri, Oct 9" / "is due back today" / "was due back on Fri, Oct 2" (blank without a date). */
+  function dueBackText(date) {
+    if (!isValidDate(date || "")) return "";
+    const d = new Date(), pad = n => String(n).padStart(2, "0");
+    const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    if (date === todayStr) return "is due back today";
+    return `${date > todayStr ? "is" : "was"} due back on ${fmtDay(date, true)}`;
+  }
   function templateVars(firstName, items, extra = {}) {
     const g = GEMACH || {};
     return {
       appointment_time: extra.appointmentTime || "",
       manage_link: extra.manageUrl || "",
+      borrowed_date: extra.borrowedDate ? fmtDay(extra.borrowedDate, true) : "",
+      due_back: dueBackText(extra.returnDate),
+      days_out: extra.daysOut != null ? String(extra.daysOut) : "",
       deposit_info: g.depositRequired ? (g.depositInfo || "") : "",
       event_date: extra.eventDate ? fmtDay(extra.eventDate, true) : "",
       first_name: firstName || "",
@@ -2290,7 +2323,7 @@
 
   // Borrower-facing messages always carry the private manage link: templates written before it existed
   // (or customized without it) get a closing line; put {manage_link} in a template to place it yourself.
-  const LINK_LINE = { confirm: "Manage or cancel: {manage_link}", appointment: "Manage or cancel: {manage_link}", pickup: "Manage your loan: {manage_link}" };
+  const LINK_LINE = { confirm: "Manage or cancel: {manage_link}", appointment: "Manage or cancel: {manage_link}", pickup: "Manage your loan: {manage_link}", returnReminder: "Manage your loan: {manage_link}" };
   function renderMessage(kind, firstName, items, extra) {
     let tpl = GEMACH?.templates?.[kind] || defaultTemplate(kind);
     if (LINK_LINE[kind] && extra?.manageUrl && !String(tpl).includes("{manage_link}")) tpl = String(tpl).trimEnd() + "\n\n" + LINK_LINE[kind];
@@ -2830,8 +2863,10 @@
           ${l.readyToReturnAt ? `<div class="loan-notes request-note"><span class="note-label">Ready to return:</span> the borrower let us know ${esc(timeAgo(l.readyToReturnAt))} — arrange the return.</div>` : ""}
           ${l.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(l.requestNote)}</div>` : ""}
           ${l.notes ? `<div class="loan-notes">💬 ${esc(l.notes)}</div>` : ""}
+          ${l.reminderSentAt ? `<div class="loan-notes">⏰ Return reminder sent ${esc(timeAgo(l.reminderSentAt))}</div>` : ""}
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openReturn(rec('loan','${lid}'))">✓ Returned</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openReturnReminder(rec('loan','${lid}'))">⏰ Return reminder</button>
             ${contactActions(contactOf(l), true)}
           </div>
         </div>`;
@@ -3126,6 +3161,31 @@
       showToast(r.isAddon ? "Marked as handed over" : "Marked as picked up");
     };
     openSheet("pickup-sheet");
+  }
+
+  // "Time to return" reminder: the gemach's Return reminder template filled with this loan's details,
+  // editable, sent from the admin's own WhatsApp / texts / email; the server stamps the loan and logs it.
+  function openReturnReminder(l) {
+    const items = l.isQuantity && l.quantity ? `${l.itemTypeName} × ${l.quantity}` : (l.itemTypeName || "item");
+    document.getElementById("reminder-subtitle").textContent = [l.borrowerName, items,
+      l.expectedReturn ? `due ${fmtDay(l.expectedReturn, true)}` : (l.dateBorrowed ? `out since ${fmtDay(l.dateBorrowed, true)}` : "")].filter(Boolean).join(" · ");
+    document.getElementById("reminder-last").textContent = l.reminderSentAt ? `Last reminder sent ${timeAgo(l.reminderSentAt)}.` : "";
+    document.getElementById("reminder-message").value = renderMessage("returnReminder", String(l.borrowerName || "").split(" ")[0], items,
+      { manageUrl: l.manageUrl, borrowedDate: l.dateBorrowed, returnDate: l.expectedReturn, daysOut: l.daysOut });
+    setupSendBy("reminder", { ...l, phone: l.borrowerPhone, email: l.borrowerEmail, preferredContact: l.borrowerContact },
+      "reminder-send-btn", { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Open email", none: "Close" }, { noNone: true, mailto: true });
+    document.getElementById("reminder-send-btn").onclick = async () => {
+      const { choice, c } = SEND_BY["reminder"];
+      if (choice !== "none") openOutbound(choice, c, document.getElementById("reminder-message").value); // before any await
+      closeSheet("reminder-sheet");
+      const res = await api(`/admin/loans/${safeId(l.id)}/reminder`, "POST", { via: choice, borrower: l.borrowerName, loanId: l.loanId, itemType: l.itemTypeName }).catch(() => null);
+      if (res && res.success) {
+        l.reminderSentAt = res.reminderSentAt;
+        renderLoans();
+        showToast("Reminder noted on the loan");
+      } else showToast("Message opened — couldn't note it on the loan");
+    };
+    openSheet("reminder-sheet");
   }
 
   function openPickupInstructions(r) {
@@ -3520,6 +3580,7 @@
     { kind: "decline",     key: "declineMessage",     label: "Request declined" },
     { kind: "pickup",      key: "pickupMessage",      label: "Ready for pickup" },
     { kind: "appointment", key: "appointmentMessage", label: "Appointment confirmed" },
+    { kind: "returnReminder", key: "returnReminderMessage", label: "Return reminder" },
   ];
   const CONTACT_METHODS = ["Call", "Text", "WhatsApp", "Email"];
   const CONTACT_NEEDS = { Call: "Phone", Text: "Phone", WhatsApp: "WhatsApp (or Phone)", Email: "Email" };
@@ -4967,7 +5028,7 @@
     "Loan Created", "Item Returned", "Item Reserved",
     "Reservation Cancelled", "Marked for Repair", "Restored",
     "Request Received", "Request Confirmed", "Request Declined", "Borrower Created",
-    "Add-on Ordered", "Add-on Handed Over", "Request Cancelled", "Ready to Return"
+    "Add-on Ordered", "Add-on Handed Over", "Request Cancelled", "Ready to Return", "Return Reminder Sent"
   ];
 
   const HISTORY_DOT_COLORS = {
@@ -4985,6 +5046,7 @@
     "Borrower Created":       "#F9A825",
     "Request Cancelled":      "#9E9E9E",
     "Ready to Return":        "#2E7D32",
+    "Return Reminder Sent":   "#B45309",
   };
 
   let historyState = {

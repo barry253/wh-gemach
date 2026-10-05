@@ -65,6 +65,7 @@ function gemachFromRecord(r) {
       decline: nonBlank(f["Decline Message"]),
       pickup: nonBlank(f["Pickup Message"]),
       appointment: nonBlank(f["Appointment Message"]),
+      returnReminder: nonBlank(f["Return Reminder Message"]),
     },
     active: !!f.Active,
     logoUrl: nonBlank(f["Logo URL"]) || f.Logo?.[0]?.url || null,
