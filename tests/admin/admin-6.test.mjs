@@ -190,11 +190,14 @@ const popts = await page.$$eval("#pickup-instructions-send-by [data-send]", bs =
 ok(JSON.stringify(popts) === JSON.stringify(["email"]) && await page.textContent("#pickup-instructions-send-btn") === "Send email", "pickup: email only → Send email " + popts);
 ok(/Sent from noreply@whgemachs\.org to rb@example\.com/.test(await page.textContent("#pickup-instructions-send-by")), "says we send it");
 await page.click("#pickup-instructions-send-btn");
-await page.waitForFunction(() => document.body.textContent.includes("Pickup details emailed"));
+await page.waitForFunction(() => document.body.textContent.includes("Pickup details emailed") && !document.getElementById("pickup-instructions-sheet").classList.contains("open"));
 opened = await page.evaluate(() => window.__opened.splice(0));
 const pe = calls.find(c => c.method === "POST" && c.path === "/admin/loans/recRES00000000002/pickup-email");
 ok(!opened.length && pe && /^Hi Res, pick up at 507 Walton Court/.test(pe.body.message), "pickup email sent by the server with the message " + JSON.stringify(pe && pe.body));
 await page.evaluate(() => openPickupInstructions(rec("res", "recRES00000000001")));
+await page.waitForSelector(`#pickup-instructions-send-by [data-send="sms"]`, { state: "visible", timeout: 5000 }).catch(async () => {
+  console.log("FAIL pickup sheet not showing: " + JSON.stringify(await page.evaluate(() => ({ open: document.getElementById("pickup-instructions-sheet").className, opts: document.getElementById("pickup-instructions-send-by").innerHTML.slice(0, 300) }))));
+});
 ok(await page.textContent("#pickup-instructions-send-btn") === "Open WhatsApp", "pickup WA label");
 await page.click(`#pickup-instructions-send-by [data-send="sms"]`);
 ok(await page.textContent("#pickup-instructions-send-btn") === "Open text message", "pickup SMS label");
