@@ -97,7 +97,8 @@ await page.click(".nav-tab:has-text('Settings')");
 await page.click("#set-tab-messages");
 await page.click("#tpl-returnReminder summary");
 await page.waitForSelector("#set-returnReminderMessage");
-{ // template boxes: full width and tall enough for the text
+{ // template boxes: full width and tall enough for the text (sized when the box opens)
+  await page.waitForFunction(() => { const el = document.getElementById("set-returnReminderMessage"); return el.getBoundingClientRect().height + 4 >= el.scrollHeight; }, null, { timeout: 3000 }).catch(() => {});
   const box = await page.$eval("#set-returnReminderMessage", el => ({ w: el.getBoundingClientRect().width, pw: el.parentElement.getBoundingClientRect().width, h: el.getBoundingClientRect().height, sh: el.scrollHeight }));
   ok(box.w >= box.pw - 32 && box.h >= 140 && box.h + 4 >= box.sh, "template box fills the width and fits its text " + JSON.stringify(box));
 }
