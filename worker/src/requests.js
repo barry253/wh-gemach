@@ -24,6 +24,8 @@ async function handleGetRequests({ db, g, env }) {
   const reqs = await db.listAll(T.REQUESTS, {
     filter: fAnd(scopeF(g), `{Status}="New"`),
     sort: [{ field: "Received At", direction: "asc" }],
+    fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Item Quantities", "Needed From", "Needed Until",
+      "Open-ended duration", "Notes", "Received At", "Request Type", "Event Date", "Preferred Times", "Party Size", "Deposit Acknowledged", "Appointment At"],
   });
   const info = await itemTypeInfoMap(db, reqs.flatMap(r => r.fields["Items Requested"] || []), g);
   const qtyTypeIds = Object.keys(info).filter(id => info[id].qty);
@@ -183,6 +185,7 @@ async function handleGetAppointments({ db, g, env }) {
   const recs = await db.listAll(T.REQUESTS, {
     filter: fAnd(scopeF(g), `{Request Type}="Appointment"`, `{Status}!="Declined"`, `{Status}!="Cancelled"`, `{Appointment At}`, `NOT(IS_BEFORE({Appointment At},${fStr(since)}))`),
     sort: [{ field: "Appointment At", direction: "asc" }],
+    fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Appointment At", "Party Size", "Event Date", "Notes", "Status"],
   });
   const nameMap = await itemTypeNameMap(db, recs.flatMap(r => r.fields["Items Requested"] || []), g);
   const out = (await Promise.all(recs

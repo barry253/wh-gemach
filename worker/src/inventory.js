@@ -2,7 +2,7 @@
 import { fAnd, fetchByIds, firstLink, linkedId, scopeF } from "./airtable.js";
 import { T } from "./config.js";
 import { json } from "./http.js";
-import { borrowerInfo } from "./loans.js";
+import { BORROWER_FIELDS, borrowerInfo } from "./loans.js";
 import { isAddonType, isQtyType } from "./quantity.js";
 
 // ─── Admin inventory ──────────────────────────────────────────────────────────
@@ -15,11 +15,12 @@ import { isAddonType, isQtyType } from "./quantity.js";
  */
 async function handleAdminInventory({ db, g, url }) {
   const [items, itemTypes, activeLoans] = await Promise.all([
-    db.listAll(T.ITEMS, { filter: scopeF(g), sort: [{ field: "Item ID", direction: "asc" }] }),
+    db.listAll(T.ITEMS, { filter: scopeF(g), sort: [{ field: "Item ID", direction: "asc" }], fields: ["Item ID", "Item Type", "Condition", "Status", "Active", "Notes"] }),
     db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name", "Tracking"] }),
     db.listAll(T.LOANS, {
       filter: fAnd(scopeF(g), `OR({Status}="Active",{Status}="Reserved")`),
       sort: [{ field: "Loan ID", direction: "asc" }],
+      fields: ["Loan ID", "Item", "Item to Reserve", "Status", "Date Borrowed", "Reservation Start", "Reservation End", "Notes", "Borrower"],
     }),
   ]);
   const itemTypeMap = Object.fromEntries(itemTypes.map(r => [r.id, r.fields["Name"]]));
@@ -46,7 +47,7 @@ async function handleAdminInventory({ db, g, url }) {
   });
 
   const borrowerIds = [...Object.values(loanByItem).map(l => l.borrowerId), ...holdLoans.map(l => linkedId(firstLink(l.fields["Borrower"])))];
-  const borrowers = await fetchByIds(db, T.BORROWERS, [...new Set(borrowerIds.filter(Boolean))], { g });
+  const borrowers = await fetchByIds(db, T.BORROWERS, [...new Set(borrowerIds.filter(Boolean))], { g, fields: BORROWER_FIELDS });
   const borrowerMap = Object.fromEntries(borrowers.map(r => [r.id, borrowerInfo(r)]));
 
   const records = items.map(r => {

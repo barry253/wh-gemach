@@ -2,7 +2,7 @@
 import { AirtableError, fetchByIds } from "./airtable.js";
 import { validateAttrDefs } from "./attributes.js";
 import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
-import { CONTACT_METHODS, HEX_RE, ITEM_VIEWS, REQUEST_STYLES, gemachFromRecord, gemachMemo } from "./gemachs.js";
+import { CONTACT_METHODS, HEX_RE, ITEM_VIEWS, REQUEST_STYLES, gemachFromRecord, gemachMemo, getGemachRecord } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { NAME_TAKEN, gemachNameTaken } from "./network.js";
 import { publicGemach } from "./public.js";
@@ -64,7 +64,7 @@ async function adminGemachPayload(db, g, user) {
 
 async function handleGetAdminGemach({ db, g, user }) {
   // Read the record fresh (the slug memo may be up to 60s old).
-  const rec = await db.get(T.GEMACHS, g.id);
+  const rec = await getGemachRecord(db, g.id);
   const fresh = rec ? gemachFromRecord(rec) : g;
   return json(await adminGemachPayload(db, fresh, user));
 }
@@ -261,7 +261,7 @@ const logoPrefixFor = (env, g) => env.ASSETS_URL ? `${String(env.ASSETS_URL).rep
 async function handleUpdateAdminGemach({ db, g, env, user, request }) {
   if (!canEditGemach(user)) return json({ error: "Only an Owner or Manager can edit gemach settings." }, 403);
   const body = await readJson(request);
-  const currentRec = await db.get(T.GEMACHS, g.id);
+  const currentRec = await getGemachRecord(db, g.id);
   const current = currentRec ? gemachFromRecord(currentRec) : g;
   const { fields, error } = validateGemachPatch(body, { current, logoPrefix: logoPrefixFor(env, g) });
   if (error) return json({ error }, 400);

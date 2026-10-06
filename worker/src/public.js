@@ -7,7 +7,7 @@ import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs,
 import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
 import { parseMorePhotos } from "./photos.js";
-import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageSize, packageUnit, qtyAvailable } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageSize, packageUnit, qtyAvailable, TYPE_PUBLIC_FIELDS } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ function publicItemType(type, availableIds, { withCategory = false, bookings = n
 
 async function loadInventory(db, g, opts = {}) {
   const [types, avail] = await Promise.all([
-    db.listAll(T.ITEM_TYPES, { filter: fAnd(scopeF(g), `{Active}=1`), sort: [{ field: "Display Order", direction: "asc" }] }),
+    db.listAll(T.ITEM_TYPES, { filter: fAnd(scopeF(g), `{Active}=1`), sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
     db.listAll(T.ITEMS, { filter: fAnd(scopeF(g), `{Active}=1`, `{Status}="Available"`), fields: ["Item ID"] }),
   ]);
   const availableIds = new Set(avail.map(r => r.id));
@@ -88,7 +88,7 @@ function publicGemach(g, communityName) {
 
 /** Active Product Categories, sorted by Display Order (blank last) then name. */
 async function loadCategories(db) {
-  const recs = await db.listAll(T.PRODUCT_CATEGORIES, { filter: `{Active}=1` });
+  const recs = await db.listAll(T.PRODUCT_CATEGORIES, { filter: `{Active}=1`, fields: ["Name", "Icon", "Keywords", "Display Order", "Active"] });
   return recs
     .filter(r => r.fields.Active && r.fields.Name)
     .map(r => {
@@ -119,7 +119,7 @@ async function handleLegacyInventory(db) {
 async function buildDirectory(db) {
   const [gemachs, types, avail, categories] = await Promise.all([
     listActiveGemachs(db),
-    db.listAll(T.ITEM_TYPES, { filter: `{Active}=1`, sort: [{ field: "Display Order", direction: "asc" }] }),
+    db.listAll(T.ITEM_TYPES, { filter: `{Active}=1`, sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
     db.listAll(T.ITEMS, { filter: `AND({Active}=1,{Status}="Available")`, fields: ["Item ID"] }),
     loadCategories(db),
   ]);

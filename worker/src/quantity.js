@@ -54,6 +54,11 @@ function packageFields(body) {
 
 /** "Chairs × 40" for quantity types, plain name otherwise. */
 const qtyLabel = (name, n) => (n ? `${name} × ${n}` : name);
+// Item Types rows link to every Loan and Request ever made for them; reads name their fields to skip those.
+const TYPE_COUNT_FIELDS = ["Tracking", "Quantity Owned", "Out of Service", "Package Size", "Package Unit", "Price"]; // quantity / add-on helpers
+const TYPE_PHOTO_FIELDS = ["R2 Photo URL", "Photo", "More Photos"];
+const TYPE_PUBLIC_FIELDS = ["Name", "Description", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category", "Gemach"];
+const TYPE_ADMIN_FIELDS = ["Name", "Description", "Display Order", "Active", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category"];
 const LOAN_WINDOW_FIELDS = ["Item to Reserve", "Status", "Quantity", "Reservation Start", "Reservation End", "Date Borrowed", "Expected Return", "Gemach"];
 
 /** Requests."Item Quantities" JSON -> { typeId: n } (bad JSON / values ignored). */
@@ -137,7 +142,7 @@ function typePhotos(r) {
 }
 
 async function itemTypeInfoMap(db, ids, g) {
-  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Tracking", "Quantity Owned", "Out of Service", "Price", "R2 Photo URL", "Photo", "More Photos"] });
+  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", ...TYPE_COUNT_FIELDS, ...TYPE_PHOTO_FIELDS] });
   return Object.fromEntries(recs.map(r => [r.id, {
     name: r.fields.Name || r.id,
     photo: typePhoto(r),
@@ -210,4 +215,4 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
   return out;
 }
 
-export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto, typePhotos };
+export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto, typePhotos, TYPE_PUBLIC_FIELDS, TYPE_ADMIN_FIELDS, TYPE_PHOTO_FIELDS, TYPE_COUNT_FIELDS };

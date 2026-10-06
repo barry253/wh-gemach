@@ -40,7 +40,7 @@ async function handleLogin(request, db, env, ctx) {
 async function lookupAdminSession(db, email) {
   email = String(email || "").toLowerCase();
   if (!email) return { ok: false, error: "Not authorized" };
-  const admins = await db.listAll(T.ADMINS, { filter: `AND(LOWER({Email})=${fStr(email)},{Active}=1)`, maxRecords: 1 });
+  const admins = await db.listAll(T.ADMINS, { filter: `AND(LOWER({Email})=${fStr(email)},{Active}=1)`, maxRecords: 1, fields: ["Name", "Role", "Gemachs", "Last Active"] });
   if (!admins.length) return { ok: false, error: "Not authorized" };
 
   const admin = admins[0].fields;

@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, fStr, linkedId } from "./airtable.js";
+import { AirtableError, fStr, fetchByIds, linkedId } from "./airtable.js";
 import { sendAlert } from "./alerts.js";
 import { purgePublicCache } from "./cache.js";
 import { DEFAULT_ADMIN_URL, LEGACY_SLUG, NETWORK_ADMIN_ROLE, REC_RE, SLUG_RE, T } from "./config.js";
@@ -178,7 +178,7 @@ async function netCreateGemach(c) {
 async function netUpdateGemach(c, id) {
   const { db, env, ctx } = c;
   if (!REC_RE.test(id)) return json({ error: "Not found" }, 404);
-  const rec = await db.get(T.GEMACHS, id);
+  const [rec] = await fetchByIds(db, T.GEMACHS, [id], { fields: ["Slug", "Active", "Email", "Phone"] });
   if (!rec) return json({ error: "Not found" }, 404);
   const body = await readJson(c.request);
   const f = {};

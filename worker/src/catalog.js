@@ -1,18 +1,18 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { AirtableError, firstLink, getOwned, linkedId, scopeF } from "./airtable.js";
 import { parseItemAttrs, validateItemAttrs } from "./attributes.js";
-import { gemachFromRecord } from "./gemachs.js";
+import { gemachFromRecord, getGemachRecord } from "./gemachs.js";
 import { parseMorePhotos, validateMorePhotos } from "./photos.js";
 import { REC_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { json, readJson } from "./http.js";
 import { generateNextItemId } from "./ids.js";
-import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageFields, packageSize, packageUnit, qtyAvailable, wholeNum } from "./quantity.js";
+import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageFields, packageSize, packageUnit, qtyAvailable, wholeNum, TYPE_ADMIN_FIELDS } from "./quantity.js";
 
 // ─── Catalog — Item Types ─────────────────────────────────────────────────────
 
 async function handleGetItemTypes({ db, g }) {
-  const types = await db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }] });
+  const types = await db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_ADMIN_FIELDS });
   const qtyIds = types.filter(isQtyType).map(t => t.id);
   const bookings = qtyIds.length ? await loadQtyBookings(db, g, qtyIds) : {};
   const t = nyToday();
@@ -116,7 +116,7 @@ async function resolveAttributesField(db, g, attributes) {
   if (attributes === undefined) return { skip: true };
   let defs = g.itemAttributes || [];
   if (attributes && typeof attributes === "object" && Object.keys(attributes).length) {
-    const rec = await db.get(T.GEMACHS, g.id); // Settings may have just changed; the gemach memo can be up to 60s old
+    const rec = await getGemachRecord(db, g.id); // Settings may have just changed; the gemach memo can be up to 60s old
     if (rec) defs = gemachFromRecord(rec).itemAttributes;
   }
   return validateItemAttrs(attributes, defs);
@@ -190,7 +190,7 @@ async function handleUpdateItemType(c, id) {
 
 async function handleGetCatalogItems({ db, g }) {
   const [items, itemTypes] = await Promise.all([
-    db.listAll(T.ITEMS, { filter: scopeF(g), sort: [{ field: "Item ID", direction: "asc" }] }),
+    db.listAll(T.ITEMS, { filter: scopeF(g), sort: [{ field: "Item ID", direction: "asc" }], fields: ["Item ID", "Item Type", "Condition", "Active", "Status", "Notes"] }),
     db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name", "Active"] }),
   ]);
   const itemTypeMap = Object.fromEntries(itemTypes.map(r => [r.id, { name: r.fields["Name"] }]));

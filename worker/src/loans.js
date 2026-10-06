@@ -15,6 +15,11 @@ import { emailSignature } from "./settings.js";
 
 // ─── Loans / reservations shared lookups ──────────────────────────────────────
 
+const BORROWER_FIELDS = ["Name", "Phone", "Email", "Preferred Contact"]; // what borrowerInfo reads
+// What the Loans / Reservations lists read from each loan (incl. loanQtyInfo and the manage link).
+const LOAN_LIST_FIELDS = ["Loan ID", "Item", "Item to Reserve", "Borrower", "Status", "Quantity", "Date Borrowed", "Expected Return",
+  "Reservation Start", "Reservation End", "Notes", "Request Note", "Ready To Return At", "Reminder Sent At", "Reminder Sent Via", "Source Request"];
+
 function borrowerInfo(r) {
   return {
     name: r.fields["Name"] || null,
@@ -29,7 +34,7 @@ async function loadLoanRelations(db, g, loans, { includeItemToReserve = false } 
   const borrowerIds = loans.map(l => linkedId(firstLink(l.fields["Borrower"]))).filter(Boolean);
   const itemIds = loans.map(l => linkedId(firstLink(l.fields["Item"]))).filter(Boolean);
   const [borrowers, items] = await Promise.all([
-    fetchByIds(db, T.BORROWERS, borrowerIds, { g }),
+    fetchByIds(db, T.BORROWERS, borrowerIds, { g, fields: BORROWER_FIELDS }),
     fetchByIds(db, T.ITEMS, itemIds, { g, fields: ["Item ID", "Item Type", "Gemach"] }),
   ]);
   const borrowerMap = Object.fromEntries(borrowers.map(r => [r.id, borrowerInfo(r)]));
@@ -64,6 +69,7 @@ async function handleGetLoans({ db, g, env }) {
   const loans = await db.listAll(T.LOANS, {
     filter: fAnd(scopeF(g), `{Status}="Active"`),
     sort: [{ field: "Date Borrowed", direction: "asc" }],
+    fields: LOAN_LIST_FIELDS,
   });
   const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
   const now = new Date();
@@ -155,7 +161,7 @@ async function emailBorrower(c, loan, message, subject) {
   if (!text) return { error: "Write a message first.", status: 400 };
   if (text.length > MAX_MESSAGE) return { error: "That message is too long.", status: 400 };
   const bId = linkedId(firstLink(loan.fields["Borrower"]));
-  const [b] = bId ? await fetchByIds(db, T.BORROWERS, [bId], { g }) : [];
+  const [b] = bId ? await fetchByIds(db, T.BORROWERS, [bId], { g, fields: ["Email"] }) : [];
   const to = String(b?.fields?.Email || "").trim();
   if (!to) return { error: "This borrower has no email address.", status: 400 };
   const ok = await sendEmail(env, g, { to, subject, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true }) });
@@ -317,6 +323,7 @@ async function handleGetReservations({ db, g, env }) {
   const loans = await db.listAll(T.LOANS, {
     filter: fAnd(scopeF(g), `{Status}="Reserved"`),
     sort: [{ field: "Reservation Start", direction: "asc" }],
+    fields: LOAN_LIST_FIELDS,
   });
   const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
 
@@ -513,4 +520,4 @@ async function handleAssignItem(c, itemRecId) {
   return json({ success: true, loanId, data: loanData });
 }
 
-export { handlePickupEmail, handleLoanReminder, borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem };
+export { handlePickupEmail, handleLoanReminder, borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem, BORROWER_FIELDS, LOAN_LIST_FIELDS };

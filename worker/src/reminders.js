@@ -5,9 +5,9 @@ import { sendAlert } from "./alerts.js";
 import { T } from "./config.js";
 import { DAY_MS, addDays, dateToUtcMs, isValidDate, nyToday } from "./dates.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
-import { gemachFromRecord } from "./gemachs.js";
+import { GEMACH_FIELDS, gemachFromRecord } from "./gemachs.js";
 import { json } from "./http.js";
-import { loadLoanRelations, loanQtyInfo } from "./loans.js";
+import { LOAN_LIST_FIELDS, loadLoanRelations, loanQtyInfo } from "./loans.js";
 import { manageUrl } from "./manage.js";
 import { effectiveTemplates, emailSignature } from "./settings.js";
 
@@ -116,10 +116,10 @@ const VALID_EMAIL = /^[^\s@<>()"',;:\\]+@[^\s@<>()"',;:\\]+\.[^\s@<>()"',;:\\]+$
  */
 async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = makeDb(env) } = {}) {
   const today = nyToday(now);
-  const recs = await db.listAll(T.GEMACHS, { filter: `AND({Active}, {Auto Reminders}, {Slug}!="")` });
+  const recs = await db.listAll(T.GEMACHS, { filter: `AND({Active}, {Auto Reminders}, {Slug}!="")`, fields: GEMACH_FIELDS });
   const out = { today, dryRun, sent: [], failed: [], noEmail: 0 };
   for (const g of recs.map(gemachFromRecord)) {
-    const loans = await db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `{Status}="Active"`, `NOT({Expected Return}=BLANK())`) });
+    const loans = await db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `{Status}="Active"`, `NOT({Expected Return}=BLANK())`), fields: LOAN_LIST_FIELDS });
     if (!loans.length) continue;
     const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
     for (const l of loans) {

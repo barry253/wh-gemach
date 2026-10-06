@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fStr, linkedId } from "./airtable.js";
+import { fStr, fetchByIds, linkedId } from "./airtable.js";
 import { CACHE_TTL_MS, LEGACY_SLUG, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
 import { isLiveNetworkAdmin } from "./network.js";
 import { parseAttrDefs } from "./attributes.js";
@@ -22,6 +22,21 @@ const clampInt = (v, lo, hi, dflt) => {
   if (v == null || v === "" || !Number.isFinite(n)) return dflt;
   return Math.min(hi, Math.max(lo, Math.round(n)));
 };
+
+// Every field gemachFromRecord reads. Gemachs rows also link to Items, Loans, Requests, Borrowers and the
+// Activity Log, lists that only grow — reading them costs the worker CPU for nothing, so reads name their fields.
+const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", "Website", "Donation URL", "Donation Info", "Hours",
+  "Description", "Category", "Mode", "Primary Contact", "Secondary Contact", "Theme Color", "Accent Color", "Deposit Required",
+  "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Style", "Event Label", "Pickup Days Before", "Return Days After",
+  "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Logo", "Display Order",
+  "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
+  "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories"];
+
+/** One gemach's record by id, with just GEMACH_FIELDS (null if it doesn't exist). */
+async function getGemachRecord(db, id) {
+  const [rec] = await fetchByIds(db, T.GEMACHS, [id], { fields: GEMACH_FIELDS });
+  return rec || null;
+}
 
 function gemachFromRecord(r) {
   const f = r.fields || {};
@@ -92,7 +107,7 @@ async function loadGemachBySlug(db, slug) {
   if (!SLUG_RE.test(slug || "")) return null;
   const hit = gemachMemo.get(slug);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.g;
-  const recs = await db.listAll(T.GEMACHS, { filter: `{Slug}=${fStr(slug)}`, maxRecords: 2 });
+  const recs = await db.listAll(T.GEMACHS, { filter: `{Slug}=${fStr(slug)}`, maxRecords: 2, fields: GEMACH_FIELDS });
   const g = recs.length === 1 ? gemachFromRecord(recs[0]) : null;
   if (recs.length > 1) console.error(`Duplicate gemach slug: ${slug}`);
   if (g) gemachMemo.set(slug, { g, at: Date.now() });
@@ -103,13 +118,14 @@ async function listActiveGemachs(db) {
   const recs = await db.listAll(T.GEMACHS, {
     filter: `AND({Active}=1,{Slug}!="")`,
     sort: [{ field: "Name", direction: "asc" }],
+    fields: GEMACH_FIELDS,
   });
   return recs.map(gemachFromRecord).filter(g => SLUG_RE.test(g.slug || "")).sort(byOrderThenName);
 }
 
 /** Every gemach with a valid slug (active and hidden) — for Network Admins. Sorted by name. */
 async function listAllGemachs(db) {
-  const recs = await db.listAll(T.GEMACHS, { filter: `{Slug}!=""` });
+  const recs = await db.listAll(T.GEMACHS, { filter: `{Slug}!=""`, fields: GEMACH_FIELDS });
   return recs.map(gemachFromRecord).filter(g => SLUG_RE.test(g.slug || "")).sort((a, b) => a.name.localeCompare(b.name));
 }
 const gemachRef = g => ({ id: g.id, slug: g.slug, name: g.name, active: !!g.active });
@@ -182,4 +198,4 @@ async function isLiveNetworkAdminMemo(db, email) {
   return ok;
 }
 
-export { ITEM_VIEWS, gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo, liveAdminMemo, fetchLiveAdmin, forgetLiveAdmin, forgetAllLiveAdmins };
+export { GEMACH_FIELDS, getGemachRecord, ITEM_VIEWS, gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo, liveAdminMemo, fetchLiveAdmin, forgetLiveAdmin, forgetAllLiveAdmins };

@@ -112,7 +112,9 @@ globalThis.fetch = async (input, init = {}) => {
     const all = rows.filter(r => evalFilter(table, b.filterByFormula, r));
     const start = Number(b.offset || 0);
     const size = Math.min(PAGE, b.maxRecords || PAGE);
-    const page = all.slice(start, start + size);
+    // Like Airtable: with a field list, only those fields come back (catches a read that forgets one).
+    const pick = r => (Array.isArray(b.fields) ? { ...r, fields: Object.fromEntries(Object.entries(r.fields).filter(([k]) => b.fields.includes(k))) } : r);
+    const page = all.slice(start, start + size).map(pick);
     const next = start + size < all.length && !(b.maxRecords && start + size >= b.maxRecords) ? String(start + size) : undefined;
     return new Response(JSON.stringify({ records: page, offset: next }));
   }
