@@ -216,6 +216,10 @@
     .tpl-item[open] summary::after { content: "▴"; }
     .tpl-state { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 0.82rem; }
     .tpl-body { padding: 0 0.9rem 0.9rem; }
+    /* Message templates: full width, roomy, grows with the text */
+    .tpl-body textarea { display: block; width: 100%; min-height: 9rem; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;
+      font-family: 'Inter', sans-serif; font-size: 0.9rem; line-height: 1.5; color: var(--text); background: var(--white); resize: vertical; }
+    .tpl-body textarea:focus { outline: none; border-color: var(--navy, #1B3A4B); box-shadow: 0 0 0 3px rgba(27,58,75,.12); }
     .settings-savebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; align-items: center; gap: 0.5rem;
       background: #fff; border-top: 1px solid var(--border, #E5E7EB); box-shadow: 0 -4px 16px rgba(0,0,0,.08);
       padding: 0.7rem max(1rem, calc(50vw - 330px)) calc(0.8rem + env(safe-area-inset-bottom)); }
@@ -4102,7 +4106,7 @@
           <summary><span class="tpl-name">${t.label}</span> <span class="tpl-state" id="set-${t.key}-state"></span></summary>
           <div class="tpl-body">
             <label class="sr-only" for="set-${t.key}">${t.label}</label>
-            <textarea id="set-${t.key}" rows="6" maxlength="2000"></textarea>
+            <textarea id="set-${t.key}" rows="6" maxlength="2000" oninput="fitTemplateBox(this)"></textarea>
             ${ro ? "" : `<div style="text-align:right;margin-top:0.4rem"><button class="btn btn-ghost btn-sm" type="button" onclick="resetTemplate('${t.kind}')">Reset to default</button></div>`}
           </div>
         </details>`).join("")}
@@ -4475,6 +4479,18 @@
     state.textContent = isDefault ? "· default" : "· custom";
   }
 
+  /** Grow a template box to fit its text (or its default, shown as placeholder), up to ~25 lines. */
+  function fitTemplateBox(el) {
+    if (!el || !el.offsetParent) return; // closed or hidden: sized when opened
+    const empty = !el.value;
+    if (empty) el.value = el.placeholder || "";
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight + 2, 600) + "px";
+    if (empty) el.value = "";
+  }
+  document.addEventListener("toggle", e => {
+    if (e.target.classList?.contains("tpl-item") && e.target.open) fitTemplateBox(e.target.querySelector("textarea"));
+  }, true);
   function showSettingsArea(id, quiet) {
     if (!visibleSettingsAreas().some(a => a.id === id)) id = "profile";
     SETTINGS_AREA = id;
@@ -4632,6 +4648,7 @@
     const t = SETTINGS_TEMPLATES.find(x => x.kind === kind);
     const el = document.getElementById(`set-${t.key}`);
     el.value = ""; // cleared -> the built-in default is used (shown as placeholder)
+    fitTemplateBox(el);
     updateTemplateState(t);
     refreshSettingsDirty();
   }
