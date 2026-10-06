@@ -553,7 +553,19 @@
     .row-thumb { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 7px; object-fit: cover; border: 1px solid var(--border); background: #F3F4F6; display: block; }
     .row-thumb-none { display: inline-flex; align-items: center; justify-content: center; color: #9CA3AF; font-size: 1rem; }
     .req-thumbs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.15rem 0 0.6rem; }
-    .req-thumbs .row-thumb { width: 56px; height: 56px; flex-basis: 56px; }
+    .row-thumb-btn { position: relative; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 7px; line-height: 0; }
+    .row-thumb-btn:focus-visible { outline: 2px solid var(--amber, #D97706); outline-offset: 2px; }
+    .row-thumb-count { position: absolute; right: 2px; bottom: 2px; background: rgba(0,0,0,.62); color: #fff; font-size: 0.62rem; font-weight: 700; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+    .photo-viewer { position: fixed; inset: 0; z-index: 200; background: rgba(10,15,20,.94); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3.5rem 0.75rem calc(1rem + env(safe-area-inset-bottom)); gap: 0.75rem; }
+    .photo-viewer[hidden] { display: none; }
+    .photo-viewer img { flex: 1 1 0; min-height: 0; max-width: 100%; width: 100%; object-fit: contain; }
+    .pv-caption { color: #fff; font-weight: 600; font-size: 0.95rem; text-align: center; }
+    .pv-caption span { color: rgba(255,255,255,.7); font-weight: 400; margin-left: 0.35rem; font-size: 0.85rem; }
+    .pv-close, .pv-nav { position: absolute; border: 0; color: #fff; background: rgba(255,255,255,.16); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .pv-close { top: 0.75rem; right: 0.75rem; width: 44px; height: 44px; border-radius: 50%; font-size: 1.7rem; }
+    .pv-nav { top: 50%; transform: translateY(-50%); width: 44px; height: 56px; border-radius: 10px; font-size: 2rem; }
+    .pv-nav[hidden] { display: none; }
+    .pv-prev { left: 0.5rem; } .pv-next { right: 0.5rem; }
     .loan-row-main {
       flex: 1;
       min-width: 0;
@@ -1504,6 +1516,14 @@
 </div>
 
 <!-- Network: Admin Sheet -->
+<div class="photo-viewer" id="photo-viewer" role="dialog" aria-modal="true" aria-label="Item photo" hidden>
+  <button type="button" class="pv-close" id="pv-close" aria-label="Close photo" onclick="closePhotoViewer()">×</button>
+  <img id="pv-img" src="data:," alt="" />
+  <button type="button" class="pv-nav pv-prev" id="pv-prev" aria-label="Previous photo" onclick="showViewerPhoto(viewer.i - 1)" hidden>‹</button>
+  <button type="button" class="pv-nav pv-next" id="pv-next" aria-label="Next photo" onclick="showViewerPhoto(viewer.i + 1)" hidden>›</button>
+  <div class="pv-caption"><span id="pv-name" style="color:#fff;font-weight:600;margin:0;font-size:0.95rem"></span><span id="pv-count" aria-live="polite"></span></div>
+</div>
+
 <div class="sheet-overlay" id="team-sheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -2721,7 +2741,7 @@
         .map(i => `Only ${i.available} ${i.name} free for these dates (asked for ${i.quantity})`);
       // whatsappUrl removed — using waUrl() instead
 
-      const photos = (r.items || []).filter(i => i.photo && /^https:\/\//i.test(i.photo));
+      const photos = (r.items || []).filter(i => okPhoto(i.photo));
       return `<div class="card" id="req-${rid}">
         <div class="card-header">
           <div>
@@ -2732,7 +2752,7 @@
             <span class="tag ${isAppt ? "tag-amber" : "tag-green"}">${isAppt ? "Appointment" : "Loan"}</span>
           </div>
         </div>
-        ${photos.length ? `<div class="req-thumbs">${photos.map(i => `<img class="row-thumb" src="${esc(i.photo)}" alt="${esc(i.name)}" title="${esc(i.name)}" loading="lazy" width="56" height="56" onerror="this.remove()" />`).join("")}</div>` : ""}
+        ${photos.length ? `<div class="req-thumbs">${photos.map(i => rowThumb(i.photo, i.name, i.photos, 56)).join("")}</div>` : ""}
         <div class="card-meta">
           ${items ? `<span>📦 ${esc(items)}</span>` : ""}
           ${addonText ? `<span>🛍 ${esc(addonText)}</span>` : ""}
@@ -2952,13 +2972,71 @@
     renderLoans();
   }
 
-  /** 40px item photo for a loan / reservation row; a plain box when the item type has no photo. */
-  function rowThumb(url, name) {
-    const safe = url && /^https:\/\//i.test(url) ? url : null;
-    return safe
-      ? `<img class="row-thumb" src="${esc(safe)}" alt="${esc(name || "")}" loading="lazy" width="40" height="40" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'row-thumb row-thumb-none',textContent:'▫'}))" />`
-      : `<span class="row-thumb row-thumb-none" aria-hidden="true">▫</span>`;
+  /**
+   * Item photo for a loan / reservation row (40px) or a request card (56px); a plain box when there's none.
+   * Tapping it opens the photo viewer with all of the item's photos (cover first).
+   */
+  const PHOTO_SETS = new Map(); // key -> { list, name }
+  const PHOTO_KEYS = new Map(); // signature -> key
+  const okPhoto = u => typeof u === "string" && /^https:\/\//i.test(u);
+  function rowThumb(url, name, photos, size = 40) {
+    const list = [url, ...(photos || [])].filter(okPhoto).filter((u, i, a) => a.indexOf(u) === i);
+    if (!list.length) return `<span class="row-thumb row-thumb-none" aria-hidden="true">▫</span>`;
+    const sig = `${name || ""}|${list.join(" ")}`; // one entry per distinct item, so re-renders don't pile up
+    let key = PHOTO_KEYS.get(sig);
+    if (!key) { key = `p${PHOTO_KEYS.size + 1}`; PHOTO_KEYS.set(sig, key); PHOTO_SETS.set(key, { list, name: name || "" }); }
+    return `<button type="button" class="row-thumb-btn" aria-label="View photo${list.length > 1 ? `s (${list.length})` : ""} of ${esc(name || "the item")}" onclick="event.stopPropagation();openPhotoViewer('${key}', this)">` +
+      `<img class="row-thumb" src="${esc(list[0])}" alt="" loading="lazy" width="${size}" height="${size}"${size !== 40 ? ` style="width:${size}px;height:${size}px;flex-basis:${size}px"` : ""} onerror="this.parentNode.replaceWith(Object.assign(document.createElement('span'),{className:'row-thumb row-thumb-none',textContent:'▫'}))" />` +
+      (list.length > 1 ? `<span class="row-thumb-count">${list.length}</span>` : "") + `</button>`;
   }
+  // ── Photo viewer (full screen; arrows, swipe, Esc) ──
+  let viewer = { list: [], i: 0, opener: null };
+  function openPhotoViewer(key, opener) {
+    const set = PHOTO_SETS.get(key);
+    if (!set) return;
+    viewer = { list: set.list, i: 0, opener };
+    const el = document.getElementById("photo-viewer");
+    document.getElementById("pv-name").textContent = set.name;
+    const many = set.list.length > 1;
+    document.getElementById("pv-prev").hidden = document.getElementById("pv-next").hidden = !many;
+    showViewerPhoto(0);
+    el.hidden = false;
+    document.body.style.overflow = "hidden";
+    document.getElementById(many ? "pv-next" : "pv-close").focus();
+  }
+  function showViewerPhoto(i) {
+    const n = viewer.list.length;
+    viewer.i = (i + n) % n;
+    const img = document.getElementById("pv-img");
+    img.src = viewer.list[viewer.i];
+    img.alt = `${document.getElementById("pv-name").textContent}, photo ${viewer.i + 1} of ${n}`;
+    document.getElementById("pv-count").textContent = n > 1 ? `${viewer.i + 1} / ${n}` : "";
+  }
+  function closePhotoViewer() {
+    const el = document.getElementById("photo-viewer");
+    if (el.hidden) return;
+    el.hidden = true;
+    document.body.style.overflow = "";
+    viewer.opener?.focus?.();
+  }
+  document.addEventListener("keydown", e => {
+    if (document.getElementById("photo-viewer")?.hidden !== false) return;
+    if (e.key === "Escape") closePhotoViewer();
+    else if (e.key === "ArrowRight" && viewer.list.length > 1) showViewerPhoto(viewer.i + 1);
+    else if (e.key === "ArrowLeft" && viewer.list.length > 1) showViewerPhoto(viewer.i - 1);
+  });
+  (() => {
+    const el = document.getElementById("photo-viewer");
+    let x = null, y = null;
+    el.addEventListener("click", e => { if (e.target === el || (e.target.id === "pv-img" && viewer.list.length < 2)) closePhotoViewer(); });
+    el.addEventListener("touchstart", e => { if (e.touches.length === 1) { x = e.touches[0].clientX; y = e.touches[0].clientY; } }, { passive: true });
+    el.addEventListener("touchend", e => {
+      if (x === null || viewer.list.length < 2) return;
+      const dx = e.changedTouches[0].clientX - x, dy = e.changedTouches[0].clientY - y;
+      x = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) showViewerPhoto(viewer.i + (dx < 0 ? 1 : -1));
+    });
+  })();
   function renderLoans() {
     let loans = allLoans;
     if (loanFilterType) loans = loans.filter(l => l.itemTypeName === loanFilterType);
@@ -2994,7 +3072,7 @@
       const hasNote = l.notes || l.requestNote;
       return `
         <div class="loan-row ${cls}" id="loan-row-${lid}" onclick="toggleLoanActions('${lid}')">
-          ${rowThumb(l.photo, l.itemTypeName)}
+          ${rowThumb(l.photo, l.itemTypeName, l.photos)}
           <div class="loan-row-main">
             <span class="loan-row-name">${esc(l.borrowerName)}</span>
             <span class="loan-row-item">${esc(l.itemTypeName || "")}</span>
@@ -3141,7 +3219,7 @@
 
       return `
         <div class="loan-row" id="res-row-${rid}" onclick="toggleResActions('${rid}')">
-          ${rowThumb(r.photo, r.itemTypeName)}
+          ${rowThumb(r.photo, r.itemTypeName, r.photos)}
           <div class="loan-row-main">
             <span class="loan-row-name">${esc(r.borrowerName)}</span>
             <span class="loan-row-item">${esc(r.itemTypeName || "Item TBD")}</span>

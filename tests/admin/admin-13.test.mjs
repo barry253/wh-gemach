@@ -17,12 +17,12 @@ function png(r, g, b, n = 64) {
   const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: n }, () => [r, g, b]).flat())]);
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.concat(Array(n).fill(row)))), chunk("IEND", Buffer.alloc(0))]);
 }
-const IMG = { "wc.png": png(70, 120, 160), "walker.png": png(200, 150, 60), "chair.png": png(120, 160, 90) };
+const IMG = { "wc.png": png(70, 120, 160), "wc2.png": png(160, 80, 90), "walker.png": png(200, 150, 60), "chair.png": png(120, 160, 90) };
 
 const iso = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString("en-CA"); };
 const G = { id: "recA", slug: "wh-medical", name: "West Hempstead Medical Gemach", canEdit: true, rawTemplates: {}, templates: {}, placeholders: [], primaryContact: "Text", phone: "5165551212" };
 const LOANS = [
-  { id: "recLOAN0000000001", loanId: "L-1", borrowerName: "Moshe Wasserman", itemTypeName: "Wheelchair", itemId: "WC-001", photo: "https://img.test/wc.png", dateBorrowed: iso(-10), expectedReturn: iso(4), daysOut: 10, overdue: false },
+  { id: "recLOAN0000000001", loanId: "L-1", borrowerName: "Moshe Wasserman", itemTypeName: "Wheelchair", itemId: "WC-001", photo: "https://img.test/wc.png", photos: ["https://img.test/wc.png", "https://img.test/wc2.png"], dateBorrowed: iso(-10), expectedReturn: iso(4), daysOut: 10, overdue: false },
   { id: "recLOAN0000000002", loanId: "L-2", borrowerName: "Leah Stern", itemTypeName: "Shower Chair", photo: null, dateBorrowed: iso(-3), daysOut: 3, overdue: false },
 ];
 const RES = [
@@ -61,9 +61,22 @@ await page.click(".nav-tab:has-text('Loans')");
 await page.waitForSelector("#loan-row-recLOAN0000000001 img.row-thumb");
 await page.waitForFunction(() => document.querySelector("#loan-row-recLOAN0000000001 img.row-thumb")?.naturalWidth > 0);
 ok(await loaded("#loan-row-recLOAN0000000001 img.row-thumb"), "loan row shows the item photo");
-ok(await page.getAttribute("#loan-row-recLOAN0000000001 img.row-thumb", "alt") === "Wheelchair", "photo labelled with the item name");
+ok(/of Wheelchair/.test(await page.getAttribute("#loan-row-recLOAN0000000001 .row-thumb-btn", "aria-label")), "photo button labelled with the item name");
 ok(!!(await page.$("#loan-row-recLOAN0000000002 .row-thumb-none")), "no photo: plain box keeps rows aligned");
 await page.screenshot({ path: "shot-loans-photos.png" });
+ok(/2/.test(await page.textContent("#loan-row-recLOAN0000000001 .row-thumb-count")), "badge: 2 photos");
+// Tap the photo: full-screen viewer, not the row's actions
+await page.click("#loan-row-recLOAN0000000001 .row-thumb-btn");
+ok(await page.isVisible("#photo-viewer") && !(await page.$eval("#loan-panel-recLOAN0000000001", p => p.classList.contains("open") || getComputedStyle(p).display !== "none")), "viewer opens; row actions stay closed");
+ok((await page.textContent("#pv-name")) === "Wheelchair" && (await page.textContent("#pv-count")) === "1 / 2" && (await page.getAttribute("#pv-img", "src")) === "https://img.test/wc.png", "viewer: item name, 1 / 2, cover first");
+await page.waitForFunction(() => document.getElementById("pv-img").naturalWidth > 0);
+await page.screenshot({ path: "shot-photo-viewer.png" });
+await page.click("#pv-next");
+ok((await page.getAttribute("#pv-img", "src")) === "https://img.test/wc2.png" && (await page.textContent("#pv-count")) === "2 / 2", "next photo");
+await page.keyboard.press("ArrowRight");
+ok((await page.textContent("#pv-count")) === "1 / 2", "arrow key wraps around");
+await page.keyboard.press("Escape");
+ok(await page.isHidden("#photo-viewer"), "Esc closes");
 
 await page.click(".nav-tab:has-text('Reservations')");
 await page.waitForSelector("#reservations-list img.row-thumb");
@@ -74,7 +87,11 @@ await page.screenshot({ path: "shot-reservations-photos.png" });
 await page.click(".nav-tab:has-text('Requests')");
 await page.waitForSelector("#requests-list .req-thumbs img");
 await page.waitForFunction(() => [...document.querySelectorAll("#requests-list .req-thumbs img")].every(i => i.naturalWidth > 0));
-ok((await page.$$eval("#requests-list .req-thumbs img", is => is.map(i => i.alt))).join("|") === "Wheelchair|Folding Chair", "request card: one photo per requested item that has one");
+ok((await page.$$eval("#requests-list .req-thumbs .row-thumb-btn", bs => bs.map(b => b.getAttribute("aria-label")))).join("|") === "View photo of Wheelchair|View photo of Folding Chair", "request card: one photo per requested item that has one");
 await page.screenshot({ path: "shot-requests-photos.png" });
+await page.click("#requests-list .req-thumbs .row-thumb-btn >> nth=1");
+ok(await page.isVisible("#photo-viewer") && (await page.textContent("#pv-name")) === "Folding Chair" && await page.isHidden("#pv-next"), "request photo opens the viewer (single photo: no arrows)");
+await page.click("#pv-close");
+ok(await page.isHidden("#photo-viewer"), "close button");
 ok(!errors.length, "no page errors: " + errors.join(" | "));
 await browser.close();

@@ -35,10 +35,10 @@ async function handleGetRequests({ db, g, env }) {
     // One entry per requested type; quantity types say how many and how many are free for the dates.
     const items = (f["Items Requested"] || []).map(linkedId).filter(id => info[id]).map(id => {
       const t = info[id];
-      if (t.addon) return { id, name: t.name, photo: t.photo, quantity: qmap[id] || 1, available: null, owned: null, addon: true, price: t.price };
-      if (!t.qty) return { id, name: t.name, photo: t.photo, quantity: null, available: null, owned: null };
+      if (t.addon) return { id, name: t.name, photo: t.photo, photos: t.photos, quantity: qmap[id] || 1, available: null, owned: null, addon: true, price: t.price };
+      if (!t.qty) return { id, name: t.name, photo: t.photo, photos: t.photos, quantity: null, available: null, owned: null };
       return {
-        id, name: t.name, photo: t.photo, quantity: qmap[id] || 1, owned: t.lendable,
+        id, name: t.name, photo: t.photo, photos: t.photos, quantity: qmap[id] || 1, owned: t.lendable,
         available: win ? qtyAvailable(t.lendable, bookings[id], win.from, win.to) : null,
       };
     });

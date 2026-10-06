@@ -2284,6 +2284,10 @@ await t("list photos: loans, reservations and requests carry the item type's pho
     assert.ok(byType("recTYPEA000000001").length, "fixture has wheelchair loans/reservations");
     assert.ok(byType("recTYPEA000000001").every(l => l.photo === "https://pub-x.r2.dev/wh/photos/wc.jpg"), "R2 photo");
     assert.ok(all.every(l => "photo" in l), "every row has a photo key");
+    wc["More Photos"] = JSON.stringify(["https://pub-x.r2.dev/wh/photos/wc2.jpg"]);
+    const again = await (await call("/admin/loans", H)).json();
+    assert.deepEqual(again.find(l => l.itemTypeId === "recTYPEA000000001").photos, ["https://pub-x.r2.dev/wh/photos/wc.jpg", "https://pub-x.r2.dev/wh/photos/wc2.jpg"], "all photos, cover first");
+    delete wc["More Photos"];
     const reqs = await (await call("/admin/requests", H)).json();
     const items = reqs.flatMap(r => r.items);
     assert.ok(items.length && items.every(i => "photo" in i), "request items carry photo");

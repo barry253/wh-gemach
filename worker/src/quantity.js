@@ -3,6 +3,7 @@ import { belongs, fAnd, fetchByIds, firstLink, linkedId, scopeF, today } from ".
 import { REC_RE, T } from "./config.js";
 import { isValidDate, nyToday } from "./dates.js";
 import { selName } from "./gemachs.js";
+import { parseMorePhotos } from "./photos.js";
 
 // ─── Quantity-tracked item types (e.g. 60 folding chairs; no per-unit Item records) ─
 //
@@ -129,11 +130,18 @@ function typePhoto(r) {
   return a?.thumbnails?.large?.url || a?.url || null;
 }
 
+/** Cover first, then the extra photos (for the admin photo viewer). */
+function typePhotos(r) {
+  const cover = typePhoto(r);
+  return cover ? [cover, ...parseMorePhotos(r.fields["More Photos"]).filter(u => u !== cover)] : [];
+}
+
 async function itemTypeInfoMap(db, ids, g) {
-  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Tracking", "Quantity Owned", "Out of Service", "Price", "R2 Photo URL", "Photo"] });
+  const recs = await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Tracking", "Quantity Owned", "Out of Service", "Price", "R2 Photo URL", "Photo", "More Photos"] });
   return Object.fromEntries(recs.map(r => [r.id, {
     name: r.fields.Name || r.id,
     photo: typePhoto(r),
+    photos: typePhotos(r),
     qty: isQtyType(r),
     addon: isAddonType(r),
     price: addonPrice(r),
