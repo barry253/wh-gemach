@@ -2,6 +2,7 @@
 import { AirtableError, fAnd, fStr, scopeF } from "./airtable.js";
 import { DATE_RE, T } from "./config.js";
 import { json } from "./http.js";
+import { typePhotos } from "./quantity.js";
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 
@@ -66,7 +67,28 @@ async function handleGetHistory({ db, g, url }) {
       (r.notes || "").toLowerCase().includes(q)
     );
   }
+  await attachPhotos(db, g, records);
   return json({ records, offset: page.offset || null });
+}
+
+// Log entries name their item type in text ("Wheelchair", or "Wheelchair, Walker" for a request), so photos are
+// matched by name against this gemach's item types: records get photos: [{ name, photos: [cover, ...more] }].
+// A type renamed since the entry was written simply has no photo. One extra Airtable read, only when needed.
+async function attachPhotos(db, g, records) {
+  if (!records.some(r => r.itemType)) return;
+  let types;
+  try { types = await db.listAll(T.ITEM_TYPES, { filter: scopeF(g), fields: ["Name", "R2 Photo URL", "Photo", "More Photos"] }); }
+  catch (e) { console.error("History photos skipped:", e.message); return; }
+  const key = s => String(s || "").replace(/\s*×\s*\d+\s*$/, "").trim().toLowerCase(); // "Folding Chair × 40" → the type
+  const byName = new Map();
+  for (const t of types) { const list = typePhotos(t); if (list.length && !byName.has(key(t.fields.Name))) byName.set(key(t.fields.Name), { name: t.fields.Name, photos: list }); }
+  if (!byName.size) return;
+  for (const r of records) {
+    if (!r.itemType) continue;
+    const whole = byName.get(key(r.itemType));
+    const found = whole ? [whole] : [...new Set(r.itemType.split(/,\s*/).map(key))].map(n => byName.get(n)).filter(Boolean);
+    if (found.length) r.photos = found;
+  }
 }
 
 export { logEvent, handleGetHistory };

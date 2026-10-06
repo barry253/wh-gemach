@@ -1086,6 +1086,7 @@
     }
 
     .history-entry-body { flex: 1; min-width: 0; }
+    .history-thumbs { display: flex; gap: 0.25rem; flex-shrink: 0; }
 
     .history-event-type {
       font-size: 0.8rem;
@@ -5712,6 +5713,7 @@
       return `
         <div class="history-entry">
           <div class="history-dot" style="background:${color}"></div>
+          ${e.photos?.length ? `<div class="history-thumbs">${e.photos.slice(0, 3).map(p => rowThumb(p.photos?.[0], p.name, p.photos, 36)).join("")}</div>` : ""}
           <div class="history-entry-body">
             <div class="history-event-type" style="color:${color}">${esc(e.eventType || "Unknown")}</div>
             ${meta.length ? `<div class="history-meta">${meta.map(m => `<span>${esc(m)}</span>`).join("")}</div>` : ""}

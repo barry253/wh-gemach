@@ -2299,6 +2299,28 @@ await t("list photos: loans, reservations and requests carry the item type's pho
   }
 });
 
+await t("history: entries get their item type's photos (matched by name; several types; renamed types none)", async () => {
+  const wc = DB["Item Types"].find(r => r.id === "recTYPEA000000001").fields;
+  wc["R2 Photo URL"] = "https://pub-x.r2.dev/wh/photos/wc.jpg";
+  const L = DB["tblC3PY7f5sXQDMJK"];
+  const stamp = "2030-01-01T00:00:0";
+  L.unshift(rec("recLOGPHOTO000001", { Timestamp: stamp + "1.000Z", "Event Type": "Photo Test", "Item Type": "wheelchair", Gemach: [A.id], "Gemach Slug": [A.slug] }),
+         rec("recLOGPHOTO000002", { Timestamp: stamp + "2.000Z", "Event Type": "Photo Test", "Item Type": "Walker, Wheelchair × 2", Gemach: [A.id], "Gemach Slug": [A.slug] }),
+         rec("recLOGPHOTO000003", { Timestamp: stamp + "3.000Z", "Event Type": "Photo Test", "Item Type": "Old Name", Gemach: [A.id], "Gemach Slug": [A.slug] }));
+  try {
+    const H = { headers: { ...auth(tokenA), "X-Gemach": A.slug } };
+    const d1 = await (await call("/admin/history?eventType=Photo%20Test", H)).json();
+    const d2 = await (await call(`/admin/history?eventType=Photo%20Test&offset=${d1.offset}`, H)).json(); // the fake pages 2 at a time
+    const by = id => [...d1.records, ...d2.records].find(r => r.id === id);
+    assert.deepEqual(by("recLOGPHOTO000001").photos, [{ name: "Wheelchair", photos: ["https://pub-x.r2.dev/wh/photos/wc.jpg"] }]);
+    assert.deepEqual(by("recLOGPHOTO000002").photos.map(p => p.name), ["Wheelchair"], "walker has no photo; wheelchair matched despite × 2");
+    assert.equal(by("recLOGPHOTO000003").photos, undefined, "renamed type: no photo");
+  } finally {
+    delete wc["R2 Photo URL"];
+    for (const id of ["recLOGPHOTO000001", "recLOGPHOTO000002", "recLOGPHOTO000003"]) L.splice(L.findIndex(r => r.id === id), 1);
+  }
+});
+
 // ─── Team: owners manage their gemach's admins ─────────────────────────────────
 {
   DB.Gemachs.push(rec("recTEAMGEMACH0001", { Name: "Team Gemach", Slug: "team-gemach", Active: true, Mode: "Full" }),

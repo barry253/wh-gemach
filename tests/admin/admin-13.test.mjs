@@ -34,6 +34,13 @@ const REQS = [
     itemNames: ["Wheelchair", "Folding Chair × 20", "Cane"] },
 ];
 
+const HIST = { records: [
+  { id: "recLOG1", timestamp: new Date().toISOString(), eventType: "Loan Created", itemCode: "WC-001", itemType: "Wheelchair", borrower: "Moshe Wasserman", admin: "Barry",
+    photos: [{ name: "Wheelchair", photos: ["https://img.test/wc.png", "https://img.test/wc2.png"] }] },
+  { id: "recLOG2", timestamp: new Date(Date.now() - 3600e3).toISOString(), eventType: "Request Confirmed", itemType: "Wheelchair, Folding Chair", borrower: "Rivka Levy",
+    photos: [{ name: "Wheelchair", photos: ["https://img.test/wc.png"] }, { name: "Folding Chair", photos: ["https://img.test/chair.png"] }] },
+  { id: "recLOG3", timestamp: new Date(Date.now() - 7200e3).toISOString(), eventType: "Gemach Settings Updated", admin: "Barry" },
+], offset: null };
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 const errors = [];
 page.on("pageerror", e => errors.push(String(e)));
@@ -50,6 +57,7 @@ await page.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
   if (p === "/admin/loans") return J(LOANS);
   if (p === "/admin/reservations") return J(RES);
   if (p === "/admin/requests") return J(REQS);
+  if (p === "/admin/history") return J(HIST);
   return J([]);
 });
 await page.addInitScript(() => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", "wh-medical"); });
@@ -93,5 +101,13 @@ await page.click("#requests-list .req-thumbs .row-thumb-btn >> nth=1");
 ok(await page.isVisible("#photo-viewer") && (await page.textContent("#pv-name")) === "Folding Chair" && await page.isHidden("#pv-next"), "request photo opens the viewer (single photo: no arrows)");
 await page.click("#pv-close");
 ok(await page.isHidden("#photo-viewer"), "close button");
+await page.click(".nav-tab:has-text('History')");
+await page.waitForSelector("#history-feed .history-entry");
+await page.waitForFunction(() => [...document.querySelectorAll("#history-feed .history-thumbs img")].every(i => i.naturalWidth > 0));
+ok((await page.$$eval("#history-feed .history-entry", es => es.map(e => e.querySelectorAll(".history-thumbs .row-thumb-btn").length))).join(",") === "1,2,0", "history: photo per item in the entry, none when no item");
+await page.screenshot({ path: "shot-history-photos.png" });
+await page.click("#history-feed .history-entry >> nth=0 >> .row-thumb-btn");
+ok(await page.isVisible("#photo-viewer") && (await page.textContent("#pv-count")) === "1 / 2", "history photo opens the viewer");
+await page.keyboard.press("Escape");
 ok(!errors.length, "no page errors: " + errors.join(" | "));
 await browser.close();

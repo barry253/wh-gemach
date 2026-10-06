@@ -210,4 +210,4 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
   return out;
 }
 
-export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto };
+export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto, typePhotos };
