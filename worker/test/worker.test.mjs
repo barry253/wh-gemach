@@ -1455,6 +1455,29 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.ok(store.has(gk), "gemach page rebuilt after purge");
     const hit = await call("/public/gemach/" + A.slug); assert.equal(hit.headers.get("X-Cache"), "HIT");
   });
+  await t("cache: a burst of admin changes runs at most one extra rebuild, which starts after the last change", async () => {
+    const key = "https://whgemachs.org/__cache/v1/burst-test";
+    let builds = 0, running = 0, maxRunning = 0, version = 0;
+    const seen = [];
+    const build = async () => {
+      builds++; running++; maxRunning = Math.max(maxRunning, running);
+      const v = version; await new Promise(r => setTimeout(r, 20));
+      running--; seen.push(v); return { status: 200, data: { v } };
+    };
+    const ps = [];
+    for (let i = 0; i < 50; i++) { version = i; ps.push(X.refreshCache(key, build, { force: true })); await new Promise(r => setTimeout(r, 1)); }
+    await Promise.all(ps);
+    assert.equal(maxRunning, 1, "never two rebuilds of the same page at once");
+    assert.ok(builds <= 6, `50 changes caused ${builds} rebuilds`);
+    assert.equal(seen[seen.length - 1], 49, "the last rebuild saw the last change");
+    assert.equal(JSON.parse(await (await store.get(key).clone()).text()).v, 49);
+  });
+  await t("cache: photo upload does not purge the public cache", async () => {
+    await call("/public/directory"); await settle();
+    const fd = new FormData(); fd.append("photo", new Blob([new Uint8Array([0xFF, 0xD8, 0xFF, 0])], { type: "image/jpeg" }), "x.jpg");
+    const r = await call("/admin/catalog/upload-photo", { method: "POST", headers: { ...auth(tokenA), "X-Gemach": A.slug }, body: fd });
+    assert.ok(store.has(dirKey), "directory copy kept (status " + r.status + ")");
+  });
   delete globalThis.caches;
 }
 

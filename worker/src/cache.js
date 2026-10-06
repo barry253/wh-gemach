@@ -12,9 +12,24 @@ function cacheKey(env, name) {
 
 // One rebuild per key at a time in this isolate; concurrent visitors share it.
 const cacheInflight = new Map();
+// Forced rebuilds (after admin changes) that arrive while one is running are merged into ONE follow-up
+// rebuild that starts when the current one ends, so it still sees every change. Without this, a bulk
+// edit (hundreds of saves in a row) started hundreds of full page rebuilds at once in one worker
+// instance, which ran it out of resources and made unrelated admin requests fail for minutes.
+const cacheQueued = new Map();
 
 function refreshCache(key, build, { force = false } = {}) {
   if (!force && cacheInflight.has(key)) return cacheInflight.get(key);
+  if (force && cacheInflight.has(key)) {
+    if (!cacheQueued.has(key)) {
+      const next = cacheInflight.get(key).catch(() => {}).then(() => {
+        cacheQueued.delete(key);
+        return refreshCache(key, build, { force: true });
+      });
+      cacheQueued.set(key, next);
+    }
+    return cacheQueued.get(key);
+  }
   const cache = globalThis.caches?.default;
   const t0 = Date.now();
   const p = (async () => {
@@ -82,4 +97,4 @@ function purgePublicCache(env, ctx, slug) {
   if (ctx?.waitUntil) ctx.waitUntil(p);
 }
 
-export { cacheKey, cacheInflight, refreshCache, cachedJson, purgePublicCache };
+export { cacheKey, cacheInflight, cacheQueued, refreshCache, cachedJson, purgePublicCache };

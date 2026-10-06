@@ -66,7 +66,7 @@ import { handleGetHistory } from "./activity.js";
 import { makeDb } from "./airtable.js";
 import { alertServerError, handleHealth } from "./alerts.js";
 import { handleLogin, handleMe, lookupAdminSession, signJWT, verifyJWT } from "./auth.js";
-import { purgePublicCache } from "./cache.js";
+import { purgePublicCache, refreshCache } from "./cache.js";
 import { handleCreateItem, handleCreateItemType, handleDeleteItem, handleGetCatalogItems, handleGetItemTypes, handleUpdateItem, handleUpdateItemType, handleUploadPhoto } from "./catalog.js";
 import { JWT_REFRESH_MS, safeDecode } from "./config.js";
 import { buildIcs, eventDates, formatNy, nyLocalToUtc, nyToday } from "./dates.js";
@@ -134,6 +134,7 @@ if (globalThis.__WHG_TEST__) {
     nyToday: (...a) => nyToday(...a), formatNy: (...a) => formatNy(...a), textColorFor: (...a) => textColorFor(...a),
     contrastRatio: (...a) => contrastRatio(...a), buildEmailHtml: (...a) => buildEmailHtml(...a),
     makeDbForTest: e => makeDb(e),
+    refreshCache: (...a) => refreshCache(...a),
     clearMemo: () => { gemachMemo.clear(); liveNetMemo.clear(); forgetAllLiveAdmins(); },
   });
 }
@@ -218,7 +219,8 @@ async function adminDispatch(request, env, ctx, url, path, method, db, user) {
   const c = { request, env, ctx, db, url, user: liveUser, g: resolved.g, adminName: user.name || user.email };
 
   const res = await adminRoute(c, path, method);
-  if (method !== "GET" && res.status < 400) purgePublicCache(env, ctx, c.g.slug);
+  // A photo upload only stores a file; the item type that uses it is saved (and purges) separately.
+  if (method !== "GET" && res.status < 400 && path !== "/admin/catalog/upload-photo") purgePublicCache(env, ctx, c.g.slug);
   return res;
 }
 
