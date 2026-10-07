@@ -27,3 +27,10 @@ crons = ["0 14 * * *"]
 # Workers Logs (Observability tab).
 [observability]
 enabled = true
+
+# Cloudflare D1 database (used only when the DB_BACKEND variable is "d1"; see src/db.js).
+# Schema: schema.sql (generated from src/dbschema.js). Copy/compare: .github/workflows/d1.yml.
+[[d1_databases]]
+binding = "DB"
+database_name = "wh-gemach"
+database_id = "974be829-ed62-4e9a-9965-77784d5d74a5"
