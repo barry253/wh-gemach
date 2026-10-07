@@ -98,6 +98,19 @@ const names = p => p.$$eval('.item-name', els => els.map(e => e.textContent));
       assert(sizes.join(',') === '2,4,8,10,12', `${label} only sizes that exist, in the gemach's order: ` + sizes.join(','));
       assert(/Size 12/.test((await page.$eval('#row-recGw1', e => e.innerText)).replace(/\n/g, ' ')), `${label} gown row shows its size`);
       assert(/6 items/.test(await page.textContent('.af-count')), `${label} count before filtering`);
+      // Sections start collapsed; "Expand all" opens them all and turns into "Collapse all"
+      const hiddenRows = () => page.$$eval('.af-row .af-chips', els => els.map(e => e.hidden ? 'shut' : 'open').join(','));
+      assert(await hiddenRows() === 'shut,shut,shut' && await page.textContent('#af-all') === 'Expand all', `${label} filters start collapsed: ` + await hiddenRows());
+      assert(await page.$eval('.af-row:nth-child(2) .af-sum', e => e.textContent) === 'Any', `${label} collapsed summary says Any`);
+      await page.screenshot({ path: path.join(SHOTS, `${label}-filters-collapsed.png`) });
+      await page.click('#af-all');
+      assert(await hiddenRows() === 'open,open,open' && await page.textContent('#af-all') === 'Collapse all'
+        && await page.evaluate(() => document.activeElement.id) === 'af-all', `${label} expand all`);
+      await page.click('#af-all');
+      assert(await hiddenRows() === 'shut,shut,shut' && await page.textContent('#af-all') === 'Expand all', `${label} collapse all`);
+      await page.click('.af-row:nth-child(1) .af-name');
+      assert(await hiddenRows() === 'open,shut,shut' && await page.textContent('#af-all') === 'Expand all', `${label} one opened, button still says Expand all`);
+      await page.click('#af-all');
       await page.screenshot({ path: path.join(SHOTS, `${label}-filters.png`), fullPage: label === 'm' ? false : true });
 
       // Size 8 → Black Sheath + Navy Empire

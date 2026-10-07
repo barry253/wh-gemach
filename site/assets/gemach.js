@@ -333,22 +333,25 @@
       return c;
     });
   }
-  // Filter sections folded shut (per gemach, remembered on this device).
-  function foldKey() { return "whg_affold:" + (gemach && gemach.slug || ""); }
-  function foldedSet() {
-    try { var f = JSON.parse(localStorage.getItem(foldKey()) || "[]"); return Array.isArray(f) ? f : []; } catch (e) { return []; }
+  // Filter sections start folded shut; the ones opened are remembered per gemach on this device.
+  function openKey() { return "whg_afopen:" + (gemach && gemach.slug || ""); }
+  function openSet() {
+    try { var f = JSON.parse(localStorage.getItem(openKey()) || "[]"); return Array.isArray(f) ? f : []; } catch (e) { return []; }
   }
-  function setFolded(name, shut) {
-    var f = foldedSet().filter(function (x) { return x !== name; });
-    if (shut) f.push(name);
-    try { localStorage.setItem(foldKey(), JSON.stringify(f)); } catch (e) { /* ignore */ }
+  function saveOpen(list) {
+    try { localStorage.setItem(openKey(), JSON.stringify(list)); } catch (e) { /* ignore */ }
+  }
+  function setOpen(name, open) {
+    var f = openSet().filter(function (x) { return x !== name; });
+    if (open) f.push(name);
+    saveOpen(f);
   }
   function filterBar(defs, shown, total) {
     if (!defs.length) return "";
-    var sd = sizeDef(), counts = facetCounts(defs), folded = foldedSet();
+    var sd = sizeDef(), counts = facetCounts(defs), opened = openSet();
     var rows = defs.map(function (d, i) {
       var on = attrFilter[d.name] || [];
-      var shut = folded.indexOf(d.name) !== -1;
+      var shut = opened.indexOf(d.name) === -1;
       var sum = on.length ? on.join(", ") : "Any";
       return '<div class="af-row' + (shut ? " af-shut" : "") + '" role="group" aria-label="Filter by ' + esc(d.name) + '">' +
         '<button type="button" class="af-name" data-fold="' + i + '" aria-expanded="' + !shut + '" aria-controls="af-c' + i + '">' +
@@ -364,7 +367,10 @@
     var n = activeFilterCount();
     var sort = sd && defs.some(function (d) { return d.name === sd.name; })
       ? '<label class="af-sort">Sort <select id="af-sort"><option value="">As listed</option><option value="size"' + (sortBySize ? " selected" : "") + ">By " + esc(sd.name.toLowerCase()) + ", smallest first</option></select></label>" : "";
-    return '<div class="af-bar" id="af-bar">' + rows +
+    var allOpen = defs.every(function (d) { return opened.indexOf(d.name) !== -1; });
+    var head = '<div class="af-head"><span class="af-title">Filters</span>' +
+      '<button type="button" class="af-all" id="af-all" data-open="' + (allOpen ? "0" : "1") + '">' + (allOpen ? "Collapse all" : "Expand all") + "</button></div>";
+    return '<div class="af-bar" id="af-bar">' + head + '<div class="af-rows">' + rows + "</div>" +
       '<div class="af-foot"><span class="af-count" role="status">' + (n ? "Showing " + shown + " of " + total : W.plural(total, "item")) + "</span>" +
       (n ? '<button type="button" class="af-clear" id="af-clear">Clear filters</button>' : "") + sort + "</div></div>";
   }
@@ -658,8 +664,14 @@
     if (fold) {
       var fd = usableDefs()[Number(fold.getAttribute("data-fold"))];
       if (!fd) return;
-      setFolded(fd.name, fold.getAttribute("aria-expanded") === "true");
+      setOpen(fd.name, fold.getAttribute("aria-expanded") !== "true");
       rerenderInventory('.af-name[data-fold="' + fold.getAttribute("data-fold") + '"]');
+      return;
+    }
+    var all = t.closest("#af-all");
+    if (all) {
+      saveOpen(all.getAttribute("data-open") === "1" ? usableDefs().map(function (d) { return d.name; }) : []);
+      rerenderInventory("#af-all");
       return;
     }
     if (t.closest(".af-clear")) { attrFilter = {}; rerenderInventory("#af-bar .af-chip"); return; }
