@@ -1,5 +1,5 @@
 # Gemach Network API — deployed by Cloudflare Workers Builds from this folder on every push to main.
-# Secrets (AIRTABLE_TOKEN, GEMACH_JWT, RESEND_API_KEY) live only in the Cloudflare dashboard and are never touched by deploys.
+# Secrets (AIRTABLE_TOKEN, GEMACH_JWT, RESEND_API_KEY, VAPID_PRIVATE_KEY) live only in the Cloudflare dashboard and are never touched by deploys.
 
 name = "wh-gemach"                 # must match the Worker's name in the dashboard
 main = "src/index.js"

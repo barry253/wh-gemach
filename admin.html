@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gemach Admin</title>
+  <!-- Installable as a Home Screen app (on iPhone, notifications only work from there) -->
+  <link rel="manifest" href="/admin.webmanifest" />
+  <link rel="apple-touch-icon" href="/assets/brand/admin-icon-180.png" />
+  <meta name="theme-color" content="#1B3A4B" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Gemach Admin" />
   <script>
     // The admin moved to whgemachs.org — send old GitHub Pages bookmarks there.
     if (location.hostname === "barry253.github.io" && window.top === window.self) {
@@ -1217,6 +1224,23 @@
     .stat-list li:last-child { border-bottom:0; }
     @media (max-width: 480px) { .kpi-grid { grid-template-columns:1fr 1fr; } .kpi-grid .kpi:last-child { grid-column:1 / -1; } .kpi-num { font-size:1.2rem; } }
     .stat-table .tag { white-space:nowrap; }
+    /* ── Notifications (bell) ── */
+    .btn-bell { background: rgba(255,255,255,0.12); border: none; color: white; font-size: 0.85rem; line-height: 1; padding: 0.3rem 0.45rem; border-radius: 4px; cursor: pointer; }
+    .btn-bell:hover { background: rgba(255,255,255,0.2); }
+    .ntf-status { border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; font-size: 0.85rem; margin-bottom: 1rem; background: var(--white); }
+    .ntf-status strong { display: block; margin-bottom: 0.15rem; }
+    .ntf-status.on { border-color: #86EFAC; background: #F0FDF4; }
+    .ntf-status.warn { border-color: #FCD34D; background: #FFFBEB; }
+    .ntf-steps { margin: 0.5rem 0 0 1.2rem; font-size: 0.82rem; }
+    .ntf-steps li { margin: 0.2rem 0; }
+    #ntf-events .check-row, #ntf-gemachs .check-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.3rem 0; margin: 0; font-size: 0.88rem; font-weight: 400; color: var(--text); }
+    #ntf-events input, #ntf-gemachs input { width: 18px; height: 18px; accent-color: var(--navy); }
+    .ntf-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .ntf-device { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.45rem 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+    .ntf-device:last-child { border-bottom: 0; }
+    .ntf-device small { display: block; color: var(--muted); font-size: 0.75rem; }
+    /* Opened from a notification link: point at the card for a few seconds */
+    .deep-hl { outline: 3px solid #E0A63A; outline-offset: 2px; border-radius: 8px; }
   </style>
 </head>
 <body>
@@ -1257,6 +1281,7 @@
     </div>
     <div class="topbar-user">
       <span id="admin-name"></span>
+      <button class="btn-bell" id="btn-bell" onclick="openNotifications()" aria-label="Notifications" title="Notifications">🔔</button>
       <button class="btn-signout" onclick="signOut(true)">Sign out</button>
     </div>
   </div>
@@ -1425,6 +1450,35 @@
 </div>
 
 <!-- Confirm Sheet -->
+<!-- Notifications on this device (bell in the top bar) -->
+<div class="sheet-overlay" id="notif-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('notif-sheet')">×</button>
+    <h3>Notifications</h3>
+    <p class="sheet-subtitle">For this device. Borrowers' names and phone numbers are never shown in a notification.</p>
+    <div id="ntf-status" class="ntf-status">Checking…</div>
+    <div id="ntf-settings" hidden>
+      <div class="form-group">
+        <label>Notify me about</label>
+        <div id="ntf-events"></div>
+      </div>
+      <div class="form-group" id="ntf-gemachs-group" hidden>
+        <label>For these gemachs</label>
+        <div id="ntf-gemachs"></div>
+      </div>
+      <div class="ntf-buttons">
+        <button class="btn btn-ghost btn-sm" id="ntf-test" type="button">Send a test</button>
+        <button class="btn btn-ghost btn-sm" id="ntf-off" type="button">Turn off on this device</button>
+      </div>
+    </div>
+    <div class="form-group" id="ntf-others-group" hidden>
+      <label>Your other devices</label>
+      <div id="ntf-others"></div>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-overlay" id="confirm-sheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -2339,6 +2393,7 @@
   if (token) showApp();
 
   async function showApp() {
+    const deep = readDeepLink(location.search); // ?tab=…&req=…|loan=… (notification links), read before the URL is tidied
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app").style.display = "block";
     document.getElementById("admin-name").textContent = adminName || "";
@@ -2358,6 +2413,8 @@
     let openTab = null;
     try { openTab = sessionStorage.getItem("whg_open_tab"); sessionStorage.removeItem("whg_open_tab"); } catch (e) { /* ignore */ }
     if (openTab === "settings" && GEMACH) switchTab("settings");
+    if (deep.tab) { clearDeepParams(); openDeep(deep); }
+    initPushOnLoad().catch(e => console.warn("push setup:", e));
   }
 
   async function loadGemachContext() {
@@ -2613,8 +2670,11 @@
     localStorage.removeItem("gemach_token");
     localStorage.removeItem("gemach_name");
     if (explicit === true) localStorage.removeItem("gemach_slug");
+    const oldToken = token;
     token = null;
-    location.reload();
+    // A signed-out device stops getting this admin's notifications (never waits more than 1.5 s).
+    if (!pushSupported()) { location.reload(); return; }
+    Promise.race([pushSignOut(oldToken), new Promise(r => setTimeout(r, 1500))]).finally(() => location.reload());
   }
 
   // ── API ───────────────────────────────────────────────────────────────────
@@ -2714,6 +2774,9 @@
     document.getElementById("stat-reservations").textContent = data.upcomingReservations;
 
     loadStats(false);
+
+    // Home Screen app icon: number of new requests (cleared when there are none)
+    try { if (navigator.setAppBadge) (data.newRequests > 0 ? navigator.setAppBadge(data.newRequests) : navigator.clearAppBadge()).catch(() => {}); } catch (e) { /* ignore */ }
 
     // Badge on requests tab
     const tab = document.getElementById("tab-requests");
@@ -5903,6 +5966,276 @@
       closeSheet("net-category-sheet");
       showToast(c ? "Category updated" : "Category added");
     } finally { btn.disabled = false; }
+  }
+
+  // ── Links into admin (?tab=…&req=…|loan=…) ────────────────────────────────
+  // Used by notification taps: open a tab and point at one request / loan. ?g=<slug> picks the gemach.
+  // (Function declarations, not consts: showApp() runs before the rest of this script has been read.)
+  function readDeepLink(search) {
+    const DEEP_TABS = ["dashboard", "requests", "reservations", "loans", "inventory", "history", "settings", "network"];
+    const p = new URLSearchParams(search || "");
+    const tab = p.get("tab");
+    return { g: String(p.get("g") || "").toLowerCase(), tab: DEEP_TABS.includes(tab) ? tab : null, req: safeId(p.get("req") || ""), loan: safeId(p.get("loan") || "") };
+  }
+  function clearDeepParams() {
+    const p = new URLSearchParams(location.search);
+    ["tab", "req", "loan"].forEach(k => p.delete(k));
+    const qs = p.toString();
+    history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+  }
+  function openDeep(d) {
+    if (!d.tab || (d.tab === "network" && !isNetworkAdmin())) return;
+    switchTab(d.tab);
+    const ids = d.req ? [`req-${d.req}`, `appt-${d.req}`] : d.loan ? [`loan-row-${d.loan}`, `res-row-${d.loan}`] : [];
+    if (ids.length) pointAt(ids);
+  }
+  /** Scroll to the first of these elements once the list has its fresh data, and outline it briefly. */
+  function pointAt(ids, tries = 0) {
+    const el = ids.map(id => document.getElementById(id)).find(Boolean);
+    if (el && !el.closest(".is-stale")) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.add("deep-hl");
+      setTimeout(() => el.classList.remove("deep-hl"), 4000);
+      const id = el.id.replace(/^(loan|res)-row-/, "");
+      if (el.id.startsWith("loan-row-") && !document.getElementById(`loan-panel-${id}`)?.classList.contains("open")) toggleLoanActions(id);
+      if (el.id.startsWith("res-row-") && !document.getElementById(`res-panel-${id}`)?.classList.contains("open")) toggleResActions(id);
+      return;
+    }
+    if (tries < 40) setTimeout(() => pointAt(ids, tries + 1), 250); // up to 10 s for the list to load
+  }
+  /** A notification was tapped while admin was open. Another gemach → reload into it; else go there in place. */
+  function openAdminUrl(url) {
+    let u;
+    try { u = new URL(url, location.origin); } catch (e) { return; }
+    const d = readDeepLink(u.search);
+    if (d.g && d.g !== gemachSlug && MY_GEMACHS.some(x => x.slug === d.g)) { location.href = u.pathname + u.search; return; }
+    document.querySelectorAll(".sheet-overlay.open").forEach(el => closeSheet(el.id));
+    openDeep(d);
+  }
+
+  // ── Notifications (Web Push) ──────────────────────────────────────────────
+  // The 🔔 in the top bar. Each device turns notifications on for itself (worker: src/push.js sends them,
+  // site/admin-sw.js shows them). iPhone/iPad: only from the Home Screen app (Safari → Share → Add to Home Screen).
+  const PUSH_EVENTS = { request: "New requests", cancel: "A borrower cancels", ready: "A borrower is ready to return", alert: "Site alerts (Network Admin)" };
+  let PUSH = null;   // last GET /admin/push answer
+  let swReg = null;
+
+  function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
+  function isStandalone() { return !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true; }
+  function pushSupported() { return !!(window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window); }
+
+  function deviceLabel() {
+    const ua = navigator.userAgent;
+    const ipad = /iPad/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const os = /iPhone/.test(ua) ? "iPhone" : ipad ? "iPad" : /Android/.test(ua) ? (/Mobile/.test(ua) ? "Android phone" : "Android tablet")
+      : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows PC" : /CrOS/.test(ua) ? "Chromebook" : /Linux/.test(ua) ? "Linux" : "Device";
+    if (/^(iPhone|iPad|Android)/.test(os)) return os; // phones/tablets: the browser name only adds noise
+    const br = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+    return br ? `${os} · ${br}` : os;
+  }
+  function b64urlBytes(s) {
+    const b = atob(String(s).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(s).length + 3) % 4));
+    return Uint8Array.from(b, c => c.charCodeAt(0));
+  }
+  function sameServerKey(sub, key) {
+    const a = sub?.options?.applicationServerKey;
+    if (!a || !key) return true; // can't tell: keep it
+    const x = new Uint8Array(a), y = b64urlBytes(key);
+    return x.length === y.length && x.every((v, i) => v === y[i]);
+  }
+
+  async function getSwReg() {
+    if (!pushSupported()) return null;
+    if (swReg) return swReg;
+    try { swReg = await navigator.serviceWorker.register("/admin-sw.js", { scope: "/admin" }); }
+    catch (e) { console.warn("Service worker failed:", e); return null; }
+    return swReg;
+  }
+  async function currentSubscription() {
+    const reg = await getSwReg();
+    return reg ? reg.pushManager.getSubscription().catch(() => null) : null;
+  }
+
+  /** After sign-in: get the service worker ready and listen for taps on notifications. */
+  async function initPushOnLoad() {
+    if (!pushSupported()) return;
+    navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "open-url") openAdminUrl(e.data.url); });
+    await getSwReg();
+  }
+
+  async function pushSignOut(oldToken) {
+    const reg = swReg || await navigator.serviceWorker.getRegistration("/admin").catch(() => null);
+    const sub = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
+    if (!sub) return;
+    if (oldToken) {
+      await fetch(`${WORKER}/admin/push/unsubscribe`, {
+        method: "POST", keepalive: true,
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${oldToken}` },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      }).catch(() => {});
+    }
+    await sub.unsubscribe().catch(() => {});
+  }
+
+  function openNotifications() {
+    openSheet("notif-sheet");
+    renderNotifications();
+  }
+
+  function setNtfStatus(kind, title, text, extra) {
+    const box = document.getElementById("ntf-status");
+    box.className = "ntf-status" + (kind ? " " + kind : "");
+    box.innerHTML = "";
+    const s = document.createElement("strong");
+    s.textContent = title;
+    box.appendChild(s);
+    if (text) box.appendChild(document.createTextNode(text));
+    if (extra) box.appendChild(extra);
+  }
+
+  async function renderNotifications() {
+    document.getElementById("ntf-settings").hidden = true;
+    document.getElementById("ntf-others-group").hidden = true;
+    setNtfStatus("", "Checking…");
+    let data = null;
+    try { data = await api("/admin/push"); } catch (e) { /* below */ }
+    if (!data || data.error) return setNtfStatus("warn", "Couldn't load notification settings", " Please try again in a minute.");
+    PUSH = data;
+    if (!data.configured) return setNtfStatus("warn", "Not available yet", " Notifications haven't been switched on for whgemachs.org yet.");
+    if (!pushSupported()) {
+      renderOtherDevices(null);
+      if (isIOS() && !isStandalone()) return setNtfStatus("warn", "First, add Gemach Admin to your Home Screen", " On iPhone and iPad, notifications only work from the Home Screen app:", iosSteps());
+      return setNtfStatus("warn", "This browser can't show notifications", " Try Chrome on Android or a computer, or Safari on iPhone (from the Home Screen app).");
+    }
+    const sub = await currentSubscription();
+    const mine = sub ? data.devices.find(d => d.endpoint === sub.endpoint) || null : null;
+    renderOtherDevices(mine);
+    if (Notification.permission === "denied") {
+      return setNtfStatus("warn", "Notifications are blocked", isIOS()
+        ? " Turn them on in the iPhone's Settings → Notifications → Gemach Admin. If it isn't listed, delete the app from your Home Screen and add it again."
+        : " Allow notifications for this site in your browser's site settings, then open this again.");
+    }
+    if (!mine) {
+      const wrap = document.createElement("div");
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.id = "ntf-on"; btn.className = "btn btn-primary"; btn.style.marginTop = "0.65rem";
+      btn.textContent = "Turn on notifications";
+      btn.onclick = turnOnNotifications;
+      wrap.appendChild(btn);
+      return setNtfStatus("", "Off on this device", " Get a notification here when a request comes in, a borrower cancels, or something is ready to come back.", wrap);
+    }
+    setNtfStatus("on", "On for this device", " Tap a notification to open the request or loan it's about.");
+    renderNotifChoices(mine);
+    document.getElementById("ntf-settings").hidden = false;
+    document.getElementById("ntf-test").onclick = () => sendTestNotification(sub.endpoint);
+    document.getElementById("ntf-off").onclick = () => turnOffNotifications(sub);
+  }
+
+  function iosSteps() {
+    const ol = document.createElement("ol");
+    ol.className = "ntf-steps";
+    ["Open whgemachs.org/admin in Safari.",
+     "Tap the Share button (the square with an arrow), then “Add to Home Screen”.",
+     "Open Gemach Admin from your Home Screen and sign in.",
+     "Tap 🔔, then “Turn on notifications”."].forEach(t => { const li = document.createElement("li"); li.textContent = t; ol.appendChild(li); });
+    return ol;
+  }
+
+  function checkRow(label, checked, data, onchange) {
+    const row = document.createElement("label");
+    row.className = "check-row";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = checked;
+    Object.assign(cb.dataset, data);
+    cb.onchange = onchange;
+    const sp = document.createElement("span");
+    sp.textContent = label;
+    row.append(cb, sp);
+    return row;
+  }
+
+  function renderNotifChoices(mine) {
+    const ev = document.getElementById("ntf-events");
+    ev.innerHTML = "";
+    PUSH.events.forEach(k => ev.appendChild(checkRow(PUSH_EVENTS[k] || k, mine.events.includes(k), { event: k }, () => saveNotifChoices(mine.id))));
+    const group = document.getElementById("ntf-gemachs-group"), list = document.getElementById("ntf-gemachs");
+    list.innerHTML = "";
+    group.hidden = MY_GEMACHS.length < 2;
+    if (group.hidden) return;
+    MY_GEMACHS.forEach(g => list.appendChild(checkRow(g.name || g.slug, !mine.gemachs || mine.gemachs.includes(g.id), { gemach: g.id },
+      e => { if (!list.querySelector("input:checked")) { e.target.checked = true; showToast("Keep at least one gemach — or turn notifications off"); return; } saveNotifChoices(mine.id); })));
+  }
+
+  async function saveNotifChoices(id) {
+    const events = [...document.querySelectorAll("#ntf-events input:checked")].map(x => x.dataset.event);
+    const boxes = [...document.querySelectorAll("#ntf-gemachs input")];
+    const picked = boxes.filter(x => x.checked).map(x => x.dataset.gemach);
+    const gemachs = !boxes.length || picked.length === boxes.length ? null : picked; // null = all (and any added later)
+    const r = await api(`/admin/push/${id}`, "PATCH", { events, gemachs }).catch(() => null);
+    showToast(r && !r.error ? "Saved" : (r?.error || "Couldn't save — try again"));
+  }
+
+  async function turnOnNotifications() {
+    const btn = document.getElementById("ntf-on");
+    // iPhone only shows the permission prompt when it's asked for straight from the tap: nothing awaits before this.
+    const asked = Notification.requestPermission();
+    if (btn) { btn.disabled = true; btn.textContent = "Turning on…"; }
+    try {
+      const perm = await asked;
+      if (perm !== "granted") { showToast(perm === "denied" ? "Notifications were blocked" : "Notifications weren't allowed"); return renderNotifications(); }
+      const reg = await getSwReg();
+      if (!reg) throw new Error("Couldn't set up notifications in this browser.");
+      await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (sub && !sameServerKey(sub, PUSH.publicKey)) { await sub.unsubscribe().catch(() => {}); sub = null; }
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlBytes(PUSH.publicKey) });
+      const r = await api("/admin/push/subscribe", "POST", { subscription: sub.toJSON(), device: deviceLabel() });
+      if (!r || r.error) throw new Error(r?.error || "Couldn't save this device.");
+      showToast("Notifications are on");
+    } catch (e) {
+      console.warn("Turn on notifications:", e);
+      showToast(e && e.message && e.message.length < 140 ? e.message : "Couldn't turn on notifications", 4000);
+    }
+    renderNotifications();
+  }
+
+  async function turnOffNotifications(sub) {
+    await api("/admin/push/unsubscribe", "POST", { endpoint: sub.endpoint }).catch(() => null);
+    await sub.unsubscribe().catch(() => {});
+    showToast("Notifications are off on this device");
+    renderNotifications();
+  }
+
+  async function sendTestNotification(endpoint) {
+    const r = await api("/admin/push/test", "POST", { endpoint }).catch(() => null);
+    showToast(r && !r.error ? "Test sent — it should arrive in a few seconds" : (r?.error || "Couldn't send the test"), 4000);
+    if (r && r.error && /expired|isn't registered/.test(r.error)) renderNotifications();
+  }
+
+  function renderOtherDevices(mine) {
+    const others = (PUSH?.devices || []).filter(d => !mine || d.id !== mine.id);
+    const group = document.getElementById("ntf-others-group"), list = document.getElementById("ntf-others");
+    list.innerHTML = "";
+    group.hidden = !others.length;
+    others.forEach(d => {
+      const row = document.createElement("div");
+      row.className = "ntf-device";
+      const info = document.createElement("div");
+      info.textContent = d.device || "Device";
+      const small = document.createElement("small");
+      small.textContent = d.lastSentAt ? `Last notified ${timeAgo(d.lastSentAt)}` : d.createdAt ? `Added ${timeAgo(d.createdAt)}` : "";
+      info.appendChild(small);
+      const rm = document.createElement("button");
+      rm.type = "button"; rm.className = "btn btn-ghost btn-sm"; rm.textContent = "Remove";
+      rm.onclick = async () => {
+        rm.disabled = true;
+        const r = await api(`/admin/push/${encodeURIComponent(d.id)}`, "DELETE").catch(() => null);
+        showToast(r && !r.error ? "Removed" : (r?.error || "Couldn't remove"));
+        renderNotifications();
+      };
+      row.append(info, rm);
+      list.appendChild(row);
+    });
   }
 
   // ── Sheet helpers ─────────────────────────────────────────────────────────

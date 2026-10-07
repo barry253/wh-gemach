@@ -23,7 +23,7 @@ Never paste code into the dashboard editor any more — the next deploy from Git
 | Code | `worker/src/` | bundled by Wrangler into one script |
 | Bindings, domain, logs | `worker/wrangler.toml` | R2 bucket, `api.whgemachs.org`, workers.dev, Observability |
 | Plain variables (`AIRTABLE_BASE_ID`, `FROM_EMAIL`, `ALERT_EMAIL`, `NOTIFY_EMAIL`, `ASSETS_URL`, …) | Cloudflare dashboard | kept on deploy because of `keep_vars = true` |
-| Secrets (`AIRTABLE_TOKEN`, `GEMACH_JWT`, `RESEND_API_KEY`) | Cloudflare dashboard | never touched by deploys |
+| Secrets (`AIRTABLE_TOKEN`, `GEMACH_JWT`, `RESEND_API_KEY`, `VAPID_PRIVATE_KEY`) | Cloudflare dashboard | never touched by deploys |
 
 ## Working on it locally
 
@@ -71,3 +71,14 @@ Browser tests for the site and admin page are in `../tests` (`cd tests && npm in
 | `catalog.js` | Item types, items, photo uploads |
 
 The tests import `src/index.js` directly and also pass against the bundled output.
+
+## Admin notifications (Web Push)
+`src/push.js` sends lock-screen notifications to admins' devices (new request, borrower cancelled, ready to return,
+and site alerts for Network Admins). Devices are stored in D1 `push_subscriptions`; the admin page's 🔔 manages them
+and `site/admin-sw.js` shows them. It's off until the secret `VAPID_PRIVATE_KEY` is set — a P-256 private key as a
+JWK JSON string. To make one (any computer with Node 20+):
+
+    node -e "crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign']).then(k=>crypto.subtle.exportKey('jwk',k.privateKey)).then(j=>console.log(JSON.stringify(j)))"
+
+Paste the whole `{...}` line as the secret (Cloudflare → wh-gemach → Settings → Variables and Secrets → Add → Secret).
+Changing it later makes every device turn notifications on again.
