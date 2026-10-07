@@ -299,9 +299,11 @@
       return { name: d.name, values: d.values.filter(function (v) { return used[v]; }) };
     }).filter(function (d) { return d.values.length; });
   }
-  function passesFilter(it) {
+  /** skip: a filter name to ignore (used to work out which choices in that filter still have matches). */
+  function passesFilter(it, skip) {
     if (isAddon(it)) return true; // add-ons aren't sized/colored; always listed
     return Object.keys(attrFilter).every(function (name) {
+      if (name === skip) return true;
       var want = attrFilter[name];
       if (!want || !want.length) return true;
       var have = itemVals(it, name);
@@ -319,15 +321,44 @@
   function activeFilterCount() {
     return Object.keys(attrFilter).reduce(function (n, k) { return n + (attrFilter[k] || []).length; }, 0);
   }
+  /** Per filter: how many items have each choice, given the picks in the *other* filters
+      (OR within a filter, so picking size 8 never rules out size 10). */
+  function facetCounts(defs) {
+    var base = items.filter(function (it) { return !isAddon(it); });
+    return defs.map(function (d) {
+      var c = {};
+      base.forEach(function (it) {
+        if (passesFilter(it, d.name)) itemVals(it, d.name).forEach(function (v) { c[v] = (c[v] || 0) + 1; });
+      });
+      return c;
+    });
+  }
+  // Filter sections folded shut (per gemach, remembered on this device).
+  function foldKey() { return "whg_affold:" + (gemach && gemach.slug || ""); }
+  function foldedSet() {
+    try { var f = JSON.parse(localStorage.getItem(foldKey()) || "[]"); return Array.isArray(f) ? f : []; } catch (e) { return []; }
+  }
+  function setFolded(name, shut) {
+    var f = foldedSet().filter(function (x) { return x !== name; });
+    if (shut) f.push(name);
+    try { localStorage.setItem(foldKey(), JSON.stringify(f)); } catch (e) { /* ignore */ }
+  }
   function filterBar(defs, shown, total) {
     if (!defs.length) return "";
-    var sd = sizeDef();
+    var sd = sizeDef(), counts = facetCounts(defs), folded = foldedSet();
     var rows = defs.map(function (d, i) {
       var on = attrFilter[d.name] || [];
-      return '<div class="af-row" role="group" aria-label="Filter by ' + esc(d.name) + '"><span class="af-name">' + esc(d.name) + "</span>" +
-        '<div class="af-chips">' + d.values.map(function (v, j) {
+      var shut = folded.indexOf(d.name) !== -1;
+      var sum = on.length ? on.join(", ") : "Any";
+      return '<div class="af-row' + (shut ? " af-shut" : "") + '" role="group" aria-label="Filter by ' + esc(d.name) + '">' +
+        '<button type="button" class="af-name" data-fold="' + i + '" aria-expanded="' + !shut + '" aria-controls="af-c' + i + '">' +
+          '<span class="af-label">' + esc(d.name) + '</span><span class="af-sum' + (on.length ? " af-sum-on" : "") + '">' + esc(sum) + "</span>" + W.ICONS.chevron + "</button>" +
+        '<div class="af-chips" id="af-c' + i + '"' + (shut ? " hidden" : "") + ">" + d.values.map(function (v, j) {
           var pressed = on.indexOf(v) !== -1;
-          return '<button type="button" class="af-chip" data-fa="' + i + '" data-fv="' + j + '" aria-pressed="' + pressed + '">' + esc(v) + "</button>";
+          var n = counts[i][v] || 0;
+          var dead = !n && !pressed; // nothing left with this choice; picked ones stay tappable so they can be cleared
+          return '<button type="button" class="af-chip" data-fa="' + i + '" data-fv="' + j + '" aria-pressed="' + pressed + '"' + (dead ? " disabled" : "") +
+            ' aria-label="' + esc(v) + ", " + W.plural(n, "item") + '"><span class="af-v">' + esc(v) + '</span><span class="af-n" aria-hidden="true">' + n + "</span></button>";
         }).join("") + "</div></div>";
     }).join("");
     var n = activeFilterCount();
@@ -621,6 +652,14 @@
       var list = attrFilter[d.name] || [];
       attrFilter[d.name] = list.indexOf(v) !== -1 ? list.filter(function (x) { return x !== v; }) : list.concat([v]);
       rerenderInventory('.af-chip[data-fa="' + chip.getAttribute("data-fa") + '"][data-fv="' + chip.getAttribute("data-fv") + '"]');
+      return;
+    }
+    var fold = t.closest(".af-name[data-fold]");
+    if (fold) {
+      var fd = usableDefs()[Number(fold.getAttribute("data-fold"))];
+      if (!fd) return;
+      setFolded(fd.name, fold.getAttribute("aria-expanded") === "true");
+      rerenderInventory('.af-name[data-fold="' + fold.getAttribute("data-fold") + '"]');
       return;
     }
     if (t.closest(".af-clear")) { attrFilter = {}; rerenderInventory("#af-bar .af-chip"); return; }

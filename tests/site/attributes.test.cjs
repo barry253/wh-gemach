@@ -92,31 +92,60 @@ const names = p => p.$$eval('.item-name', els => els.map(e => e.textContent));
       page.on('pageerror', e => errors.push('pageerror: ' + e.message));
       await page.goto(BASE + '/g/gowns', { waitUntil: 'networkidle' });
 
-      const rows = await page.$$eval('.af-row .af-name', els => els.map(e => e.textContent));
+      const rows = await page.$$eval('.af-row .af-label', els => els.map(e => e.textContent));
       assert(rows.join('|') === 'Size|Color|Length', `${label} filters shown, unused one hidden: ` + rows.join('|'));
-      const sizes = await page.$$eval('.af-row:first-child .af-chip', els => els.map(e => e.textContent));
+      const sizes = await page.$$eval('.af-row:first-child .af-v', els => els.map(e => e.textContent));
       assert(sizes.join(',') === '2,4,8,10,12', `${label} only sizes that exist, in the gemach's order: ` + sizes.join(','));
       assert(/Size 12/.test((await page.$eval('#row-recGw1', e => e.innerText)).replace(/\n/g, ' ')), `${label} gown row shows its size`);
       assert(/6 items/.test(await page.textContent('.af-count')), `${label} count before filtering`);
       await page.screenshot({ path: path.join(SHOTS, `${label}-filters.png`), fullPage: label === 'm' ? false : true });
 
       // Size 8 → Black Sheath + Navy Empire
-      await page.click('.af-chip:text-is("8")');
+      await page.click('.af-chip:has(.af-v:text-is("8"))');
       assert((await names(page)).join('|') === 'Black Sheath|Navy Empire', `${label} size 8: ` + (await names(page)).join('|'));
-      assert(await page.$eval('.af-chip:text-is("8")', e => e.getAttribute('aria-pressed')) === 'true' && await page.evaluate(() => document.activeElement.textContent) === '8', `${label} chip pressed and keeps focus`);
+      assert(await page.$eval('.af-chip:has(.af-v:text-is("8"))', e => e.getAttribute('aria-pressed')) === 'true' && await page.evaluate(() => document.activeElement.querySelector('.af-v').textContent) === '8', `${label} chip pressed and keeps focus`);
       assert(/Showing 2 of 6/.test(await page.textContent('.af-count')), `${label} count after filter`);
+      // Choices with nothing left in size 8 are grayed out; sizes themselves stay open (OR within a filter)
+      const chipState = () => page.$$eval('.af-row', rs => rs.map(r => [...r.querySelectorAll('.af-chip')].map(c =>
+        c.querySelector('.af-v').textContent + (c.disabled ? '-' : '') + ':' + c.querySelector('.af-n').textContent).join(',')).join(' | '));
+      assert(await chipState() === '2:1,4:1,8:2,10:1,12:1 | Black:1,Navy:1,Gold-:0,Silver-:0,Blush-:0 | Floor-length-:0,Tea-length:2',
+        `${label} size 8 grays out other colors/lengths: ` + await chipState());
+      await page.screenshot({ path: path.join(SHOTS, `${label}-filters-facets.png`) });
       // + Size 12 (OR within a filter) and Color Navy (AND across filters)
-      await page.click('.af-chip:text-is("12")');
-      await page.click('.af-row:nth-child(2) .af-chip:text-is("Navy")');
+      await page.click('.af-chip:has(.af-v:text-is("12"))');
+      await page.click('.af-row:nth-child(2) .af-chip:has(.af-v:text-is("Navy"))');
       assert((await names(page)).join('|') === 'Navy A-line|Navy Empire', `${label} sizes 8/12 + navy: ` + (await names(page)).join('|'));
       await page.screenshot({ path: path.join(SHOTS, `${label}-filters-on.png`) });
-      // Nothing matches
-      await page.click('.af-row:nth-child(3) .af-chip:text-is("Tea-length")');
-      await page.click('.af-chip:text-is("12")');
-      await page.click('.af-row:nth-child(2) .af-chip:text-is("Navy")');
-      await page.click('.af-row:nth-child(2) .af-chip:text-is("Blush")');
-      assert(await page.isVisible('.af-none') && !(await names(page)).length, `${label} no-match notice`);
-      await page.click('#af-clear-2');
+      // Picked chips stay tappable even when their count drops to 0
+      await page.click('.af-row:nth-child(3) .af-chip:has(.af-v:text-is("Tea-length"))');
+      assert(await chipState() === '2-:0,4-:0,8:1,10:1,12:0 | Black:1,Navy:1,Gold-:0,Silver-:0,Blush-:0 | Floor-length:1,Tea-length:1',
+        `${label} counts follow the other filters: ` + await chipState());
+      await page.click('.af-chip:has(.af-v:text-is("12"))');
+      assert(await page.$eval('.af-chip:has(.af-v:text-is("12"))', e => e.disabled && e.getAttribute('aria-pressed') === 'false'), `${label} unpicked 12 is grayed (no tea-length navy 12)`);
+      await page.click('.af-row:nth-child(3) .af-chip:has(.af-v:text-is("Tea-length"))');
+      assert(await page.$eval('.af-chip:has(.af-v:text-is("12"))', e => !e.disabled), `${label} 12 back once tea-length is off`);
+      await page.click('.af-chip:has(.af-v:text-is("12"))');
+      // Fold a section shut: chips hide, summary shows the picks, and it's remembered on reload
+      await page.click('.af-row:nth-child(1) .af-name');
+      assert(await page.$eval('.af-row:nth-child(1)', r => r.querySelector('.af-chips').hidden && r.querySelector('.af-name').getAttribute('aria-expanded') === 'false'
+        && getComputedStyle(r.querySelector('.af-sum')).display !== 'none' && r.querySelector('.af-sum').textContent === '8, 12'), `${label} size section folded with summary`);
+      assert(await page.evaluate(() => document.activeElement.classList.contains('af-name')), `${label} fold button keeps focus`);
+      await page.click('.af-row:nth-child(2) .af-name');
+      assert(await page.$eval('.af-row:nth-child(2) .af-sum', e => e.textContent) === 'Navy', `${label} color folded shows Navy`);
+      await page.screenshot({ path: path.join(SHOTS, `${label}-filters-folded.png`) });
+      await page.reload({ waitUntil: 'networkidle' });
+      assert(await page.$eval('.af-row:nth-child(1) .af-chips', e => e.hidden) && await page.$eval('.af-row:nth-child(2) .af-chips', e => e.hidden)
+        && !(await page.$eval('.af-row:nth-child(3) .af-chips', e => e.hidden)), `${label} folded sections remembered`);
+      await page.click('.af-row:nth-child(1) .af-name');
+      await page.click('.af-row:nth-child(2) .af-name');
+      assert(!(await page.$eval('.af-row:nth-child(1) .af-chips', e => e.hidden)), `${label} unfold`);
+      await page.click('.af-chip:has(.af-v:text-is("8"))');
+      await page.click('.af-chip:has(.af-v:text-is("12"))');
+      await page.click('.af-row:nth-child(2) .af-chip:has(.af-v:text-is("Navy"))');
+      // Grayed chips can't be tapped, so picks can no longer lead to "nothing matches"
+      await page.click('.af-row:nth-child(2) .af-chip:has(.af-v:text-is("Blush"))', { force: true });
+      assert((await names(page)).join('|') === 'Navy A-line|Navy Empire' && !(await page.isVisible('.af-none')), `${label} tapping a grayed chip does nothing`);
+      await page.click('#af-clear');
       assert((await names(page)).length === 6 && !(await page.$('.af-chip[aria-pressed="true"]')), `${label} clear filters shows everything`);
 
       // Sort by size, smallest first; gowns without a size last
@@ -124,7 +153,7 @@ const names = p => p.$$eval('.item-name', els => els.map(e => e.textContent));
       assert((await names(page)).join('|') === 'Blush Ball Gown|Gold Mermaid|Black Sheath|Navy Empire|Navy A-line|Mystery Gown', `${label} sorted by size: ` + (await names(page)).join('|'));
 
       // Selecting still works with filters on
-      await page.click('.af-chip:text-is("4")');
+      await page.click('.af-chip:has(.af-v:text-is("4"))');
       await page.click('#row-recGw2');
       assert(await page.$eval('#row-recGw2', e => e.classList.contains('selected')), `${label} select a filtered gown`);
       await page.click('.af-clear');
