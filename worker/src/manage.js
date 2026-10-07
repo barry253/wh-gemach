@@ -82,14 +82,16 @@ async function loadManaged(db, env, token) {
 const reqStatus = rec => selName(rec.fields["Status"]) || "New";
 const isAppt = rec => selName(rec.fields["Request Type"]) === "Appointment";
 const openLoans = loans => loans.filter(l => ["Reserved", "Active"].includes(selName(l.fields.Status)));
+/** Appointment visit recorded in admin: "Checked out" / "Nothing borrowed" / "No-show", or null. */
+const visitOf = rec => String(rec.fields["Visit Outcome"] || "").trim() || null;
 
 /** Whether the request is finished long enough ago that its link should stop working. */
 function expired(rec, loans) {
   const st = reqStatus(rec);
   if (st === "New") return false;
   if (openLoans(loans).length) return false;
-  if (isAppt(rec) && st === "Converted") {
-    const at = Date.parse(rec.fields["Appointment At"] || "");
+  if (isAppt(rec) && st === "Converted" && !loans.length) {
+    const at = Date.parse(rec.fields["Visited At"] || rec.fields["Appointment At"] || "");
     return Number.isFinite(at) && Date.now() - at > LINK_GRACE_MS;
   }
   const ends = loans.map(l => Date.parse(l.fields["Date Returned"] || l.fields["Reservation End"] || l.fields["Reservation Start"] || ""))
@@ -108,7 +110,8 @@ async function managePayload(db, rec, g, loans) {
   const active = loans.filter(l => selName(l.fields.Status) === "Active");
   const reserved = loans.filter(l => selName(l.fields.Status) === "Reserved");
   const status = st === "Cancelled" ? "cancelled" : st === "Declined" ? "declined" : st === "New" ? "waiting"
-    : isAppt(rec) ? "appointment"
+    : isAppt(rec) && !visitOf(rec) ? "appointment"
+    : isAppt(rec) && visitOf(rec) !== "Checked out" ? (visitOf(rec) === "Nothing borrowed" ? "visited" : "closed")
     : active.length ? "out" : reserved.length ? "confirmed"
     : loans.some(l => selName(l.fields.Status) === "Returned") ? "returned" : "closed";
   const gp = publicGemach(g, null);
@@ -127,6 +130,7 @@ async function managePayload(db, rec, g, loans) {
       openEnded: !!f["Open-ended duration"],
       eventDate: f["Event Date"] || null,
       appointmentAt: st === "Converted" ? f["Appointment At"] || null : null,
+      visitOutcome: isAppt(rec) ? visitOf(rec) : null,
       items: (f["Items Requested"] || []).map(linkedId).filter(id => info[id]).map(id => ({
         name: info[id].name, quantity: info[id].qty || info[id].addon ? qmap[id] || 1 : null, addon: !!info[id].addon })),
     },
@@ -146,7 +150,7 @@ async function managePayload(db, rec, g, loans) {
       };
     }),
     can: {
-      cancel: st === "New" || (st === "Converted" && (isAppt(rec) ? !!f["Appointment At"] && Date.parse(f["Appointment At"]) > Date.now() : reserved.length > 0)),
+      cancel: st === "New" || (st === "Converted" && (isAppt(rec) ? !visitOf(rec) && !!f["Appointment At"] && Date.parse(f["Appointment At"]) > Date.now() : reserved.length > 0)),
       readyToReturn: active.some(l => !l.fields["Ready To Return At"]),
     },
     partlyOut: !!(active.length && reserved.length),

@@ -4,7 +4,7 @@ import { Q, fetchByIds, getOwned, linkedId, today } from "./airtable.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { findOrCreateBorrower } from "./borrowers.js";
 import { DATE_RE, T } from "./config.js";
-import { base64Utf8, buildIcs, formatNy, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
+import { addDays, base64Utf8, buildIcs, formatNy, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
 import { selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
@@ -179,19 +179,29 @@ async function confirmAppointment(c, rec, body) {
   return json({ success: true, reservations: [], appointmentAt, ...(emailSent === false ? { emailSent: false } : {}) });
 }
 
-/** Upcoming appointments (Appointment At >= start of today, New York), soonest first. */
+const PAST_APPT_DAYS = 14; // appointments this recent that nobody marked as visited stay listed ("Did they come?")
+
+/**
+ * Confirmed appointments still to deal with, soonest first: upcoming ones (from the start of today, New York)
+ * plus ones from the last PAST_APPT_DAYS days with no Visit Outcome yet (past: true). Checked-out / closed
+ * visits drop off.
+ */
 async function handleGetAppointments({ db, g, env }) {
-  const since = new Date(nyLocalToUtc(nyToday(), "00:00")).toISOString();
+  const t = nyToday();
+  const todayStart = new Date(nyLocalToUtc(t, "00:00")).toISOString();
+  const since = new Date(nyLocalToUtc(addDays(t, -PAST_APPT_DAYS), "00:00")).toISOString();
   const recs = await db.listAll(T.REQUESTS, {
     scope: g, where: [Q.eq("Request Type", "Appointment"), Q.ne("Status", "Declined"), Q.ne("Status", "Cancelled"), Q.notBlank("Appointment At"), Q.notBefore("Appointment At", since)],
     sort: [{ field: "Appointment At", direction: "asc" }],
-    fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Appointment At", "Party Size", "Event Date", "Notes", "Status"],
+    fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Appointment At", "Party Size", "Event Date", "Notes", "Status", "Visit Outcome"],
   });
   const nameMap = await itemTypeNameMap(db, recs.flatMap(r => r.fields["Items Requested"] || []), g);
   const out = (await Promise.all(recs
-    .filter(r => r.fields["Appointment At"] && r.fields["Appointment At"] >= since && selName(r.fields.Status) !== "Cancelled")
+    .filter(r => r.fields["Appointment At"] && r.fields["Appointment At"] >= since && !["Cancelled", "Declined"].includes(selName(r.fields.Status))
+      && !String(r.fields["Visit Outcome"] || "").trim())
     .map(async r => {
       const f = r.fields;
+      const ids = (f["Items Requested"] || []).map(linkedId).filter(id => nameMap[id]);
       return {
         id: r.id,
         requestId: f["Request ID"] || null,
@@ -199,8 +209,10 @@ async function handleGetAppointments({ db, g, env }) {
         phone: f["Phone"] || null,
         email: f["Email"] || null,
         preferredContact: f["Preferred Contact"] || null,
-        itemNames: (f["Items Requested"] || []).map(linkedId).filter(id => nameMap[id]).map(id => nameMap[id]),
+        itemNames: ids.map(id => nameMap[id]),
+        itemTypeIds: ids,
         appointmentAt: f["Appointment At"],
+        past: f["Appointment At"] < todayStart,
         partySize: f["Party Size"] ?? null,
         eventDate: f["Event Date"] || null,
         notes: f["Notes"] || null,

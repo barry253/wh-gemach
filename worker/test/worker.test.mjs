@@ -769,16 +769,222 @@ await t("v3 appointment confirm: requires appointmentAt; stores UTC; no reservat
   assert.match(log.Notes, /^Appointment \w{3}, \w{3} \d{1,2} at 8:00 PM$/);
 });
 
-await t("v3 GET /admin/appointments: upcoming only, sorted, scoped", async () => {
+await t("v3 GET /admin/appointments: upcoming + recent unvisited (past), sorted, scoped; visited ones drop off", async () => {
   DB.Requests.push(
     rec("recAPPTPAST000001", { "Request ID": "R-900", Name: "Past", "Request Type": "Appointment", Status: "Converted", "Appointment At": new Date(X.nyLocalToUtc(plusDays(-1), "10:00")).toISOString(), Gemach: [B.id], "Gemach Slug": [B.slug] }),
+    rec("recAPPTOLD0000001", { "Request ID": "R-899", Name: "Old", "Request Type": "Appointment", Status: "Converted", "Appointment At": new Date(X.nyLocalToUtc(plusDays(-20), "10:00")).toISOString(), Gemach: [B.id], "Gemach Slug": [B.slug] }),
+    rec("recAPPTDONE000001", { "Request ID": "R-898", Name: "Done", "Request Type": "Appointment", Status: "Converted", "Visit Outcome": "No-show", "Appointment At": new Date(X.nyLocalToUtc(plusDays(-2), "10:00")).toISOString(), Gemach: [B.id], "Gemach Slug": [B.slug] }),
     rec("recAPPTSOON00001", { "Request ID": "R-901", Name: "Soon", "Request Type": "Appointment", Status: "Converted", "Appointment At": new Date(X.nyLocalToUtc(plusDays(2), "10:00")).toISOString(), "Party Size": 2, Gemach: [B.id], "Gemach Slug": [B.slug] }),
     rec("recAPPTOTHER0001", { "Request ID": "R-902", Name: "OtherG", "Request Type": "Appointment", Status: "Converted", "Appointment At": new Date(X.nyLocalToUtc(plusDays(2), "11:00")).toISOString(), Gemach: [A.id], "Gemach Slug": [A.slug] }),
   );
   const d = await (await call(`/admin/appointments`, { headers: jsonB })).json();
-  assert.deepEqual(d.map(x => x.name), ["Soon", "Chana Levi"]);
-  assert.deepEqual(Object.keys(d[0]).sort(), ["appointmentAt", "email", "eventDate", "id", "itemNames", "manageUrl", "name", "notes", "partySize", "phone", "preferredContact", "requestId"].sort());
-  assert.equal(d[0].partySize, 2);
+  assert.deepEqual(d.map(x => x.name), ["Past", "Soon", "Chana Levi"]);
+  assert.deepEqual(d.map(x => x.past), [true, false, false]);
+  assert.deepEqual(Object.keys(d[1]).sort(), ["appointmentAt", "email", "eventDate", "id", "itemNames", "itemTypeIds", "manageUrl", "name", "notes", "partySize", "past", "phone", "preferredContact", "requestId"].sort());
+  assert.equal(d[1].partySize, 2);
+});
+
+// ─── Lending at the counter: appointment check-out, visits, walk-ins (checkout.js) ───
+{
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  DB["Item Types"].push(
+    rec("recCOGOWNA0000001", { Name: "Navy gown – size 8", Active: true, "Display Order": 1, Attributes: '{"Size":["8"]}', ...Bf }),
+    rec("recCOGOWNB0000001", { Name: "Gold gown – size 10", Active: true, "Display Order": 2, ...Bf }),
+    rec("recCOGOWNC0000001", { Name: "Black dress – size 6", Active: true, "Display Order": 3, ...Bf }),
+    rec("recCOCHAIRS000001", { Name: "Chairs", Active: true, Tracking: "Quantity", "Quantity Owned": 10, "Out of Service": 2, "Display Order": 4, ...Bf }),
+    rec("recCOSHIRT0000001", { Name: "Sweatshirt", Active: true, Tracking: "Add-on", Price: 40, "Display Order": 5, ...Bf }),
+    rec("recCOOFF000000001", { Name: "Retired gown", Active: false, "Display Order": 6, ...Bf }),
+  );
+  DB.Items.push(
+    rec("recCOUNITA0000001", { "Item ID": "SD-001", "Item Type": ["recCOGOWNA0000001"], Active: true, Status: "Available", ...Bf }),
+    rec("recCOUNITB0000001", { "Item ID": "SD-002", "Item Type": ["recCOGOWNB0000001"], Active: true, Status: "Available", ...Bf }),
+    rec("recCOUNITC0000001", { "Item ID": "SD-003", "Item Type": ["recCOGOWNC0000001"], Active: true, Status: "Available", ...Bf }),
+  );
+  const at = d => new Date(X.nyLocalToUtc(plusDays(d), "19:00")).toISOString();
+  DB.Requests.push(
+    rec("recCOSALLY0000001", { "Request ID": "R-950", Name: "Sally Katz", Phone: "5165550101", Email: "sally@example.com", "Preferred Contact": "Email", "Request Type": "Appointment",
+      Status: "Converted", "Appointment At": at(0), "Items Requested": ["recCOGOWNA0000001", "recCOGOWNB0000001"], "Event Date": plusDays(20), ...Bf }),
+    rec("recCORIVKA0000001", { "Request ID": "R-951", Name: "Rivka", Phone: "5165550102", "Request Type": "Appointment", Status: "Converted", "Appointment At": at(3),
+      "Items Requested": ["recCOGOWNB0000001"], ...Bf }),
+    rec("recCOLOANREQ00001", { "Request ID": "R-952", Name: "Dates person", "Request Type": "Loan", Status: "New", ...Bf }),
+  );
+}
+const postB = (path, body) => call(path, { method: "POST", headers: jsonB, body: JSON.stringify(body) });
+
+await t("checkout options: active types with units, open loans, held-for-appointment hints, the request, usual loan length", async () => {
+  setG(B.id, { "Default Loan Days": 21 });
+  const r = await call(`/admin/checkout/options?request=recCOSALLY0000001`, { headers: jsonB });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.defaultLoanDays, 21);
+  assert.equal(d.today, todayNy);
+  const byId = Object.fromEntries(d.types.map(x => [x.id, x]));
+  assert.ok(!byId.recCOOFF000000001, "inactive types left out");
+  assert.ok(!byId.recTYPEA000000001, "other gemach's types left out");
+  assert.deepEqual(byId.recCOGOWNA0000001.units, [{ id: "recCOUNITA0000001", itemId: "SD-001", needsRepair: false }]);
+  assert.equal(byId.recCOGOWNA0000001.tracking, "Units");
+  assert.equal(byId.recCOCHAIRS000001.tracking, "Quantity"); assert.equal(byId.recCOCHAIRS000001.lendable, 8);
+  assert.equal(byId.recCOSHIRT0000001.tracking, "Add-on"); assert.equal(byId.recCOSHIRT0000001.price, 40);
+  assert.deepEqual(byId.recCOGOWNB0000001.held.map(h => h.name), ["Rivka"], "Rivka's appointment holds gown B");
+  assert.deepEqual(byId.recCOGOWNA0000001.held, [], "Sally's own appointment isn't a hold");
+  assert.equal(d.request.name, "Sally Katz");
+  assert.deepEqual(d.request.itemTypeIds, ["recCOGOWNA0000001", "recCOGOWNB0000001"]);
+  assert.match(d.request.manageUrl, /\/r\/recCOSALLY0000001\./);
+  const r2 = await call(`/admin/checkout/options?request=recREQA0000000001`, { headers: jsonB });
+  assert.equal(r2.status, 404, "another gemach's request");
+});
+
+await t("checkout: validation (items, units, counts, due date, request type)", async () => {
+  const loansBefore = DB.Loans.length;
+  const bad = async (body, status, re, id = "recCOSALLY0000001") => {
+    const r = await postB(`/admin/requests/${id}/checkout`, body);
+    assert.equal(r.status, status, JSON.stringify(body));
+    if (re) assert.match((await r.json()).error, re);
+  };
+  await bad({ items: [] }, 400, /at least one/);
+  await bad({ items: [{ itemTypeId: "recCOGOWNA0000001" }] }, 400, /Choose which/);
+  await bad({ items: [{ itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITB0000001" }] }, 404, /wasn't found/);
+  await bad({ items: [{ itemTypeId: "recTYPEA000000001", itemId: "recITEMA000000001" }] }, 404, /isn't in this gemach/);
+  await bad({ items: [{ itemTypeId: "recCOCHAIRS000001", quantity: 9 }] }, 400, /8 or fewer/);
+  await bad({ items: [{ itemTypeId: "recCOCHAIRS000001", quantity: 0 }] }, 400, /1 or more/);
+  await bad({ items: [{ itemTypeId: "recCOCHAIRS000001", quantity: 1 }, { itemTypeId: "recCOCHAIRS000001", quantity: 1 }] }, 400, /twice/);
+  await bad({ items: [{ itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" }, { itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" }] }, 400, /twice/);
+  await bad({ items: [{ itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" }], dueBack: plusDays(-1) }, 400, /past/);
+  await bad({ items: [{ itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" }], dueBack: "2026-02-30" }, 400, /valid/);
+  await bad({ items: Array.from({ length: 21 }, () => ({ itemTypeId: "recCOCHAIRS000001" })) }, 400, /more than 20/);
+  await bad({ items: [{ itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" }] }, 400, /appointment requests/, "recCOLOANREQ00001");
+  assert.equal(DB.Loans.length, loansBefore, "nothing written");
+});
+
+await t("checkout: lends what was taken (incl. an extra dress), add-on handed over, request marked, History + email", async () => {
+  const due = plusDays(14);
+  const r = await postB(`/admin/requests/recCOSALLY0000001/checkout`, {
+    items: [
+      { itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" },
+      { itemTypeId: "recCOGOWNC0000001", itemId: "recCOUNITC0000001" },
+      { itemTypeId: "recCOCHAIRS000001", quantity: 3 },
+      { itemTypeId: "recCOSHIRT0000001", quantity: 2 },
+    ],
+    dueBack: due, message: "Hi Sally, enjoy the simcha!", sendMessage: true,
+  });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.loans.length, 4);
+  const loans = d.loans.map(l => DB.Loans.find(x => x.id === l.id).fields);
+  for (const f of loans) {
+    assert.deepEqual(f["Source Request"], ["recCOSALLY0000001"]);
+    assert.equal(f["Date Borrowed"], todayNy);
+    assert.match(f["Loan ID"], /^L-\d{3,}$/);
+  }
+  assert.equal(new Set(loans.map(f => f["Loan ID"])).size, 4, "distinct loan ids");
+  assert.equal(loans[0].Status, "Active"); assert.deepEqual(loans[0].Item, ["recCOUNITA0000001"]); assert.deepEqual(loans[0]["Item to Reserve"], ["recCOGOWNA0000001"]);
+  assert.equal(loans[0]["Expected Return"], due);
+  assert.equal(loans[2].Status, "Active"); assert.equal(loans[2].Quantity, 3); assert.equal(loans[2].Item, undefined);
+  assert.equal(loans[3].Status, "Returned"); assert.equal(loans[3].Quantity, 2); assert.equal(loans[3]["Date Returned"], todayNy);
+  const req = DB.Requests.find(x => x.id === "recCOSALLY0000001").fields;
+  assert.equal(req.Status, "Converted"); assert.equal(req["Visit Outcome"], "Checked out"); assert.ok(req["Visited At"]);
+  await Promise.allSettled(waits);
+  const log = DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields["Loan ID"] === "R-950").at(-1).fields;
+  assert.equal(log["Event Type"], "Checked Out");
+  assert.match(log.Notes, /4 items out; added: Black dress – size 6, Chairs × 3, Sweatshirt × 2; not taken: Gold gown – size 10; due back /);
+  assert.ok(DB["tblC3PY7f5sXQDMJK"].some(x => x.fields["Event Type"] === "Add-on Handed Over" && /Checked out at appointment R-950/.test(x.fields.Notes || "")));
+  const mail = resendCalls().at(-1);
+  assert.deepEqual(mail.to, ["sally@example.com"]);
+  assert.match(mail.text, /^Hi Sally, enjoy the simcha!/);
+  // Done visits leave the appointments list; a second check-out is refused.
+  const appts = await (await call(`/admin/appointments`, { headers: jsonB })).json();
+  assert.ok(!appts.some(a => a.id === "recCOSALLY0000001"));
+  const again = await postB(`/admin/requests/recCOSALLY0000001/checkout`, { items: [{ itemTypeId: "recCOGOWNB0000001", itemId: "recCOUNITB0000001" }] });
+  assert.equal(again.status, 409);
+});
+
+await t("checkout: the borrower's manage link shows what she borrowed (no cancel), and her loans are in Loans", async () => {
+  const opt = await (await call(`/admin/checkout/options?request=recCOSALLY0000001`, { headers: jsonB })).json();
+  const token = opt.request.manageUrl.split("/r/")[1];
+  const m = await (await call(`/public/manage/${token}`)).json();
+  assert.equal(m.request.status, "out");
+  assert.equal(m.request.visitOutcome, "Checked out");
+  assert.equal(m.can.cancel, false);
+  assert.equal(m.can.readyToReturn, true);
+  assert.deepEqual(m.loans.filter(l => l.status === "Active").map(l => l.itemName).sort(), ["Black dress – size 6", "Chairs", "Navy gown – size 8"]);
+  const loans = await (await call(`/admin/loans`, { headers: jsonB })).json();
+  const mine = loans.filter(l => l.borrowerName === "Sally Katz");
+  assert.equal(mine.length, 3);
+  assert.ok(mine.every(l => l.manageUrl && l.manageUrl.includes("recCOSALLY0000001")));
+  assert.ok(mine.some(l => l.itemId === "SD-001" && l.itemTypeName === "Navy gown – size 8"));
+  // The options now show SD-001 as out (an Active booking on that unit).
+  const gA = opt.types.find(x => x.id === "recCOGOWNA0000001");
+  assert.ok(gA.bookings.some(b => b.status === "Active" && b.unitId === "recCOUNITA0000001" && b.borrower === "Sally Katz"));
+});
+
+await t("visit: nothing borrowed / no-show close the appointment; validation", async () => {
+  const bad = await postB(`/admin/requests/recCORIVKA0000001/visit`, { outcome: "maybe" });
+  assert.equal(bad.status, 400);
+  assert.equal((await postB(`/admin/requests/recCOLOANREQ00001/visit`, { outcome: "nothing" })).status, 400);
+  assert.equal((await postB(`/admin/requests/recCOSALLY0000001/visit`, { outcome: "noshow" })).status, 409, "already checked out");
+  const r = await postB(`/admin/requests/recCORIVKA0000001/visit`, { outcome: "noshow" });
+  assert.equal(r.status, 200);
+  assert.equal(DB.Requests.find(x => x.id === "recCORIVKA0000001").fields["Visit Outcome"], "No-show");
+  const appts = await (await call(`/admin/appointments`, { headers: jsonB })).json();
+  assert.ok(!appts.some(a => a.id === "recCORIVKA0000001"));
+  const opt = await (await call(`/admin/checkout/options`, { headers: jsonB })).json();
+  assert.deepEqual(opt.types.find(x => x.id === "recCOGOWNB0000001").held, [], "no hold once the visit is closed");
+  await Promise.allSettled(waits);
+  const log = DB["tblC3PY7f5sXQDMJK"].at(-1).fields;
+  assert.equal(log["Event Type"], "Visit Closed"); assert.equal(log.Notes, "No-show");
+  const token = (await (await call(`/admin/checkout/options?request=recCORIVKA0000001`, { headers: jsonB })).json()).request.manageUrl.split("/r/")[1];
+  const m = await (await call(`/public/manage/${token}`)).json();
+  assert.equal(m.request.status, "closed"); assert.equal(m.can.cancel, false);
+});
+
+await t("walk-in loan: borrower details checked; unit already out refused; creates borrower + loans without a request", async () => {
+  const bad = async (body, re) => { const r = await postB(`/admin/loans`, body); assert.equal(r.status, 400, JSON.stringify(body)); assert.match((await r.json()).error, re); };
+  const items = [{ itemTypeId: "recCOGOWNB0000001", itemId: "recCOUNITB0000001" }];
+  await bad({ borrower: { phone: "5165550199" }, items }, /name/);
+  await bad({ borrower: { name: "Leah" }, items }, /phone number or email/);
+  await bad({ borrower: { name: "Leah", email: "nope" }, items }, /email/);
+  const out = await postB(`/admin/loans`, { borrower: { name: "Leah", phone: "5165550199" }, items: [{ itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" }] });
+  assert.equal(out.status, 409);
+  assert.match((await out.json()).error, /SD-001 .* already out on loan/);
+  const r = await postB(`/admin/loans`, { borrower: { name: "Leah Gold", phone: "516-555-0199", preferredContact: "WhatsApp" }, items, dueBack: plusDays(7), notes: "Walked in Sunday" });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  const f = DB.Loans.find(x => x.id === d.loans[0].id).fields;
+  assert.equal(f.Status, "Active"); assert.equal(f["Source Request"], undefined); assert.equal(f.Notes, "Walked in Sunday");
+  assert.equal(f["Expected Return"], plusDays(7));
+  const bor = DB.Borrowers.find(x => x.id === f.Borrower[0]).fields;
+  assert.equal(bor.Name, "Leah Gold"); assert.equal(bor["Preferred Contact"], "WhatsApp");
+});
+
+await t("walk-in loan: 20 items at once stays well inside D1's 50-queries-per-request limit", async () => {
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  const items = [];
+  for (let i = 0; i < 20; i++) {
+    const n = String(i).padStart(2, "0");
+    DB["Item Types"].push(rec(`recCOBULKTYPE00${n}`, { Name: `Bulk ${n}`, Active: true, ...Bf }));
+    DB.Items.push(rec(`recCOBULKUNIT00${n}`, { "Item ID": `BK-0${n}`, "Item Type": [`recCOBULKTYPE00${n}`], Active: true, Status: "Available", ...Bf }));
+    items.push({ itemTypeId: `recCOBULKTYPE00${n}`, itemId: `recCOBULKUNIT00${n}` });
+  }
+  const before = DB.Loans.length;
+  const r = await postB(`/admin/loans`, { borrower: { name: "Big Order", email: "big@example.com" }, items });
+  assert.equal(r.status, 200);
+  assert.equal(DB.Loans.length, before + 20);
+  await Promise.allSettled(waits);
+  assert.equal(DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields.Borrower === "Big Order").length, 20, "one History row per loan");
+  if (D1_MODE) assert.ok(d1Queries <= 30, `used ${d1Queries} queries`);
+});
+
+await t("settings: usual loan length is optional (1–365 days, blank clears)", async () => {
+  const patch = v => call(`/admin/gemach`, { method: "PATCH", headers: jsonB, body: JSON.stringify({ defaultLoanDays: v }) });
+  assert.equal((await patch(0)).status, 400);
+  assert.equal((await patch(366)).status, 400);
+  assert.equal((await patch("abc")).status, 400);
+  assert.equal((await patch(30)).status, 200);
+  assert.equal((await (await call(`/admin/gemach`, { headers: jsonB })).json()).defaultLoanDays, 30);
+  assert.equal((await patch("")).status, 200);
+  assert.equal((await (await call(`/admin/gemach`, { headers: jsonB })).json()).defaultLoanDays, null);
+  const pub = await (await call(`/public/gemach/${B.slug}`)).json();
+  assert.ok(!("defaultLoanDays" in (pub.gemach || pub)), "not on the public page");
 });
 
 await t("v3 GET /admin/gemach: appointment template (+ no-address variant), new placeholders, profile fields", async () => {

@@ -53,6 +53,7 @@ async function adminGemachPayload(db, g, user) {
     ...publicGemach(g, communities[0]?.fields?.Name),
     pickupAddress: g.pickupAddress,
     pickupInstructions: g.pickupInstructions,
+    defaultLoanDays: g.defaultLoanDays,
     templates: effectiveTemplates(g),
     rawTemplates: { ...g.rawTemplates },
     placeholders: TEMPLATE_PLACEHOLDERS,
@@ -100,6 +101,7 @@ const GEMACH_EDITABLE = {
   eventLabel:         ["Event Label", "label"],
   pickupDaysBefore:   ["Pickup Days Before", "days"],
   returnDaysAfter:    ["Return Days After", "days"],
+  defaultLoanDays:    ["Default Loan Days", "loandays"],
   shabbosAdjust:      ["Shabbos Adjust", "bool"],
   appointmentMessage: ["Appointment Message", "long"],
   returnReminderMessage: ["Return Reminder Message", "long"],
@@ -117,7 +119,7 @@ const GEMACH_LABELS = {
   pickupMessage: "Pickup message", name: "Gemach name",
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
   depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
-  eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after",
+  eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
@@ -155,6 +157,13 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
     if (kind === "repeat") {
       if (typeof v === "string" && v.trim() !== "") v = Number(v);
       if (!Number.isInteger(v) || v < 0 || v > 30) return { error: `${label} must be a whole number of days from 0 to 30.` };
+      fields[field] = v;
+      continue;
+    }
+    if (kind === "loandays") { // optional: blank clears
+      if (v === null || (typeof v === "string" && v.trim() === "")) { fields[field] = null; continue; }
+      if (typeof v === "string") v = Number(v);
+      if (!Number.isInteger(v) || v < 1 || v > 365) return { error: `${label} must be a whole number of days from 1 to 365, or blank.` };
       fields[field] = v;
       continue;
     }

@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS gemachs (
   pickup_days_before REAL,  -- Pickup Days Before
   return_days_after REAL,  -- Return Days After
   shabbos_adjust INTEGER NOT NULL DEFAULT 0,  -- Shabbos Adjust
+  default_loan_days REAL,  -- Default Loan Days
   confirm_message TEXT,  -- Confirm Message
   decline_message TEXT,  -- Decline Message
   pickup_message TEXT,  -- Pickup Message
@@ -146,7 +147,9 @@ CREATE TABLE IF NOT EXISTS requests (
   party_size REAL,  -- Party Size
   appointment_at TEXT,  -- Appointment At
   deposit_acknowledged INTEGER NOT NULL DEFAULT 0,  -- Deposit Acknowledged
-  item_quantities TEXT  -- Item Quantities
+  item_quantities TEXT,  -- Item Quantities
+  visit_outcome TEXT,  -- Visit Outcome
+  visited_at TEXT  -- Visited At
 );
 
 CREATE TABLE IF NOT EXISTS loans (

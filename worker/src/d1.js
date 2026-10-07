@@ -208,6 +208,7 @@ function joinStatements(prep, f, ownerId, ids) {
   return out;
 }
 
+const MAX_BOUND_PARAMS = 100; // D1: bound parameters per statement
 const isConstraint = e => /constraint|FOREIGN KEY/i.test(String(e?.message || e));
 
 // ─── The data layer ────────────────────────────────────────────────────────────
@@ -316,6 +317,43 @@ function makeD1Db(env) {
     return toRecord(spec, res[res.length - 1].results[0], rb.sel.names);
   }
 
+  /**
+   * Several new rows with as few statements as D1 allows (multi-row INSERT, chunked under the 100-bound-
+   * parameter limit) and no read-back: returns [{ id, createdTime, fields }] with the fields as given.
+   * Tables whose rows need join-table rows (many-to-many fields) fall back to one create() each.
+   */
+  async function createMany(table, list) {
+    if (!list?.length) return [];
+    const spec = tableSpec(table);
+    const plans = list.map(f => writePlan(spec, f));
+    if (plans.some(p => p.joins.length)) {
+      const out = [];
+      for (const f of list) out.push(await create(table, f));
+      return out;
+    }
+    const now = new Date().toISOString();
+    const cols = [...new Set(plans.flatMap(p => p.cols))];
+    const rows = plans.map((p, i) => {
+      trace?.({ kind: "create", table, fields: list[i] });
+      const byCol = Object.fromEntries(p.cols.map((c, k) => [c, p.vals[k]]));
+      return { id: newRecordId(), vals: cols.map(c => (c in byCol ? byCol[c] : null)) };
+    });
+    const allCols = ["id", "created_at", ...cols];
+    const per = Math.max(1, Math.floor(MAX_BOUND_PARAMS / allCols.length));
+    const stmts = [];
+    for (let i = 0; i < rows.length; i += per) {
+      const chunk = rows.slice(i, i + per);
+      const ph = `(${allCols.map(() => "?").join(", ")})`;
+      stmts.push(prep(`INSERT INTO ${spec.sql} (${allCols.join(", ")}) VALUES ${chunk.map(() => ph).join(", ")}`,
+        chunk.flatMap(r => [r.id, now, ...r.vals])));
+    }
+    try { await batch(`createMany ${spec.sql}`, stmts); } catch (e) {
+      if (isConstraint(e)) throw err(422, "ROW_DOES_NOT_EXIST", `Linked record not found (${spec.name}): ${e.message}`);
+      throw e;
+    }
+    return rows.map((r, i) => ({ id: r.id, createdTime: now, fields: { ...list[i] } }));
+  }
+
   async function update(table, id, fields) {
     const spec = tableSpec(table);
     if (!REC_RE.test(id || "")) throw err(404, "NOT_FOUND", "Could not find record");
@@ -351,7 +389,7 @@ function makeD1Db(env) {
     return true;
   }
 
-  return { engine: "d1", stats, listPage, listAll, get, create, update, del, ping };
+  return { engine: "d1", stats, listPage, listAll, get, create, createMany, update, del, ping };
 }
 
 export { makeD1Db, newRecordId, toRecord, writePlan };

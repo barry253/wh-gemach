@@ -19,6 +19,25 @@ function logEvent(ctx, db, g, { eventType, itemCode, itemType, borrower, loanId,
   if (ctx?.waitUntil) ctx.waitUntil(p);
 }
 
+/** Several History rows in one write (D1: one statement per ~9 rows). Fire-and-forget like logEvent. */
+function logEvents(ctx, db, g, events) {
+  if (!events?.length) return;
+  if (!db.createMany) { events.forEach(e => logEvent(ctx, db, g, e)); return; }
+  const now = new Date().toISOString();
+  const rows = events.map(({ eventType, itemCode, itemType, borrower, loanId, admin, notes }) => {
+    const fields = { "Timestamp": now, "Event Type": eventType, "Gemach": [g.id] };
+    if (itemCode) fields["Item Code"] = String(itemCode);
+    if (itemType) fields["Item Type"] = String(itemType);
+    if (borrower) fields["Borrower"] = String(borrower);
+    if (loanId)   fields["Loan ID"] = String(loanId);
+    if (admin)    fields["Admin"] = String(admin);
+    if (notes)    fields["Notes"] = String(notes);
+    return fields;
+  });
+  const p = db.createMany(T.LOG, rows).catch(e => console.error("logEvents failed:", e.message));
+  if (ctx?.waitUntil) ctx.waitUntil(p);
+}
+
 async function handleGetHistory({ db, g, url }) {
   const eventType = url.searchParams.get("eventType") || null;
   const search    = url.searchParams.get("search") || null;
@@ -91,4 +110,4 @@ async function attachPhotos(db, g, records) {
   }
 }
 
-export { logEvent, handleGetHistory };
+export { logEvent, logEvents, handleGetHistory };

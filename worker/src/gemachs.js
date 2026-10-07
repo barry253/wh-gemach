@@ -27,7 +27,7 @@ const clampInt = (v, lo, hi, dflt) => {
 // Activity Log, lists that only grow — reading them costs the worker CPU for nothing, so reads name their fields.
 const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", "Website", "Donation URL", "Donation Info", "Hours",
   "Description", "Category", "Mode", "Primary Contact", "Secondary Contact", "Theme Color", "Accent Color", "Deposit Required",
-  "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Style", "Event Label", "Pickup Days Before", "Return Days After",
+  "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Style", "Event Label", "Pickup Days Before", "Return Days After", "Default Loan Days",
   "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
   "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories"];
@@ -71,6 +71,7 @@ function gemachFromRecord(r) {
     pickupDaysBefore: clampInt(f["Pickup Days Before"], 0, 14, 1),
     returnDaysAfter: clampInt(f["Return Days After"], 0, 14, 1),
     shabbosAdjust: !!f["Shabbos Adjust"],
+    defaultLoanDays: loanDays(f["Default Loan Days"]),                       // optional; fills in the due date when lending
     autoReminders: !!f["Auto Reminders"],                                   // emailed return reminders (reminders.js)
     reminderDaysBefore: clampInt(f["Reminder Days Before"], 0, 14, 2),
     reminderRepeatDays: clampInt(f["Reminder Repeat Days"], 0, 30, 7),
@@ -93,6 +94,13 @@ function gemachFromRecord(r) {
     comingSoon: !!f["Coming Soon"],                              // listed, not searchable, no requests (only meaningful when active)
     browseCategoryIds: (f["Browse Categories"] || []).map(linkedId).filter(Boolean),
   };
+}
+
+/** "Default Loan Days": a whole number 1..365, else null (not set). */
+function loanDays(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 365 ? n : null;
 }
 
 /** Display Order ascending (blank last), then name. */

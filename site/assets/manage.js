@@ -15,6 +15,7 @@
     appointment: ["Appointment confirmed", "", "st-ok"],
     out:         ["Picked up", "Enjoy — let the gemach know when you’re ready to return.", "st-ok"],
     returned:    ["Returned", "Thank you for returning everything!", "st-done"],
+    visited:     ["Visit complete", "Thank you for coming in.", "st-done"],
     closed:      ["Closed", "", "st-done"],
     cancelled:   ["Cancelled", "This request was cancelled.", "st-done"],
     declined:    ["Not available", "The gemach couldn’t fill this request.", "st-done"]
@@ -105,8 +106,8 @@
         '<p class="m-status ' + st[2] + '" id="m-status">' + esc(st[0]) + "</p>" +
         (st[1] ? '<p class="m-status-sub">' + esc(st[1]) + "</p>" : "") +
         (rows.length ? '<dl class="m-facts">' + rows.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>" : "") +
-        (items ? '<h2 class="m-h2">' + (r.type === "Appointment" ? "Items you’d like to see" : "Items") + "</h2>" + items : "") +
-        (loanRows ? '<h2 class="m-h2">Status by item</h2>' + loanRows : "") +
+        (items ? '<h2 class="m-h2">' + (r.type === "Appointment" ? (loanRows ? "Items you asked to see" : "Items you’d like to see") : "Items") + "</h2>" + items : "") +
+        (loanRows ? '<h2 class="m-h2">' + (r.type === "Appointment" ? "What you borrowed" : "Status by item") + "</h2>" + loanRows : "") +
         (data.partlyOut ? '<p class="field-hint">Some items are already picked up; cancelling releases only the ones still reserved.</p>' : "") +
         actionsHtml() +
       "</section>" +

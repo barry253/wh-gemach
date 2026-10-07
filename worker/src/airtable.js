@@ -129,6 +129,8 @@ function makeDb(env) {
   return {
     engine: "airtable", stats, request, call, listPage, listAll, get,
     create: (table, fields) => call(tpath(table), { method: "POST", body: { fields } }),
+    // Same shape as D1's createMany (one POST per record; the Airtable layer is only a fallback now).
+    createMany: async (table, list) => { const out = []; for (const fields of list || []) out.push(await call(tpath(table), { method: "POST", body: { fields } })); return out; },
     update: (table, id, fields) => call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }),
     del: (table, id) => call(`${tpath(table)}/${id}`, { method: "DELETE" }),
   };

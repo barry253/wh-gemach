@@ -67,6 +67,7 @@ const TABLES = {
       "Gemach Info": t("gemach_info"),
       "Request Style": t("request_style"), "Event Label": t("event_label"),
       "Pickup Days Before": n("pickup_days_before"), "Return Days After": n("return_days_after"), "Shabbos Adjust": b("shabbos_adjust"),
+      "Default Loan Days": n("default_loan_days"), // optional: fills in the due date when lending (blank = ask each time)
       "Confirm Message": t("confirm_message"), "Decline Message": t("decline_message"), "Pickup Message": t("pickup_message"),
       "Appointment Message": t("appointment_message"), "Return Reminder Message": t("return_reminder_message"),
       "Auto Reminders": b("auto_reminders"), "Reminder Days Before": n("reminder_days_before"), "Reminder Repeat Days": n("reminder_repeat_days"),
@@ -140,6 +141,8 @@ const TABLES = {
       "Preferred Times": t("preferred_times"), "Party Size": n("party_size"),
       "Appointment At": dt("appointment_at"), "Deposit Acknowledged": b("deposit_acknowledged"),
       "Item Quantities": t("item_quantities"),
+      // Appointment visits: "Checked out" / "Nothing borrowed" / "No-show" (blank = not visited yet).
+      "Visit Outcome": t("visit_outcome"), "Visited At": dt("visited_at"),
       "Received At": calc("received_at", "r.created_at"),
       "Gemach Slug": gemachSlug(),
     },

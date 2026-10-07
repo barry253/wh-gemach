@@ -341,6 +341,40 @@
     .check-row { display: flex; align-items: center; gap: 0.45rem; cursor: pointer; }
     .form-group .check-row input { width: 18px; height: 18px; min-height: 0; flex: 0 0 auto; margin: 0; padding: 0; }
     .form-group .check-row span { flex: 1; text-align: left; }
+    /* Check-out / New loan sheet (lend at the counter) */
+    .co-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .co-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.25rem 0.6rem; align-items: start; border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.65rem; background: var(--white); }
+    .co-row.off { background: #F7F9FA; }
+    .co-row.off .co-name { color: var(--muted); }
+    .co-row.blocked { opacity: 0.6; }
+    .form-group .co-row input[type=checkbox] { width: 20px; height: 20px; min-height: 0; margin: 0.6rem 0 0; padding: 0; accent-color: var(--navy); }
+    .co-main { min-width: 0; }
+    .co-name { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
+    .co-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
+    .co-ctl { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; flex-wrap: wrap; }
+    .form-group .co-ctl select, .form-group .co-ctl input { width: auto; min-width: 0; padding: 0.35rem 0.5rem; font-size: 0.82rem; }
+    .form-group .co-ctl input[type=number] { width: 5.5rem; }
+    .co-note { font-size: 0.75rem; margin-top: 0.3rem; line-height: 1.35; }
+    .co-note.warn { color: var(--amber); }
+    .co-note.bad { color: var(--red); }
+    .co-note.info { color: var(--muted); }
+    .co-remove { background: none; border: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 0 0.2rem; line-height: 1; }
+    .co-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; margin: 0 0 0.4rem; }
+    .co-section-head label { margin: 0; }
+    .link-btn { background: none; border: none; color: var(--navy); text-decoration: underline; font-size: 0.78rem; cursor: pointer; padding: 0; font-family: inherit; }
+    .co-results { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; max-height: 300px; overflow-y: auto; }
+    .co-result { display: flex; align-items: center; gap: 0.55rem; width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.55rem; background: var(--white); cursor: pointer; font-family: inherit; color: var(--text); }
+    .co-result:hover:not(:disabled), .co-result:focus-visible { border-color: var(--navy); }
+    .co-result:disabled { cursor: default; opacity: 0.55; }
+    .co-result .co-name { font-size: 0.85rem; font-weight: 500; }
+    .co-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
+    .co-chip { border: 1px solid var(--border); background: var(--white); border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.75rem; cursor: pointer; font-family: inherit; color: var(--text); }
+    .co-chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .co-summary { font-size: 0.85rem; font-weight: 500; margin-top: 0.25rem; }
+    .co-borrower { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6rem; }
+    .co-borrower .form-group:first-child { grid-column: 1 / -1; }
+    @media (max-width: 480px) { .co-borrower { grid-template-columns: 1fr; } }
+    .screen-toolbar { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
     .qty-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 0.5rem; padding: 0.5rem 0; }
     .qty-stat { border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.6rem; }
     .qty-stat b { display: block; font-size: 1.15rem; }
@@ -1264,6 +1298,7 @@
 
     <!-- Loans -->
     <div class="screen" id="screen-loans">
+      <div class="screen-toolbar"><button class="btn btn-primary btn-sm" id="new-loan-btn" onclick="openCheckout()">+ New loan</button></div>
       <div class="loans-filter-bar" id="loans-filter-bar" style="display:none">
         <div class="filter-chips" id="loans-type-chips"></div>
         <button class="filter-overdue-btn" id="loans-overdue-btn" onclick="toggleOverdueFilter()">Overdue only</button>
@@ -1695,6 +1730,39 @@
   </div>
 </div>
 
+<!-- Check-out / New loan Sheet: lend at the counter (appointment visit or walk-in) -->
+<div class="sheet-overlay" id="checkout-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('checkout-sheet')">×</button>
+    <h3 id="checkout-title">Check out</h3>
+    <p class="sheet-subtitle" id="checkout-subtitle"></p>
+    <div id="checkout-body"><div class="loading">Loading…</div></div>
+    <div id="checkout-foot" style="display:none">
+      <div class="form-group" id="checkout-due-group">
+        <label for="checkout-due">Due back</label>
+        <input type="date" id="checkout-due" style="max-width:12rem" />
+        <div class="co-chips" id="checkout-due-chips"></div>
+      </div>
+      <div class="form-group" id="checkout-notes-group" style="display:none">
+        <label for="checkout-notes">Note (optional)</label>
+        <input type="text" id="checkout-notes" maxlength="1000" placeholder="e.g. paid deposit in cash" />
+      </div>
+      <div class="form-group">
+        <label for="checkout-message">Message to borrower</label>
+        <textarea id="checkout-message" rows="5"></textarea>
+      </div>
+      <div class="form-group" id="checkout-send-by"></div>
+      <p class="co-summary" id="checkout-summary"></p>
+      <p class="login-error" id="checkout-error" style="text-align:left"></p>
+      <div class="sheet-actions">
+        <button class="btn btn-ghost" onclick="closeSheet('checkout-sheet')">Cancel</button>
+        <button class="btn btn-primary" id="checkout-submit-btn">Lend</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Pickup Sheet -->
 <div class="sheet-overlay" id="pickup-sheet">
   <div class="sheet">
@@ -2067,6 +2135,8 @@
     pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
     returnReminder: "Hi {first_name}, a friendly reminder from the {gemach}: the {items} you borrowed on {borrowed_date} {due_back}. Please let us know when you can return it, or if you need it a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
+    // Lending at the counter (Check out / New loan). {return_by} = "Fri, Oct 24" (the line drops out without a date).
+    checkout: "Hi {first_name}, thank you for coming to the {gemach}! You're borrowing {items}.\n\nDue back: {return_by}. {deposit_info}\n\nManage your loan: {manage_link}\n\nThank you!",
   };
   // Used when the gemach has no pickup address (or /admin/gemach could not be loaded)
   const DEFAULT_TEMPLATES_NO_ADDRESS = {
@@ -2075,6 +2145,7 @@
     pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
     returnReminder: DEFAULT_TEMPLATES.returnReminder,
+    checkout: DEFAULT_TEMPLATES.checkout,
   };
   function defaultTemplate(kind) {
     return (GEMACH?.pickupAddress ? DEFAULT_TEMPLATES : DEFAULT_TEMPLATES_NO_ADDRESS)[kind];
@@ -2412,7 +2483,7 @@
 
   // ── Message templates ─────────────────────────────────────────────────────
   // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
-  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out"]);
+  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "return_by"]);
 
   function fillTemplate(template, vars) {
     const has = k => Object.prototype.hasOwnProperty.call(vars, k);
@@ -2772,6 +2843,7 @@
         </div>
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" onclick="openConfirm(rec('req','${rid}'))">✓ Confirm</button>
+          ${isAppt ? `<button class="btn btn-ghost btn-sm" onclick="openCheckout('${rid}')" title="They're here now — lend what they take">Check out</button>` : ""}
           <button class="btn btn-danger btn-sm" onclick="openDecline(rec('req','${rid}'))">✗ Decline</button>
           ${contactActions(contactOf(r))}
         </div>
@@ -3174,16 +3246,19 @@
     let data = null;
     try { data = await api("/admin/appointments"); } catch (e) { console.warn("Appointments failed:", e); }
     if (!Array.isArray(data) || !data.length) { block.style.display = "none"; return; }
-    document.getElementById("appointments-section-label").textContent = `Upcoming appointments (${data.length})`;
+    const past = data.filter(a => a.past).length;
+    document.getElementById("appointments-section-label").textContent =
+      `Appointments (${data.length})${past ? ` · ${past} to close` : ""}`;
     document.getElementById("appointments-list").innerHTML = data.map(a => {
       const items = (a.itemNames || []).join(", ");
-      return `<div class="card">
+      const id = safeId(a.id);
+      return `<div class="card" id="appt-${id}">
         <div class="card-header">
           <div>
             <div class="card-title">${esc(a.name || "")}</div>
             <div class="card-id">${esc(fmtAppointmentIso(a.appointmentAt))}${a.requestId ? " · " + esc(a.requestId) : ""}</div>
           </div>
-          <span class="tag tag-amber">Appointment</span>
+          <span class="tag tag-amber">${a.past ? "Did they come?" : "Appointment"}</span>
         </div>
         <div class="card-meta">
           ${a.partySize ? `<span>👥 Party of ${esc(a.partySize)}</span>` : ""}
@@ -3192,11 +3267,372 @@
           ${a.notes ? `<span>💬 ${esc(a.notes)}</span>` : ""}
         </div>
         <div class="card-actions">
+          <button class="btn btn-primary btn-sm" onclick="openCheckout('${id}')">Check out</button>
+          <button class="btn btn-ghost btn-sm" onclick="markVisit('${id}', 'nothing')">Nothing borrowed</button>
+          ${a.past ? `<button class="btn btn-ghost btn-sm" onclick="markVisit('${id}', 'noshow')">No-show</button>` : ""}
           ${contactActions(contactOf(a))}
         </div>
       </div>`;
     }).join("");
     block.style.display = "";
+  }
+
+  /** Close an appointment without lending: "nothing" (came, took nothing) or "noshow". */
+  async function markVisit(id, outcome) {
+    const q = outcome === "noshow" ? "Mark this appointment as a no-show?" : "Close this appointment — nothing was borrowed?";
+    if (!confirm(q)) return;
+    const res = await api(`/admin/requests/${safeId(id)}/visit`, "POST", { outcome, adminName });
+    if (!res) return;
+    if (res.error) { showToast(res.error); return; }
+    document.getElementById(`appt-${safeId(id)}`)?.remove();
+    if (document.getElementById("checkout-sheet").classList.contains("open")) closeSheet("checkout-sheet");
+    showToast(outcome === "noshow" ? "Marked as a no-show" : "Appointment closed — nothing borrowed");
+    refreshAfterLending();
+  }
+
+  // ── Check out / New loan: lend at the counter ─────────────────────────────
+  // Appointment visit (openCheckout(requestId)): the requested items start ticked; untick what she didn't
+  // take, add anything else she took. Walk-in (openCheckout()): enter the borrower, add items.
+  let CO = null;
+  const coType = id => CO?.types.get(id);
+  const isoAddDays = (s, n) => msDate(dateMs(s) + n * DAY_MS);
+  const coOverlap = (b, from, to) => (to == null || b.from <= to) && (b.to == null || b.to >= from);
+  const coWindow = () => ({ from: CO.data.today, to: CO.due || null });
+  const coUnitOut = (t, unitId) => t.bookings.find(b => b.status === "Active" && b.unitId === unitId) || null;
+  const coWhen = b => b.to ? `${fmtDay(b.from)} – ${fmtDay(b.to)}` : `from ${fmtDay(b.from)}`;
+  /** Units of this type not out on loan and not already chosen in another row. */
+  function coFreeUnits(t, exceptRow = null) {
+    const taken = new Set(CO.rows.filter(r => r !== exceptRow && r.on && r.unitId).map(r => r.unitId));
+    return t.units.filter(u => !coUnitOut(t, u.id) && !taken.has(u.id));
+  }
+  /** Fewest pieces of a quantity item free at any point in [from, to] (to = null: open-ended). */
+  function coQtyFree(t, from, to) {
+    const over = t.bookings.filter(b => coOverlap(b, from, to));
+    let peak = 0;
+    for (const p of [from, ...over.map(b => b.from).filter(d => d > from)]) {
+      const used = over.filter(b => b.from <= p && (b.to == null || b.to >= p)).reduce((n, b) => n + (b.quantity || 1), 0);
+      peak = Math.max(peak, used);
+    }
+    return Math.max(0, (t.lendable || 0) - peak);
+  }
+  function coAttrText(t) {
+    return Object.entries(t.attributes || {}).map(([k, v]) => `${k} ${v.join(", ")}`).join(" · ");
+  }
+  function coNewRow(typeId, extra, qty) {
+    const t = coType(typeId);
+    const row = { typeId, extra, on: true, unitId: null, qty: qty > 0 ? qty : 1 };
+    if (t.tracking === "Units") {
+      const free = coFreeUnits(t);
+      row.unitId = free[0]?.id || null;
+      if (!row.unitId) row.on = false;
+    }
+    return row;
+  }
+  /** { blocked, notes: [[cls, text]] } for a row, given the current due date. */
+  function coRowState(row) {
+    const t = coType(row.typeId), notes = [];
+    const { from, to } = coWindow();
+    let blocked = false;
+    if (t.tracking === "Units") {
+      if (!t.units.length) { blocked = true; notes.push(["bad", "No numbered items for this in Inventory yet."]); }
+      else if (!row.unitId) {
+        blocked = true;
+        const out = t.units.map(u => coUnitOut(t, u.id)).filter(Boolean)[0];
+        notes.push(["bad", out ? `On loan${out.borrower ? ` to ${out.borrower}` : ""}${out.to ? ` · due back ${fmtDay(out.to)}` : ""}` : "Already chosen above."]);
+      } else {
+        const unit = t.units.find(u => u.id === row.unitId);
+        if (unit?.needsRepair) notes.push(["warn", `${unit.itemId} is marked as needing repair.`]);
+        const mine = t.bookings.filter(b => b.status === "Reserved" && b.unitId === row.unitId && coOverlap(b, from, to));
+        mine.forEach(b => notes.push(["warn", `⚠ Reserved for ${b.borrower || "someone"} ${coWhen(b)}.`]));
+        const loose = t.bookings.filter(b => b.status === "Reserved" && !b.unitId && coOverlap(b, from, to));
+        // Reservations not tied to a unit yet: warn when lending this one leaves fewer spare units than they need.
+        if (loose.length && coFreeUnits(t, row).length - 1 < loose.length) {
+          loose.forEach(b => notes.push(["warn", `⚠ Reserved for ${b.borrower || "someone"} ${coWhen(b)} — lending this may leave them without one.`]));
+        }
+      }
+    } else if (t.tracking === "Quantity") {
+      const free = coQtyFree(t, from, to);
+      if (row.qty > t.lendable) notes.push(["bad", `The gemach has ${t.lendable} it can lend.`]);
+      else if (row.qty > free) notes.push(["warn", `⚠ Only ${free} of ${t.lendable} free ${CO.due ? "until the due date" : "right now"}.`]);
+      else notes.push(["info", `${free} of ${t.lendable} free ${CO.due ? "until the due date" : "right now"}.`]);
+    } else if (t.price != null) {
+      notes.push(["info", `Add-on (for purchase) · ${fmtMoney(t.price)} × ${row.qty} = ${fmtMoney(t.price * row.qty)} — marked as handed over.`]);
+    } else notes.push(["info", "Add-on (for purchase) — marked as handed over."]);
+    for (const h of t.held || []) notes.push(["info", `📅 ${h.name || "Someone"} has an appointment to see this ${fmtAppointmentIso(h.at)}.`]);
+    return { blocked, notes };
+  }
+  function coRowHtml(row, i) {
+    const t = coType(row.typeId);
+    const st = coRowState(row);
+    const on = row.on && !st.blocked;
+    const sub = [coAttrText(t), t.tracking === "Units" && t.units.length === 1 ? t.units[0].itemId : ""].filter(Boolean).join(" · ");
+    let ctl = "";
+    if (on && t.tracking === "Units" && t.units.length > 1) {
+      const free = new Set(coFreeUnits(t, row).map(u => u.id));
+      ctl = `<div class="co-ctl"><label class="muted-small" for="co-unit-${i}">Which one</label>
+        <select id="co-unit-${i}" onchange="coSetUnit(${i}, this.value)">${t.units.map(u => {
+          const out = coUnitOut(t, u.id);
+          const ok = free.has(u.id) || u.id === row.unitId;
+          return `<option value="${esc(u.id)}"${u.id === row.unitId ? " selected" : ""}${ok ? "" : " disabled"}>${esc(u.itemId)}${out ? " (on loan)" : ok ? "" : " (chosen)"}${u.needsRepair ? " · needs repair" : ""}</option>`;
+        }).join("")}</select></div>`;
+    } else if (on && t.tracking !== "Units") {
+      ctl = `<div class="co-ctl"><label class="muted-small" for="co-qty-${i}">How many</label>
+        <input type="number" id="co-qty-${i}" min="1" step="1" inputmode="numeric" value="${esc(row.qty)}" onchange="coSetQty(${i}, this.value)" /></div>`;
+    }
+    const notes = (on || st.blocked ? st.notes : st.notes.filter(n => n[1].startsWith("📅")))
+      .map(([c, txt]) => `<div class="co-note ${c}">${esc(txt)}</div>`).join("");
+    return `<div class="co-row${on ? "" : " off"}${st.blocked ? " blocked" : ""}">
+      <input type="checkbox" id="co-on-${i}"${on ? " checked" : ""}${st.blocked ? " disabled" : ""} onchange="coToggle(${i}, this.checked)" aria-label="Lend ${esc(t.name)}" />
+      ${rowThumb(t.photo, t.name, t.photos)}
+      <div class="co-main"><label class="co-name" for="co-on-${i}" style="margin:0;font-size:0.9rem">${esc(t.name)}</label>${sub ? `<div class="co-sub">${esc(sub)}</div>` : ""}${ctl}${notes}</div>
+      ${row.extra ? `<button type="button" class="co-remove" onclick="coRemove(${i})" aria-label="Remove ${esc(t.name)}">×</button>` : "<span></span>"}
+    </div>`;
+  }
+  function coRenderRows() {
+    const asked = CO.rows.map((r, i) => [r, i]).filter(([r]) => !r.extra);
+    const extra = CO.rows.map((r, i) => [r, i]).filter(([r]) => r.extra);
+    const askedEl = document.getElementById("co-asked-list");
+    if (askedEl) {
+      askedEl.innerHTML = asked.length ? asked.map(([r, i]) => coRowHtml(r, i)).join("")
+        : `<p class="muted-small" style="margin:0">${CO.req?.itemTypeIds?.length ? "Those items are no longer in the inventory." : "No particular items were asked for."}</p>`;
+      const tog = document.getElementById("co-toggle-all");
+      if (tog) { const anyOn = asked.some(([r]) => r.on); tog.textContent = anyOn ? "Untick all" : "Tick all"; tog.style.display = asked.length > 1 ? "" : "none"; }
+    }
+    document.getElementById("co-extra-list").innerHTML = extra.map(([r, i]) => coRowHtml(r, i)).join("");
+    coRenderResults();
+    coUpdateFoot();
+  }
+  function coChosen() {
+    return CO.rows.filter(r => r.on && !coRowState(r).blocked);
+  }
+  function coItemsText(rows) {
+    const labels = rows.map(r => { const t = coType(r.typeId); return t.tracking === "Units" ? t.name : `${t.name} × ${r.qty}`; });
+    return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+  }
+  function coAutoMessage() {
+    const tpl = GEMACH?.templates?.checkout || defaultTemplate("checkout");
+    const first = String(CO.walkIn ? document.getElementById("co-name")?.value || "" : CO.req?.name || "").trim().split(/\s+/)[0];
+    const vars = { ...templateVars(first, coItemsText(coChosen()), { manageUrl: CO.req?.manageUrl || "" }), return_by: CO.due ? fmtDay(CO.due, true) : "" };
+    return fillTemplate(tpl, vars);
+  }
+  function coUpdateFoot() {
+    const chosen = coChosen();
+    const msgEl = document.getElementById("checkout-message");
+    const auto = coAutoMessage();
+    if (msgEl.value === CO.lastAuto || !msgEl.value.trim()) msgEl.value = auto;
+    CO.lastAuto = auto;
+    const n = chosen.length;
+    document.getElementById("checkout-summary").innerHTML = n
+      ? `${n} item${n === 1 ? "" : "s"} going out${CO.req ? ` to ${esc(CO.req.name || "")}` : ""}.`
+      : CO.req ? `Nothing ticked. If ${esc((CO.req.name || "they").split(" ")[0])} didn't take anything, <button type="button" class="link-btn" onclick="markVisit('${safeId(CO.req.id)}', 'nothing')">close the appointment — nothing borrowed</button>.`
+        : "Add the items being lent.";
+    document.getElementById("checkout-submit-btn").disabled = !n;
+    // Due-date shortcuts
+    const today = CO.data.today, chips = [];
+    if (CO.data.defaultLoanDays) chips.push([isoAddDays(today, CO.data.defaultLoanDays), `In ${CO.data.defaultLoanDays} days`]);
+    chips.push([isoAddDays(today, 7), "1 week"], [isoAddDays(today, 14), "2 weeks"]);
+    if (CO.req?.eventDate) {
+      const ev = eventDates(CO.req.eventDate, GEMACH || {});
+      if (ev && ev.return >= today) chips.push([ev.return, `After the ${(GEMACH?.eventLabel || "event").replace(/\s+date$/i, "").toLowerCase() || "event"} (${fmtDay(ev.return)})`]);
+    }
+    const byDay = new Map(); // two shortcuts on the same day become one chip: "In 21 days · after the simcha"
+    for (const [d, label] of chips) byDay.set(d, byDay.has(d) ? `${byDay.get(d)} · ${label.replace(/^After/, "after").replace(/ \(.*\)$/, "")}` : label);
+    document.getElementById("checkout-due-chips").innerHTML = [...byDay].map(([d, label]) =>
+      `<button type="button" class="co-chip${CO.due === d ? " active" : ""}" onclick="coSetDue('${d}')">${esc(label)}</button>`).join("") +
+      `<button type="button" class="co-chip${!CO.due ? " active" : ""}" onclick="coSetDue('')">No date</button>`;
+  }
+  function coRenderResults() {
+    const box = document.getElementById("co-results");
+    const q = String(document.getElementById("co-search")?.value || "").trim().toLowerCase();
+    if (!q) { box.innerHTML = ""; return; }
+    const words = q.split(/\s+/);
+    const inList = new Set(CO.rows.map(r => r.typeId));
+    const hits = CO.data.types.filter(t => {
+      const hay = `${t.name} ${coAttrText(t)} ${t.units.map(u => u.itemId).join(" ")}`.toLowerCase();
+      return words.every(w => hay.includes(w));
+    });
+    box.innerHTML = hits.slice(0, 25).map(t => {
+      const free = t.tracking === "Units" ? coFreeUnits(t).length : null;
+      const added = inList.has(t.id) && (t.tracking !== "Units" || !free);
+      const status = t.tracking === "Units"
+        ? (!t.units.length ? "No units" : free ? (t.units.length > 1 ? `${free} of ${t.units.length} in` : "In") : "On loan")
+        : t.tracking === "Quantity" ? `${coQtyFree(t, CO.data.today, CO.due || null)} of ${t.lendable} free` : "Add-on";
+      const disabled = added || (t.tracking === "Units" && !free);
+      return `<button type="button" class="co-result" onclick="coAdd('${safeId(t.id)}')"${disabled ? " disabled" : ""}>
+        ${t.photo ? `<img class="row-thumb" src="${esc(t.photo)}" alt="" loading="lazy" width="32" height="32" style="width:32px;height:32px;flex-basis:32px" />` : `<span class="row-thumb row-thumb-none" aria-hidden="true">▫</span>`}
+        <span style="flex:1;min-width:0"><span class="co-name">${esc(t.name)}</span>${coAttrText(t) ? `<span class="co-sub" style="display:block">${esc(coAttrText(t))}</span>` : ""}
+          ${t.held?.length ? `<span class="co-sub" style="display:block">📅 Appointment ${esc(fmtAppointmentIso(t.held[0].at))}</span>` : ""}</span>
+        <span class="tag ${disabled ? "tag-red" : t.tracking === "Add-on" ? "tag-addon" : "tag-green"}">${esc(added ? "Added" : status)}</span>
+      </button>`;
+    }).join("") + (hits.length > 25 ? `<p class="muted-small" style="margin:0.25rem 0 0">${hits.length - 25} more — type more of the name, size or color.</p>` : "")
+      + (!hits.length ? `<p class="muted-small" style="margin:0.25rem 0 0">Nothing in the inventory matches “${esc(q)}”.</p>` : "");
+  }
+  function coToggle(i, on) {
+    const r = CO.rows[i], t = coType(r.typeId);
+    r.on = on;
+    if (on && t.tracking === "Units" && (!r.unitId || !coFreeUnits(t, r).some(u => u.id === r.unitId))) r.unitId = coFreeUnits(t, r)[0]?.id || null;
+    coRenderSoon();
+  }
+  function coToggleAll() {
+    const asked = CO.rows.filter(r => !r.extra);
+    const turnOn = !asked.some(r => r.on);
+    asked.forEach(r => { r.on = turnOn; });
+    if (turnOn) asked.forEach(r => { const t = coType(r.typeId); if (t.tracking === "Units") r.unitId = coFreeUnits(t, r)[0]?.id || null; });
+    coRenderRows();
+  }
+  // Inputs inside the lists fire "change" as they lose focus; redrawing the list during that event throws,
+  // so these redraw right after it.
+  const coRenderSoon = () => setTimeout(() => { if (CO?.data) coRenderRows(); }, 0);
+  function coSetUnit(i, id) { CO.rows[i].unitId = id; coRenderSoon(); }
+  function coSetQty(i, v) {
+    const n = parseInt(v, 10);
+    CO.rows[i].qty = Number.isInteger(n) && n > 0 ? n : 1;
+    coRenderSoon();
+  }
+  function coSetDue(d) {
+    CO.due = isValidDate(d) ? d : "";
+    document.getElementById("checkout-due").value = CO.due;
+    coRenderRows();
+  }
+  function coAdd(typeId) {
+    const t = CO.data.types.find(x => safeId(x.id) === typeId);
+    if (!t) return;
+    CO.rows.push(coNewRow(t.id, true, 1));
+    const search = document.getElementById("co-search");
+    search.value = "";
+    coRenderRows();
+    search.focus();
+  }
+  function coRemove(i) { CO.rows.splice(i, 1); coRenderRows(); }
+  /** Contact details to send the message to (the request's, or what's typed for a walk-in). */
+  function coContact() {
+    if (!CO.walkIn) return CO.req;
+    const v = id => String(document.getElementById(id)?.value || "").trim();
+    return { phone: v("co-phone"), email: v("co-email"), preferredContact: v("co-pref") };
+  }
+  function coSetupSendBy() {
+    setupSendBy("checkout", coContact(), "checkout-submit-btn", {
+      whatsapp: "Lend & open WhatsApp", sms: "Lend & open text message", email: "Lend & email", none: "Lend without message",
+    });
+  }
+
+  async function openCheckout(requestId) {
+    const walkIn = !requestId;
+    CO = { walkIn, data: null, req: null, types: new Map(), rows: [], due: "", lastAuto: null };
+    document.getElementById("checkout-title").textContent = walkIn ? "New loan" : "Check out";
+    document.getElementById("checkout-subtitle").textContent = walkIn ? "Lend items to someone now — no request needed." : "";
+    document.getElementById("checkout-body").innerHTML = '<div class="loading">Loading…</div>';
+    document.getElementById("checkout-foot").style.display = "none";
+    document.getElementById("checkout-error").style.display = "none";
+    document.getElementById("checkout-message").value = "";
+    openSheet("checkout-sheet");
+    let data = null;
+    try { data = await api(`/admin/checkout/options${walkIn ? "" : `?request=${encodeURIComponent(requestId)}`}`); } catch (e) { data = null; }
+    if (!CO || CO.walkIn !== walkIn) return; // closed / reopened meanwhile
+    if (!data || data.error || !Array.isArray(data.types)) {
+      document.getElementById("checkout-body").innerHTML = `<div class="empty-state">${esc(data?.error || "Couldn't load the inventory. Please try again.")}</div>`;
+      return;
+    }
+    CO.data = data;
+    CO.types = new Map(data.types.map(t => [t.id, t]));
+    CO.req = data.request || null;
+    if (CO.req) {
+      document.getElementById("checkout-title").textContent = `Check out — ${CO.req.name || ""}`;
+      document.getElementById("checkout-subtitle").textContent = [
+        CO.req.appointmentAt ? `Appointment ${fmtAppointmentIso(CO.req.appointmentAt)}` : "Appointment request",
+        CO.req.requestId, CO.req.eventDate ? `${GEMACH?.eventLabel || "Event date"}: ${fmtDay(CO.req.eventDate, true)}` : "",
+      ].filter(Boolean).join(" · ");
+      CO.rows = (CO.req.itemTypeIds || []).filter(id => CO.types.has(id)).map(id => coNewRow(id, false, CO.req.quantities?.[id]));
+    }
+    CO.due = data.defaultLoanDays ? isoAddDays(data.today, data.defaultLoanDays) : "";
+    document.getElementById("checkout-due").value = CO.due;
+    document.getElementById("checkout-due").min = data.today;
+    document.getElementById("checkout-due").onchange = e => coSetDue(e.target.value);
+    document.getElementById("checkout-notes-group").style.display = walkIn ? "" : "none";
+    document.getElementById("checkout-notes").value = "";
+    document.getElementById("checkout-body").innerHTML = (walkIn ? `
+      <div class="co-borrower">
+        <div class="form-group"><label for="co-name">Borrower's name <span style="color:var(--red)">*</span></label><input type="text" id="co-name" maxlength="100" autocomplete="off" /></div>
+        <div class="form-group"><label for="co-phone">Phone</label><input type="tel" id="co-phone" maxlength="40" autocomplete="off" /></div>
+        <div class="form-group"><label for="co-email">Email</label><input type="email" id="co-email" maxlength="200" autocomplete="off" /></div>
+        <div class="form-group"><label for="co-pref">Prefers</label><select id="co-pref"><option value="">—</option><option>WhatsApp</option><option value="Text">Text message</option><option value="Phone">Phone call</option><option>Email</option></select></div>
+      </div>` : `
+      <div class="form-group">
+        <div class="co-section-head"><label>Asked to see — untick what isn't going out</label><button type="button" class="link-btn" id="co-toggle-all" onclick="coToggleAll()">Untick all</button></div>
+        <div class="co-list" id="co-asked-list"></div>
+      </div>`) + `
+      <div class="form-group">
+        <div class="co-section-head"><label for="co-search">${walkIn ? "Items" : "Also taking"}</label></div>
+        <div class="co-list" id="co-extra-list" style="margin-bottom:0.5rem"></div>
+        <input type="search" id="co-search" placeholder="+ Add an item — name, size, color…" autocomplete="off" oninput="coRenderResults()" />
+        <div class="co-results" id="co-results"></div>
+      </div>`;
+    if (walkIn) {
+      ["co-name", "co-phone", "co-email", "co-pref"].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener("change", () => { coSetupSendBy(); coUpdateFoot(); });
+        el.addEventListener("input", () => { document.getElementById("checkout-error").style.display = "none"; });
+      });
+      document.getElementById("co-name").addEventListener("input", () => coUpdateFoot());
+    }
+    document.getElementById("checkout-foot").style.display = "";
+    coSetupSendBy();
+    coRenderRows();
+    document.getElementById("checkout-submit-btn").onclick = coSubmit;
+    if (walkIn) document.getElementById("co-name").focus();
+  }
+
+  async function coSubmit() {
+    const errEl = document.getElementById("checkout-error");
+    const fail = msg => { errEl.textContent = msg; errEl.style.display = "block"; };
+    errEl.style.display = "none";
+    const chosen = coChosen();
+    if (!chosen.length) { fail("Tick or add at least one item."); return; }
+    const body = {
+      items: chosen.map(r => {
+        const t = coType(r.typeId);
+        return t.tracking === "Units" ? { itemTypeId: r.typeId, itemId: r.unitId } : { itemTypeId: r.typeId, quantity: r.qty };
+      }),
+      dueBack: CO.due || null,
+      adminName,
+    };
+    const c = coContact();
+    if (CO.walkIn) {
+      const name = String(document.getElementById("co-name").value || "").trim();
+      if (!name) { fail("Enter the borrower's name."); document.getElementById("co-name").focus(); return; }
+      if (!c.phone && !c.email) { fail("Enter a phone number or email so the gemach can reach them."); return; }
+      body.borrower = { name, phone: c.phone, email: c.email, preferredContact: c.preferredContact || null };
+      body.notes = String(document.getElementById("checkout-notes").value || "").trim();
+    }
+    const message = document.getElementById("checkout-message").value;
+    const { choice } = SEND_BY.checkout || { choice: "none" };
+    if (choice === "whatsapp" || choice === "sms") openOutbound(choice, SEND_BY.checkout.c, message); // before any await
+    body.message = message;
+    body.sendMessage = choice === "email";
+    const btn = document.getElementById("checkout-submit-btn");
+    btn.disabled = true;
+    let res;
+    try {
+      res = await api(CO.walkIn ? "/admin/loans" : `/admin/requests/${safeId(CO.req.id)}/checkout`, "POST", body);
+    } finally { btn.disabled = false; }
+    if (!res) return;
+    if (res.error) { fail(res.error); return; }
+    const n = res.loans?.length || chosen.length;
+    const who = CO.walkIn ? body.borrower.name : CO.req?.name;
+    if (!CO.walkIn) document.getElementById(`appt-${safeId(CO.req.id)}`)?.remove();
+    closeSheet("checkout-sheet");
+    showToast(`Lent ${n} item${n === 1 ? "" : "s"}${who ? ` to ${who}` : ""}` + (res.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res.emailSent === false ? 8000 : undefined);
+    refreshAfterLending();
+  }
+
+  /** Reload whatever is on screen after lending / closing a visit. */
+  function refreshAfterLending() {
+    loadDashboard();
+    const screen = document.querySelector(".screen.active")?.id;
+    if (screen === "screen-loans") loadLoans();
+    if (screen === "screen-reservations") loadReservations();
+    if (screen === "screen-requests") loadRequests();
+    if (screen === "screen-inventory") loadInventory();
   }
 
   async function loadReservations() {
@@ -3856,7 +4292,7 @@
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
     info: ["depositRequired", "chargeType", "depositInfo", "gemachInfo"],
-    requests: ["requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust"],
+    requests: ["requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
     reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView"],
     attrs: ["itemAttributes"], browsecats: ["browseCategoryIds"],
   };
@@ -4034,6 +4470,11 @@
             <label for="set-shabbosAdjust">Shabbos adjust (Saturday pickup → Friday, Saturday return → Sunday)</label>
           </div>
           <div class="example-line" id="event-example"></div>
+        </div>
+        <div class="form-group" style="margin-top:0.9rem">
+          <label for="set-defaultLoanDays">Usual loan length (days) <span class="muted-small">— optional</span></label>
+          <input type="number" id="set-defaultLoanDays" min="1" max="365" step="1" inputmode="numeric" placeholder="Choose each time" style="max-width:11rem" />
+          <p class="settings-help" style="margin:0.35rem 0 0">Fills in the due-back date when you lend something at an appointment (<b>Check out</b>) or to a walk-in (<b>New loan</b>). Leave blank to pick the date each time.</p>
         </div>`;
     }
     if (group.extra === "browsecats") {
@@ -4183,6 +4624,8 @@
     remember("pickupDaysBefore", Number(g.pickupDaysBefore ?? 1));
     remember("returnDaysAfter", Number(g.returnDaysAfter ?? 1));
     remember("shabbosAdjust", !!g.shabbosAdjust);
+    setEl("defaultLoanDays").value = g.defaultLoanDays ?? "";
+    remember("defaultLoanDays", g.defaultLoanDays ?? null);
     setEl("autoReminders").checked = !!g.autoReminders; setEl("autoReminders").disabled = ro;
     setEl("reminderDaysBefore").value = g.reminderDaysBefore ?? 2; setEl("reminderDaysBefore").disabled = ro;
     setEl("reminderRepeatDays").value = g.reminderRepeatDays ?? 7; setEl("reminderRepeatDays").disabled = ro;
@@ -4191,7 +4634,7 @@
     remember("reminderRepeatDays", Number(g.reminderRepeatDays ?? 7));
 
     ["primaryContact", "secondaryContact", "themePicker", "themeHex", "accentPicker", "accentHex", "depositRequired",
-     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "autoReminders", "reminderDaysBefore", "reminderRepeatDays"].forEach(k => {
+     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays", "autoReminders", "reminderDaysBefore", "reminderRepeatDays"].forEach(k => {
       const el = setEl(k);
       el.disabled = ro;
       el.addEventListener("input", onSettingsInput);
@@ -4694,6 +5137,11 @@
       put(k, n);
     }
     put("shabbosAdjust", setEl("shabbosAdjust").checked);
+    {
+      const raw = setEl("defaultLoanDays").value.trim(), n = Number(raw);
+      if (raw !== "" && !(Number.isInteger(n) && n >= 1 && n <= 365)) return { error: "Usual loan length must be a whole number of days from 1 to 365, or blank." };
+      put("defaultLoanDays", raw === "" ? null : n);
+    }
     put("autoReminders", setEl("autoReminders").checked);
     for (const [k, max, label] of [["reminderDaysBefore", 14, "Days before the due date"], ["reminderRepeatDays", 30, "Overdue reminder days"]]) {
       const raw = setEl(k).value.trim(), n = Number(raw);
@@ -5600,7 +6048,8 @@
     "Loan Created", "Item Returned", "Item Reserved",
     "Reservation Cancelled", "Marked for Repair", "Restored",
     "Request Received", "Request Confirmed", "Request Declined", "Borrower Created",
-    "Add-on Ordered", "Add-on Handed Over", "Request Cancelled", "Ready to Return", "Return Reminder Sent"
+    "Add-on Ordered", "Add-on Handed Over", "Request Cancelled", "Ready to Return", "Return Reminder Sent",
+    "Checked Out", "Visit Closed"
   ];
 
   const HISTORY_DOT_COLORS = {
@@ -5619,6 +6068,8 @@
     "Request Cancelled":      "#9E9E9E",
     "Ready to Return":        "#2E7D32",
     "Return Reminder Sent":   "#B45309",
+    "Checked Out":            "#1B5E20",
+    "Visit Closed":           "#9E9E9E",
   };
 
   let historyState = {
