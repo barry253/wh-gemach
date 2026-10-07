@@ -127,7 +127,7 @@ function makeDb(env) {
   }
 
   return {
-    stats, request, call, listPage, listAll, get,
+    engine: "airtable", stats, request, call, listPage, listAll, get,
     create: (table, fields) => call(tpath(table), { method: "POST", body: { fields } }),
     update: (table, id, fields) => call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }),
     del: (table, id) => call(`${tpath(table)}/${id}`, { method: "DELETE" }),

@@ -30,8 +30,9 @@ Never paste code into the dashboard editor any more — the next deploy from Git
 ```sh
 cd worker
 npm install
-npm test          # ~90 API tests against a fake Airtable/Resend (no network, no live data)
+npm test          # the API tests twice: against a fake Airtable, then against D1 (Node's built-in SQLite)
 npm run check     # bundles exactly as a deploy would, without deploying
+npm run schema    # regenerate schema.sql after changing src/dbschema.js (a test checks they match)
 ```
 
 Browser tests for the site and admin page are in `../tests` (`cd tests && npm install && npx playwright install chromium && npm test`).
@@ -43,7 +44,11 @@ Browser tests for the site and admin page are in `../tests` (`cd tests && npm in
 | `index.js` | Entry point: routing, CORS, admin session handling, env var list (top comment) |
 | `config.js` | Constants: table names, allowed origins, cache timings |
 | `http.js` | JSON responses and CORS headers |
-| `airtable.js` | Airtable client (concurrency limit, 429 retry, paging) and formula helpers |
+| `db.js` | Picks the data layer: Airtable, or D1 when `DB_BACKEND` = `d1` |
+| `query.js` | Structured query conditions (`Q.eq`, `Q.in`, …) and their Airtable formulas |
+| `airtable.js` | Airtable client (concurrency limit, 429 retry, paging) and record helpers |
+| `d1.js` | D1 client with the same calls and Airtable-shaped records |
+| `dbschema.js` / `../schema.sql` | How each Airtable table and field maps to D1 tables, columns and views |
 | `gemachs.js` | Loading a gemach by slug/id, admin gemach resolution |
 | `auth.js` | Google sign-in, admin lookup, session tokens (JWT) |
 | `dates.js` | New York dates, event-date rule, calendar invites |

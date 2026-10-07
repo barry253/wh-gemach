@@ -1,6 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent } from "./activity.js";
-import { Q, firstLink, linkedId, makeDb } from "./airtable.js";
+import { Q, firstLink, linkedId } from "./airtable.js";
+import { makeDb } from "./db.js";
 import { sendAlert } from "./alerts.js";
 import { T } from "./config.js";
 import { DAY_MS, addDays, dateToUtcMs, isValidDate, nyToday } from "./dates.js";

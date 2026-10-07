@@ -7,6 +7,9 @@
  * ── Env vars / secrets / bindings read ──────────────────────────────────────
  *   AIRTABLE_TOKEN     secret   Airtable PAT (data.records:read/write on the base)
  *   AIRTABLE_BASE_ID   var      Airtable base id
+ *   DB_BACKEND         var  NEW (optional) "d1" = read/write Cloudflare D1 (binding DB) instead of Airtable.
+ *                           Blank/anything else = Airtable. See db.js, d1.js, dbschema.js, schema.sql.
+ *   DB                 D1 binding  The D1 database (only used when DB_BACKEND = "d1")
  *   GEMACH_JWT         secret   HMAC-SHA256 key for admin session tokens
  *   RESEND_API_KEY     secret   Resend API key for outgoing email
  *   NOTIFY_EMAIL       var      Fallback notification / reply-to address when a gemach has no Email
@@ -63,7 +66,7 @@
  */
 
 import { handleGetHistory } from "./activity.js";
-import { makeDb } from "./airtable.js";
+import { makeDb } from "./db.js";
 import { alertServerError, handleHealth } from "./alerts.js";
 import { handleLogin, handleMe, lookupAdminSession, signJWT, verifyJWT } from "./auth.js";
 import { purgePublicCache, refreshCache } from "./cache.js";

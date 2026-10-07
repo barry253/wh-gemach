@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { makeDb } from "./airtable.js";
+import { makeDb } from "./db.js";
 import { CACHE_MAX_STALE_MS, CACHE_TTL_MS, DEFAULT_CACHE_ORIGIN } from "./config.js";
 import { json } from "./http.js";
 import { directoryBuilder, gemachBuilder } from "./public.js";

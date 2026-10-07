@@ -44,7 +44,9 @@ const DB = {
     rec("recREQA0000000002", { "Request ID": "R-004", Name: "Barry R", Phone: "+17189867345", Status: "New", "Items Requested": ["recTYPEA000000001", "recTYPEA000000002"], "Needed From": "2027-01-01", "Needed Until": "2027-02-01", Gemach: [A.id], "Gemach Slug": [A.slug] }),
     rec("recREQA0000000001", { "Request ID": "R-006", Name: "Sarah", Email: "sarah@example.com", Status: "New", "Items Requested": ["recTYPEA000000001"], Gemach: [A.id], "Gemach Slug": [A.slug] }),
   ],
-  "Loans": [], "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [],
+  // WC-002 is out on loan (Items.Status is computed from loans in D1, so the loan has to exist).
+  "Loans": [rec("recLOANWC0020000A", { "Loan ID": "L-001", Status: "Active", Item: ["recITEMA000000002"], "Date Borrowed": "2026-01-02", Gemach: [A.id], "Gemach Slug": [A.slug] })],
+  "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [],
 };
 
 const calls = [];
@@ -96,6 +98,7 @@ globalThis.fetch = async (input, init = {}) => {
     return new Response("{}");
   }
   if (url === "https://api.airtable.com/v0/meta/whoami") return new Response('{"id":"usrTEST"}');
+  if (D1_MODE && url.startsWith("https://api.airtable.com/")) throw new Error("Airtable called in D1 mode: " + method + " " + url);
   const m = url.match(/^https:\/\/api\.airtable\.com\/v0\/appTEST\/([^/?]+)(?:\/([^/?]+))?/);
   if (!m) throw new Error("unexpected fetch " + url);
   if (airtableFail && airtableFail(method, decodeURIComponent(m[1]), m[2])) return new Response('{"error":{"type":"TEST_FAIL"}}', { status: 422 });
@@ -145,7 +148,24 @@ const env = { AIRTABLE_BASE_ID: "appTEST", AIRTABLE_TOKEN: "x", GEMACH_JWT: "tes
   ASSETS_BUCKET: { put: async (key, body, opts) => { R2.push({ key, size: body.byteLength, opts }); } } };
 const waits = [];
 const ctx = { waitUntil: p => waits.push(p) };
-const call = (path, init = {}) => worker.fetch(new Request("https://wh-gemach.example.workers.dev" + path, init), env, ctx);
+
+// DB_BACKEND=d1: the same tests against the D1 data layer (see d1-harness.mjs).
+const D1_MODE = process.env.DB_BACKEND === "d1";
+let d1Queries = 0;
+const d1Busiest = { n: 0, path: "" };
+let d1 = null;
+if (D1_MODE) {
+  const { setupD1 } = await import("./d1-harness.mjs");
+  d1 = setupD1({ DB, calls, getFail: () => airtableFail, onQuery: () => { d1Queries++; } });
+  Object.assign(env, d1.env);
+}
+const call = async (path, init = {}) => {
+  d1Queries = 0;
+  const res = await worker.fetch(new Request("https://wh-gemach.example.workers.dev" + path, init), env, ctx);
+  if (d1Queries > d1Busiest.n) { d1Busiest.n = d1Queries; d1Busiest.path = `${init.method || "GET"} ${path.split("?")[0]}`; }
+  return res;
+};
+
 
 // Independent JWT signer (same algorithm) to prove compatibility with the worker's verifier
 const b64u = bytes => Buffer.from(bytes).toString("base64url");
@@ -160,7 +180,10 @@ const tokenA = await sign({ email: "barry@example.com", name: "Bárry ✡", role
 const auth = t => ({ Authorization: `Bearer ${t}` });
 
 let pass = 0;
-async function t(name, fn) { try { await fn(); pass++; console.log("PASS", name); } catch (e) { console.log("FAIL", name, "-", e.message); process.exitCode = 1; } }
+// Tests about Airtable's own plumbing (the ?probe=1 timing calls, resending a stalled call).
+const AIRTABLE_ONLY = ["health: ?probe=1", "airtable: a read that stalls"];
+async function t(name, fn) {
+  if (D1_MODE && AIRTABLE_ONLY.some(p => name.startsWith(p))) { console.log("SKIP (Airtable only)", name); return; } try { await fn(); pass++; console.log("PASS", name); } catch (e) { console.log("FAIL", name, "-", e.message); process.exitCode = 1; } }
 
 await t("OPTIONS returns CORS (allowlisted origin echoed)", async () => {
   const r = await call("/api/admin/dashboard", { method: "OPTIONS", headers: { Origin: "https://whgemachs.org" } });
@@ -1399,7 +1422,10 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     DB.Loans.push(
       rec("recSLOAN000000001", { Status: "Returned", "Date Borrowed": iso(20), "Date Returned": iso(10), Item: ["recSITEM000000002"], "Item Type (from Item)": ["recSTYPE000000001"], ...sc }),
       rec("recSLOAN000000002", { Status: "Returned", "Date Borrowed": iso(8), "Date Returned": iso(4), Item: ["recSITEM000000002"], "Item Type (from Item)": ["recSTYPE000000001"], ...sc }),
-      rec("recSLOAN000000003", { Status: "Active", "Date Borrowed": iso(3), Item: ["recSITEM000000001"], ...sc }));
+      rec("recSLOAN000000003", { Status: "Active", "Date Borrowed": iso(3), Item: ["recSITEM000000001"], ...sc }),
+      // (so the items' computed status matches what the fixture says: D1 works it out from loans)
+      rec("recSLOAN000000004", { Status: "Active", "Date Borrowed": iso(2), Item: ["recSITEM000000002"], ...sc }),
+      rec("recSLOAN000000005", { Status: "Cancelled", Item: ["recSITEM000000004"], ...sc }));
     const r = await call("/admin/stats?days=90&g=" + G.slug, { headers: auth(tokNet) });
     assert.equal(r.status, 200);
     const s = await r.json();
@@ -2341,7 +2367,7 @@ await t("history: entries get their item type's photos (matched by name; several
   try {
     const H = { headers: { ...auth(tokenA), "X-Gemach": A.slug } };
     const d1 = await (await call("/admin/history?eventType=Photo%20Test", H)).json();
-    const d2 = await (await call(`/admin/history?eventType=Photo%20Test&offset=${d1.offset}`, H)).json(); // the fake pages 2 at a time
+    const d2 = d1.offset ? await (await call(`/admin/history?eventType=Photo%20Test&offset=${d1.offset}`, H)).json() : { records: [] }; // the fake Airtable pages 2 at a time
     const by = id => [...d1.records, ...d2.records].find(r => r.id === id);
     assert.deepEqual(by("recLOGPHOTO000001").photos, [{ name: "Wheelchair", photos: ["https://pub-x.r2.dev/wh/photos/wc.jpg"] }]);
     assert.deepEqual(by("recLOGPHOTO000002").photos.map(p => p.name), ["Wheelchair"], "walker has no photo; wheelchair matched despite × 2");
@@ -2537,4 +2563,52 @@ await t("activity log entries stamped with Gemach", async () => {
     await assert.rejects(db.listPage("Items", { filter: "{Active}=1" }), /no longer accepted/);
   });
 }
-console.log(`${pass} passed`);
+// ─── D1 layer ──────────────────────────────────────────────────────────────────
+{
+  const { schemaSql } = await import("../src/dbschema.js");
+  const { readFileSync } = await import("node:fs");
+  await t("schema.sql matches dbschema.js (run `npm run schema` after changing the schema)", async () => {
+    assert.equal(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"), schemaSql());
+  });
+}
+if (D1_MODE) {
+  await t("D1: /health reports the database and answers from D1", async () => {
+    const r = await call("/health");
+    assert.equal(r.status, 200);
+    const d = await r.json();
+    assert.equal(d.ok, true); assert.equal(d.db, "d1");
+  });
+  await t("D1: item status is computed from its loans (On Loan > Reserved > Available)", async () => {
+    const sql = d1.sqlite();
+    const status = id => sql.prepare("SELECT status FROM items_v WHERE id = ?").get(id).status;
+    const before = status("recITEMB000000001");
+    sql.prepare("INSERT INTO loans (id, created_at, status, item_id, gemach_id) VALUES ('recTMPLOAN0000001', '2026-01-01', 'Reserved', 'recITEMB000000001', ?)").run(B.id);
+    assert.equal(status("recITEMB000000001"), "Reserved");
+    sql.prepare("INSERT INTO loans (id, created_at, status, item_id, gemach_id) VALUES ('recTMPLOAN0000002', '2026-01-01', 'Active', 'recITEMB000000001', ?)").run(B.id);
+    assert.equal(status("recITEMB000000001"), "On Loan");
+    sql.exec("DELETE FROM loans WHERE id IN ('recTMPLOAN0000001', 'recTMPLOAN0000002')");
+    assert.equal(status("recITEMB000000001"), before);
+  });
+  await t("D1: new records get Airtable-style ids and a created time; unknown or computed fields are refused", async () => {
+    const { makeDb } = await import("../src/db.js");
+    const db = makeDb(env);
+    const r = await db.create("Search Log", { Query: "d1 test", Count: 1 });
+    assert.match(r.id, /^rec[A-Za-z0-9]{14}$/);
+    assert.ok(Date.parse(r.createdTime) > Date.now() - 60000);
+    assert.deepEqual(r.fields, { Query: "d1 test", Count: 1 });
+    await assert.rejects(db.listAll("Items", { fields: ["Nope"] }), e => e.status === 422);
+    await assert.rejects(db.update("Items", "recITEMA000000001", { Status: "Available" }), e => e.status === 422);
+    await assert.rejects(db.update("Search Log", "recXXXXXXXXXXXXXX", { Count: 2 }), e => e.status === 404);
+    await assert.rejects(db.create("Loans", { Item: ["recITEMA000000001", "recITEMA000000002"] }), e => e.status === 422, "one-link field");
+    await db.del("Search Log", r.id);
+    assert.equal(await db.get("Search Log", r.id), null);
+  });
+}
+if (D1_MODE) {
+  await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
+    console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);
+    assert.ok(d1Busiest.n <= 50, `${d1Busiest.path} used ${d1Busiest.n}`);
+  });
+  if (d1.skipped.size) console.log("  fixture fields with no D1 column (ignored):", [...d1.skipped].join(", "));
+}
+console.log(`${pass} passed${D1_MODE ? " (D1)" : ""}`);

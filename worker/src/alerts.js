@@ -39,7 +39,7 @@ async function handleHealth(db, env, request, url) {
   const t0 = Date.now();
   const noStore = { "Cache-Control": "no-store" };
   const colo = request?.cf?.colo || null;
-  if (env && url?.searchParams.get("probe") === "1" && Date.now() - probeLast >= PROBE_EVERY_MS) {
+  if (env && db.engine === "airtable" && url?.searchParams.get("probe") === "1" && Date.now() - probeLast >= PROBE_EVERY_MS) {
     probeLast = Date.now();
     const steps = await runProbe(db, env);
     return json({ ok: true, probe: true, colo, totalMs: Date.now() - t0, rateLimited: db.stats?.retries ?? 0, resent: db.stats?.hedges ?? 0, steps }, 200, noStore);
@@ -50,10 +50,11 @@ async function handleHealth(db, env, request, url) {
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
     ]);
     // rateLimited > 0 means Airtable answered "too many requests" and we waited before retrying.
+    if (db.engine === "d1") return json({ ok: true, db: "d1", ms: Date.now() - t0, dbMs: db.stats?.slowest ?? null, colo }, 200, noStore);
     return json({ ok: true, airtable: "ok", ms: Date.now() - t0, airtableMs: db.stats?.slowest ?? null, rateLimited: db.stats?.retries ?? 0, resent: db.stats?.hedges ?? 0, colo }, 200, noStore);
   } catch (e) {
     console.error("Health check failed:", e.message, e.detail ? JSON.stringify(e.detail) : "");
-    return json({ ok: false, airtable: "error" }, 503, noStore);
+    return json(db.engine === "d1" ? { ok: false, db: "error" } : { ok: false, airtable: "error" }, 503, noStore);
   }
 }
 
