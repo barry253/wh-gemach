@@ -321,7 +321,7 @@
   function activeFilterCount() {
     return Object.keys(attrFilter).reduce(function (n, k) { return n + (attrFilter[k] || []).length; }, 0);
   }
-  /** Per filter: how many items have each choice, given the picks in the *other* filters
+  /** Per filter: how many items have each choice, given the picks in the *other* filters (0 → grayed out)
       (OR within a filter, so picking size 8 never rules out size 10). */
   function facetCounts(defs) {
     var base = items.filter(function (it) { return !isAddon(it); });
@@ -358,7 +358,7 @@
           var n = counts[i][v] || 0;
           var dead = !n && !pressed; // nothing left with this choice; picked ones stay tappable so they can be cleared
           return '<button type="button" class="af-chip" data-fa="' + i + '" data-fv="' + j + '" aria-pressed="' + pressed + '"' + (dead ? " disabled" : "") +
-            ' aria-label="' + esc(v) + ", " + W.plural(n, "item") + '"><span class="af-v">' + esc(v) + '</span><span class="af-n" aria-hidden="true">' + n + "</span></button>";
+            '><span class="af-v">' + esc(v) + "</span></button>";
         }).join("") + "</div></div>";
     }).join("");
     var n = activeFilterCount();

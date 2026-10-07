@@ -107,8 +107,9 @@ const names = p => p.$$eval('.item-name', els => els.map(e => e.textContent));
       assert(/Showing 2 of 6/.test(await page.textContent('.af-count')), `${label} count after filter`);
       // Choices with nothing left in size 8 are grayed out; sizes themselves stay open (OR within a filter)
       const chipState = () => page.$$eval('.af-row', rs => rs.map(r => [...r.querySelectorAll('.af-chip')].map(c =>
-        c.querySelector('.af-v').textContent + (c.disabled ? '-' : '') + ':' + c.querySelector('.af-n').textContent).join(',')).join(' | '));
-      assert(await chipState() === '2:1,4:1,8:2,10:1,12:1 | Black:1,Navy:1,Gold-:0,Silver-:0,Blush-:0 | Floor-length-:0,Tea-length:2',
+        c.querySelector('.af-v').textContent + (c.disabled ? '-' : '')).join(',')).join(' | '));
+      assert(!(await page.$('.af-n')), `${label} no counts on chips`);
+      assert(await chipState() === '2,4,8,10,12 | Black,Navy,Gold-,Silver-,Blush- | Floor-length-,Tea-length',
         `${label} size 8 grays out other colors/lengths: ` + await chipState());
       await page.screenshot({ path: path.join(SHOTS, `${label}-filters-facets.png`) });
       // + Size 12 (OR within a filter) and Color Navy (AND across filters)
@@ -118,7 +119,7 @@ const names = p => p.$$eval('.item-name', els => els.map(e => e.textContent));
       await page.screenshot({ path: path.join(SHOTS, `${label}-filters-on.png`) });
       // Picked chips stay tappable even when their count drops to 0
       await page.click('.af-row:nth-child(3) .af-chip:has(.af-v:text-is("Tea-length"))');
-      assert(await chipState() === '2-:0,4-:0,8:1,10:1,12:0 | Black:1,Navy:1,Gold-:0,Silver-:0,Blush-:0 | Floor-length:1,Tea-length:1',
+      assert(await chipState() === '2-,4-,8,10,12 | Black,Navy,Gold-,Silver-,Blush- | Floor-length,Tea-length',
         `${label} counts follow the other filters: ` + await chipState());
       await page.click('.af-chip:has(.af-v:text-is("12"))');
       assert(await page.$eval('.af-chip:has(.af-v:text-is("12"))', e => e.disabled && e.getAttribute('aria-pressed') === 'false'), `${label} unpicked 12 is grayed (no tea-length navy 12)`);
