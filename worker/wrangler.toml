@@ -28,7 +28,13 @@ crons = ["0 14 * * *"]
 [observability]
 enabled = true
 
-# Cloudflare D1 database (used only when the DB_BACKEND variable is "d1"; see src/db.js).
+# Which database the worker uses (src/db.js): "d1" = Cloudflare D1 (since Oct 7, 2026), "airtable" = the old
+# Airtable base. Set here (not in the dashboard) so it's tracked; to switch back, change it and push, or roll
+# back to the previous deployment in the dashboard. Other plain vars stay dashboard-managed (keep_vars).
+[vars]
+DB_BACKEND = "d1"
+
+# Cloudflare D1 database (used when DB_BACKEND is "d1"; see src/db.js).
 # Schema: schema.sql (generated from src/dbschema.js). Copy/compare: .github/workflows/d1.yml.
 [[d1_databases]]
 binding = "DB"
