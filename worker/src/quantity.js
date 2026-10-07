@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { belongs, fAnd, fetchByIds, firstLink, linkedId, scopeF, today } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, linkedId, today } from "./airtable.js";
 import { REC_RE, T } from "./config.js";
 import { isValidDate, nyToday } from "./dates.js";
 import { selName } from "./gemachs.js";
@@ -56,7 +56,7 @@ function packageFields(body) {
 const qtyLabel = (name, n) => (n ? `${name} × ${n}` : name);
 // Item Types rows link to every Loan and Request ever made for them; reads name their fields to skip those.
 const TYPE_COUNT_FIELDS = ["Tracking", "Quantity Owned", "Out of Service", "Package Size", "Package Unit", "Price"]; // quantity / add-on helpers
-const TYPE_PHOTO_FIELDS = ["R2 Photo URL", "Photo", "More Photos"];
+const TYPE_PHOTO_FIELDS = ["R2 Photo URL", "More Photos"];
 const TYPE_PUBLIC_FIELDS = ["Name", "Description", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category", "Gemach"];
 const TYPE_ADMIN_FIELDS = ["Name", "Description", "Display Order", "Active", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category"];
 const LOAN_WINDOW_FIELDS = ["Item to Reserve", "Status", "Quantity", "Reservation Start", "Reservation End", "Date Borrowed", "Expected Return", "Gemach"];
@@ -97,7 +97,7 @@ async function loadQtyBookings(db, g, typeIds, { exceptLoanId = null } = {}) {
   const want = new Set(typeIds || []);
   if (!want.size) return {};
   const loans = await db.listAll(T.LOANS, {
-    filter: fAnd(g && scopeF(g), `OR({Status}="Active",{Status}="Reserved")`),
+    scope: g || null, where: [Q.in("Status", ["Active", "Reserved"])],
     fields: LOAN_WINDOW_FIELDS,
   });
   const t = nyToday();
@@ -127,12 +127,10 @@ function qtyAvailable(total, bookings, from, to = from) {
 }
 
 /** Item type facts for ids (scoped): { id: { name, qty: bool, lendable, owned, outOfService } }. */
-/** The item type's cover photo for admin lists: our own (R2) copy, else Airtable's small thumbnail (those links expire after a few hours). */
+/** The item type's cover photo for admin lists (always our own R2 copy). */
 function typePhoto(r) {
   const own = r.fields["R2 Photo URL"];
-  if (typeof own === "string" && /^https:\/\//i.test(own)) return own;
-  const a = r.fields["Photo"]?.[0];
-  return a?.thumbnails?.large?.url || a?.url || null;
+  return typeof own === "string" && /^https:\/\//i.test(own) ? own : null;
 }
 
 /** Cover first, then the extra photos (for the admin photo viewer). */
@@ -177,8 +175,8 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
   if (!wanted.size) return {};
   const unitTypes = typeRecs.filter(r => !isQtyType(r)).map(r => r.id);
   const [loans, units] = await Promise.all([
-    db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `OR({Status}="Active",{Status}="Reserved")`), fields: [...LOAN_WINDOW_FIELDS, "Item"] }),
-    unitTypes.length ? db.listAll(T.ITEMS, { filter: fAnd(scopeF(g), `{Active}=1`), fields: ["Item Type", "Gemach"] }) : [],
+    db.listAll(T.LOANS, { scope: g, where: [Q.in("Status", ["Active", "Reserved"])], fields: [...LOAN_WINDOW_FIELDS, "Item"] }),
+    unitTypes.length ? db.listAll(T.ITEMS, { scope: g, where: [Q.isTrue("Active")], fields: ["Item Type", "Gemach"] }) : [],
   ]);
   const unitType = new Map();
   const capacity = {};

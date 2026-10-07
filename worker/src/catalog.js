@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, firstLink, getOwned, linkedId, scopeF } from "./airtable.js";
+import { AirtableError, Q, firstLink, getOwned, linkedId } from "./airtable.js";
 import { parseItemAttrs, validateItemAttrs } from "./attributes.js";
 import { gemachFromRecord, getGemachRecord } from "./gemachs.js";
 import { parseMorePhotos, validateMorePhotos } from "./photos.js";
@@ -12,7 +12,7 @@ import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookin
 // ─── Catalog — Item Types ─────────────────────────────────────────────────────
 
 async function handleGetItemTypes({ db, g }) {
-  const types = await db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_ADMIN_FIELDS });
+  const types = await db.listAll(T.ITEM_TYPES, { scope: g, sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_ADMIN_FIELDS });
   const qtyIds = types.filter(isQtyType).map(t => t.id);
   const bookings = qtyIds.length ? await loadQtyBookings(db, g, qtyIds) : {};
   const t = nyToday();
@@ -23,7 +23,7 @@ async function handleGetItemTypes({ db, g }) {
       description: r.fields["Description"] || "",
       displayOrder: r.fields["Display Order"] || 0,
       active: r.fields["Active"] || false,
-      photoUrl: r.fields["Photo"]?.[0]?.url || null,
+      photoUrl: null, // (was the Airtable attachment; every photo now lives in R2 — kept so older admin pages still work)
       r2PhotoUrl: r.fields["R2 Photo URL"] || null,
       morePhotos: parseMorePhotos(r.fields["More Photos"]),
       itemCount: (r.fields["Items"] || []).length,
@@ -97,7 +97,7 @@ async function itemTypeQtyFields(db, g, body, current = null) {
 const selTracking = rec => (isAddonType(rec) ? "Add-on" : isQtyType(rec) ? "Quantity" : "Units");
 /** Whether an item type has any open (Reserved/Active) loans that link it as "Item to Reserve". */
 async function loadOpenLoansFor(db, g, typeId) {
-  const loans = await db.listAll(T.LOANS, { filter: `AND(${scopeF(g)},OR({Status}="Active",{Status}="Reserved"))`, fields: ["Item to Reserve", "Item"] });
+  const loans = await db.listAll(T.LOANS, { scope: g, where: [Q.in("Status", ["Active", "Reserved"])], fields: ["Item to Reserve", "Item"] });
   return loans.some(l => linkedId(firstLink(l.fields["Item to Reserve"])) === typeId && !(l.fields["Item"] || []).length);
 }
 
@@ -190,8 +190,8 @@ async function handleUpdateItemType(c, id) {
 
 async function handleGetCatalogItems({ db, g }) {
   const [items, itemTypes] = await Promise.all([
-    db.listAll(T.ITEMS, { filter: scopeF(g), sort: [{ field: "Item ID", direction: "asc" }], fields: ["Item ID", "Item Type", "Condition", "Active", "Status", "Notes"] }),
-    db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name", "Active"] }),
+    db.listAll(T.ITEMS, { scope: g, sort: [{ field: "Item ID", direction: "asc" }], fields: ["Item ID", "Item Type", "Condition", "Active", "Status", "Notes"] }),
+    db.listAll(T.ITEM_TYPES, { scope: g, sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name", "Active"] }),
   ]);
   const itemTypeMap = Object.fromEntries(itemTypes.map(r => [r.id, { name: r.fields["Name"] }]));
   const records = items.map(r => {

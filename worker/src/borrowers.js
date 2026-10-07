@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fAnd, fStr, scopeF } from "./airtable.js";
+import { Q } from "./airtable.js";
 import { T } from "./config.js";
 
 // ─── Borrowers ────────────────────────────────────────────────────────────────
@@ -17,16 +17,16 @@ async function findOrCreateBorrower(db, g, { name, phone, email, preferredContac
   const emailNorm = String(email || "").trim().toLowerCase();
   const conds = [];
   if (digits.length >= 10) {
-    conds.push(`RIGHT(REGEX_REPLACE({Phone}&"","[^0-9]",""),10)=${fStr(digits.slice(-10))}`);
+    conds.push(Q.phoneDigits("Phone", digits.slice(-10), { last10: true }));
   } else if (digits.length) {
-    conds.push(`REGEX_REPLACE({Phone}&"","[^0-9]","")=${fStr(digits)}`);
+    conds.push(Q.phoneDigits("Phone", digits));
   }
-  if (emailNorm) conds.push(`LOWER(TRIM({Email}&""))=${fStr(emailNorm)}`);
+  if (emailNorm) conds.push(Q.ieq("Email", emailNorm, { trim: true }));
   if (conds.length) {
     // Reuse an existing borrower only when the contact detail AND the name match: families often
     // share a phone or email, and a request from one person must not be filed under another's name.
     const found = await db.listPage(T.BORROWERS, {
-      filter: fAnd(scopeF(g), conds.length > 1 ? `OR(${conds.join(",")})` : conds[0]),
+      scope: g, where: [conds.length > 1 ? Q.or(...conds) : conds[0]],
       maxRecords: 20,
       fields: ["Name"],
     });

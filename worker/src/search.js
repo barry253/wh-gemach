@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fStr } from "./airtable.js";
+import { Q } from "./airtable.js";
 import { T } from "./config.js";
 import { DAY_MS } from "./dates.js";
 import { clampInt } from "./gemachs.js";
@@ -48,7 +48,7 @@ async function handleSearchLog(request, db, ctx) {
 
 async function recordSearch(db, q, outcome, category) {
   const nowIso = new Date().toISOString();
-  const { records } = await db.listPage(T.SEARCH_LOG, { filter: `{Query}=${fStr(q)}`, maxRecords: 1 });
+  const { records } = await db.listPage(T.SEARCH_LOG, { where: [Q.eq("Query", q)], maxRecords: 1 });
   const isNone = outcome === SEARCH_OUTCOMES.none;
   if (records[0]) {
     const f = records[0].fields;
@@ -72,7 +72,7 @@ async function netListSearches({ db, url }) {
   const days = clampInt(url.searchParams.get("days"), 1, 3650, 90);
   const since = new Date(Date.now() - days * DAY_MS).toISOString();
   const rows = await db.listAll(T.SEARCH_LOG, {
-    filter: `IS_AFTER({Last Searched},${fStr(since)})`,
+    where: [Q.after("Last Searched", since)],
     sort: [{ field: "Count", direction: "desc" }, { field: "Last Searched", direction: "desc" }],
   });
   return json({

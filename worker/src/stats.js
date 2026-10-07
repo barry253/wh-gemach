@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fAnd, fStr, linkedId, scopeF, today } from "./airtable.js";
+import { Q, linkedId, today } from "./airtable.js";
 import { REC_RE, T } from "./config.js";
 import { DAY_MS, addDays, dateToUtcMs, isValidDate, nyToday } from "./dates.js";
 import { json } from "./http.js";
@@ -17,9 +17,9 @@ function isOverdue(fields, todayStr) {
 
 async function handleDashboard({ db, g }) {
   const [requests, loans, reservations] = await Promise.all([
-    db.listAll(T.REQUESTS, { filter: fAnd(scopeF(g), `{Status}="New"`), fields: ["Request ID"] }),
-    db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `{Status}="Active"`), fields: ["Date Borrowed", "Expected Return"] }),
-    db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `{Status}="Reserved"`), fields: ["Loan ID"] }),
+    db.listAll(T.REQUESTS, { scope: g, where: [Q.eq("Status", "New")], fields: ["Request ID"] }),
+    db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Active")], fields: ["Date Borrowed", "Expected Return"] }),
+    db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Reserved")], fields: ["Loan ID"] }),
   ]);
   const t = today();
   return json({
@@ -62,14 +62,14 @@ async function buildStats(db, g, days) {
   const DECISIONS = ["Request Confirmed", "Request Declined"];
 
   const [requests, waiting, decisions, types, items, returned] = await Promise.all([
-    db.listAll(T.REQUESTS, { filter: fAnd(scopeF(g), `IS_AFTER({Received At},${fStr(sinceIso)})`),
+    db.listAll(T.REQUESTS, { scope: g, where: [Q.after("Received At", sinceIso)],
       fields: ["Request ID", "Status", "Received At", "Items Requested", "Request Type"] }),
-    db.listAll(T.REQUESTS, { filter: fAnd(scopeF(g), `{Status}="New"`), fields: ["Request ID", "Name", "Received At"] }),
-    db.listAll(T.LOG, { filter: fAnd(scopeF(g), `OR(${DECISIONS.map(d => `{Event Type}=${fStr(d)}`).join(",")})`, `IS_AFTER({Timestamp},${fStr(sinceIso)})`),
+    db.listAll(T.REQUESTS, { scope: g, where: [Q.eq("Status", "New")], fields: ["Request ID", "Name", "Received At"] }),
+    db.listAll(T.LOG, { scope: g, where: [Q.in("Event Type", DECISIONS), Q.after("Timestamp", sinceIso)],
       fields: ["Loan ID", "Timestamp", "Event Type"] }),
-    db.listAll(T.ITEM_TYPES, { filter: scopeF(g), fields: ["Name", "Active", "Tracking", "Quantity Owned", "Out of Service"] }),
-    db.listAll(T.ITEMS, { filter: scopeF(g), fields: ["Item Type", "Status", "Active", "Loan Statuses"] }),
-    db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `{Status}="Returned"`, `IS_AFTER({Date Returned},${fStr(addDays(sinceDate, -1))})`),
+    db.listAll(T.ITEM_TYPES, { scope: g, fields: ["Name", "Active", "Tracking", "Quantity Owned", "Out of Service"] }),
+    db.listAll(T.ITEMS, { scope: g, fields: ["Item Type", "Status", "Active", "Loan Statuses"] }),
+    db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Returned"), Q.after("Date Returned", addDays(sinceDate, -1))],
       fields: ["Date Borrowed", "Date Returned", "Item Type (from Item)", "Item", "Item to Reserve"] }),
   ]);
   const qtyTypes = types.filter(isQtyType);

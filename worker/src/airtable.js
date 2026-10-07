@@ -1,5 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { AIRTABLE_API, AIRTABLE_CONCURRENCY, AIRTABLE_HEDGE_MAX, AIRTABLE_HEDGE_MS, ID_CHUNK, REC_RE } from "./config.js";
+import { Q, toFormula, fStr, fAnd, scopeF, idsF } from "./query.js";
 
 // ─── Airtable data layer (per-request: concurrency limit + 429 retry + paging) ─
 
@@ -90,9 +91,12 @@ function makeDb(env) {
     return data;
   }
 
-  async function listPage(table, { filter, sort, fields, pageSize, offset, maxRecords } = {}) {
+  // Queries are structured ({ scope: g, where: [Q...] }, see query.js) so they can also run on D1.
+  async function listPage(table, { scope, where, filter, sort, fields, pageSize, offset, maxRecords } = {}) {
+    if (filter !== undefined) throw new Error("raw Airtable formulas are no longer accepted; use scope/where (query.js)");
     const body = {};
-    if (filter) body.filterByFormula = filter;
+    const formula = toFormula({ scope, where });
+    if (formula) body.filterByFormula = formula;
     if (sort) body.sort = sort;
     if (fields) body.fields = fields;
     if (pageSize) body.pageSize = pageSize;
@@ -131,15 +135,7 @@ function makeDb(env) {
 }
 
 
-// ─── Formula helpers ──────────────────────────────────────────────────────────
-
-const fStr = s => `"${String(s ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\r\n]+/g, " ")}"`;
-const fAnd = (...parts) => {
-  const p = parts.filter(Boolean);
-  return p.length === 0 ? undefined : p.length === 1 ? p[0] : `AND(${p.join(",")})`;
-};
-const scopeF = g => `ARRAYJOIN({Gemach Slug})=${fStr(g.slug)}`;
-const idsF = ids => `OR(${ids.map(id => `RECORD_ID()=${fStr(id)}`).join(",")})`;
+// ─── Record helpers ───────────────────────────────────────────────────────────
 
 const linkedId = v => (!v ? null : typeof v === "string" ? v : v.id || null);
 const linkedName = v => (v && typeof v === "object" ? v.name || null : null);
@@ -165,7 +161,7 @@ async function fetchByIds(db, table, ids, { g = null, fields } = {}) {
   const chunks = [];
   for (let i = 0; i < uniq.length; i += ID_CHUNK) chunks.push(uniq.slice(i, i + ID_CHUNK));
   const results = await Promise.all(chunks.map(chunk =>
-    db.listAll(table, { filter: fAnd(g && scopeF(g), idsF(chunk)), fields })
+    db.listAll(table, { scope: g, where: [Q.idIn(chunk)], fields })
   ));
   return results.flat();
 }
@@ -179,4 +175,4 @@ async function verifyOwnedIds(db, table, ids, g) {
   return list.every(id => map[id]) ? map : null;
 }
 
-export { AirtableError, makeLimiter, sleep, makeDb, fStr, fAnd, scopeF, idsF, linkedId, linkedName, firstLink, today, belongs, getOwned, fetchByIds, verifyOwnedIds };
+export { AirtableError, makeLimiter, sleep, makeDb, Q, fStr, fAnd, scopeF, idsF, linkedId, linkedName, firstLink, today, belongs, getOwned, fetchByIds, verifyOwnedIds };

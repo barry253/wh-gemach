@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, fStr, fetchByIds, linkedId } from "./airtable.js";
+import { AirtableError, Q, fetchByIds, linkedId } from "./airtable.js";
 import { sendAlert } from "./alerts.js";
 import { purgePublicCache } from "./cache.js";
 import { DEFAULT_ADMIN_URL, LEGACY_SLUG, NETWORK_ADMIN_ROLE, REC_RE, SLUG_RE, T } from "./config.js";
@@ -19,7 +19,7 @@ const ADMIN_ROLES = ["Owner", "Manager", "Volunteer", NETWORK_ADMIN_ROLE];      
 async function isLiveNetworkAdmin(db, email) {
   if (!email) return false;
   const rows = await db.listAll(T.ADMINS, {
-    filter: `AND(LOWER({Email})=${fStr(String(email).toLowerCase())},{Active}=1)`, maxRecords: 1, fields: ["Role", "Active"],
+    where: [Q.ieq("Email", email), Q.isTrue("Active")], maxRecords: 1, fields: ["Role", "Active"],
   });
   return selName(rows[0]?.fields?.Role) === NETWORK_ADMIN_ROLE;
 }
@@ -227,7 +227,7 @@ async function netUpdateGemach(c, id) {
     const slug = String(body.slug || "").trim().toLowerCase();
     if (rec.fields.Active) return json({ error: "The web address can only be changed while the gemach is hidden (inactive)." }, 400);
     if (!SLUG_RE.test(slug)) return json({ error: "Web address must use lowercase letters, numbers and hyphens." }, 400);
-    const clash = await db.listAll(T.GEMACHS, { filter: `LOWER({Slug})=${fStr(slug)}`, fields: ["Slug"], maxRecords: 2 });
+    const clash = await db.listAll(T.GEMACHS, { where: [Q.ieq("Slug", slug)], fields: ["Slug"], maxRecords: 2 });
     if (clash.some(r => r.id !== id)) return json({ error: `The web address “${slug}” is already taken.` }, 409);
     f["Slug"] = slug;
   }
@@ -297,7 +297,7 @@ async function netCreateAdmin(c) {
   const { fields, error } = validateAdminInput(body, idx, { partial: false });
   if (error) return json({ error }, 400);
   if (fields.Role !== NETWORK_ADMIN_ROLE && !fields.Gemachs.length) return json({ error: "Choose at least one gemach for this admin." }, 400);
-  const dup = await db.listAll(T.ADMINS, { filter: `LOWER({Email})=${fStr(email)}`, fields: ["Email"], maxRecords: 1 });
+  const dup = await db.listAll(T.ADMINS, { where: [Q.ieq("Email", email)], fields: ["Email"], maxRecords: 1 });
   if (dup.length) return json({ error: "An admin with this email already exists." }, 409);
 
   let rec;
@@ -394,7 +394,7 @@ async function validateCategoryInput(db, body, { partial, selfId = null }) {
     const name = netStr(body.name);
     if (typeof name !== "string" || !name) return { error: "Name is required." };
     if (name.length > 60) return { error: "Name is too long (max 60 characters)." };
-    const same = await db.listAll(T.PRODUCT_CATEGORIES, { filter: `LOWER({Name})=${fStr(name.toLowerCase())}`, fields: ["Name"], maxRecords: 2 });
+    const same = await db.listAll(T.PRODUCT_CATEGORIES, { where: [Q.ieq("Name", name)], fields: ["Name"], maxRecords: 2 });
     if (same.some(r => r.id !== selfId)) return { error: `A category named “${name}” already exists.`, status: 409 };
     f["Name"] = name;
   }

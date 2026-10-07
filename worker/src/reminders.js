@@ -1,6 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent } from "./activity.js";
-import { fAnd, firstLink, linkedId, makeDb, scopeF } from "./airtable.js";
+import { Q, firstLink, linkedId, makeDb } from "./airtable.js";
 import { sendAlert } from "./alerts.js";
 import { T } from "./config.js";
 import { DAY_MS, addDays, dateToUtcMs, isValidDate, nyToday } from "./dates.js";
@@ -116,10 +116,10 @@ const VALID_EMAIL = /^[^\s@<>()"',;:\\]+@[^\s@<>()"',;:\\]+\.[^\s@<>()"',;:\\]+$
  */
 async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = makeDb(env) } = {}) {
   const today = nyToday(now);
-  const recs = await db.listAll(T.GEMACHS, { filter: `AND({Active}, {Auto Reminders}, {Slug}!="")`, fields: GEMACH_FIELDS });
+  const recs = await db.listAll(T.GEMACHS, { where: [Q.isTrue("Active"), Q.isTrue("Auto Reminders"), Q.nonEmpty("Slug")], fields: GEMACH_FIELDS });
   const out = { today, dryRun, sent: [], failed: [], noEmail: 0 };
   for (const g of recs.map(gemachFromRecord)) {
-    const loans = await db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `{Status}="Active"`, `NOT({Expected Return}=BLANK())`), fields: LOAN_LIST_FIELDS });
+    const loans = await db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Active"), Q.notBlank("Expected Return")], fields: LOAN_LIST_FIELDS });
     if (!loans.length) continue;
     const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
     for (const l of loans) {

@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fStr, fetchByIds, linkedId } from "./airtable.js";
+import { Q, fetchByIds, linkedId } from "./airtable.js";
 import { CACHE_TTL_MS, LEGACY_SLUG, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
 import { isLiveNetworkAdmin } from "./network.js";
 import { parseAttrDefs } from "./attributes.js";
@@ -28,7 +28,7 @@ const clampInt = (v, lo, hi, dflt) => {
 const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", "Website", "Donation URL", "Donation Info", "Hours",
   "Description", "Category", "Mode", "Primary Contact", "Secondary Contact", "Theme Color", "Accent Color", "Deposit Required",
   "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Style", "Event Label", "Pickup Days Before", "Return Days After",
-  "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Logo", "Display Order",
+  "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
   "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories"];
 
@@ -86,7 +86,7 @@ function gemachFromRecord(r) {
       returnReminder: nonBlank(f["Return Reminder Message"]),
     },
     active: !!f.Active,
-    logoUrl: nonBlank(f["Logo URL"]) || f.Logo?.[0]?.url || null,
+    logoUrl: nonBlank(f["Logo URL"]) || null,
     logoDarkUrl: /^https:\/\//i.test(nonBlank(f["Logo On Dark URL"]) || "") ? nonBlank(f["Logo On Dark URL"]) : null,
     communityIds: (f.Community || []).map(linkedId),
     itemAttributes: parseAttrDefs(f["Item Attributes"]),
@@ -107,7 +107,7 @@ async function loadGemachBySlug(db, slug) {
   if (!SLUG_RE.test(slug || "")) return null;
   const hit = gemachMemo.get(slug);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.g;
-  const recs = await db.listAll(T.GEMACHS, { filter: `{Slug}=${fStr(slug)}`, maxRecords: 2, fields: GEMACH_FIELDS });
+  const recs = await db.listAll(T.GEMACHS, { where: [Q.eq("Slug", slug)], maxRecords: 2, fields: GEMACH_FIELDS });
   const g = recs.length === 1 ? gemachFromRecord(recs[0]) : null;
   if (recs.length > 1) console.error(`Duplicate gemach slug: ${slug}`);
   if (g) gemachMemo.set(slug, { g, at: Date.now() });
@@ -116,7 +116,7 @@ async function loadGemachBySlug(db, slug) {
 
 async function listActiveGemachs(db) {
   const recs = await db.listAll(T.GEMACHS, {
-    filter: `AND({Active}=1,{Slug}!="")`,
+    where: [Q.isTrue("Active"), Q.nonEmpty("Slug")],
     sort: [{ field: "Name", direction: "asc" }],
     fields: GEMACH_FIELDS,
   });
@@ -125,7 +125,7 @@ async function listActiveGemachs(db) {
 
 /** Every gemach with a valid slug (active and hidden) — for Network Admins. Sorted by name. */
 async function listAllGemachs(db) {
-  const recs = await db.listAll(T.GEMACHS, { filter: `{Slug}!=""`, fields: GEMACH_FIELDS });
+  const recs = await db.listAll(T.GEMACHS, { where: [Q.nonEmpty("Slug")], fields: GEMACH_FIELDS });
   return recs.map(gemachFromRecord).filter(g => SLUG_RE.test(g.slug || "")).sort((a, b) => a.name.localeCompare(b.name));
 }
 const gemachRef = g => ({ id: g.id, slug: g.slug, name: g.name, active: !!g.active });
@@ -168,7 +168,7 @@ async function resolveAdminGemach(request, url, db, user) {
 const liveAdminMap = new Map(); // email -> { at, p: Promise<{id,name,role,active,gemachIds}|null> }
 async function fetchLiveAdmin(db, email) {
   const rows = await db.listAll(T.ADMINS, {
-    filter: `AND(LOWER({Email})=${fStr(email)},{Active}=1)`, maxRecords: 1, fields: ["Name", "Role", "Active", "Gemachs"],
+    where: [Q.ieq("Email", email), Q.isTrue("Active")], maxRecords: 1, fields: ["Name", "Role", "Active", "Gemachs"],
   });
   const r = rows[0];
   if (!r) return null;

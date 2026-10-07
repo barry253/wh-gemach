@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { firstLink, linkedId, scopeF } from "./airtable.js";
+import { firstLink, linkedId } from "./airtable.js";
 import { T } from "./config.js";
 
 // ─── IDs ──────────────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ const getNextRequestId = db => nextSequentialId(db, T.REQUESTS, "Request ID", "R
 
 async function generateNextItemId(db, g, typeRec) {
   const typeName = typeRec.fields?.["Name"] || "";
-  const items = await db.listAll(T.ITEMS, { filter: scopeF(g), fields: ["Item ID", "Item Type"] });
+  const items = await db.listAll(T.ITEMS, { scope: g, fields: ["Item ID", "Item Type"] });
   const typeItems = items.filter(r => linkedId(firstLink(r.fields["Item Type"])) === typeRec.id && r.fields["Item ID"]);
 
   let prefix;

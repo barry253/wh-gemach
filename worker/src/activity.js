@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, fAnd, fStr, scopeF } from "./airtable.js";
+import { AirtableError, Q } from "./airtable.js";
 import { DATE_RE, T } from "./config.js";
 import { json } from "./http.js";
 import { typePhotos } from "./quantity.js";
@@ -27,15 +27,15 @@ async function handleGetHistory({ db, g, url }) {
   const sortDir   = url.searchParams.get("sort") === "asc" ? "asc" : "desc";
   const offset    = url.searchParams.get("offset") || null;
 
-  const filters = [scopeF(g)];
-  if (eventType) filters.push(`{Event Type}=${fStr(eventType)}`);
-  if (dateFrom && DATE_RE.test(dateFrom)) filters.push(`IS_AFTER({Timestamp},"${dateFrom}T00:00:00.000Z")`);
-  if (dateTo && DATE_RE.test(dateTo))     filters.push(`IS_BEFORE({Timestamp},"${dateTo}T23:59:59.999Z")`);
+  const where = [];
+  if (eventType) where.push(Q.eq("Event Type", eventType));
+  if (dateFrom && DATE_RE.test(dateFrom)) where.push(Q.after("Timestamp", `${dateFrom}T00:00:00.000Z`));
+  if (dateTo && DATE_RE.test(dateTo))     where.push(Q.before("Timestamp", `${dateTo}T23:59:59.999Z`));
 
   let page;
   try {
     page = await db.listPage(T.LOG, {
-      filter: fAnd(...filters),
+      scope: g, where,
       sort: [{ field: "Timestamp", direction: sortDir }],
       pageSize: 50,
       offset,
@@ -77,7 +77,7 @@ async function handleGetHistory({ db, g, url }) {
 async function attachPhotos(db, g, records) {
   if (!records.some(r => r.itemType)) return;
   let types;
-  try { types = await db.listAll(T.ITEM_TYPES, { filter: scopeF(g), fields: ["Name", "R2 Photo URL", "Photo", "More Photos"] }); }
+  try { types = await db.listAll(T.ITEM_TYPES, { scope: g, fields: ["Name", "R2 Photo URL", "More Photos"] }); }
   catch (e) { console.error("History photos skipped:", e.message); return; }
   const key = s => String(s || "").replace(/\s*×\s*\d+\s*$/, "").trim().toLowerCase(); // "Folding Chair × 40" → the type
   const byName = new Map();

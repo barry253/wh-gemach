@@ -14,7 +14,7 @@
 // Links stop working 30 days after everything from the request is finished (returned / cancelled / declined).
 
 import { logEvent } from "./activity.js";
-import { AirtableError, fAnd, fStr, firstLink, linkedId, scopeF } from "./airtable.js";
+import { AirtableError, Q, firstLink, linkedId } from "./airtable.js";
 import { purgePublicCache } from "./cache.js";
 import { REC_RE, T } from "./config.js";
 import { formatNy } from "./dates.js";
@@ -71,7 +71,7 @@ async function loadManaged(db, env, token) {
   if (!g || !g.active) return { status: 404, error: "We couldn't find this request. Please contact the gemach." };
   const requestId = rec.fields["Request ID"] || "";
   const loans = requestId
-    ? (await db.listAll(T.LOANS, { filter: fAnd(scopeF(g), `FIND(${fStr(requestId)},ARRAYJOIN({Source Request}))`),
+    ? (await db.listAll(T.LOANS, { scope: g, where: [Q.linksTo("Source Request", rec.id, requestId)],
       fields: ["Loan ID", "Source Request", "Status", "Item to Reserve", "Quantity", "Date Borrowed", "Expected Return", "Date Returned",
         "Reservation Start", "Reservation End", "Ready To Return At"] }))
       .filter(l => (l.fields["Source Request"] || []).map(linkedId).includes(rec.id))

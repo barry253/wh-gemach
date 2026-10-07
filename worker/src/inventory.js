@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fAnd, fetchByIds, firstLink, linkedId, scopeF } from "./airtable.js";
+import { Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
 import { T } from "./config.js";
 import { json } from "./http.js";
 import { BORROWER_FIELDS, borrowerInfo } from "./loans.js";
@@ -15,10 +15,10 @@ import { isAddonType, isQtyType } from "./quantity.js";
  */
 async function handleAdminInventory({ db, g, url }) {
   const [items, itemTypes, activeLoans] = await Promise.all([
-    db.listAll(T.ITEMS, { filter: scopeF(g), sort: [{ field: "Item ID", direction: "asc" }], fields: ["Item ID", "Item Type", "Condition", "Status", "Active", "Notes"] }),
-    db.listAll(T.ITEM_TYPES, { filter: scopeF(g), sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name", "Tracking"] }),
+    db.listAll(T.ITEMS, { scope: g, sort: [{ field: "Item ID", direction: "asc" }], fields: ["Item ID", "Item Type", "Condition", "Status", "Active", "Notes"] }),
+    db.listAll(T.ITEM_TYPES, { scope: g, sort: [{ field: "Display Order", direction: "asc" }], fields: ["Name", "Tracking"] }),
     db.listAll(T.LOANS, {
-      filter: fAnd(scopeF(g), `OR({Status}="Active",{Status}="Reserved")`),
+      scope: g, where: [Q.in("Status", ["Active", "Reserved"])],
       sort: [{ field: "Loan ID", direction: "asc" }],
       fields: ["Loan ID", "Item", "Item to Reserve", "Status", "Date Borrowed", "Reservation Start", "Reservation End", "Notes", "Borrower"],
     }),

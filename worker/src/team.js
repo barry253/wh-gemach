@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, fStr, linkedId } from "./airtable.js";
+import { AirtableError, Q, linkedId } from "./airtable.js";
 import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
 import { fetchLiveAdmin, forgetLiveAdmin, liveNetMemo, selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
@@ -97,7 +97,7 @@ async function addMember(c) {
   if (!TEAM_ROLES.includes(body.role)) return json({ error: roleError }, 400);
   const role = body.role;
 
-  const [existing] = await db.listAll(T.ADMINS, { filter: `LOWER({Email})=${fStr(email)}`, fields: NET_ADMIN_FIELDS, maxRecords: 1 });
+  const [existing] = await db.listAll(T.ADMINS, { where: [Q.ieq("Email", email)], fields: NET_ADMIN_FIELDS, maxRecords: 1 });
   let rec;
   if (existing) {
     const f = existing.fields;

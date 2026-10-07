@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fStr, fetchByIds } from "./airtable.js";
+import { Q, fetchByIds } from "./airtable.js";
 import { DEFAULT_GOOGLE_CLIENT_ID, JWT_TTL_MS, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
 import { forgetLiveAdmin, gemachRef, listAllGemachs, liveNetMemo } from "./gemachs.js";
 import { json, readJson } from "./http.js";
@@ -40,7 +40,7 @@ async function handleLogin(request, db, env, ctx) {
 async function lookupAdminSession(db, email) {
   email = String(email || "").toLowerCase();
   if (!email) return { ok: false, error: "Not authorized" };
-  const admins = await db.listAll(T.ADMINS, { filter: `AND(LOWER({Email})=${fStr(email)},{Active}=1)`, maxRecords: 1, fields: ["Name", "Role", "Gemachs", "Last Active"] });
+  const admins = await db.listAll(T.ADMINS, { where: [Q.ieq("Email", email), Q.isTrue("Active")], maxRecords: 1, fields: ["Name", "Role", "Gemachs", "Last Active"] });
   if (!admins.length) return { ok: false, error: "Not authorized" };
 
   const admin = admins[0].fields;

@@ -1,6 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent } from "./activity.js";
-import { AirtableError, fAnd, fetchByIds, firstLink, getOwned, linkedId, linkedName, scopeF, today } from "./airtable.js";
+import { AirtableError, Q, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./airtable.js";
 import { findOrCreateBorrower } from "./borrowers.js";
 import { DATE_RE, T } from "./config.js";
 import { selName } from "./gemachs.js";
@@ -67,7 +67,7 @@ function loanQtyInfo(f, typeInfo) {
 
 async function handleGetLoans({ db, g, env }) {
   const loans = await db.listAll(T.LOANS, {
-    filter: fAnd(scopeF(g), `{Status}="Active"`),
+    scope: g, where: [Q.eq("Status", "Active")],
     sort: [{ field: "Date Borrowed", direction: "asc" }],
     fields: LOAN_LIST_FIELDS,
   });
@@ -321,7 +321,7 @@ async function handleMarkPickedUp(c, id) {
 
 async function handleGetReservations({ db, g, env }) {
   const loans = await db.listAll(T.LOANS, {
-    filter: fAnd(scopeF(g), `{Status}="Reserved"`),
+    scope: g, where: [Q.eq("Status", "Reserved")],
     sort: [{ field: "Reservation Start", direction: "asc" }],
     fields: LOAN_LIST_FIELDS,
   });
@@ -439,7 +439,7 @@ async function handleAssignItem(c, itemRecId) {
     } else {
       // Fallback: find this gemach's active/reserved loans linked to this item and close them.
       const loans = await db.listAll(T.LOANS, {
-        filter: fAnd(scopeF(g), `OR({Status}="Active",{Status}="Reserved")`),
+        scope: g, where: [Q.in("Status", ["Active", "Reserved"])],
         fields: ["Item", "Status"],
       });
       const mine = loans.filter(l => (l.fields["Item"] || []).map(linkedId).includes(itemRecId));

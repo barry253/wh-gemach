@@ -1,6 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent } from "./activity.js";
-import { fAnd, fStr, fetchByIds, getOwned, linkedId, scopeF, today } from "./airtable.js";
+import { Q, fetchByIds, getOwned, linkedId, today } from "./airtable.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { findOrCreateBorrower } from "./borrowers.js";
 import { DATE_RE, T } from "./config.js";
@@ -22,7 +22,7 @@ async function itemTypeNameMap(db, ids, g) {
 
 async function handleGetRequests({ db, g, env }) {
   const reqs = await db.listAll(T.REQUESTS, {
-    filter: fAnd(scopeF(g), `{Status}="New"`),
+    scope: g, where: [Q.eq("Status", "New")],
     sort: [{ field: "Received At", direction: "asc" }],
     fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Item Quantities", "Needed From", "Needed Until",
       "Open-ended duration", "Notes", "Received At", "Request Type", "Event Date", "Preferred Times", "Party Size", "Deposit Acknowledged", "Appointment At"],
@@ -183,7 +183,7 @@ async function confirmAppointment(c, rec, body) {
 async function handleGetAppointments({ db, g, env }) {
   const since = new Date(nyLocalToUtc(nyToday(), "00:00")).toISOString();
   const recs = await db.listAll(T.REQUESTS, {
-    filter: fAnd(scopeF(g), `{Request Type}="Appointment"`, `{Status}!="Declined"`, `{Status}!="Cancelled"`, `{Appointment At}`, `NOT(IS_BEFORE({Appointment At},${fStr(since)}))`),
+    scope: g, where: [Q.eq("Request Type", "Appointment"), Q.ne("Status", "Declined"), Q.ne("Status", "Cancelled"), Q.notBlank("Appointment At"), Q.notBefore("Appointment At", since)],
     sort: [{ field: "Appointment At", direction: "asc" }],
     fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Appointment At", "Party Size", "Event Date", "Notes", "Status"],
   });

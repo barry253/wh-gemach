@@ -109,6 +109,7 @@ globalThis.fetch = async (input, init = {}) => {
   assert.ok(rows, "unknown table " + table);
   if (m[2] === "listRecords") {
     const b = JSON.parse(init.body || "{}");
+    if (process.env.FORMULA_LOG) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, f: b.filterByFormula || null, sort: b.sort || null, fields: b.fields || null, max: b.maxRecords || null }) + "\n");
     const all = rows.filter(r => evalFilter(table, b.filterByFormula, r));
     const start = Number(b.offset || 0);
     const size = Math.min(PAGE, b.maxRecords || PAGE);
@@ -122,9 +123,14 @@ globalThis.fetch = async (input, init = {}) => {
   if (m[2]) {
     const r = rows.find(x => x.id === m[2]);
     if (!r) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404 });
-    if (method === "PATCH") { Object.assign(r.fields, JSON.parse(init.body).fields); }
+    if (method === "PATCH") {
+      if (process.env.FORMULA_LOG) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, write: "PATCH", fields: Object.keys(JSON.parse(init.body).fields || {}) }) + "\n");
+      Object.assign(r.fields, JSON.parse(init.body).fields);
+    }
+    if (method === "GET" && process.env.FORMULA_LOG) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, get: true }) + "\n");
     return new Response(JSON.stringify(r));
   }
+  if (process.env.FORMULA_LOG && (method === "POST" || method === "PATCH")) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, write: method, fields: Object.keys(JSON.parse(init.body || "{}").fields || {}) }) + "\n");
   if (method === "POST") {
     const r = rec("recNEW" + String(rows.length).padStart(11, "0"), JSON.parse(init.body).fields);
     if (Array.isArray(r.fields.Gemach) && !r.fields["Gemach Slug"]) r.fields["Gemach Slug"] = r.fields.Gemach.map(id => DB.Gemachs.find(g => g.id === id)?.fields.Slug); // lookup field
@@ -801,7 +807,7 @@ await t("v3 PATCH validation: contacts, colors, days, bools, style, label, logoU
   // clearing secondary + logo
   const clr = await (await call(`/admin/gemach`, { method: "PATCH", headers: jsonB, body: JSON.stringify({ secondaryContact: "", logoUrl: "" }) })).json();
   assert.equal(clr.secondaryContact, null);
-  assert.equal(clr.logoUrl, "https://att/1.png", "falls back to Logo attachment");
+  assert.equal(clr.logoUrl, null, "Airtable Logo attachment is ignored once Logo URL is cleared");
   assert.equal(DB.Gemachs.find(r => r.id === B.id).fields["Logo URL"], null);
 });
 
@@ -2295,7 +2301,7 @@ await t("network: edit a gemach's name, email, phone, display order; email/phone
   assert.equal((await req(tokNet, "PATCH", "/admin/network/gemachs/recNETEDITGEMACH1", { slug: "other-addr" })).status, 400, "web address only while hidden");
 });
 
-await t("list photos: loans, reservations and requests carry the item type's photo (R2 first, else Airtable thumbnail)", async () => {
+await t("list photos: loans, reservations and requests carry the item type's photo (R2 only; Airtable attachments are ignored)", async () => {
   const wc = DB["Item Types"].find(r => r.id === "recTYPEA000000001").fields;
   const walker = DB["Item Types"].find(r => r.id === "recTYPEA000000002").fields;
   const before = [wc["R2 Photo URL"], wc.Photo, walker["R2 Photo URL"], walker.Photo];
@@ -2317,7 +2323,7 @@ await t("list photos: loans, reservations and requests carry the item type's pho
     const items = reqs.flatMap(r => r.items);
     assert.ok(items.length && items.every(i => "photo" in i), "request items carry photo");
     const w = items.find(i => i.id === "recTYPEA000000002");
-    if (w) assert.equal(w.photo, "https://dl.airtable.com/large.jpg", "Airtable thumbnail when no R2 copy");
+    if (w) assert.equal(w.photo, null, "an Airtable attachment alone is ignored (no R2 copy = no photo)");
   } finally {
     [wc["R2 Photo URL"], wc.Photo, walker["R2 Photo URL"], walker.Photo] = before;
     for (const [o, k] of [[wc, "R2 Photo URL"], [wc, "Photo"], [walker, "R2 Photo URL"], [walker, "Photo"]]) if (o[k] === undefined) delete o[k];
@@ -2498,4 +2504,37 @@ await t("activity log entries stamped with Gemach", async () => {
   assert.ok(logs.length > 0);
   for (const l of logs) assert.ok(Array.isArray(l.fields.Gemach) && l.fields.Gemach.length === 1);
 });
+// ─── Structured queries (query.js): the Airtable formulas they compile to ─────
+{
+  const { Q, toFormula } = await import("../src/query.js");
+  const { makeDb } = await import("../src/airtable.js");
+  await t("query.js: conditions compile to the expected Airtable formulas", async () => {
+    const g = { slug: "wh-medical" };
+    assert.equal(toFormula({}), undefined);
+    assert.equal(toFormula({ scope: g }), 'ARRAYJOIN({Gemach Slug})="wh-medical"');
+    assert.equal(toFormula({ scope: g, where: [Q.in("Status", ["Active", "Reserved"])] }),
+      'AND(ARRAYJOIN({Gemach Slug})="wh-medical",OR({Status}="Active",{Status}="Reserved"))');
+    assert.equal(toFormula({ where: [Q.in("Status", ["New"])] }), '{Status}="New"', "one value = plain equality");
+    assert.equal(toFormula({ where: [Q.in("Status", [])] }), "FALSE()", "no values matches nothing");
+    assert.equal(toFormula({ where: [Q.ieq("Email", "Barry@Example.COM"), Q.isTrue("Active")] }), 'AND(LOWER({Email})="barry@example.com",{Active}=1)');
+    assert.equal(toFormula({ where: [Q.ieq("Email", " A@B.c ", { trim: true })] }), 'LOWER(TRIM({Email}&""))=" a@b.c "');
+    assert.equal(toFormula({ where: [Q.eq("Query", 'say "hi"\\')] }), '{Query}="say \\"hi\\"\\\\"', "quotes and backslashes escaped");
+    assert.equal(toFormula({ where: [Q.eq("Count", 3), Q.ne("Status", "Declined")] }), 'AND({Count}=3,{Status}!="Declined")');
+    assert.equal(toFormula({ where: [Q.nonEmpty("Slug"), Q.notBlank("Expected Return")] }), 'AND({Slug}!="",NOT({Expected Return}=BLANK()))');
+    assert.equal(toFormula({ where: [Q.after("T", "2026-01-01"), Q.before("T", "2026-02-01"), Q.notBefore("T", "2026-03-01")] }),
+      'AND(IS_AFTER({T},"2026-01-01"),IS_BEFORE({T},"2026-02-01"),NOT(IS_BEFORE({T},"2026-03-01")))');
+    assert.equal(toFormula({ where: [Q.idIn(["recA", "recB"])] }), 'OR(RECORD_ID()="recA",RECORD_ID()="recB")');
+    assert.equal(toFormula({ where: [Q.idIn([])] }), "FALSE()");
+    assert.equal(toFormula({ where: [Q.linksTo("Source Request", "recX", "REQ-0001")] }), 'FIND("REQ-0001",ARRAYJOIN({Source Request}))');
+    assert.equal(toFormula({ where: [Q.or(Q.phoneDigits("Phone", "5165551234", { last10: true }), Q.phoneDigits("Phone", "12345"))] }),
+      'OR(RIGHT(REGEX_REPLACE({Phone}&"","[^0-9]",""),10)="5165551234",REGEX_REPLACE({Phone}&"","[^0-9]","")="12345")');
+    assert.throws(() => toFormula({ where: [Q.eq("Bad}Field", 1)] }), /bad field name/);
+    assert.throws(() => toFormula({ where: [{ op: "nope" }] }), /unknown query condition/);
+  });
+  await t("data layer refuses raw Airtable formulas (everything must be a structured query)", async () => {
+    const db = makeDb({ AIRTABLE_BASE_ID: "appTEST", AIRTABLE_TOKEN: "x" });
+    await assert.rejects(db.listAll("Items", { filter: "{Active}=1" }), /no longer accepted/);
+    await assert.rejects(db.listPage("Items", { filter: "{Active}=1" }), /no longer accepted/);
+  });
+}
 console.log(`${pass} passed`);

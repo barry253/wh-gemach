@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { fAnd, fetchByIds, firstLink, linkedId, scopeF } from "./airtable.js";
+import { Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
 import { cacheKey, cachedJson } from "./cache.js";
 import { LEGACY_SLUG, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
@@ -18,7 +18,7 @@ import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packa
  */
 function publicItemType(type, availableIds, { withCategory = false, bookings = null, withBookings = false, attrDefs = null } = {}) {
   const itemIds = (type.fields["Items"] || []).map(linkedId);
-  const photoUrl = type.fields["R2 Photo URL"] || type.fields["Photo"]?.[0]?.url || null;
+  const photoUrl = type.fields["R2 Photo URL"] || null;
   const out = {
     id: type.id,
     name: type.fields["Name"],
@@ -58,8 +58,8 @@ function publicItemType(type, availableIds, { withCategory = false, bookings = n
 
 async function loadInventory(db, g, opts = {}) {
   const [types, avail] = await Promise.all([
-    db.listAll(T.ITEM_TYPES, { filter: fAnd(scopeF(g), `{Active}=1`), sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
-    db.listAll(T.ITEMS, { filter: fAnd(scopeF(g), `{Active}=1`, `{Status}="Available"`), fields: ["Item ID"] }),
+    db.listAll(T.ITEM_TYPES, { scope: g, where: [Q.isTrue("Active")], sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
+    db.listAll(T.ITEMS, { scope: g, where: [Q.isTrue("Active"), Q.eq("Status", "Available")], fields: ["Item ID"] }),
   ]);
   const availableIds = new Set(avail.map(r => r.id));
   const qtyIds = types.filter(isQtyType).map(t => t.id);
@@ -88,7 +88,7 @@ function publicGemach(g, communityName) {
 
 /** Active Product Categories, sorted by Display Order (blank last) then name. */
 async function loadCategories(db) {
-  const recs = await db.listAll(T.PRODUCT_CATEGORIES, { filter: `{Active}=1`, fields: ["Name", "Icon", "Keywords", "Display Order", "Active"] });
+  const recs = await db.listAll(T.PRODUCT_CATEGORIES, { where: [Q.isTrue("Active")], fields: ["Name", "Icon", "Keywords", "Display Order", "Active"] });
   return recs
     .filter(r => r.fields.Active && r.fields.Name)
     .map(r => {
@@ -119,8 +119,8 @@ async function handleLegacyInventory(db) {
 async function buildDirectory(db) {
   const [gemachs, types, avail, categories] = await Promise.all([
     listActiveGemachs(db),
-    db.listAll(T.ITEM_TYPES, { filter: `{Active}=1`, sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
-    db.listAll(T.ITEMS, { filter: `AND({Active}=1,{Status}="Available")`, fields: ["Item ID"] }),
+    db.listAll(T.ITEM_TYPES, { where: [Q.isTrue("Active")], sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
+    db.listAll(T.ITEMS, { where: [Q.isTrue("Active"), Q.eq("Status", "Available")], fields: ["Item ID"] }),
     loadCategories(db),
   ]);
   const communities = await fetchByIds(db, T.COMMUNITIES, gemachs.flatMap(g => g.communityIds), { fields: ["Name"] });
