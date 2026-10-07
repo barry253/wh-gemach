@@ -40,20 +40,20 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: worker/package-lock.json
-      - run: npm ci
+      - run: scripts/step.sh "npm ci" npm ci
       - name: Check secrets are set
         run: |
           [ -n "$AIRTABLE_TOKEN" ] || { echo "::error::Add the AIRTABLE_TOKEN repository secret"; exit 1; }
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Add the CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
       - name: Apply schema
         if: inputs.task == 'schema' || inputs.task == 'copy'
-        run: npx wrangler d1 execute wh-gemach --remote --file=schema.sql --yes
+        run: scripts/step.sh "Apply schema" npx wrangler d1 execute wh-gemach --remote --file=schema.sql --yes
       - name: Copy Airtable into D1
         if: inputs.task == 'copy'
         run: |
-          node --no-warnings scripts/d1-copy.mjs "$RUNNER_TEMP/airtable-copy.sql"
-          npx wrangler d1 execute wh-gemach --remote --file="$RUNNER_TEMP/airtable-copy.sql" --yes
+          scripts/step.sh "Read Airtable" node --no-warnings scripts/d1-copy.mjs "$RUNNER_TEMP/airtable-copy.sql"
+          scripts/step.sh "Load into D1" npx wrangler d1 execute wh-gemach --remote --file="$RUNNER_TEMP/airtable-copy.sql" --yes
           rm -f "$RUNNER_TEMP/airtable-copy.sql"
       - name: Compare D1 with Airtable
         if: inputs.task == 'compare' || inputs.task == 'copy'
-        run: node --no-warnings scripts/d1-compare.mjs
+        run: scripts/step.sh "Compare" node --no-warnings scripts/d1-compare.mjs
