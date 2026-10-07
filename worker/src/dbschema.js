@@ -181,6 +181,22 @@ const TABLES = {
       "Gemach Slug": gemachSlug(),
     },
   },
+  // One row per device an admin turned notifications on for (push.js). Not gemach-scoped: a device
+  // belongs to an admin, and "Gemach Filter" says which of their gemachs it wants (blank = all).
+  "Push Subscriptions": {
+    sql: "push_subscriptions",
+    fields: {
+      "Admin": link("admin_id", "Admins"),
+      "Endpoint": t("endpoint"),            // the push service URL for this device (unique)
+      "Keys": t("keys"),                    // JSON {p256dh, auth} from the browser
+      "Device": t("device"),                // label shown in the bell sheet ("iPhone", "Mac · Chrome")
+      "Events": t("events"),                // JSON list: request / cancel / ready / alert
+      "Gemach Filter": t("gemach_filter"),  // JSON list of gemach ids; blank = every gemach the admin has
+      "Last Sent At": dt("last_sent_at"),
+      "Failures": n("failures"),            // failed sends in a row (reset on success)
+      "Last Error": t("last_error"),
+    },
+  },
   "Search Log": {
     sql: "search_log",
     airtableIds: ["tblpy91cyNSkKx1NL"],
@@ -213,6 +229,8 @@ const INDEXES = [
   "CREATE INDEX IF NOT EXISTS activity_gemach_time ON activity_log(gemach_id, timestamp)",
   "CREATE UNIQUE INDEX IF NOT EXISTS search_log_query ON search_log(query)",
   "CREATE INDEX IF NOT EXISTS search_log_last ON search_log(last_searched)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS push_endpoint ON push_subscriptions(endpoint)",
+  "CREATE INDEX IF NOT EXISTS push_admin ON push_subscriptions(admin_id)",
 ];
 
 // Table lookup by the name the worker uses (Airtable table name or table id).

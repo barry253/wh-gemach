@@ -46,6 +46,8 @@
  *            GET /admin/checkout/options, POST /admin/requests/:id/checkout | /visit, POST /admin/loans (walk-in) — checkout.js.
  *            GET /admin/catalog/categories — active Product Categories (for the item-type "Browse category" select).
  *            /admin/team — the gemach's Owners/Managers/Volunteers (Owner or Network Admin; see team.js).
+ *   Push:    /admin/push (GET), /admin/push/subscribe|unsubscribe|test (POST), /admin/push/:id (PATCH, DELETE) —
+ *            admin notification devices (push.js). VAPID_PRIVATE_KEY secret (P-256 JWK) turns it on.
  *   Network: /admin/network/{gemachs,admins,categories} — role "Network Admin" only, re-checked live in Airtable.
  *   Contract: see API.md (v2) + API-v3.md (request styles, appointments, branding, HTML emails + .ics).
  *
@@ -92,6 +94,7 @@ import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from 
 import { handleDashboard, handleStats } from "./stats.js";
 import { handleSubmitRequest } from "./submit.js";
 import { runReminders } from "./reminders.js";
+import { pushDispatch } from "./push.js";
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 export default {
@@ -217,6 +220,8 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
 
 async function adminDispatch(request, env, ctx, url, path, method, db, user) {
   if (method === "GET" && path === "/admin/me") return handleMe(db, user, env, ctx);
+  // Notification devices belong to the admin, not to a gemach (push.js).
+  if (path === "/admin/push" || path.startsWith("/admin/push/")) return pushDispatch({ request, env, ctx, db, url, user }, path, method);
   if (path.startsWith("/admin/network/")) return networkDispatch({ request, env, ctx, db, url, user, adminName: user.name || user.email }, path, method);
 
   const resolved = await resolveAdminGemach(request, url, db, user);

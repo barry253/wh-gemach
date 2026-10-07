@@ -190,6 +190,20 @@ CREATE TABLE IF NOT EXISTS activity_log (
   gemach_id TEXT REFERENCES gemachs(id) ON DELETE SET NULL  -- Gemach
 );
 
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  admin_id TEXT REFERENCES admins(id) ON DELETE SET NULL,  -- Admin
+  endpoint TEXT,  -- Endpoint
+  keys TEXT,  -- Keys
+  device TEXT,  -- Device
+  events TEXT,  -- Events
+  gemach_filter TEXT,  -- Gemach Filter
+  last_sent_at TEXT,  -- Last Sent At
+  failures REAL,  -- Failures
+  last_error TEXT  -- Last Error
+);
+
 CREATE TABLE IF NOT EXISTS search_log (
   id TEXT PRIMARY KEY,
   created_at TEXT NOT NULL,
@@ -297,6 +311,11 @@ CREATE VIEW activity_log_v AS SELECT r.*,
   (SELECT g.slug FROM gemachs g WHERE g.id = r.gemach_id) AS gemach_slug
 FROM activity_log r;
 
+DROP VIEW IF EXISTS push_subscriptions_v;
+CREATE VIEW push_subscriptions_v AS SELECT r.*,
+  r.rowid AS _seq
+FROM push_subscriptions r;
+
 DROP VIEW IF EXISTS search_log_v;
 CREATE VIEW search_log_v AS SELECT r.*,
   r.rowid AS _seq
@@ -321,3 +340,5 @@ CREATE INDEX IF NOT EXISTS loans_borrower ON loans(borrower_id);
 CREATE INDEX IF NOT EXISTS activity_gemach_time ON activity_log(gemach_id, timestamp);
 CREATE UNIQUE INDEX IF NOT EXISTS search_log_query ON search_log(query);
 CREATE INDEX IF NOT EXISTS search_log_last ON search_log(last_searched);
+CREATE UNIQUE INDEX IF NOT EXISTS push_endpoint ON push_subscriptions(endpoint);
+CREATE INDEX IF NOT EXISTS push_admin ON push_subscriptions(admin_id);

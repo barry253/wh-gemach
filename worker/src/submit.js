@@ -11,6 +11,7 @@ import { getNextRequestId } from "./ids.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, packageSize, packageUnit, qtyLabel, requestAvailability } from "./quantity.js";
 import { EMAIL_RE, emailSignature } from "./settings.js";
 import { manageUrl } from "./manage.js";
+import { notifyAdmins, requestMessage } from "./push.js";
 
 // ─── Public form submission ───────────────────────────────────────────────────
 
@@ -201,6 +202,11 @@ async function handleSubmitRequest(request, db, env, ctx) {
         `\n\nIt's waiting in admin under Requests. Please make sure someone at the gemach sees it.`,
     }).catch(e => console.error("alert failed:", e.message)));
   }
+
+  // Lock-screen notification for the gemach's admins (no borrower details in it).
+  ctx.waitUntil(notifyAdmins(env, requestMessage(g, {
+    requestId, recId: created?.id, itemCount: itemIds.length, isAppt, style, eventDate, from, emailed: notified === true,
+  }), { db }));
 
   logEvent(ctx, db, g, {
     eventType: "Request Received",

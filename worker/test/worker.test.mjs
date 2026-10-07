@@ -46,10 +46,13 @@ const DB = {
   ],
   // WC-002 is out on loan (Items.Status is computed from loans in D1, so the loan has to exist).
   "Loans": [rec("recLOANWC0020000A", { "Loan ID": "L-001", Status: "Active", Item: ["recITEMA000000002"], "Date Borrowed": "2026-01-02", Gemach: [A.id], "Gemach Slug": [A.slug] })],
-  "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [],
+  "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [], "Push Subscriptions": [],
 };
 
 const calls = [];
+// Web Push: messages "delivered" to push services, and what each endpoint answers (status code).
+const pushes = [];
+let pushStatusFor = () => 201;
 let resendFail = false, airtableFail = null;
 let fail429Once = false;
 let stallOnce = null; // (method, table, id) => ms: that call hangs for ms (or until aborted)
@@ -97,6 +100,11 @@ globalThis.fetch = async (input, init = {}) => {
     if (resendFail && to !== "alerts@example.com") return new Response('{"message":"boom"}', { status: 500 });
     return new Response("{}");
   }
+  if (/^https:\/\/(fcm\.googleapis\.com|web\.push\.apple\.com)\//.test(url)) {
+    pushes.push({ url, headers: { ...init.headers }, body: new Uint8Array(init.body) });
+    const status = pushStatusFor(url);
+    return new Response(status >= 300 ? "nope" : "", { status });
+  }
   if (url === "https://api.airtable.com/v0/meta/whoami") return new Response('{"id":"usrTEST"}');
   if (D1_MODE && url.startsWith("https://api.airtable.com/")) throw new Error("Airtable called in D1 mode: " + method + " " + url);
   const m = url.match(/^https:\/\/api\.airtable\.com\/v0\/appTEST\/([^/?]+)(?:\/([^/?]+))?/);
@@ -123,6 +131,12 @@ globalThis.fetch = async (input, init = {}) => {
     return new Response(JSON.stringify({ records: page, offset: next }));
   }
   if (!m[2] && method === "GET") return new Response(JSON.stringify({ records: rows.slice(0, 1) })); // GET list (health probe)
+  if (method === "DELETE" && m[2]) {
+    const i = rows.findIndex(x => x.id === m[2]);
+    if (i < 0) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404 });
+    rows.splice(i, 1);
+    return new Response(JSON.stringify({ id: m[2], deleted: true }));
+  }
   if (m[2]) {
     const r = rows.find(x => x.id === m[2]);
     if (!r) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404 });
@@ -135,7 +149,10 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (process.env.FORMULA_LOG && (method === "POST" || method === "PATCH")) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, write: method, fields: Object.keys(JSON.parse(init.body || "{}").fields || {}) }) + "\n");
   if (method === "POST") {
-    const r = rec("recNEW" + String(rows.length).padStart(11, "0"), JSON.parse(init.body).fields);
+    // Unique even after deletes (rows.length alone could repeat an id).
+    let n = rows.length, id;
+    do id = "recNEW" + String(n++).padStart(11, "0"); while (rows.some(x => x.id === id));
+    const r = rec(id, JSON.parse(init.body).fields);
     if (Array.isArray(r.fields.Gemach) && !r.fields["Gemach Slug"]) r.fields["Gemach Slug"] = r.fields.Gemach.map(id => DB.Gemachs.find(g => g.id === id)?.fields.Slug); // lookup field
     rows.push(r);
     return new Response(JSON.stringify(r));
@@ -3017,6 +3034,251 @@ if (D1_MODE) {
     assert.equal(await db.get("Search Log", r.id), null);
   });
 }
+// ── Admin notifications (Web Push) ──
+{
+  const nodeCrypto = await import("node:crypto");
+  const { encryptPayload } = await import("../src/push.js");
+  const b64d = s => new Uint8Array(Buffer.from(s, "base64url"));
+  const hkdf = (ikm, salt, info, n) => new Uint8Array(nodeCrypto.hkdfSync("sha256", ikm, salt, info, n));
+
+  // A browser on the other end: its own key pair + auth secret, and an independent decryptor (node:crypto HKDF).
+  function makeBrowser(host = "https://fcm.googleapis.com/fcm/send/") {
+    const ecdh = nodeCrypto.createECDH("prime256v1");
+    ecdh.generateKeys();
+    const auth = nodeCrypto.randomBytes(16);
+    const endpoint = host + nodeCrypto.randomBytes(12).toString("hex");
+    return {
+      endpoint,
+      subscription: { endpoint, keys: { p256dh: Buffer.from(ecdh.getPublicKey()).toString("base64url"), auth: auth.toString("base64url") } },
+      decrypt(body) {
+        const salt = body.slice(0, 16), idlen = body[20], asPublic = body.slice(21, 21 + idlen), ct = body.slice(21 + idlen);
+        const secret = ecdh.computeSecret(asPublic);
+        const ikm = hkdf(secret, auth, Buffer.concat([Buffer.from("WebPush: info\0"), ecdh.getPublicKey(), asPublic]), 32);
+        const cek = hkdf(ikm, salt, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
+        const nonce = hkdf(ikm, salt, Buffer.from("Content-Encoding: nonce\0"), 12);
+        const d = nodeCrypto.createDecipheriv("aes-128-gcm", cek, nonce);
+        d.setAuthTag(ct.slice(-16));
+        const plain = Buffer.concat([d.update(ct.slice(0, -16)), d.final()]);
+        assert.equal(plain.at(-1), 2, "last-record delimiter");
+        return JSON.parse(plain.slice(0, -1).toString());
+      },
+    };
+  }
+  const sentTo = br => pushes.filter(p => p.url === br.endpoint);
+  const lastTo = br => { const p = sentTo(br).at(-1); return p ? br.decrypt(p.body) : null; };
+
+  // Push-test admins (own rows so earlier team tests can't change them).
+  DB.Admins.push(
+    rec("recADMINPUSHOWNER", { Name: "Push Owner", Email: "pushowner@example.com", Active: true, Role: "Owner", Gemachs: [A.id] }),
+    rec("recADMINPUSHVOL01", { Name: "Push Vol", Email: "pushvol@example.com", Active: true, Role: "Volunteer", Gemachs: [A.id] }),
+    rec("recADMINPUSHBMGR1", { Name: "Push B", Email: "pushb@example.com", Active: true, Role: "Manager", Gemachs: [B.id] }),
+    rec("recADMINPUSHNET01", { Name: "Push Net", Email: "pushnet@example.com", Active: true, Role: "Network Admin", Gemachs: [] }),
+  );
+  const HP = async (email, role, gemachs) => ({ ...auth(await sign({ email, name: email, role, gemachs })), "Content-Type": "application/json" });
+  const hOwner = await HP("pushowner@example.com", "Owner", [{ id: A.id, slug: A.slug, name: "WH" }]);
+  const hVol = await HP("pushvol@example.com", "Volunteer", [{ id: A.id, slug: A.slug, name: "WH" }]);
+  const hB = await HP("pushb@example.com", "Manager", [{ id: B.id, slug: B.slug, name: "Other" }]);
+  const hNet = await HP("pushnet@example.com", "Network Admin", []);
+  const subscribe = (h, br, device = "Test phone") => call("/admin/push/subscribe", { method: "POST", headers: h, body: JSON.stringify({ subscription: br.subscription, device }) });
+  const settle = () => Promise.allSettled(waits);
+  __WHG_TEST__.clearMemo();
+
+  await t("push: encryption matches the RFC 8291 worked example", async () => {
+    const asPub = b64d("BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8");
+    const jwk = { kty: "EC", crv: "P-256", d: "yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw",
+      x: Buffer.from(asPub.slice(1, 33)).toString("base64url"), y: Buffer.from(asPub.slice(33)).toString("base64url") };
+    const body = await encryptPayload(new TextEncoder().encode("When I grow up, I want to be a watermelon"),
+      "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4", "BTBZMqHH6r4Tts7J_aSIgg",
+      { asPrivateJwk: jwk, salt: b64d("DGv6ra1nlYgDCS1FRnbzlw") });
+    assert.equal(Buffer.from(body).toString("base64url"),
+      "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN");
+  });
+
+  await t("push: not set up on the server → configured:false and subscribe refused", async () => {
+    delete env.VAPID_PRIVATE_KEY;
+    const r = await call("/admin/push", { headers: hOwner });
+    assert.equal(r.status, 200);
+    const d = await r.json();
+    assert.equal(d.configured, false); assert.equal(d.publicKey, null); assert.deepEqual(d.devices, []);
+    assert.equal((await subscribe(hOwner, makeBrowser())).status, 503);
+    assert.equal((await call("/admin/push")).status, 401, "needs sign-in");
+  });
+
+  // Server key for the rest.
+  const vk = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  env.VAPID_PRIVATE_KEY = JSON.stringify(await crypto.subtle.exportKey("jwk", vk.privateKey));
+  const ownerPhone = makeBrowser(), volPhone = makeBrowser("https://web.push.apple.com/"), bPhone = makeBrowser(), netPhone = makeBrowser();
+
+  await t("push: subscribe checks the push service and keys; default events by role; same device twice = one row", async () => {
+    const info = await (await call("/admin/push", { headers: hOwner })).json();
+    assert.equal(info.configured, true);
+    assert.equal(b64d(info.publicKey).length, 65);
+    assert.deepEqual(info.events, ["request", "cancel", "ready"]);
+    const evil = makeBrowser("https://evil.example.com/push/");
+    assert.equal((await subscribe(hOwner, evil)).status, 400, "unknown push host");
+    const badKeys = makeBrowser(); badKeys.subscription.keys.auth = "short";
+    assert.equal((await subscribe(hOwner, badKeys)).status, 400);
+    let r = await subscribe(hOwner, ownerPhone, "Barry's iPhone");
+    assert.equal(r.status, 200, await r.clone().text());
+    const dev = (await r.json()).device;
+    assert.deepEqual(dev.events, ["request", "cancel", "ready"]); assert.equal(dev.gemachs, null); assert.equal(dev.device, "Barry's iPhone");
+    r = await subscribe(hOwner, ownerPhone, "Barry's iPhone");
+    assert.equal((await r.json()).device.id, dev.id);
+    assert.equal(DB["Push Subscriptions"].filter(x => x.fields.Endpoint === ownerPhone.endpoint).length, 1);
+    for (const [h, br] of [[hVol, volPhone], [hB, bPhone], [hNet, netPhone]]) assert.equal((await subscribe(h, br)).status, 200);
+    const net = await (await call("/admin/push", { headers: hNet })).json();
+    assert.deepEqual(net.events, ["request", "cancel", "ready", "alert"]);
+    assert.deepEqual(net.devices[0].events, ["request", "cancel", "ready", "alert"]);
+    const mine = await (await call("/admin/push", { headers: hOwner })).json();
+    assert.deepEqual(mine.devices.map(d => d.endpoint), [ownerPhone.endpoint], "only your own devices");
+  });
+
+  await t("push: change events / gemachs on your own device only", async () => {
+    const id = (await (await call("/admin/push", { headers: hOwner })).json()).devices[0].id;
+    let r = await call(`/admin/push/${id}`, { method: "PATCH", headers: hOwner, body: JSON.stringify({ events: ["request", "alert", "junk"] }) });
+    assert.equal(r.status, 200);
+    assert.deepEqual((await r.json()).device.events, ["request"], "alert is Network Admin only; unknown dropped");
+    r = await call(`/admin/push/${id}`, { method: "PATCH", headers: hOwner, body: JSON.stringify({ gemachs: [B.id] }) });
+    assert.equal(r.status, 403, "not one of your gemachs");
+    r = await call(`/admin/push/${id}`, { method: "PATCH", headers: hOwner, body: JSON.stringify({ gemachs: [A.id] }) });
+    assert.deepEqual((await r.json()).device.gemachs, [A.id]);
+    r = await call(`/admin/push/${id}`, { method: "PATCH", headers: hOwner, body: JSON.stringify({ gemachs: null, events: ["request", "cancel", "ready"] }) });
+    const d = (await r.json()).device;
+    assert.equal(d.gemachs, null); assert.deepEqual(d.events, ["request", "cancel", "ready"]);
+    assert.equal((await call(`/admin/push/${id}`, { method: "PATCH", headers: hB, body: JSON.stringify({ events: [] }) })).status, 404);
+    assert.equal((await call(`/admin/push/${id}`, { method: "DELETE", headers: hB })).status, 404);
+  });
+
+  await t("push: a new request notifies that gemach's admins only — no borrower details, link to the request", async () => {
+    pushes.length = 0;
+    await settle();
+    const r = await post("/submit-request", { gemach: A.slug, name: "Shira Pushkin", phone: "5165551212", email: "shira@example.com", preferredContact: "Phone",
+      itemsRequested: ["recTYPEA000000002"], neededFrom: SOON });
+    assert.equal(r.status, 200, await r.clone().text());
+    await settle();
+    if (D1_MODE) { // the request plus everything it does afterwards (emails, history, pushes) shares one 50-query budget
+      console.log(`  submit-request with pushes: ${d1Queries} D1 queries incl. background work`);
+      assert.ok(d1Queries <= 40, String(d1Queries));
+    }
+    const req = DB.Requests.at(-1);
+    const msg = lastTo(ownerPhone);
+    assert.ok(msg, "owner notified");
+    assert.equal(msg.title, "New request · West Hempstead Medical Gemach");
+    assert.match(msg.body, /^1 item · needed \w{3}, \w{3} \d{1,2}$/);
+    assert.equal(msg.url, `/admin?g=${A.slug}&tab=requests&req=${req.id}`);
+    assert.equal(msg.event, "request");
+    assert.ok(lastTo(volPhone), "volunteer of the same gemach notified");
+    assert.equal(sentTo(bPhone).length, 0, "other gemach's manager not notified");
+    assert.ok(lastTo(netPhone), "Network Admin (all gemachs) notified");
+    for (const p of pushes) {
+      const text = JSON.stringify(ownerPhone.endpoint === p.url ? ownerPhone.decrypt(p.body) : {});
+      assert.ok(!/Shira|Pushkin|5165551212|555-1212|shira@/.test(text), "no borrower details");
+      assert.equal(p.headers["Content-Encoding"], "aes128gcm");
+      assert.equal(p.headers.Urgency, "high");
+    }
+    // VAPID: a token for this push service, signed by the server key that browsers were given.
+    const authz = sentTo(ownerPhone).at(-1).headers.Authorization;
+    const [, jwt, k] = authz.match(/^vapid t=([^,]+), k=(.+)$/);
+    const [h, b, sig] = jwt.split(".");
+    const claims = JSON.parse(Buffer.from(b, "base64url"));
+    assert.equal(claims.aud, "https://fcm.googleapis.com"); assert.match(claims.sub, /^mailto:/); assert.ok(claims.exp > Date.now() / 1000);
+    const pub = await crypto.subtle.importKey("raw", b64d(k), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    assert.ok(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pub, b64d(sig), new TextEncoder().encode(`${h}.${b}`)));
+    assert.equal(k, (await (await call("/admin/push", { headers: hOwner })).json()).publicKey);
+    const stamped = DB["Push Subscriptions"].find(x => x.fields.Endpoint === ownerPhone.endpoint);
+    assert.ok(stamped.fields["Last Sent At"]);
+  });
+
+  await t("push: device choices filter what it gets (events, gemachs); inactive admins get nothing", async () => {
+    const netId = (await (await call("/admin/push", { headers: hNet })).json()).devices[0].id;
+    await call(`/admin/push/${netId}`, { method: "PATCH", headers: hNet, body: JSON.stringify({ gemachs: [B.id] }) });
+    const volId = (await (await call("/admin/push", { headers: hVol })).json()).devices[0].id;
+    await call(`/admin/push/${volId}`, { method: "PATCH", headers: hVol, body: JSON.stringify({ events: ["ready"] }) });
+    const owner = DB.Admins.find(a => a.id === "recADMINPUSHOWNER");
+    owner.fields.Active = false;
+    pushes.length = 0;
+    const r = await post("/submit-request", { gemach: A.slug, name: "Someone", phone: "5165551313", preferredContact: "Phone", itemsRequested: ["recTYPEA000000002"], neededFrom: SOON });
+    assert.equal(r.status, 200);
+    await settle();
+    assert.equal(pushes.length, 0, JSON.stringify(pushes.map(p => p.url)));
+    owner.fields.Active = true;
+    await call(`/admin/push/${netId}`, { method: "PATCH", headers: hNet, body: JSON.stringify({ gemachs: null }) });
+    await call(`/admin/push/${volId}`, { method: "PATCH", headers: hVol, body: JSON.stringify({ events: ["request", "cancel", "ready"] }) });
+  });
+
+  await t("push: borrower cancel and 'ready to return' notify with links to the right tab", async () => {
+    const soonD = n => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    const HA = { ...hOwner, "X-Gemach": A.slug };
+    // waiting request → cancelled online → Requests tab
+    let d = await (await post("/submit-request", { gemach: A.slug, name: "Leah Cancel", phone: "5165552020", preferredContact: "Phone", itemsRequested: ["recTYPEA000000002"], neededFrom: soonD(9), neededUntil: soonD(12) })).json();
+    await settle(); pushes.length = 0;
+    let r = await call(`/public/manage/${d.manageUrl.split("/r/")[1]}/cancel`, { method: "POST", body: "{}" });
+    assert.equal(r.status, 200);
+    await settle();
+    let msg = lastTo(ownerPhone);
+    assert.equal(msg.title, "Request cancelled · West Hempstead Medical Gemach");
+    assert.match(msg.body, /^Walker · \w{3}, \w{3} \d{1,2} → /);
+    assert.equal(msg.url, `/admin?g=${A.slug}&tab=requests`);
+    assert.ok(!/Leah|2020/.test(JSON.stringify(msg)));
+    // confirmed + picked up → ready to return → Loans tab, that loan
+    d = await (await post("/submit-request", { gemach: A.slug, name: "Dina Ready", phone: "5165553030", preferredContact: "Phone", itemsRequested: ["recTYPEA000000002"], neededFrom: soonD(9) })).json();
+    const reqRec = DB.Requests.at(-1);
+    const c = await call(`/admin/requests/${reqRec.id}/confirm`, { method: "POST", headers: HA, body: JSON.stringify({}) });
+    assert.equal(c.status, 200, await c.clone().text());
+    const loanId = (await c.json()).reservations[0].id;
+    Object.assign(DB.Loans.find(l => l.id === loanId).fields, { Status: "Active", "Date Borrowed": soonD(-1) });
+    await settle(); pushes.length = 0;
+    r = await call(`/public/manage/${d.manageUrl.split("/r/")[1]}/ready`, { method: "POST", body: "{}" });
+    assert.equal(r.status, 200, await r.clone().text());
+    await settle();
+    msg = lastTo(ownerPhone);
+    assert.equal(msg.title, "Ready to return · West Hempstead Medical Gemach");
+    assert.equal(msg.body, "Walker");
+    assert.equal(msg.url, `/admin?g=${A.slug}&tab=loans&loan=${loanId}`);
+    assert.equal(sentTo(bPhone).length, 0);
+  });
+
+  await t("push: site alerts go to Network Admins only", async () => {
+    const { sendAlert, alertHour } = await import("../src/alerts.js");
+    alertHour.count = 0;
+    pushes.length = 0;
+    await sendAlert(env, { always: true, subject: "Test alert subject", text: "details stay in the email" });
+    assert.equal(pushes.length, 1);
+    const msg = netPhone.decrypt(pushes[0].body);
+    assert.equal(msg.title, "Site alert"); assert.equal(msg.body, "Test alert subject"); assert.equal(msg.url, "/admin?tab=network");
+  });
+
+  await t("push: a device that's gone is removed; other failures are counted", async () => {
+    pushStatusFor = url => (url === volPhone.endpoint ? 410 : url === netPhone.endpoint ? 500 : 201);
+    const r = await post("/submit-request", { gemach: A.slug, name: "X", phone: "5165554040", preferredContact: "Phone", itemsRequested: ["recTYPEA000000002"], neededFrom: SOON });
+    assert.equal(r.status, 200, "a push problem never affects the request");
+    await settle();
+    pushStatusFor = () => 201;
+    assert.ok(!DB["Push Subscriptions"].some(x => x.fields.Endpoint === volPhone.endpoint), "410 → removed");
+    const net = DB["Push Subscriptions"].find(x => x.fields.Endpoint === netPhone.endpoint);
+    assert.equal(net.fields.Failures, 1); assert.match(net.fields["Last Error"], /^500/);
+  });
+
+  await t("push: test message to this device; turning off removes it", async () => {
+    pushes.length = 0;
+    let r = await call("/admin/push/test", { method: "POST", headers: hOwner, body: JSON.stringify({ endpoint: ownerPhone.endpoint }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(lastTo(ownerPhone).title, "Test notification");
+    r = await call("/admin/push/test", { method: "POST", headers: hB, body: JSON.stringify({ endpoint: ownerPhone.endpoint }) });
+    assert.equal(r.status, 404, "not your device");
+    r = await call("/admin/push/unsubscribe", { method: "POST", headers: hB, body: JSON.stringify({ endpoint: ownerPhone.endpoint }) });
+    assert.ok(DB["Push Subscriptions"].some(x => x.fields.Endpoint === ownerPhone.endpoint), "someone else can't remove it");
+    r = await call("/admin/push/unsubscribe", { method: "POST", headers: hOwner, body: JSON.stringify({ endpoint: ownerPhone.endpoint }) });
+    assert.equal(r.status, 200);
+    assert.ok(!DB["Push Subscriptions"].some(x => x.fields.Endpoint === ownerPhone.endpoint));
+    const bId = (await (await call("/admin/push", { headers: hB })).json()).devices[0].id;
+    assert.equal((await call(`/admin/push/${bId}`, { method: "DELETE", headers: hB })).status, 200);
+    assert.deepEqual((await (await call("/admin/push", { headers: hB })).json()).devices, []);
+  });
+
+  delete env.VAPID_PRIVATE_KEY;
+}
+
 if (D1_MODE) {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);

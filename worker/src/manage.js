@@ -23,6 +23,7 @@ import { loadGemachBySlug, selName } from "./gemachs.js";
 import { json } from "./http.js";
 import { itemTypeInfoMap, loanQty, parseQtyMap, qtyLabel } from "./quantity.js";
 import { publicGemach } from "./public.js";
+import { adminLink, dayText, notifyAdmins } from "./push.js";
 
 const DEFAULT_SITE_URL = "https://whgemachs.org";
 const SIG_LEN = 22; // base64url chars ≈ 132 bits
@@ -190,6 +191,7 @@ async function handleManageCancel(db, env, ctx, token) {
   }
   const f = rec.fields, rid = f["Request ID"] || rec.id;
   const by = "Borrower (online)";
+  const wasWaiting = reqStatus(rec) === "New" && !isAppt(rec); // nothing confirmed yet: it was in Requests
   const cancelled = [];
   try {
     if (reqStatus(rec) === "New" || isAppt(rec)) {
@@ -233,6 +235,14 @@ async function handleManageCancel(db, env, ctx, token) {
     ].filter(l => l !== ""),
   }).catch(e => console.error("cancel notify failed:", e.message)));
 
+  const pushWhen = isAppt(rec) && f["Appointment At"] ? `appointment ${formatNy(Date.parse(f["Appointment At"]))}`
+    : f["Needed From"] ? `${dayText(f["Needed From"])}${f["Needed Until"] ? ` → ${dayText(f["Needed Until"])}` : ""}` : "";
+  ctx.waitUntil(notifyAdmins(env, {
+    event: "cancel", g, title: `Request cancelled · ${g.name || g.slug}`,
+    body: [itemsText || (isAppt(rec) ? "Appointment" : "Request"), pushWhen].filter(Boolean).join(" · "),
+    url: adminLink(g, { tab: wasWaiting ? "requests" : "reservations" }), tag: `cancel-${rec.id}`,
+  }, { db }));
+
   const fresh = await loadManaged(db, env, token);
   return json({ success: true, ...(fresh.error ? {} : await managePayload(db, fresh.rec, fresh.g, fresh.loans)) });
 }
@@ -272,6 +282,10 @@ async function handleManageReady(db, env, ctx, token) {
       "The loan is flagged “Ready to return” in admin under Loans.",
     ],
   }).catch(e => console.error("ready notify failed:", e.message)));
+  ctx.waitUntil(notifyAdmins(env, {
+    event: "ready", g, title: `Ready to return · ${g.name || g.slug}`, body: names.join(", "),
+    url: adminLink(g, { tab: "loans", loan: todo[0].id }), tag: `ready-${rec.id}`,
+  }, { db }));
   const fresh = await loadManaged(db, env, token);
   return json({ success: true, ...(fresh.error ? {} : await managePayload(db, fresh.rec, fresh.g, fresh.loans)) });
 }

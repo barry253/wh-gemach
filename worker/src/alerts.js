@@ -4,6 +4,7 @@ import { formatNy } from "./dates.js";
 import { json } from "./http.js";
 import { route } from "./index.js";
 import { clip } from "./submit.js";
+import { notifyAdmins } from "./push.js";
 
 // ─── Health + alerts ──────────────────────────────────────────────────────────
 
@@ -78,6 +79,15 @@ async function sendAlert(env, { key = "", subject, text, always = false }) {
     alertLast.set(key, now);
   }
   alertHour.count++;
+  // Network Admins with "Site alerts" on also get a notification (the subject only — details stay in the email).
+  const pushed = notifyAdmins(env, { event: "alert", g: null, title: "Site alert", body: String(subject),
+    url: "/admin?tab=network", tag: `alert-${key || String(subject).slice(0, 40)}` });
+  const sent = await sendAlertEmail(env, to, subject, text, now);
+  await pushed;
+  return sent;
+}
+
+async function sendAlertEmail(env, to, subject, text, now) {
   const body = `${text}\n\n— whgemachs.org · ${formatNy(now)}\nFull logs: Cloudflare dashboard → Workers & Pages → wh-gemach → Logs`;
   try {
     const res = await fetch("https://api.resend.com/emails", {

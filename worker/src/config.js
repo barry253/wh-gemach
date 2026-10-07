@@ -23,6 +23,7 @@ const T = {
   PRODUCT_CATEGORIES: "Product Categories",
   LOG: "tblC3PY7f5sXQDMJK", // Activity Log
   SEARCH_LOG: "tblpy91cyNSkKx1NL", // Search Log (network-wide, no gemach scope)
+  PUSH: "Push Subscriptions",      // admin devices with notifications on (push.js; D1 only)
 };
 
 const ALLOWED_ORIGINS = new Set([
