@@ -350,6 +350,17 @@
     .appt-item-meta { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
     .appt-unit { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; font-weight: 600; color: var(--navy); background: var(--teal, #E8F0F5); border-radius: 5px; padding: 0.05rem 0.4rem; }
     .appt-item-desc { font-size: 0.8rem; color: var(--text); margin-top: 0.3rem; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
+    /* Edit booking sheet */
+    .bk-section { border-top: 1px solid var(--border); padding-top: 0.9rem; margin-top: 0.4rem; }
+    .bk-section > .bk-h { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.6rem; }
+    .bk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6rem; }
+    .bk-grid .full { grid-column: 1 / -1; }
+    @media (max-width: 480px) { .bk-grid { grid-template-columns: 1fr; } }
+    .co-row.removed { opacity: 0.55; }
+    .co-row.removed .co-name { text-decoration: line-through; }
+    .co-row.added { border-color: var(--green); }
+    .bk-danger { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px dashed var(--border); text-align: center; }
+    .bk-danger:empty { display: none; }
     /* Check-out / New loan sheet (lend at the counter) */
     .co-list { display: flex; flex-direction: column; gap: 0.5rem; }
     .co-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.25rem 0.6rem; align-items: start; border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.65rem; background: var(--white); }
@@ -1927,33 +1938,26 @@
 </div>
 
 <!-- Edit Reservation Sheet -->
-<div class="sheet-overlay" id="edit-res-sheet">
+<!-- Edit booking Sheet: a request and its open reservations / loans, edited as one -->
+<div class="sheet-overlay" id="booking-sheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <button class="sheet-close" onclick="closeSheet('edit-res-sheet')">×</button>
-    <h3>Edit reservation</h3>
-    <p class="sheet-subtitle" id="edit-res-subtitle"></p>
-    <div class="form-row" style="margin-top:0.75rem">
+    <button class="sheet-close" onclick="closeSheet('booking-sheet')">×</button>
+    <h3 id="bk-title">Edit</h3>
+    <p class="sheet-subtitle" id="bk-subtitle"></p>
+    <div id="bk-body"><div class="loading">Loading…</div></div>
+    <div id="bk-foot" style="display:none">
       <div class="form-group">
-        <label>Start date</label>
-        <input type="date" id="edit-res-start" />
+        <label for="bk-message">Let them know <span class="muted-small">— optional</span></label>
+        <textarea id="bk-message" rows="5"></textarea>
       </div>
-      <div class="form-group">
-        <label>End date</label>
-        <input type="date" id="edit-res-end" />
+      <div class="form-group" id="bk-send-by"></div>
+      <p class="login-error" id="bk-error" style="text-align:left"></p>
+      <div class="sheet-actions">
+        <button class="btn btn-ghost" onclick="closeSheet('booking-sheet')">Close</button>
+        <button class="btn btn-primary" id="bk-save-btn">Save changes</button>
       </div>
-    </div>
-    <div class="form-group" id="edit-res-qty-group" style="display:none">
-      <label for="edit-res-qty">How many</label>
-      <input type="number" id="edit-res-qty" min="1" step="1" inputmode="numeric" style="max-width:8rem" />
-    </div>
-    <div class="form-group">
-      <label>Notes</label>
-      <textarea id="edit-res-notes" rows="3" placeholder="Optional notes"></textarea>
-    </div>
-    <div class="sheet-actions">
-      <button class="btn btn-ghost" onclick="closeSheet('edit-res-sheet')">Cancel</button>
-      <button class="btn btn-primary" id="edit-res-submit-btn">Save changes</button>
+      <div class="bk-danger" id="bk-danger"></div>
     </div>
   </div>
 </div>
@@ -2247,7 +2251,8 @@
     const c = contactOf(r);
     const choices = sendChoices(c, !opts.noNone);
     const pref = contactMethod(c.pref);
-    const choice = choices.includes(pref) ? pref : (pref === "call" && choices.includes("sms")) ? "sms" : choices[0];
+    const choice = opts.initial && choices.includes(opts.initial) ? opts.initial
+      : choices.includes(pref) ? pref : (pref === "call" && choices.includes("sms")) ? "sms" : choices[0];
     SEND_BY[prefix] = { c, choice };
     const box = document.getElementById(`${prefix}-send-by`);
     const paint = () => {
@@ -2854,6 +2859,7 @@
           <button class="btn btn-primary btn-sm" onclick="openConfirm(rec('req','${rid}'))">✓ Confirm</button>
           ${isAppt ? `<button class="btn btn-ghost btn-sm" onclick="openCheckout('${rid}')" title="They're here now — lend what they take">Check out</button>` : ""}
           <button class="btn btn-danger btn-sm" onclick="openDecline(rec('req','${rid}'))">✗ Decline</button>
+          <button class="btn btn-ghost btn-sm" onclick="openBooking({ request: rec('req','${rid}').id, from: 'requests' })">✏️ Edit</button>
           ${contactActions(contactOf(r))}
         </div>
       </div>`;
@@ -3179,6 +3185,7 @@
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openReturn(rec('loan','${lid}'))">✓ Returned</button>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openReturnReminder(rec('loan','${lid}'))">⏰ Return reminder</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openBooking({ loan: rec('loan','${lid}').id, from: 'loans' })">✏️ Edit</button>
             ${contactActions(contactOf(l), true)}
           </div>
         </div>`;
@@ -3280,6 +3287,7 @@
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" onclick="openCheckout('${id}')">Check out</button>
           <button class="btn btn-ghost btn-sm" onclick="markVisit('${id}', 'nothing')">Nothing borrowed</button>
+          <button class="btn btn-ghost btn-sm" onclick="openBooking({ request: '${id}', from: 'reservations' })">✏️ Edit</button>
           ${a.past ? `<button class="btn btn-ghost btn-sm" onclick="markVisit('${id}', 'noshow')">No-show</button>` : ""}
           ${contactActions(contactOf(a))}
         </div>
@@ -3660,6 +3668,339 @@
     refreshAfterLending();
   }
 
+  // ── Edit a booking: a request + its open reservations / loans, edited as one ─────
+  // Opened from Reservations (a reservation row or an appointment), Loans, or Requests. Only what changed is sent.
+  let BK = null;
+  const BK_PREF = { WhatsApp: "WhatsApp", SMS: "Text", Text: "Text", Phone: "Phone", Call: "Phone", Email: "Email" };
+  const bkEl = id => document.getElementById(id);
+  const bkVal = id => String(bkEl(id)?.value ?? "").trim();
+  /** "2026-10-12T19:30" in New York → { date, time } for the inputs. */
+  function nyParts(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return { date: "", time: "" };
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(d).map(x => [x.type, x.value]));
+    return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+  }
+  const bkHasLoans = () => BK.b.loans.length > 0;
+  const bkIsRequestKind = () => BK.b.kind === "request" || BK.b.kind === "appointment";
+  const BK_WORD = { request: "request", appointment: "appointment", reservation: "reservation", loan: "loan", mixed: "booking" };
+
+  async function openBooking(ref) {
+    BK = { ref, b: null, rows: [], types: null, lastAuto: null };
+    bkEl("bk-title").textContent = "Edit";
+    bkEl("bk-subtitle").textContent = "";
+    bkEl("bk-body").innerHTML = '<div class="loading">Loading…</div>';
+    bkEl("bk-foot").style.display = "none";
+    bkEl("bk-error").style.display = "none";
+    bkEl("bk-message").value = "";
+    openSheet("booking-sheet");
+    const q = ref.request ? `request=${encodeURIComponent(ref.request)}` : `loan=${encodeURIComponent(ref.loan)}`;
+    let b = null;
+    try { b = await api(`/admin/booking?${q}`); } catch (e) { b = null; }
+    if (BK?.ref !== ref) return;
+    if (!b || b.error || !b.kind) { bkEl("bk-body").innerHTML = `<div class="empty-state">${esc(b?.error || "Couldn't load this booking. Please try again.")}</div>`; return; }
+    if (b.kind === "closed") { bkEl("bk-body").innerHTML = '<div class="empty-state">Nothing on this booking is still open to change.</div>'; return; }
+    bkRender(b);
+  }
+
+  function bkRender(b) {
+    BK.b = b;
+    const r = b.request, who = b.borrower || r || {};
+    const name = who.name || "";
+    bkEl("bk-title").textContent = `Edit ${BK_WORD[b.kind]}${name ? ` — ${name}` : ""}`;
+    bkEl("bk-subtitle").textContent = [r?.requestId, b.loans.length ? b.loans.map(l => l.loanId).filter(Boolean).join(", ") : ""].filter(Boolean).join(" · ");
+    // Item rows: the open loans, or what a waiting request / appointment asks for.
+    BK.rows = bkHasLoans()
+      ? b.loans.map(l => ({ kind: "loan", id: l.id, typeId: l.itemTypeId, name: l.itemTypeName, photo: l.photo, photos: l.photos, tracking: l.tracking, unitCode: l.itemId,
+          status: l.status, qty: l.quantity, qty0: l.quantity, removed: false }))
+      : (r?.items || []).map(i => ({ kind: "req", typeId: i.itemTypeId, name: i.name, photo: i.photo, photos: i.photos, tracking: i.tracking, qty: i.quantity, qty0: i.quantity, removed: false }));
+    const pref = BK_PREF[who.preferredContact] || "";
+    const res0 = b.loans.find(l => l.status === "Reserved"), act0 = b.loans.find(l => l.status === "Active");
+    const style = b.requestStyle;
+    const isEventReq = r && (r.eventDate || style === "Event") && r.requestType !== "Appointment";
+    let dates = "";
+    if (b.kind === "request") {
+      if (r.requestType === "Appointment") {
+        dates = `${r.preferredTimes ? `<p class="muted-small" style="margin:0 0 0.6rem">Times they suggested: ${esc(r.preferredTimes)}</p>` : ""}
+          <div class="bk-grid"><div class="form-group"><label for="bk-event">${esc(b.eventLabel || "Event date")}</label><input type="date" id="bk-event" value="${esc(r.eventDate || "")}" /></div></div>
+          <p class="muted-small" style="margin:0">Set the appointment time when you confirm it.</p>`;
+      } else {
+        dates = `<div class="bk-grid">
+          ${isEventReq ? `<div class="form-group full"><label for="bk-event">${esc(b.eventLabel || "Event date")}</label><input type="date" id="bk-event" value="${esc(r.eventDate || "")}" onchange="bkEventChanged()" /></div>` : ""}
+          <div class="form-group"><label for="bk-from">Needed from</label><input type="date" id="bk-from" value="${esc(r.neededFrom || "")}" /></div>
+          <div class="form-group"><label for="bk-until">Until</label><input type="date" id="bk-until" value="${esc(r.openEnded ? "" : r.neededUntil || "")}" ${r.openEnded ? "disabled" : ""} /></div>
+          <label class="check-row full" style="margin-bottom:0.6rem"><input type="checkbox" id="bk-open" ${r.openEnded ? "checked" : ""} onchange="bkEl('bk-until').disabled=this.checked" /><span>Open-ended (no return date yet)</span></label>
+        </div>`;
+      }
+    } else if (b.kind === "appointment") {
+      const p = nyParts(r.appointmentAt);
+      dates = `<div class="bk-grid">
+        <div class="form-group"><label for="bk-appt-date">Appointment date</label><input type="date" id="bk-appt-date" value="${esc(p.date)}" /></div>
+        <div class="form-group"><label for="bk-appt-time">Time</label><input type="time" id="bk-appt-time" step="300" value="${esc(p.time)}" /></div>
+        <div class="form-group"><label for="bk-event">${esc(b.eventLabel || "Event date")}</label><input type="date" id="bk-event" value="${esc(r.eventDate || "")}" /></div>
+      </div>`;
+    } else {
+      if (res0) dates += `<div class="bk-grid">
+        ${isEventReq ? `<div class="form-group full"><label for="bk-event">${esc(b.eventLabel || "Event date")}</label><input type="date" id="bk-event" value="${esc(r.eventDate || "")}" onchange="bkEventChanged()" /></div>` : ""}
+        <div class="form-group"><label for="bk-res-start">${act0 ? "Reserved items: from" : "Reserved from"}</label><input type="date" id="bk-res-start" value="${esc(res0.reservationStart || "")}" /></div>
+        <div class="form-group"><label for="bk-res-end">Until</label><input type="date" id="bk-res-end" value="${esc(res0.reservationEnd || "")}" /></div>
+      </div>`;
+      if (act0) dates += `<div class="bk-grid">
+        <div class="form-group"><label for="bk-borrowed">Picked up</label><input type="date" id="bk-borrowed" max="${esc(b.today)}" value="${esc(act0.dateBorrowed || "")}" /></div>
+        <div class="form-group"><label for="bk-due">Due back</label><input type="date" id="bk-due" value="${esc(act0.expectedReturn || "")}" onchange="bkDueChips()" /></div>
+        <div class="co-chips full" id="bk-due-chips" style="margin:-0.5rem 0 1rem"></div>
+      </div>`;
+    }
+    const notes = bkHasLoans() ? (b.loans.find(l => l.notes)?.notes || "") : null;
+    bkEl("bk-body").innerHTML = `
+      <div class="bk-section"><p class="bk-h">Borrower</p>
+        <div class="bk-grid">
+          <div class="form-group full"><label for="bk-name">Name</label><input type="text" id="bk-name" maxlength="100" value="${esc(name)}" /></div>
+          <div class="form-group"><label for="bk-phone">Phone</label><input type="tel" id="bk-phone" maxlength="40" value="${esc(who.phone || "")}" /></div>
+          <div class="form-group"><label for="bk-email">Email</label><input type="email" id="bk-email" maxlength="200" value="${esc(who.email || "")}" /></div>
+          <div class="form-group"><label for="bk-pref">Prefers</label><select id="bk-pref"><option value="">—</option>${["WhatsApp", "Text", "Phone", "Email"].map(v =>
+            `<option value="${v}"${v === pref ? " selected" : ""}>${v === "Text" ? "Text message" : v === "Phone" ? "Phone call" : v}</option>`).join("")}</select></div>
+        </div>
+      </div>
+      <div class="bk-section"><p class="bk-h">${b.kind === "appointment" ? "Appointment" : b.kind === "loan" ? "Loan dates" : "Dates"}</p>${dates}</div>
+      <div class="bk-section"><p class="bk-h">${bkHasLoans() ? "Items" : b.kind === "appointment" ? "Items to show her" : "Items asked for"}</p>
+        <div class="form-group" style="margin-bottom:0.6rem">
+          <div class="co-list" id="bk-items" style="margin-bottom:0.5rem"></div>
+          <input type="search" id="bk-search" aria-label="Add an item" placeholder="+ Add an item — name, size, color…" autocomplete="off" onfocus="bkLoadTypes()" oninput="bkRenderResults()" />
+          <div class="co-results" id="bk-results"></div>
+        </div>
+        ${bkHasLoans() && b.kind === "mixed" ? `<p class="muted-small" style="margin:0.4rem 0 0">Items you add here are ${BK.ref.from === "loans" ? "lent now" : "reserved"}.</p>` : ""}
+      </div>
+      ${notes !== null ? `<div class="bk-section"><div class="form-group"><label for="bk-notes">Notes</label><textarea id="bk-notes" rows="2" maxlength="1000" style="min-height:0">${esc(notes)}</textarea></div></div>` : ""}`;
+    BK.orig = bkSnapshot();
+    bkRenderItems();
+    if (act0) bkDueChips();
+    bkEl("bk-body").addEventListener("input", bkAutoMessage);
+    bkEl("bk-body").addEventListener("change", bkAutoMessage);
+    ["bk-phone", "bk-email", "bk-pref"].forEach(id => bkEl(id).addEventListener("change", bkSetupSendBy));
+    bkEl("bk-foot").style.display = "";
+    bkSetupSendBy();
+    bkAutoMessage();
+    const what = { reservation: "Cancel reservation", mixed: "Cancel what hasn't been picked up", appointment: "Cancel appointment", request: "Cancel request" }[b.kind];
+    bkEl("bk-danger").innerHTML = what ? `<button type="button" class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="bkCancel()">✕ ${what}</button>` : "";
+    bkEl("bk-save-btn").onclick = bkSave;
+  }
+
+  /** The editable values right now (to send only what changed). */
+  function bkSnapshot() {
+    const v = id => (bkEl(id) ? bkVal(id) : undefined);
+    return {
+      name: v("bk-name"), phone: v("bk-phone"), email: v("bk-email"), pref: v("bk-pref"),
+      event: v("bk-event"), from: v("bk-from"), until: v("bk-until"), open: bkEl("bk-open")?.checked,
+      apptDate: v("bk-appt-date"), apptTime: v("bk-appt-time"),
+      resStart: v("bk-res-start"), resEnd: v("bk-res-end"), borrowed: v("bk-borrowed"), due: v("bk-due"),
+      notes: bkEl("bk-notes") ? bkEl("bk-notes").value.trim() : undefined,
+    };
+  }
+  /** Event date changed: move the dates by the gemach's pickup / return rule. */
+  function bkEventChanged() {
+    const d = eventDates(bkVal("bk-event"), GEMACH || {});
+    if (!d) return;
+    if (bkEl("bk-from")) { bkEl("bk-from").value = d.pickup; bkEl("bk-until").value = d.return; }
+    if (bkEl("bk-res-start")) { bkEl("bk-res-start").value = d.pickup; bkEl("bk-res-end").value = d.return; }
+    bkAutoMessage();
+  }
+  function bkDueChips() {
+    const box = bkEl("bk-due-chips");
+    if (!box) return;
+    const cur = bkVal("bk-due"), base = cur || BK.b.today, chips = [];
+    chips.push([isoAddDays(base, 7), cur ? "+1 week" : "In 1 week"], [isoAddDays(base, 14), cur ? "+2 weeks" : "In 2 weeks"]);
+    if (BK.b.defaultLoanDays && bkVal("bk-borrowed")) chips.push([isoAddDays(bkVal("bk-borrowed"), BK.b.defaultLoanDays), `${BK.b.defaultLoanDays} days from pickup`]);
+    box.innerHTML = chips.map(([d, label]) => `<button type="button" class="co-chip" onclick="bkSetDue('${d}')">${esc(label)} <span class="muted-small">${esc(fmtDay(d))}</span></button>`).join("") +
+      `<button type="button" class="co-chip${cur ? "" : " active"}" onclick="bkSetDue('')">No date</button>`;
+  }
+  function bkSetDue(d) { bkEl("bk-due").value = d; bkDueChips(); bkAutoMessage(); }
+
+  function bkRenderItems() {
+    const box = bkEl("bk-items");
+    box.innerHTML = BK.rows.map((row, i) => {
+      const counted = row.tracking !== "Units";
+      const tag = row.kind === "loan" && !row.added ? `<span class="tag ${row.status === "Active" ? "tag-green" : "tag-navy"}" style="justify-self:end">${row.status === "Active" ? "Out" : "Reserved"}</span>` : "";
+      const sub = [row.unitCode, row.added ? (row.addAs === "active" ? "will be lent now" : row.kind === "loan" ? "will be reserved" : "added") : ""].filter(Boolean).join(" · ");
+      return `<div class="co-row${row.removed ? " removed" : ""}${row.added ? " added" : ""}">
+        <span></span>
+        ${rowThumb(row.photo, row.name, row.photos)}
+        <div class="co-main">
+          <div class="co-name">${esc(row.name)}</div>${sub ? `<div class="co-sub">${esc(sub)}</div>` : ""}
+          ${row.removed ? `<div class="co-note warn">${row.status === "Active" ? "Will be removed (lent by mistake)" : "Will be removed"} — <button type="button" class="link-btn" onclick="bkUndo(${i})">undo</button></div>`
+            : counted ? `<div class="co-ctl"><label class="muted-small" for="bk-qty-${i}">How many</label><input type="number" id="bk-qty-${i}" min="1" step="1" inputmode="numeric" value="${esc(row.qty ?? 1)}" onchange="bkSetQty(${i}, this.value)" /></div>` : ""}
+          ${row.added && row.addAs === "active" && row.units?.length > 1 ? `<div class="co-ctl"><label class="muted-small" for="bk-unit-${i}">Which one</label><select id="bk-unit-${i}" onchange="BK.rows[${i}].unitId=this.value">${row.units.map(u => `<option value="${esc(u.id)}"${u.id === row.unitId ? " selected" : ""}>${esc(u.itemId)}</option>`).join("")}</select></div>` : ""}
+          ${tag}
+        </div>
+        ${row.removed ? "<span></span>" : `<button type="button" class="co-remove" onclick="bkRemove(${i})" aria-label="Remove ${esc(row.name)}">×</button>`}
+      </div>`;
+    }).join("") || '<p class="muted-small" style="margin:0">No items.</p>';
+    bkAutoMessage();
+  }
+  const bkRedraw = () => setTimeout(() => { if (BK?.b) bkRenderItems(); }, 0);
+  function bkSetQty(i, v) { const n = parseInt(v, 10); BK.rows[i].qty = Number.isInteger(n) && n > 0 ? n : 1; bkRedraw(); }
+  function bkRemove(i) { const r = BK.rows[i]; if (r.added || r.kind === "req") BK.rows.splice(i, 1); else r.removed = true; bkRedraw(); }
+  function bkUndo(i) { BK.rows[i].removed = false; bkRedraw(); }
+
+  async function bkLoadTypes() {
+    if (BK.types || BK.loadingTypes) return;
+    BK.loadingTypes = true;
+    let d = null;
+    try { d = await api("/admin/checkout/options"); } catch (e) { d = null; }
+    BK.loadingTypes = false;
+    if (!d || !Array.isArray(d.types)) { bkEl("bk-results").innerHTML = '<p class="muted-small">Couldn’t load the inventory.</p>'; return; }
+    BK.types = d.types;
+    bkRenderResults();
+  }
+  function bkAddAs() {
+    if (!bkHasLoans()) return "request";
+    if (BK.b.kind === "loan") return "active";
+    if (BK.b.kind === "reservation") return "reserved";
+    return BK.ref.from === "loans" ? "active" : "reserved";
+  }
+  function bkRenderResults() {
+    const box = bkEl("bk-results");
+    const q = bkVal("bk-search").toLowerCase();
+    if (!q || !BK.types) { box.innerHTML = q && !BK.types ? '<div class="loading">Loading…</div>' : ""; return; }
+    const words = q.split(/\s+/), mode = bkAddAs();
+    const hits = BK.types.filter(t => words.every(w => `${t.name} ${Object.values(t.attributes || {}).flat().join(" ")} ${t.units.map(u => u.itemId).join(" ")}`.toLowerCase().includes(w)));
+    box.innerHTML = hits.slice(0, 20).map(t => {
+      const out = new Set(t.bookings.filter(b => b.status === "Active" && b.unitId).map(b => b.unitId));
+      const taken = new Set(BK.rows.filter(r => r.added && r.unitId).map(r => r.unitId));
+      const free = t.units.filter(u => !out.has(u.id) && !taken.has(u.id));
+      const inReq = mode === "request" && BK.rows.some(r => r.typeId === t.id);
+      const blocked = inReq || (mode === "active" && t.tracking === "Units" && !free.length);
+      const status = inReq ? "Added" : t.tracking === "Units" ? (free.length ? (mode === "active" ? "In" : `${t.units.length} owned`) : mode === "active" ? "On loan" : `${t.units.length} owned`)
+        : t.tracking === "Quantity" ? `${t.lendable} owned` : "Add-on";
+      return `<button type="button" class="co-result" onclick="bkAdd('${safeId(t.id)}')"${blocked ? " disabled" : ""}>
+        ${t.photo ? `<img class="row-thumb" src="${esc(t.photo)}" alt="" loading="lazy" width="32" height="32" style="width:32px;height:32px;flex-basis:32px" />` : `<span class="row-thumb row-thumb-none" aria-hidden="true">▫</span>`}
+        <span style="flex:1;min-width:0"><span class="co-name">${esc(t.name)}</span></span>
+        <span class="tag ${blocked ? "tag-red" : t.tracking === "Add-on" ? "tag-addon" : "tag-green"}">${esc(status)}</span></button>`;
+    }).join("") + (!hits.length ? `<p class="muted-small" style="margin:0.25rem 0 0">Nothing in the inventory matches “${esc(q)}”.</p>` : "");
+  }
+  function bkAdd(typeId) {
+    const t = BK.types.find(x => safeId(x.id) === typeId);
+    if (!t) return;
+    const mode = bkAddAs();
+    const row = { kind: mode === "request" ? "req" : "loan", added: mode !== "request", addAs: mode, typeId: t.id, name: t.name, photo: t.photo, photos: t.photos, tracking: t.tracking, qty: t.tracking === "Units" ? null : 1, removed: false };
+    if (mode === "active" && t.tracking === "Units") {
+      const out = new Set(t.bookings.filter(b => b.status === "Active" && b.unitId).map(b => b.unitId));
+      const taken = new Set(BK.rows.filter(r => r.added && r.unitId).map(r => r.unitId));
+      row.units = t.units.filter(u => !out.has(u.id) && !taken.has(u.id));
+      row.unitId = row.units[0]?.id || null;
+      row.unitCode = row.units.length === 1 ? row.units[0].itemId : null;
+    }
+    BK.rows.push(row);
+    bkEl("bk-search").value = "";
+    bkEl("bk-results").innerHTML = "";
+    bkRenderItems();
+  }
+
+  /** The current items, in words: "Chairs × 4 and Gown Y". */
+  function bkItemsText() {
+    const labels = BK.rows.filter(r => !r.removed).map(r => (r.tracking !== "Units" && r.qty ? `${r.name} × ${r.qty}` : r.name));
+    return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+  }
+  function bkAutoMessage() {
+    if (!BK?.b) return;
+    const b = BK.b, s = bkSnapshot(), r = b.request;
+    const first = (s.name || "").split(/\s+/)[0];
+    const lines = [];
+    const items = bkItemsText();
+    if (items) lines.push(`Items: ${items}`);
+    if (b.kind === "appointment" && s.apptDate && s.apptTime) lines.push(`Appointment: ${fmtAppointment(s.apptDate, s.apptTime)}`);
+    if (s.event) lines.push(`${b.eventLabel || "Event date"}: ${fmtDay(s.event, true)}`);
+    if (b.kind === "request" && s.from) lines.push(`Dates: ${fmtDay(s.from, true)} → ${s.open ? "open-ended" : s.until ? fmtDay(s.until, true) : "—"}`);
+    if (s.resStart !== undefined && (s.resStart || s.resEnd)) lines.push(`Reserved: ${s.resStart ? fmtDay(s.resStart, true) : "—"} → ${s.resEnd ? fmtDay(s.resEnd, true) : "open-ended"}`);
+    if (s.due !== undefined) lines.push(`Due back: ${s.due ? fmtDay(s.due, true) : "no date set"}`);
+    const link = r?.manageUrl ? `\n\nManage your ${b.kind === "loan" ? "loan" : "request"}: ${r.manageUrl}` : "";
+    const auto = `Hi ${first || "there"}, we've updated your ${BK_WORD[b.kind]} with the ${GEMACH?.name || "gemach"}:\n\n${lines.join("\n")}${link}\n\nPlease let us know if anything doesn't look right. Thank you!`;
+    const el = bkEl("bk-message");
+    if (el.value === BK.lastAuto || !el.value.trim()) el.value = auto;
+    BK.lastAuto = auto;
+  }
+  function bkContact() {
+    const s = bkSnapshot();
+    return { phone: s.phone, email: s.email, preferredContact: s.pref === "Text" ? "SMS" : s.pref };
+  }
+  function bkSetupSendBy() {
+    setupSendBy("bk", bkContact(), "bk-save-btn", { whatsapp: "Save & open WhatsApp", sms: "Save & open text message", email: "Save & email", none: "Save changes" }, { initial: "none" });
+  }
+
+  /** PATCH body with only what changed (null = nothing to save). */
+  function bkBody() {
+    const b = BK.b, o = BK.orig, s = bkSnapshot();
+    const body = BK.ref.request ? { request: BK.ref.request } : { loan: BK.ref.loan };
+    let n = 0;
+    const put = (k, v) => { body[k] = v; n++; };
+    if (s.name !== o.name || s.phone !== o.phone || s.email !== o.email || s.pref !== o.pref) put("borrower", { name: s.name, phone: s.phone, email: s.email, preferredContact: s.pref || null });
+    if (s.event !== undefined && s.event !== o.event) put("eventDate", s.event || null);
+    if (b.kind === "request" && bkEl("bk-from")) {
+      if (s.from !== o.from) put("neededFrom", s.from || null);
+      if (s.open !== o.open) put("openEnded", !!s.open);
+      if (!s.open && s.until !== o.until) put("neededUntil", s.until || null);
+    }
+    if (b.kind === "appointment" && (s.apptDate !== o.apptDate || s.apptTime !== o.apptTime)) put("appointmentAt", `${s.apptDate}T${s.apptTime}`);
+    if (s.resStart !== undefined && s.resStart !== o.resStart) put("reservationStart", s.resStart || null);
+    if (s.resEnd !== undefined && s.resEnd !== o.resEnd) put("reservationEnd", s.resEnd || null);
+    if (s.borrowed !== undefined && s.borrowed !== o.borrowed) put("dateBorrowed", s.borrowed);
+    if (s.due !== undefined && s.due !== o.due) put("expectedReturn", s.due || null);
+    if (s.notes !== undefined && s.notes !== o.notes) put("notes", s.notes);
+    if (bkHasLoans()) {
+      const qty = Object.fromEntries(BK.rows.filter(r => r.kind === "loan" && !r.added && !r.removed && r.tracking !== "Units" && r.qty !== r.qty0).map(r => [r.id, r.qty]));
+      if (Object.keys(qty).length) put("quantities", qty);
+      const remove = BK.rows.filter(r => r.removed).map(r => r.id);
+      if (remove.length) put("remove", remove);
+      const add = BK.rows.filter(r => r.added).map(r => ({ itemTypeId: r.typeId, ...(r.tracking === "Units" ? (r.addAs === "active" ? { itemId: r.unitId } : {}) : { quantity: r.qty || 1 }) }));
+      if (add.length) { put("add", add); body.addAs = add.length ? BK.rows.find(r => r.added).addAs : undefined; }
+    } else {
+      const now = BK.rows.map(r => `${r.typeId}:${r.qty ?? ""}`).join("|");
+      const was = (b.request?.items || []).map(i => `${i.itemTypeId}:${i.quantity ?? ""}`).join("|");
+      if (now !== was) put("requestedItems", BK.rows.map(r => ({ itemTypeId: r.typeId, ...(r.tracking !== "Units" ? { quantity: r.qty || 1 } : {}) })));
+    }
+    return n ? body : null;
+  }
+
+  async function bkSave() {
+    const errEl = bkEl("bk-error");
+    const fail = m => { errEl.textContent = m; errEl.style.display = "block"; };
+    errEl.style.display = "none";
+    const body = bkBody();
+    if (!body) { fail("Nothing has changed yet."); return; }
+    if (BK.rows.some(r => r.added && r.addAs === "active" && r.tracking === "Units" && !r.unitId)) { fail("One of the items you added is out on loan."); return; }
+    const message = bkEl("bk-message").value;
+    const { choice, c } = SEND_BY.bk || { choice: "none" };
+    if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
+    if (choice === "email") { body.message = message; body.sendMessage = true; }
+    const btn = bkEl("bk-save-btn");
+    btn.disabled = true;
+    let res;
+    try { res = await api("/admin/booking", "PATCH", body); } finally { btn.disabled = false; }
+    if (!res) return;
+    if (res.error) { fail(res.error); return; }
+    closeSheet("booking-sheet");
+    showToast((res.changes?.length ? "Saved" : "Saved — nothing to change") + (res.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res.emailSent === false ? 8000 : undefined);
+    refreshAfterLending();
+  }
+
+  async function bkCancel() {
+    const b = BK.b, word = BK_WORD[b.kind];
+    if (!confirm(b.kind === "mixed" ? "Cancel the items that haven't been picked up? Items already out stay on loan." : `Cancel this ${word}? ${b.kind === "reservation" ? "The items become available for others." : ""}`)) return;
+    const first = (bkVal("bk-name") || "").split(/\s+/)[0];
+    const message = `Hi ${first || "there"}, your ${word} with the ${GEMACH?.name || "gemach"} has been cancelled${bkItemsText() ? ` (${bkItemsText()})` : ""}. Please reach out if you have any questions.`;
+    const { choice, c } = SEND_BY.bk || { choice: "none" };
+    if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message);
+    const body = BK.ref.request ? { request: BK.ref.request } : { loan: BK.ref.loan };
+    if (choice === "email") { body.message = message; body.sendMessage = true; }
+    const res = await api("/admin/booking/cancel", "POST", body);
+    if (!res) return;
+    if (res.error) { bkEl("bk-error").textContent = res.error; bkEl("bk-error").style.display = "block"; return; }
+    closeSheet("booking-sheet");
+    showToast(`${word[0].toUpperCase()}${word.slice(1)} cancelled` + (res.emailSent === false ? " — but the email didn't send." : ""));
+    refreshAfterLending();
+  }
+
   /** Reload whatever is on screen after lending / closing a visit. */
   function refreshAfterLending() {
     loadDashboard();
@@ -3732,38 +4073,7 @@
     }
   }
 
-  function openEditReservation(r) {
-    document.getElementById("edit-res-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
-    document.getElementById("edit-res-start").value = r.reservationStart || "";
-    document.getElementById("edit-res-end").value   = r.reservationEnd   || "";
-    document.getElementById("edit-res-notes").value = r.notes            || "";
-    const counted = r.isQuantity || r.isAddon;
-    document.getElementById("edit-res-qty-group").style.display = counted ? "" : "none";
-    document.getElementById("edit-res-qty").value = counted ? r.quantity : "";
-    document.getElementById("edit-res-submit-btn").onclick = async () => {
-      const btn = document.getElementById("edit-res-submit-btn");
-      const body = {
-        reservationStart: document.getElementById("edit-res-start").value || null,
-        reservationEnd:   document.getElementById("edit-res-end").value   || null,
-        notes:            document.getElementById("edit-res-notes").value  || null
-      };
-      if (counted) {
-        const n = parseInt(document.getElementById("edit-res-qty").value, 10);
-        if (!(Number.isInteger(n) && n >= 1)) { showToast("Enter how many (1 or more)"); return; }
-        body.quantity = n;
-      }
-      btn.disabled = true;
-      btn.textContent = "Saving…";
-      const res = await api(`/admin/reservations/${r.id}`, "PATCH", body);
-      btn.disabled = false;
-      btn.textContent = "Save changes";
-      if (res && res.error) { showToast(typeof res.error === "string" ? res.error : "Could not save"); return; }
-      closeSheet("edit-res-sheet");
-      loadReservations();
-      showToast("Reservation updated");
-    };
-    openSheet("edit-res-sheet");
-  }
+  function openEditReservation(r) { openBooking({ loan: r.id, from: "reservations" }); }
 
   function openCancelReservation(r) {
     document.getElementById("cancel-res-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;

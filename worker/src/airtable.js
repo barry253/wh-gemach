@@ -132,6 +132,7 @@ function makeDb(env) {
     // Same shape as D1's createMany (one POST per record; the Airtable layer is only a fallback now).
     createMany: async (table, list) => { const out = []; for (const fields of list || []) out.push(await call(tpath(table), { method: "POST", body: { fields } })); return out; },
     update: (table, id, fields) => call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }),
+    updateMany: async (table, ids, fields) => { for (const id of ids || []) await call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }); return (ids || []).length; },
     del: (table, id) => call(`${tpath(table)}/${id}`, { method: "DELETE" }),
   };
 }

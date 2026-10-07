@@ -374,6 +374,34 @@ function makeD1Db(env) {
     return toRecord(spec, row, rb.sel.names);
   }
 
+  /**
+   * The same field values on several rows: one UPDATE … WHERE id IN (…) per chunk, no read-back.
+   * Returns how many rows changed. Fields that live in join tables fall back to update() per row.
+   */
+  async function updateMany(table, ids, fields) {
+    const list = [...new Set((ids || []).filter(id => REC_RE.test(id || "")))];
+    if (!list.length) return 0;
+    const spec = tableSpec(table);
+    const plan = writePlan(spec, fields);
+    if (plan.joins.length || !plan.cols.length) {
+      for (const id of list) await update(table, id, fields);
+      return list.length;
+    }
+    trace?.({ kind: "updateMany", table, ids: list, fields });
+    const per = Math.max(1, MAX_BOUND_PARAMS - plan.cols.length);
+    const stmts = [];
+    for (let i = 0; i < list.length; i += per) {
+      const chunk = list.slice(i, i + per);
+      stmts.push(prep(`UPDATE ${spec.sql} SET ${plan.cols.map(c => `${c} = ?`).join(", ")} WHERE id IN (${chunk.map(() => "?").join(", ")})`, [...plan.vals, ...chunk]));
+    }
+    let res;
+    try { res = await batch(`updateMany ${spec.sql}`, stmts); } catch (e) {
+      if (isConstraint(e)) throw err(422, "ROW_DOES_NOT_EXIST", `Linked record not found (${spec.name}): ${e.message}`);
+      throw e;
+    }
+    return res.reduce((n, r) => n + (r?.meta?.changes || 0), 0);
+  }
+
   async function del(table, id) {
     const spec = tableSpec(table);
     if (!REC_RE.test(id || "")) throw err(404, "NOT_FOUND", "Could not find record");
@@ -389,7 +417,7 @@ function makeD1Db(env) {
     return true;
   }
 
-  return { engine: "d1", stats, listPage, listAll, get, create, createMany, update, del, ping };
+  return { engine: "d1", stats, listPage, listAll, get, create, createMany, update, updateMany, del, ping };
 }
 
 export { makeD1Db, newRecordId, toRecord, writePlan };

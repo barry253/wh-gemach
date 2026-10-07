@@ -42,6 +42,7 @@
  *            GET/PATCH /admin/gemach — gemach profile, branding, request style + message templates
  *            (PATCH: Owner/Manager/Network Admin); POST /admin/gemach/logo (multipart "logo", ≤2 MB, png/jpeg/webp).
  *            GET /admin/appointments — upcoming confirmed appointments, plus recent ones not marked as visited (past: true).
+ *            GET|PATCH /admin/booking, POST /admin/booking/cancel — edit a request + its open loans as one booking (booking.js).
  *            GET /admin/checkout/options, POST /admin/requests/:id/checkout | /visit, POST /admin/loans (walk-in) — checkout.js.
  *            GET /admin/catalog/categories — active Product Categories (for the item-type "Browse category" select).
  *            /admin/team — the gemach's Owners/Managers/Volunteers (Owner or Network Admin; see team.js).
@@ -84,6 +85,7 @@ import { networkDispatch } from "./network.js";
 import { handleDirectory, handleLegacyInventory, handlePublicGemach, loadCategories } from "./public.js";
 import { handleGetAppointments, handleGetRequests, handleRequestDecision } from "./requests.js";
 import { handleCheckoutOptions, handleRequestCheckout, handleRequestVisit, handleWalkInLoan } from "./checkout.js";
+import { handleCancelBooking, handleGetBooking, handlePatchBooking } from "./booking.js";
 import { handleGetManage, handleManageCancel, handleManageReady } from "./manage.js";
 import { handleSearchLog } from "./search.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
@@ -244,6 +246,9 @@ async function adminRoute(c, path, method) {
   if (method === "POST" && (m = path.match(/^\/admin\/requests\/([^/]+)\/visit$/)))    return handleRequestVisit(c, m[1]);
   if (method === "GET"  && path === "/admin/checkout/options") return handleCheckoutOptions(c);
   if (method === "POST" && path === "/admin/loans")        return handleWalkInLoan(c);
+  if (method === "GET"   && path === "/admin/booking")        return handleGetBooking(c);
+  if (method === "PATCH" && path === "/admin/booking")        return handlePatchBooking(c);
+  if (method === "POST"  && path === "/admin/booking/cancel") return handleCancelBooking(c);
   if (method === "GET"  && path === "/admin/loans")        return handleGetLoans(c);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/return$/)))     return handleReturnLoan(c, m[1]);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/reminder$/)))   return handleLoanReminder(c, m[1]);

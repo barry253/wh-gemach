@@ -372,4 +372,4 @@ async function typeNames(db, g, ids) {
   return Object.fromEntries(recs.filter(r => belongs(r, g)).map(r => [r.id, r.fields.Name || null]));
 }
 
-export { handleCheckoutOptions, handleRequestCheckout, handleRequestVisit, handleWalkInLoan, VISIT, MAX_ITEMS };
+export { handleCheckoutOptions, handleRequestCheckout, handleRequestVisit, handleWalkInLoan, validateLending, createLoans, VISIT, MAX_ITEMS, EMAIL_RE };
