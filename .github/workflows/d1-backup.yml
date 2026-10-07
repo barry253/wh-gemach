@@ -1,0 +1,60 @@
+name: D1 nightly backup
+# Every night: export the whole D1 database, check it loads and has data, and store it gzipped in
+# the PRIVATE R2 bucket wh-gemach-backups (d1/YYYY/MM/…). Backups older than 60 days are removed
+# by a bucket lifecycle rule (set once with "Run workflow" → retention).
+# Restore: download a file from the bucket, gunzip, then either load it into a new D1 database
+#   npx wrangler d1 create wh-gemach-restore && npx wrangler d1 execute wh-gemach-restore --remote --file=<file>.sql
+# or, for the last 7 days, use Time Travel instead: npx wrangler d1 time-travel restore wh-gemach --timestamp=<time>
+# Needs CLOUDFLARE_API_TOKEN with D1 edit + R2 edit. Nothing from the backup is ever written to the log.
+on:
+  schedule:
+    - cron: "17 7 * * *"   # ~3:17 am New York (7:17 UTC)
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What to do
+        type: choice
+        options: [backup, retention]
+        default: backup
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-migration
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      D1_DATABASE_ID: 974be829-ed62-4e9a-9965-77784d5d74a5
+      CLOUDFLARE_ACCOUNT_ID: 30f51b1774b3c34eac1847d23240b759
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: scripts/step.sh "npm ci" npm ci
+      - name: Keep backups for 60 days
+        if: github.event_name == 'workflow_dispatch' && inputs.task == 'retention'
+        run: scripts/step.sh "Retention" npx wrangler r2 bucket lifecycle add wh-gemach-backups expire-d1-backups d1/ --expire-days 60 --force
+      - name: Export, check and store
+        if: github.event_name == 'schedule' || inputs.task == 'backup'
+        run: |
+          set -e
+          stamp=$(date -u +%Y-%m-%dT%H%MZ)
+          file="$RUNNER_TEMP/wh-gemach-$stamp.sql"
+          scripts/step.sh "Export" npx wrangler d1 export wh-gemach --remote --output="$file" --skip-confirmation
+          scripts/step.sh "Check" node --no-warnings scripts/d1-backup-check.mjs "$file"
+          gzip -9 "$file"
+          key="d1/$(date -u +%Y/%m)/wh-gemach-$stamp.sql.gz"
+          scripts/step.sh "Store" npx wrangler r2 object put "wh-gemach-backups/$key" --remote --file="$file.gz" --content-type=application/gzip
+          echo "::notice title=Backup stored::$key ($(stat -c %s "$file.gz") bytes)"
+          rm -f "$file.gz"
