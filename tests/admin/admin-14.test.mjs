@@ -2,12 +2,22 @@
 // "No-show", walk-in "New loan", and the optional usual loan length in Settings.
 import { chromium } from "playwright";
 import fs from "node:fs";
+import zlib from "node:zlib";
 const html = fs.readFileSync(new URL("../../admin.html", import.meta.url), "utf8");
 process.chdir(new URL("../test-output/", import.meta.url).pathname);
 const exe = process.env.CHROMIUM_PATH || "";
 const browser = await chromium.launch({ executablePath: fs.existsSync(exe) ? exe : undefined });
 const ok = (c, m) => { console.log(c ? "PASS" : "FAIL", m); if (!c) process.exitCode = 1; };
 
+function png(r, g, b, n = 96) {
+  const crcT = Array.from({ length: 256 }, (_, k) => { let c = k; for (let i = 0; i < 8; i++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = buf => { let c = 0xffffffff; for (const x of buf) c = crcT[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(n, 0); ihdr.writeUInt32BE(n, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: n }, () => [r, g, b]).flat())]);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.concat(Array(n).fill(row)))), chunk("IEND", Buffer.alloc(0))]);
+}
+const IMG = { "navy.png": png(30, 45, 90), "navy2.png": png(60, 80, 140), "gold.png": png(200, 160, 60) };
 const iso = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString("en-CA"); };
 const TODAY = iso(0);
 const atIso = (n, h) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, 0, 0, 0); return d.toISOString(); };
@@ -35,7 +45,15 @@ const SALLY = { id: "recSALLY00000001", requestId: "R-950", name: "Sally Katz", 
 const APPTS = [
   { id: "recPAST000000001", requestId: "R-940", name: "Past Person", phone: "5165550000", appointmentAt: atIso(-2, 18), past: true, itemNames: ["Gold gown – size 10"], itemTypeIds: ["recGOWNB000000001"] },
   { id: SALLY.id, requestId: "R-950", name: "Sally Katz", phone: SALLY.phone, email: SALLY.email, preferredContact: "Email", appointmentAt: SALLY.appointmentAt, past: false,
-    itemNames: ["Navy gown – size 8", "Gold gown – size 10", "Red gown – size 12"], itemTypeIds: SALLY.itemTypeIds },
+    itemNames: ["Navy gown – size 8", "Gold gown – size 10", "Red gown – size 12"], itemTypeIds: SALLY.itemTypeIds,
+    items: [
+      { id: "recGOWNA000000001", name: "Navy gown – size 8", description: "Beaded bodice, floor length.", photo: "https://img.test/navy.png", photos: ["https://img.test/navy.png", "https://img.test/navy2.png"],
+        attributes: { Size: ["8"], Color: ["Navy"] }, tracking: "Units", units: ["SD-001"], out: [] },
+      { id: "recGOWNB000000001", name: "Gold gown – size 10", description: null, photo: "https://img.test/gold.png", photos: ["https://img.test/gold.png"],
+        attributes: { Size: ["10"] }, tracking: "Units", units: ["SD-002"], out: [] },
+      { id: "recGOWNO000000001", name: "Red gown – size 12", description: "Sweetheart neckline.\nHas a train.", photo: null, photos: [],
+        attributes: {}, tracking: "Units", units: ["SD-004"], out: [{ itemId: "SD-004", borrower: "Dina", dueBack: iso(9) }] },
+    ] },
 ];
 
 const reqs = [];
@@ -45,6 +63,7 @@ page.on("pageerror", e => errors.push(String(e)));
 page.on("dialog", d => d.accept());
 await page.route("https://accounts.google.com/**", r => r.fulfill({ contentType: "text/javascript", body: "" }));
 await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ body: "" }));
+await page.route("https://img.test/**", r => r.fulfill({ contentType: "image/png", body: IMG[new URL(r.request().url()).pathname.slice(1)] }));
 await page.route("http://admin.test/**", r => r.fulfill({ contentType: "text/html", body: html }));
 let appts = APPTS.slice();
 await page.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
@@ -76,7 +95,24 @@ await page.waitForSelector("#appointments-list .card");
 ok(/Appointments \(2\) · 1 to close/.test(await page.textContent("#appointments-section-label")), "section label counts the ones to close");
 ok((await page.textContent(`#appt-recPAST000000001 .tag`)) === "Did they come?", "past appointment asks whether they came");
 ok(!!(await page.$(`#appt-recPAST000000001 button:has-text('No-show')`)) && !(await page.$(`#appt-${SALLY.id} button:has-text('No-show')`)), "No-show only on past appointments");
-await page.screenshot({ path: "shot-co-appointments.png" });
+// Each requested item: big photo (full screen on tap), rack number, filter values, description, on-loan warning
+const card = `#appt-${SALLY.id}`;
+await page.waitForFunction(s => [...document.querySelectorAll(s + " .appt-item img")].every(i => i.naturalWidth > 0), card);
+ok((await page.$$(`${card} .appt-item`)).length === 3, "one row per requested item");
+ok((await page.$eval(`${card} .appt-item img`, i => i.getBoundingClientRect().width)) >= 80, "photos are large enough to recognise the garment");
+const rows = await page.$$eval(`${card} .appt-item`, rs => rs.map(r => r.textContent.replace(/\s+/g, " ").trim()));
+ok(/SD-001/.test(rows[0]) && /Size 8 · Color Navy/.test(rows[0]) && /Beaded bodice, floor length\./.test(rows[0]), "rack number, filters and description: " + rows[0]);
+ok(/It's on loan to Dina · due back/.test(rows[2]) && !!(await page.$(`${card} .appt-item >> nth=2 >> .co-note.bad`)), "on-loan warning on the gown that's out");
+ok(!!(await page.$(`${card} .appt-item >> nth=2 >> .row-thumb-none`)), "no photo: placeholder box");
+ok(!(await page.$(`#appt-recPAST000000001 .appt-items`)) && /📦 Gold gown/.test(await page.textContent("#appt-recPAST000000001")), "older answer without item details: names as before");
+await page.screenshot({ path: "shot-co-appointments.png", fullPage: true });
+await page.click(`${card} .appt-item >> nth=0 >> .row-thumb-btn`);
+ok(await page.isVisible("#photo-viewer") && (await page.textContent("#pv-name")) === "Navy gown – size 8 · SD-001" && (await page.textContent("#pv-count")) === "1 / 2", "tap: full-screen viewer with the rack number, all photos");
+await page.waitForFunction(() => document.getElementById("pv-img").naturalWidth > 0);
+await page.screenshot({ path: "shot-co-appointment-photo.png" });
+await page.click("#pv-next");
+ok((await page.getAttribute("#pv-img", "src")) === "https://img.test/navy2.png", "swipe/next to the second photo");
+await page.keyboard.press("Escape");
 
 // ── Check out Sally: requested items ticked; on-loan one blocked; held hint; due date from the usual length ──
 await page.click(`#appt-${SALLY.id} button:has-text('Check out')`);

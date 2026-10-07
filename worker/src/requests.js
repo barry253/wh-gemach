@@ -1,6 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent } from "./activity.js";
-import { Q, fetchByIds, getOwned, linkedId, today } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./airtable.js";
+import { itemAttrsFor } from "./attributes.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { findOrCreateBorrower } from "./borrowers.js";
 import { DATE_RE, T } from "./config.js";
@@ -9,7 +10,7 @@ import { buildEmailHtml, sendEmail } from "./email.js";
 import { selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
-import { MAX_QTY, itemTypeInfoMap, loadQtyBookings, parseQtyMap, qtyAvailable, qtyLabel, requestWindow } from "./quantity.js";
+import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loadQtyBookings, parseQtyMap, qtyAvailable, qtyLabel, requestWindow, typePhoto, typePhotos } from "./quantity.js";
 import { emailSignature } from "./settings.js";
 import { manageUrl } from "./manage.js";
 
@@ -196,6 +197,7 @@ async function handleGetAppointments({ db, g, env }) {
     fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Appointment At", "Party Size", "Event Date", "Notes", "Status", "Visit Outcome"],
   });
   const nameMap = await itemTypeNameMap(db, recs.flatMap(r => r.fields["Items Requested"] || []), g);
+  const details = await appointmentItemDetails(db, g, recs.filter(r => !String(r.fields["Visit Outcome"] || "").trim()).flatMap(r => (r.fields["Items Requested"] || []).map(linkedId)));
   const out = (await Promise.all(recs
     .filter(r => r.fields["Appointment At"] && r.fields["Appointment At"] >= since && !["Cancelled", "Declined"].includes(selName(r.fields.Status))
       && !String(r.fields["Visit Outcome"] || "").trim())
@@ -211,6 +213,7 @@ async function handleGetAppointments({ db, g, env }) {
         preferredContact: f["Preferred Contact"] || null,
         itemNames: ids.map(id => nameMap[id]),
         itemTypeIds: ids,
+        items: ids.map(id => details[id]).filter(Boolean), // photo, description, filters, rack numbers, on loan now
         appointmentAt: f["Appointment At"],
         past: f["Appointment At"] < todayStart,
         partySize: f["Party Size"] ?? null,
@@ -221,6 +224,52 @@ async function handleGetAppointments({ db, g, env }) {
     })))
     .sort((a, b) => a.appointmentAt.localeCompare(b.appointmentAt));
   return json(out);
+}
+
+/**
+ * What the owner needs to get requested items ready for an appointment — some clothing gemachs can only
+ * identify a garment by its picture: { typeId: { id, name, description, photo, photos, attributes, tracking,
+ * units: ["SD-014"], out: [{ itemId, borrower, dueBack }] } }. Few queries whatever the list size: the types,
+ * their units (by id), open loans, and the borrowers of the loans that are out.
+ */
+async function appointmentItemDetails(db, g, typeIds) {
+  const ids = [...new Set(typeIds)];
+  if (!ids.length) return {};
+  const types = (await fetchByIds(db, T.ITEM_TYPES, ids, { g, fields: ["Name", "Description", "Tracking", "Attributes", "Items", "R2 Photo URL", "More Photos", "Gemach"] }))
+    .filter(r => belongs(r, g));
+  const unitIds = types.flatMap(r => (r.fields["Items"] || []).map(linkedId));
+  const [units, loans] = await Promise.all([
+    fetchByIds(db, T.ITEMS, unitIds, { g, fields: ["Item ID", "Item Type", "Active", "Gemach"] }),
+    unitIds.length ? db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Active")], fields: ["Item", "Borrower", "Status", "Expected Return", "Gemach"] }) : [],
+  ]);
+  const outByUnit = new Map(loans.filter(l => belongs(l, g) && selName(l.fields.Status) === "Active")
+    .map(l => [linkedId(firstLink(l.fields["Item"])), l]).filter(([u]) => u));
+  const borrowers = await fetchByIds(db, T.BORROWERS, [...outByUnit.values()].map(l => linkedId(firstLink(l.fields["Borrower"]))), { g, fields: ["Name"] });
+  const bName = Object.fromEntries(borrowers.map(b => [b.id, b.fields.Name || null]));
+  const unitsByType = {};
+  for (const u of units) {
+    if (!belongs(u, g) || !u.fields.Active) continue;
+    (unitsByType[linkedId(firstLink(u.fields["Item Type"]))] ||= []).push(u);
+  }
+  const out = {};
+  for (const r of types) {
+    const list = (unitsByType[r.id] || []).sort((a, b) => String(a.fields["Item ID"] || "").localeCompare(String(b.fields["Item ID"] || ""), undefined, { numeric: true }));
+    out[r.id] = {
+      id: r.id,
+      name: r.fields.Name || "",
+      description: String(r.fields.Description || "").trim() || null,
+      photo: typePhoto(r),
+      photos: typePhotos(r),
+      attributes: itemAttrsFor(r.fields["Attributes"], g.itemAttributes),
+      tracking: isAddonType(r) ? "Add-on" : isQtyType(r) ? "Quantity" : "Units",
+      units: list.map(u => u.fields["Item ID"] || "").filter(Boolean),
+      out: list.filter(u => outByUnit.has(u.id)).map(u => {
+        const l = outByUnit.get(u.id);
+        return { itemId: u.fields["Item ID"] || null, borrower: bName[linkedId(firstLink(l.fields["Borrower"]))] || linkedName(firstLink(l.fields["Borrower"])) || null, dueBack: l.fields["Expected Return"] || null };
+      }),
+    };
+  }
+  return out;
 }
 
 async function createReservationsFromRequest(c, rec, typeIds, nameMap, qtyMap = {}, addonIds = new Set()) {

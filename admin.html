@@ -341,6 +341,15 @@
     .check-row { display: flex; align-items: center; gap: 0.45rem; cursor: pointer; }
     .form-group .check-row input { width: 18px; height: 18px; min-height: 0; flex: 0 0 auto; margin: 0; padding: 0; }
     .form-group .check-row span { flex: 1; text-align: left; }
+    /* Appointment cards: each requested item with its photo and description, to get them ready */
+    .appt-items { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.25rem 0 0.75rem; }
+    .appt-item { display: flex; gap: 0.7rem; align-items: flex-start; }
+    .appt-item .row-thumb-none { width: 88px; height: 88px; flex-basis: 88px; font-size: 1.4rem; }
+    .appt-item-main { min-width: 0; flex: 1; }
+    .appt-item-name { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
+    .appt-item-meta { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+    .appt-unit { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; font-weight: 600; color: var(--navy); background: var(--teal, #E8F0F5); border-radius: 5px; padding: 0.05rem 0.4rem; }
+    .appt-item-desc { font-size: 0.8rem; color: var(--text); margin-top: 0.3rem; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
     /* Check-out / New loan sheet (lend at the counter) */
     .co-list { display: flex; flex-direction: column; gap: 0.5rem; }
     .co-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0.25rem 0.6rem; align-items: start; border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.65rem; background: var(--white); }
@@ -3252,6 +3261,7 @@
     document.getElementById("appointments-list").innerHTML = data.map(a => {
       const items = (a.itemNames || []).join(", ");
       const id = safeId(a.id);
+      const details = Array.isArray(a.items) && a.items.length ? apptItemsHtml(a.items) : "";
       return `<div class="card" id="appt-${id}">
         <div class="card-header">
           <div>
@@ -3263,9 +3273,10 @@
         <div class="card-meta">
           ${a.partySize ? `<span>👥 Party of ${esc(a.partySize)}</span>` : ""}
           ${a.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(a.eventDate, true))}</span>` : ""}
-          ${items ? `<span>📦 ${esc(items)}</span>` : ""}
+          ${items && !details ? `<span>📦 ${esc(items)}</span>` : ""}
           ${a.notes ? `<span>💬 ${esc(a.notes)}</span>` : ""}
         </div>
+        ${details}
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" onclick="openCheckout('${id}')">Check out</button>
           <button class="btn btn-ghost btn-sm" onclick="markVisit('${id}', 'nothing')">Nothing borrowed</button>
@@ -3275,6 +3286,30 @@
       </div>`;
     }).join("");
     block.style.display = "";
+  }
+
+  /**
+   * The items an appointment asked to see, each with a large photo (tap for full screen, swipe through all its
+   * photos), filter values, rack number(s) and description — so the owner can find and pull them beforehand.
+   */
+  function apptItemsHtml(items) {
+    return `<div class="appt-items">${items.map(i => {
+      const attrs = Object.entries(i.attributes || {}).map(([k, v]) => `${k} ${v.join(", ")}`).join(" · ");
+      const units = i.tracking === "Units" ? i.units || [] : [];
+      const label = units.length === 1 ? `${i.name} · ${units[0]}` : i.name; // shown in the full-screen viewer
+      const allOut = units.length && (i.out || []).length >= units.length;
+      const outLines = (i.out || []).map(o => `${units.length > 1 ? `${o.itemId} is` : "It's"} on loan${o.borrower ? ` to ${o.borrower}` : ""}${o.dueBack ? ` · due back ${fmtDay(o.dueBack, true)}` : ""}`);
+      return `<div class="appt-item">
+        ${rowThumb(i.photo, label, i.photos, 88)}
+        <div class="appt-item-main">
+          <div class="appt-item-name">${esc(i.name)}</div>
+          ${attrs || units.length ? `<div class="appt-item-meta">${units.map(u => `<span class="appt-unit">${esc(u)}</span>`).join("")}${attrs ? `<span>${esc(attrs)}</span>` : ""}</div>` : ""}
+          ${i.description ? `<div class="appt-item-desc">${esc(i.description)}</div>` : ""}
+          ${outLines.map(t => `<div class="co-note ${allOut ? "bad" : "warn"}">⚠ ${esc(t)}</div>`).join("")}
+          ${i.tracking === "Units" && !units.length ? `<div class="co-note info">No numbered item in Inventory for this.</div>` : ""}
+        </div>
+      </div>`;
+    }).join("")}</div>`;
   }
 
   /** Close an appointment without lending: "nothing" (came, took nothing) or "noshow". */

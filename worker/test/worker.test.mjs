@@ -780,7 +780,7 @@ await t("v3 GET /admin/appointments: upcoming + recent unvisited (past), sorted,
   const d = await (await call(`/admin/appointments`, { headers: jsonB })).json();
   assert.deepEqual(d.map(x => x.name), ["Past", "Soon", "Chana Levi"]);
   assert.deepEqual(d.map(x => x.past), [true, false, false]);
-  assert.deepEqual(Object.keys(d[1]).sort(), ["appointmentAt", "email", "eventDate", "id", "itemNames", "itemTypeIds", "manageUrl", "name", "notes", "partySize", "past", "phone", "preferredContact", "requestId"].sort());
+  assert.deepEqual(Object.keys(d[1]).sort(), ["appointmentAt", "email", "eventDate", "id", "itemNames", "itemTypeIds", "items", "manageUrl", "name", "notes", "partySize", "past", "phone", "preferredContact", "requestId"].sort());
   assert.equal(d[1].partySize, 2);
 });
 
@@ -788,9 +788,10 @@ await t("v3 GET /admin/appointments: upcoming + recent unvisited (past), sorted,
 {
   const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
   DB["Item Types"].push(
-    rec("recCOGOWNA0000001", { Name: "Navy gown – size 8", Active: true, "Display Order": 1, Attributes: '{"Size":["8"]}', ...Bf }),
-    rec("recCOGOWNB0000001", { Name: "Gold gown – size 10", Active: true, "Display Order": 2, ...Bf }),
-    rec("recCOGOWNC0000001", { Name: "Black dress – size 6", Active: true, "Display Order": 3, ...Bf }),
+    rec("recCOGOWNA0000001", { Name: "Navy gown – size 8", Description: "Beaded bodice, floor length.", "R2 Photo URL": "https://assets/sd-001.jpg", "More Photos": '["https://assets/sd-001b.jpg"]',
+      Active: true, "Display Order": 1, Attributes: '{"Size":["8"],"Color":["Navy"]}', Items: ["recCOUNITA0000001"], ...Bf }),
+    rec("recCOGOWNB0000001", { Name: "Gold gown – size 10", Active: true, "Display Order": 2, Items: ["recCOUNITB0000001"], ...Bf }),
+    rec("recCOGOWNC0000001", { Name: "Black dress – size 6", Active: true, "Display Order": 3, Items: ["recCOUNITC0000001"], ...Bf }),
     rec("recCOCHAIRS000001", { Name: "Chairs", Active: true, Tracking: "Quantity", "Quantity Owned": 10, "Out of Service": 2, "Display Order": 4, ...Bf }),
     rec("recCOSHIRT0000001", { Name: "Sweatshirt", Active: true, Tracking: "Add-on", Price: 40, "Display Order": 5, ...Bf }),
     rec("recCOOFF000000001", { Name: "Retired gown", Active: false, "Display Order": 6, ...Bf }),
@@ -832,6 +833,22 @@ await t("checkout options: active types with units, open loans, held-for-appoint
   assert.match(d.request.manageUrl, /\/r\/recCOSALLY0000001\./);
   const r2 = await call(`/admin/checkout/options?request=recREQA0000000001`, { headers: jsonB });
   assert.equal(r2.status, 404, "another gemach's request");
+});
+
+await t("appointments list: each requested item with photo(s), description, filter values, rack number, on-loan status", async () => {
+  setG(B.id, { "Item Attributes": JSON.stringify([{ name: "Size", values: ["8", "10"] }, { name: "Color", values: ["Navy", "Gold"] }]) });
+  const d = await (await call(`/admin/appointments`, { headers: jsonB })).json();
+  const sally = d.find(a => a.id === "recCOSALLY0000001");
+  assert.deepEqual(sally.items.map(i => i.name), ["Navy gown – size 8", "Gold gown – size 10"]);
+  const a = sally.items[0];
+  assert.equal(a.description, "Beaded bodice, floor length.");
+  assert.equal(a.photo, "https://assets/sd-001.jpg");
+  assert.deepEqual(a.photos, ["https://assets/sd-001.jpg", "https://assets/sd-001b.jpg"]);
+  assert.deepEqual(a.attributes, { Size: ["8"], Color: ["Navy"] });
+  assert.deepEqual(a.units, ["SD-001"]);
+  assert.deepEqual(a.out, []);
+  assert.equal(sally.items[1].description, null);
+  assert.equal(sally.items[1].photo, null);
 });
 
 await t("checkout: validation (items, units, counts, due date, request type)", async () => {
@@ -912,6 +929,12 @@ await t("checkout: the borrower's manage link shows what she borrowed (no cancel
   assert.equal(mine.length, 3);
   assert.ok(mine.every(l => l.manageUrl && l.manageUrl.includes("recCOSALLY0000001")));
   assert.ok(mine.some(l => l.itemId === "SD-001" && l.itemTypeName === "Navy gown – size 8"));
+  // Another appointment that wants the navy gown sees it's out with Sally until the due date.
+  DB.Requests.push(rec("recCOTOVA00000001", { "Request ID": "R-953", Name: "Tova", "Request Type": "Appointment", Status: "Converted",
+    "Appointment At": new Date(X.nyLocalToUtc(plusDays(5), "19:00")).toISOString(), "Items Requested": ["recCOGOWNA0000001"], Gemach: [B.id], "Gemach Slug": [B.slug] }));
+  const appts = await (await call(`/admin/appointments`, { headers: jsonB })).json();
+  assert.deepEqual(appts.find(x => x.id === "recCOTOVA00000001").items[0].out, [{ itemId: "SD-001", borrower: "Sally Katz", dueBack: plusDays(14) }]);
+  DB.Requests.splice(DB.Requests.findIndex(x => x.id === "recCOTOVA00000001"), 1);
   // The options now show SD-001 as out (an Active booking on that unit).
   const gA = opt.types.find(x => x.id === "recCOGOWNA0000001");
   assert.ok(gA.bookings.some(b => b.status === "Active" && b.unitId === "recCOUNITA0000001" && b.borrower === "Sally Katz"));
