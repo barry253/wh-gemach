@@ -120,6 +120,7 @@ ok(sp && sp.body.autoReminders === true && sp.body.reminderDaysBefore === 3 && s
 await page.waitForFunction(() => [...document.querySelectorAll(".set-tab")].map(x => x.innerText.trim()).join("|") === "Profile|Page|Requests|Messages", null, { timeout: 3000 }).catch(() => {});
 ok((await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages", "four areas (short names on a phone): " + (await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|"));
 ok(await page.$eval(".set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all four tabs fit on a phone " + await page.$eval(".set-tabs", el => el.scrollWidth + "/" + el.clientWidth + " " + [...el.children].map(c => Math.round(c.getBoundingClientRect().width)).join(",")));
+await page.waitForSelector("#settings-savebar", { state: "hidden", timeout: 5000 }).catch(() => {});
 ok(await page.isHidden("#settings-savebar"), "no save bar after saving");
 await page.click("#set-tab-profile");
 ok(await page.isVisible("#set-name") && await page.isHidden("#set-returnReminderMessage") && await page.isHidden("#set-pickupAddress"), "only the chosen area shows");
