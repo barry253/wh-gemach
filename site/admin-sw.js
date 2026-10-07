@@ -22,8 +22,8 @@ self.addEventListener("push", event => {
   catch (e) { d = { body: event.data ? event.data.text() : "" }; }
   const jobs = [self.registration.showNotification(d.title || "Gemach Admin", {
     body: d.body || "",
-    icon: d.icon || "/assets/brand/admin-icon-192.png",
-    badge: "/assets/brand/admin-badge-96.png",   // Android status bar
+    icon: d.icon || "/assets/brand/wh-gemachs-icon-192.png",
+    badge: "/assets/brand/wh-gemachs-badge-96.png",   // Android status bar
     tag: d.tag || undefined,                     // same tag replaces the earlier one
     renotify: !!d.tag,
     timestamp: Date.now(),

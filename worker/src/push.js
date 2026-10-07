@@ -38,7 +38,7 @@ const MAX_SENDS = 8;              // devices per event: ~1 ms CPU each, kept wel
 const DROP_AFTER_FAILURES = 20;   // failed sends in a row (not "gone") before a device is removed
 const PUSH_TTL_S = 24 * 3600;     // push services keep an undelivered message up to a day
 const DEFAULT_SUBJECT = "mailto:whmedicalgemach@gmail.com";
-const DEFAULT_ICON = "/assets/brand/admin-icon-192.png";
+const DEFAULT_ICON = "/assets/brand/wh-gemachs-icon-192.png";
 const SUB_FIELDS = ["Admin", "Endpoint", "Keys", "Device", "Events", "Gemach Filter", "Last Sent At", "Failures"];
 
 // Push services a subscription may point at (we POST to it, so never to an arbitrary host).

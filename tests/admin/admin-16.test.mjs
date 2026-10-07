@@ -222,7 +222,7 @@ const openBell = async page => { await page.click("#btn-bell"); await page.waitF
   await run("push", pushEv({ title: "New request · Kallah Gemach", body: "1 item · needed Sun, Oct 18", url: "/admin?g=kallah&tab=requests&req=recX", tag: "request-R-1", event: "request" }));
   const n = shown.at(-1);
   ok(n.title === "New request · Kallah Gemach" && n.body === "1 item · needed Sun, Oct 18" && n.tag === "request-R-1" && n.renotify === true, "SW: shows title, body, tag");
-  ok(n.badge === "/assets/brand/admin-badge-96.png" && n.icon === "/assets/brand/admin-icon-192.png" && badge === 1, "SW: icon, Android badge, app-icon dot for new requests");
+  ok(n.badge === "/assets/brand/wh-gemachs-badge-96.png" && n.icon === "/assets/brand/wh-gemachs-icon-192.png" && badge === 1, "SW: icon, Android badge, app-icon dot for new requests");
   await run("push", pushEv({ title: "x", url: "https://evil.example/phish" }));
   ok(shown.at(-1).data.url === "/admin", "SW: a link to another site is replaced by /admin");
   const close = { closed: 0 };
