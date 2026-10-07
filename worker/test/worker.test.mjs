@@ -17,7 +17,7 @@ const DB = {
   "Communities": [rec("recCCCCCCCCCCCCC1", { Name: "West Hempstead" })],
   "Product Categories": [
     rec("recCAT0000000000B", { Name: "Walkers", Icon: "🚶", Keywords: "rollator, walking frame,", "Display Order": 20, Active: true }),
-    rec("recCAT0000000000A", { Name: "Wheelchairs", Icon: "🦽", Keywords: "wheel chair,transport chair", "Display Order": 10, Active: true }),
+    rec("recCAT0000000000A", { Name: "Wheelchairs", Icon: "🦽", Keywords: "wheel chair,transport chair", "Display Order": 10, Active: true, "Item Types": ["recTYPEA000000001"] }),
     rec("recCAT0000000000C", { Name: "Zebra", Active: true }),
     rec("recCAT0000000000D", { Name: "Hidden", Active: false, "Display Order": 1 }),
   ],
@@ -2563,6 +2563,25 @@ await t("activity log entries stamped with Gemach", async () => {
     await assert.rejects(db.listPage("Items", { filter: "{Active}=1" }), /no longer accepted/);
   });
 }
+await t("network categories: each shows how many item types use it (reverse link)", async () => {
+  // Earlier tests move item types between categories; line the fake Airtable's reverse link up
+  // with the item types (D1 works it out itself).
+  const wc = DB["Item Types"].find(r => r.id === "recTYPEA000000001").fields;
+  const before = wc["Product Category"];
+  wc["Product Category"] = ["recCAT0000000000A"];
+  const using = id => DB["Item Types"].filter(r => (r.fields["Product Category"] || []).includes(id)).map(r => r.id);
+  DB["Product Categories"].find(c => c.id === "recCAT0000000000A").fields["Item Types"] = using("recCAT0000000000A");
+  const expectA = using("recCAT0000000000A").length;
+  assert.ok(expectA >= 1, "fixture: some item type is in Wheelchairs");
+  const r = await call("/admin/network/categories", { headers: auth(tokNet) });
+  assert.equal(r.status, 200);
+  const cats = await r.json();
+  const list = Array.isArray(cats) ? cats : cats.categories;
+  assert.equal(list.find(c => c.id === "recCAT0000000000A").itemTypeCount, expectA);
+  assert.equal(list.find(c => c.id === "recCAT0000000000C").itemTypeCount, 0);
+  if (before === undefined) delete wc["Product Category"]; else wc["Product Category"] = before;
+});
+
 // ─── D1 layer ──────────────────────────────────────────────────────────────────
 {
   const { schemaSql } = await import("../src/dbschema.js");

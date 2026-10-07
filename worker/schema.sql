@@ -234,7 +234,8 @@ FROM communities r;
 
 DROP VIEW IF EXISTS product_categories_v;
 CREATE VIEW product_categories_v AS SELECT r.*,
-  r.rowid AS _seq
+  r.rowid AS _seq,
+  (SELECT json_group_array(x.id) FROM (SELECT id FROM item_types WHERE product_category_id = r.id ORDER BY rowid) x) AS item_type_ids
 FROM product_categories r;
 
 DROP VIEW IF EXISTS gemachs_v;

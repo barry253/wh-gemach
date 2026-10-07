@@ -41,6 +41,8 @@ const TABLES = {
     fields: {
       "Name": t("name"), "Icon": t("icon"), "Keywords": t("keywords"),
       "Display Order": n("display_order"), "Active": b("active"),
+      // reverse link: the item types in this category (the Network tab shows how many)
+      "Item Types": calc("item_type_ids", "(SELECT json_group_array(x.id) FROM (SELECT id FROM item_types WHERE product_category_id = r.id ORDER BY rowid) x)", { json: true }),
     },
   },
   "Gemachs": {

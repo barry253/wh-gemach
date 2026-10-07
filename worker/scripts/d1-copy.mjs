@@ -20,7 +20,7 @@ import { airtableAll } from "./lib.mjs";
 const IGNORED = {
   "Gemachs": ["Logo", "Admins", "Requests", "Loans", "Item Types", "Borrowers", "Activity Log"],
   "Communities": ["Gemachs"],
-  "Product Categories": ["Item Types", "Gemachs"],
+  "Product Categories": ["Gemachs"],
   "Item Types": ["Photo", "Loans", "Requests", "UNUSED - delete (was Pack Contents)"],
   "Items": ["Current Loan"],
   "Borrowers": ["Current Loan"],

@@ -122,7 +122,8 @@ async function buildStats(db, g, days) {
   // Most requested item types
   const asked = new Map();
   for (const r of requests) for (const id of new Set((r.fields["Items Requested"] || []).map(linkedId))) asked.set(id, (asked.get(id) || 0) + 1);
-  const topRequested = [...asked].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id, n]) => ({
+  // Ties by name, so the order never depends on which order the database returned requests in.
+  const topRequested = [...asked].sort((a, b) => b[1] - a[1] || String(typeName.get(a[0]) || "").localeCompare(String(typeName.get(b[0]) || ""))).slice(0, 8).map(([id, n]) => ({
     name: typeName.get(id) || "Item", requests: n, units: inv.get(id)?.units || 0, available: inv.get(id)?.available || 0,
     ...(addonIds.has(id) ? { addon: true } : {}),
   }));

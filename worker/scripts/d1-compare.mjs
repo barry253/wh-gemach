@@ -95,8 +95,7 @@ const ADMIN_ROUTES = ["/admin/dashboard", "/admin/stats?days=90&fresh=1", "/admi
 const NETWORK_ROUTES = ["/admin/network/overview", "/admin/network/searches?days=365"];
 
 /** Child process: run every route on one engine and save the answers. */
-async function runEngine(engine, outFile, adminEmail, slugs) {
-  const secret = "compare-" + Math.random().toString(36).slice(2);
+async function runEngine(engine, outFile, adminEmail, slugs, secret) {
   const env = { AIRTABLE_TOKEN: need("AIRTABLE_TOKEN"), AIRTABLE_BASE_ID: need("AIRTABLE_BASE_ID"), GEMACH_JWT: secret,
     ASSETS_URL: process.env.ASSETS_URL || "", NOTIFY_EMAIL: "", ALERT_EMAIL: "" };
   if (engine === "d1") Object.assign(env, { DB_BACKEND: "d1", DB: readOnlyD1Binding() });
@@ -141,6 +140,7 @@ function scrub(v, key) {
     const o = {};
     for (const k of Object.keys(v).sort()) {
       if (k === "offset") { o[k] = v[k] ? "(more)" : null; continue; } // paging tokens look different
+      if (k === "generatedAt" || k === "cachedAt") { o[k] = "(time)"; continue; } // when each run built it
       o[k] = scrub(v[k], k);
     }
     return o;
@@ -168,10 +168,12 @@ async function compareAnswers() {
   const slugs = gemachs.map(g => g.fields.Slug).filter(Boolean).sort();
   const dir = mkdtempSync(path.join(tmpdir(), "d1cmp-"));
   const me = fileURLToPath(import.meta.url);
+  // Same session secret for both runs, so signed borrower manage links come out the same.
+  const secret = "compare-" + crypto.randomUUID();
   for (const engine of ["airtable", "d1"]) {
     const t0 = Date.now();
     const r = spawnSync(process.execPath, ["--no-warnings", me, "--engine", engine, path.join(dir, engine + ".json"), net.fields.Email, slugs.join(",")],
-      { stdio: "inherit", env: process.env });
+      { stdio: "inherit", env: { ...process.env, COMPARE_SECRET: secret } });
     if (r.status !== 0) throw new Error(`${engine} run failed`);
     console.log(`  ${engine}: answered in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
@@ -192,7 +194,7 @@ async function compareAnswers() {
 
 if (process.argv[2] === "--engine") {
   const [, , , engine, outFile, email, slugs] = process.argv;
-  await runEngine(engine, outFile, email, slugs.split(","));
+  await runEngine(engine, outFile, email, slugs.split(","), need("COMPARE_SECRET"));
 } else {
   console.log("── Data ──");
   const dataBad = await compareData();
