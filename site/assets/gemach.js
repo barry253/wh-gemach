@@ -15,6 +15,18 @@
   var slug = readSlug();
   var params = new URLSearchParams(location.search);
   var wantType = params.get("type") || "";
+  // Test link (?test=<signature>): a gemach that isn't live yet opens and takes test requests.
+  // Kept for this tab so the page still works if the address loses the ?test= part.
+  var TEST_RE = /^[A-Za-z0-9_-]{22}$/;
+  var testToken = (function () {
+    var key = "whg_test:" + slug, t = params.get("test") || "";
+    try {
+      if (TEST_RE.test(t)) sessionStorage.setItem(key, t);
+      else t = sessionStorage.getItem(key) || "";
+    } catch (e) { /* storage blocked: use the address only */ }
+    return TEST_RE.test(t) ? t : "";
+  })();
+  function inTestMode() { return !!(gemach && gemach.testMode && testToken); }
   var typeHandled = false;
 
   var gemach = null, items = [], categories = [];
@@ -254,7 +266,13 @@
     return '<section class="ginfo" aria-labelledby="ginfo-title"><h2 id="ginfo-title">Gemach Info</h2>' + parts.join("") + "</section>";
   }
 
+  function testModeBanner() {
+    if (!inTestMode()) return "";
+    return '<div class="test-banner" role="note"><strong>Test mode</strong> ' +
+      "<span>This gemach isn’t open to the public yet. Requests sent from this page are tests, not real loans.</span></div>";
+  }
   function comingSoonBanner() {
+    if (inTestMode()) return testModeBanner();
     if (!W.isComingSoon(gemach)) return "";
     return '<div class="soon-banner" role="note"><strong>Coming soon</strong> ' +
       "<span>This gemach is getting ready and isn’t taking requests online yet. You’re welcome to contact them directly.</span></div>";
@@ -1202,6 +1220,7 @@
       return null;
     }
     if (email) body.email = email;
+    if (inTestMode()) body.testToken = testToken;
     body.preferredContact = preferredContact;
     if (notes) body.notes = notes;
     return body;
@@ -1241,6 +1260,7 @@
         $("success-title").textContent = "Request sent";
         $("success-text").textContent = "Thank you! " + gemach.name + " will be in touch to confirm and arrange pickup.";
       }
+      if (data.test) $("success-text").textContent += " (This was a test request — it isn’t a real loan.)";
       $("success-title").focus();
       var had = Array.from(selected); selected.clear(); had.forEach(syncRow); updateCTA();
       qtyVals = {};
@@ -1266,8 +1286,11 @@
     return true;
   }
   function refresh() {
-    return W.fetchJSON("/public/gemach/" + encodeURIComponent(slug)).then(function (d) {
+    return W.fetchJSON("/public/gemach/" + encodeURIComponent(slug) + (testToken ? "?test=" + encodeURIComponent(testToken) : "")).then(function (d) {
       if (!d || !d.gemach) { var e = new Error("bad"); e.status = 404; throw e; }
+      if (d.gemach.testMode && !document.querySelector('meta[name="robots"]')) {
+        var m = document.createElement("meta"); m.name = "robots"; m.content = "noindex"; document.head.appendChild(m);
+      }
       gemach = d.gemach; items = Array.isArray(d.items) ? d.items : []; categories = Array.isArray(d.categories) ? d.categories : [];
       loadedFresh = true;
       render();
@@ -1275,7 +1298,7 @@
   }
 
   if (!slug) { renderNotFound(); return; }
-  var hadCache = fromDirectory();
+  var hadCache = testToken ? false : fromDirectory(); // test link: wait for the test-mode page instead
   refresh().catch(function (err) {
     if (err && err.status === 404) { gemach = null; renderNotFound(); return; }
     if (!hadCache) renderLoadError();

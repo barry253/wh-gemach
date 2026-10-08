@@ -34,6 +34,9 @@
  *   Health:  GET /health — checks Airtable is reachable; 200 {ok:true} or 503 (for uptime monitors).
  *   Public:  GET /inventory (legacy, wh-medical only), GET /public/directory,
  *            GET /public/gemach/:slug, POST /submit-request (rejected for Directory, Info-only and Coming-soon gemachs)
+ *   Test link: GET /public/gemach/:slug?test=<sig> and POST /submit-request {testToken} — a Hidden or Coming-soon
+ *            gemach opens and takes requests (tagged Test) through its signed test link (testmode.js).
+ *            Admin: GET /admin/test-data, POST /admin/test-data/clear (Owner/Manager/Network Admin).
  *   Manage:  GET /public/manage/:token, POST /public/manage/:token/cancel, POST /public/manage/:token/ready —
  *            the borrower's signed link (see manage.js); POST /submit-request returns it as manageUrl.
  *   SITE_URL          var  NEW (optional) public site base for manage links; defaults to https://whgemachs.org
@@ -90,6 +93,7 @@ import { handleGetAppointments, handleGetRequests, handleRequestDecision } from 
 import { handleCheckoutOptions, handleRequestCheckout, handleRequestVisit, handleWalkInLoan } from "./checkout.js";
 import { handleCancelBooking, handleGetBooking, handlePatchBooking } from "./booking.js";
 import { handleNewAppointment, handleNewReservation, handleUpcoming } from "./newbooking.js";
+import { handleClearTestData, handleGetTestData } from "./testmode.js";
 import { handleGetManage, handleManageCancel, handleManageReady } from "./manage.js";
 import { handleSearchLog } from "./search.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
@@ -175,7 +179,7 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
   if (method === "GET"  && path === "/health")           return handleHealth(db, env, request, url);
   if (method === "GET"  && path === "/inventory")        return handleLegacyInventory(db);
   if (method === "GET"  && path === "/public/directory") return handleDirectory(db, env, ctx);
-  if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)));
+  if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)), url.searchParams.get("test"));
   if (method === "POST" && path === "/submit-request")   return handleSubmitRequest(request, db, env, ctx);
   if (method === "POST" && path === "/public/search-log") return handleSearchLog(request, db, ctx);
   if (path.startsWith("/public/manage/")) { // borrower manage link (signed; no login)
@@ -282,6 +286,8 @@ async function adminRoute(c, path, method) {
   if (method === "POST"  && path === "/admin/catalog/upload-photo") return handleUploadPhoto(c);
 
   if (method === "GET"  && path === "/admin/history")      return handleGetHistory(c);
+  if (method === "GET"  && path === "/admin/test-data")    return handleGetTestData(c);
+  if (method === "POST" && path === "/admin/test-data/clear") return handleClearTestData(c);
   if (path === "/admin/team" || path.startsWith("/admin/team/")) return teamDispatch(c, path, method);
 
   return json({ error: "Not found" }, 404);

@@ -12,6 +12,7 @@ import { addonPrice, isAddonType, isQtyType, lendableQty, packageSize, packageUn
 import { EMAIL_RE, emailSignature } from "./settings.js";
 import { manageUrl } from "./manage.js";
 import { notifyAdmins, requestMessage } from "./push.js";
+import { inTestMode, isLive } from "./testmode.js";
 
 // ─── Public form submission ───────────────────────────────────────────────────
 
@@ -48,8 +49,16 @@ async function handleSubmitRequest(request, db, env, ctx) {
 
   const slug = String(body.gemach || LEGACY_SLUG).trim().toLowerCase();
   const g = await loadGemachBySlug(db, slug);
-  if (!g || !g.active) return json({ error: "Unknown gemach." }, 400);
-  if (g.mode === "Directory" || g.mode === "Info" || g.comingSoon) {
+  // Test link (testmode.js): a Hidden or Coming-soon gemach takes requests, saved as Test.
+  const testToken = typeof body.testToken === "string" && body.testToken ? body.testToken : null;
+  const test = testToken ? await inTestMode(env, g, testToken) : false;
+  if (testToken && !test) {
+    return json({ error: g && isLive(g)
+      ? `${g.name || "This gemach"} is now open for real requests, so the test link no longer works. Please reload the page if you meant to send a real request.`
+      : "This test link isn't valid. Please ask the gemach for a new one." }, 409);
+  }
+  if (!g || (!g.active && !test)) return json({ error: "Unknown gemach." }, 400);
+  if (g.mode === "Directory" || g.mode === "Info" || (g.comingSoon && !test)) {
     return json({ error: `${g.name || "This gemach"} doesn't take online requests. Please contact them directly${g.phone ? ` at ${g.phone}` : ""}.` }, 400);
   }
   const phone = formatPhone(rawPhone);
@@ -133,6 +142,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
     "Gemach": [g.id],
     "Request Type": isAppt ? "Appointment" : "Loan",
   };
+  if (test) fields["Test"] = true;
   if (itemIds.length) fields["Items Requested"] = itemIds;
   if (Object.keys(qtyMap).length) fields["Item Quantities"] = JSON.stringify(qtyMap);
   if (email) fields["Email"] = clip(email, 200);
@@ -191,12 +201,12 @@ async function handleSubmitRequest(request, db, env, ctx) {
     depositAck: fields["Deposit Acknowledged"],
     items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null,
       addon: isAddonType(typeMap[id]), price: isAddonType(typeMap[id]) ? addonPrice(typeMap[id]) : null })),
-    availability,
+    availability, test,
   });
   if (notified !== true) {
     ctx.waitUntil(sendAlert(env, {
       always: true,
-      subject: `New request ${requestId} for ${g.name || g.slug} — gemach was NOT notified`,
+      subject: `${test ? "[TEST] " : ""}New request ${requestId} for ${g.name || g.slug} — gemach was NOT notified`,
       text: `Request ${requestId} for ${g.name || g.slug} was saved, but the email telling the gemach about it ` +
         (notified === null ? "had no address to go to (the gemach has no Email set)." : "failed to send.") +
         `\n\nIt's waiting in admin under Requests. Please make sure someone at the gemach sees it.`,
@@ -205,7 +215,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
 
   // Lock-screen notification for the gemach's admins (no borrower details in it).
   ctx.waitUntil(notifyAdmins(env, requestMessage(g, {
-    requestId, recId: created?.id, itemCount: itemIds.length, isAppt, style, eventDate, from, emailed: notified === true,
+    requestId, recId: created?.id, itemCount: itemIds.length, isAppt, style, eventDate, from, emailed: notified === true, test,
   }), { db }));
 
   logEvent(ctx, db, g, {
@@ -213,17 +223,17 @@ async function handleSubmitRequest(request, db, env, ctx) {
     borrower: fields["Name"] || null,
     itemType: itemNames.join(", ") || (isAppt ? "Appointment" : null),
     loanId: requestId,
-    notes: fields["Notes"] || null,
+    notes: [test ? "Test request (sent from the test link)." : null, fields["Notes"] || null].filter(Boolean).join("\n") || null,
   });
 
   const link = created?.id ? await manageUrl(env, created.id) : null;
-  if (link && email) ctx.waitUntil(sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link })
+  if (link && email) ctx.waitUntil(sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test })
     .catch(e => console.error("receipt email failed:", e.message)));
-  return json({ success: true, requestId, ...(link ? { manageUrl: link } : {}) });
+  return json({ success: true, requestId, ...(test ? { test: true } : {}), ...(link ? { manageUrl: link } : {}) });
 }
 
 /** "We got your request" to the borrower (only when they gave an email), with their manage link. */
-async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link }) {
+async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test }) {
   const first = String(name || "").trim().split(/\s+/)[0] || "there";
   const what = isAppt ? "your appointment request" : `your request${itemNames.length ? ` for ${itemNames.join(", ")}` : ""}`;
   const text = `Hi ${first},\n\nThanks — ${g.name || "the gemach"} received ${what} (${requestId}). They'll be in touch soon.\n\n` +
@@ -233,7 +243,7 @@ async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, 
     `<p style="margin:0 0 12px;">Thanks — ${e(g.name || "the gemach")} received ${e(what)} (${e(requestId)}). They'll be in touch soon.</p>` +
     `<p style="margin:18px 0;"><a href="${e(link)}" style="display:inline-block;background:#1B3A4B;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">View or cancel your request</a></p>` +
     `<p style="margin:0;color:#5e6b72;font-size:13px;">This link is private to you — please don't share it.</p>`;
-  return sendEmail(env, g, { to: email, subject: `We got your request — ${g.name || "Gemach"} (${requestId})`, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true, bodyHtml }) });
+  return sendEmail(env, g, { to: email, subject: `${test ? "[TEST] " : ""}We got your request — ${g.name || "Gemach"} (${requestId})`, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true, bodyHtml }) });
 }
 
 export { clip, REQUEST_CONTACTS, formatPhone, handleSubmitRequest };

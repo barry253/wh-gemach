@@ -7,6 +7,7 @@ import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs,
 import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
 import { parseMorePhotos } from "./photos.js";
+import { inTestMode } from "./testmode.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageSize, packageUnit, qtyAvailable, TYPE_PUBLIC_FIELDS } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
@@ -151,9 +152,17 @@ async function handleDirectory(db, env, ctx) {
   return cachedJson(env, ctx, cacheKey(env, "directory"), directoryBuilder(db));
 }
 
-async function handlePublicGemach(db, env, ctx, slug) {
+async function handlePublicGemach(db, env, ctx, slug, testToken = null) {
   slug = String(slug || "").toLowerCase();
   if (!SLUG_RE.test(slug)) return json({ error: "Not found" }, 404);
+  if (testToken) { // test link (testmode.js): built fresh for this visitor, never cached or shared
+    const g = await loadGemachBySlug(db, slug);
+    if (await inTestMode(env, g, testToken)) {
+      const data = await gemachPageData(db, g);
+      data.gemach = { ...data.gemach, comingSoon: false, testMode: true };
+      return json(data, 200, { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+    }
+  }
   return cachedJson(env, ctx, cacheKey(env, `gemach/${slug}`), gemachBuilder(db, slug));
 }
 
@@ -161,13 +170,18 @@ function gemachBuilder(db, slug) {
   return async () => {
     const g = await loadGemachBySlug(db, slug);
     if (!g || !g.active) return { status: 404, data: { error: "Not found" } };
-    const [items, communities, categories] = await Promise.all([
-      g.mode === "Info" ? [] : loadInventory(db, g, { withCategory: true, withBookings: true }), // Info only: no online listings
-      fetchByIds(db, T.COMMUNITIES, g.communityIds.slice(0, 1), { fields: ["Name"] }),
-      loadCategories(db),
-    ]);
-    return { status: 200, data: { gemach: publicGemach(g, communities[0]?.fields?.Name), items, categories } };
+    return { status: 200, data: await gemachPageData(db, g) };
   };
+}
+
+/** The public gemach page's data (also served fresh, uncached, through a test link). */
+async function gemachPageData(db, g) {
+  const [items, communities, categories] = await Promise.all([
+    g.mode === "Info" ? [] : loadInventory(db, g, { withCategory: true, withBookings: true }), // Info only: no online listings
+    fetchByIds(db, T.COMMUNITIES, g.communityIds.slice(0, 1), { fields: ["Name"] }),
+    loadCategories(db),
+  ]);
+  return { gemach: publicGemach(g, communities[0]?.fields?.Name), items, categories };
 }
 
 export { publicItemType, loadInventory, publicGemach, loadCategories, handleLegacyInventory, buildDirectory, directoryBuilder, handleDirectory, handlePublicGemach, gemachBuilder };

@@ -779,6 +779,7 @@
     .tag-red { background: #FEE2E2; color: var(--red); }
     .tag-amber { background: #FEF3C7; color: var(--amber); }
     .tag-green { background: #DCFCE7; color: var(--green); }
+    .tag-test { background: #EDE9FE; color: #5B21B6; border: 1px dashed #A78BFA; }
     .tag-addon { background: #E0E7FF; color: #3730A3; }
     /* Item filters (Size, Color…) */
     .attr-picker { margin-bottom: 0.55rem; }
@@ -2975,6 +2976,7 @@
             <div class="card-id">${esc([r.requestId, timeAgo(r.receivedAt)].filter(Boolean).join(" · "))}</div>
           </div>
           <div style="display:flex;gap:0.3rem;flex-wrap:wrap;justify-content:flex-end">
+            ${r.test ? '<span class="tag tag-test" title="Sent from the test link — not a real loan">Test</span>' : ""}
             <span class="tag ${isAppt ? "tag-amber" : "tag-green"}">${isAppt ? "Appointment" : "Loan"}</span>
           </div>
         </div>
@@ -5377,6 +5379,7 @@
             <a class="btn btn-whatsapp btn-sm" id="share-url-btn" target="_blank" rel="noopener">Share on WhatsApp</a>
           </div>
         </div>
+        <div class="form-group" id="set-testlink" style="margin:0.9rem 0 0" hidden></div>
       </div>
       ${areaGroups("profile")}
       </div>
@@ -5426,6 +5429,7 @@
     setEl("public-url").textContent = url;
     document.getElementById("open-url-btn").href = url;
     document.getElementById("share-url-btn").href = "https://wa.me/?text=" + encodeURIComponent(`${g.name || "Our gemach"} — ${url}`);
+    loadTestLink(g, ro);
     settingsOriginal = {};
     const remember = (key, v) => { settingsOriginal[key] = v; };
 
@@ -5938,18 +5942,74 @@
     refreshSettingsDirty();
   }
 
-  async function copyPublicUrl() {
-    const url = publicUrl(GEMACH?.slug || gemachSlug);
+  function copyPublicUrl() {
+    return copyText(publicUrl(GEMACH?.slug || gemachSlug));
+  }
+
+  async function copyText(text, okMsg = "Link copied") {
     try {
-      await navigator.clipboard.writeText(url);
-      showToast("Link copied");
+      await navigator.clipboard.writeText(text);
+      showToast(okMsg);
     } catch {
       const ta = document.createElement("textarea");
-      ta.value = url; document.body.appendChild(ta); ta.select();
+      ta.value = text; document.body.appendChild(ta); ta.select();
       let ok = false; try { ok = document.execCommand("copy"); } catch { /* ignore */ }
       ta.remove();
-      showToast(ok ? "Link copied" : url);
+      showToast(ok ? okMsg : text);
     }
+  }
+
+  // ── Test link: try the public page as a borrower before going live ──
+  // GET /admin/test-data → { live, testUrl, requests, loans }. Only gemachs that aren't Live get a link.
+  const testDataPath = slug => `/admin/test-data${slug ? `?g=${encodeURIComponent(slug)}` : ""}`;
+  async function loadTestLink(g, ro) {
+    const box = setEl("testlink");
+    if (!box) return;
+    let d = null;
+    try { d = await api(testDataPath(g.slug)); } catch (e) { d = null; }
+    if (!d || d.error || setEl("testlink") !== box) return;
+    const n = d.requests || 0;
+    if (d.live && !n) { box.hidden = true; return; }
+    const clearBtn = n && !ro ? `<button class="btn btn-ghost btn-sm" type="button" id="test-clear-btn" onclick="clearTestData()">Clear test data</button>` : "";
+    const counts = n ? `<div class="muted-small" style="margin-top:0.4rem">${esc(plural(n, "test request"))} so far${d.loans ? ` · ${esc(plural(d.loans, "reservation or loan", "reservations or loans"))} from them` : ""}.${d.live ? " Your gemach is live now — clear these so they don't mix with real requests." : ""} ${clearBtn}</div>` : "";
+    box.innerHTML = d.testUrl ? `<label>Test as a borrower <span class="tag tag-test">Test link</span></label>
+        <div class="url-box">
+          <code id="set-test-url"></code>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="copyText(document.getElementById('set-test-url').textContent, 'Test link copied')">Copy</button>
+          <a class="btn btn-ghost btn-sm" id="open-test-btn" target="_blank" rel="noopener">Open ↗</a>
+          <a class="btn btn-whatsapp btn-sm" id="share-test-btn" target="_blank" rel="noopener">Share on WhatsApp</a>
+        </div>
+        <div class="muted-small" style="margin-top:0.4rem">Anyone with this link can open your page and send requests before it's open to the public — try it yourself or send it to a friend. These requests are marked <b>Test</b> and aren't real loans. The link stops working once the gemach is Live.</div>${counts}`
+      : `<label>Test requests</label>${counts}`;
+    if (d.testUrl) {
+      document.getElementById("set-test-url").textContent = d.testUrl;
+      document.getElementById("open-test-btn").href = d.testUrl;
+      document.getElementById("share-test-btn").href = "https://wa.me/?text=" + encodeURIComponent(`Can you try sending a test request to ${g.name || "our gemach"}? It isn't a real loan: ${d.testUrl}`);
+    }
+    box.hidden = false;
+  }
+
+  async function clearTestData(slug = null, count = null, asked = false) {
+    const what = count != null ? plural(count, "test request") : "every test request";
+    if (!asked && !confirm(`Delete ${what}, the reservations and loans made from them, and their history? Real requests aren't touched. This can't be undone.`)) return false;
+    const btn = document.getElementById("test-clear-btn");
+    if (btn) btn.disabled = true;
+    const res = await api(`/admin/test-data/clear${slug ? `?g=${encodeURIComponent(slug)}` : ""}`, "POST", {});
+    if (btn) btn.disabled = false;
+    if (!res) return false;
+    if (res.error) { showToast(res.error); return false; }
+    showToast(res.requests ? `Cleared ${plural(res.requests, "test request")}` : "No test data to clear");
+    if (!slug && GEMACH) loadTestLink(GEMACH, false);
+    return true;
+  }
+
+  async function copyNetTestLink(id) {
+    const g = netStore.gemach.get(id);
+    if (!g) return;
+    const d = await api(testDataPath(g.slug));
+    if (!d) return;
+    if (d.error || !d.testUrl) { showToast(d.error || "Live gemachs don't have a test link."); return; }
+    copyText(d.testUrl, `Test link for ${g.name} copied`);
   }
 
   function collectSettingsPatch() {
@@ -6112,6 +6172,7 @@
           <div class="net-row-btns">
             <button class="btn btn-ghost btn-sm" onclick="openEditGemach('${id}')">Edit</button>
             <button class="btn btn-ghost btn-sm" onclick="switchGemach(netStore.gemach.get('${id}').slug)">Open</button>
+            ${!g.active || g.comingSoon ? `<button class="btn btn-ghost btn-sm" title="Copy the test link: anyone with it can send test requests" onclick="copyNetTestLink('${id}')">Test link</button>` : ""}
           </div>
         </div>
         <div class="net-controls">
@@ -6124,7 +6185,7 @@
         </div>
         <div class="net-status">
           <label for="ng-status-${id}">On whgemachs.org</label>
-          <select id="ng-status-${id}" onchange="netPatchGemach('${id}', NET_STATUS[this.value], this)">
+          <select id="ng-status-${id}" onchange="netSetStatus('${id}', this.value, this)">
             <option value="live"${g.active && !g.comingSoon ? " selected" : ""}>Live</option>
             <option value="soon"${g.active && g.comingSoon ? " selected" : ""}>Coming soon — listed, not searchable, no requests</option>
             <option value="hidden"${!g.active ? " selected" : ""}>Hidden</option>
@@ -6139,6 +6200,21 @@
     soon: { active: true, comingSoon: true },
     hidden: { active: false, comingSoon: false },
   };
+  // Going Live: offer to clear the gemach's test requests first (they'd otherwise sit among real ones).
+  async function netSetStatus(id, value, control) {
+    const g = netStore.gemach.get(id);
+    if (!g) return;
+    if (value === "live" && (!g.active || g.comingSoon)) {
+      control.disabled = true;
+      let d = null;
+      try { d = await api(testDataPath(g.slug)); } catch (e) { d = null; }
+      control.disabled = false;
+      if (d && !d.error && d.requests > 0 && confirm(`${g.name} has ${plural(d.requests, "test request")}. Delete them (and the reservations, loans and history made from them) as it goes live?\n\nOK = delete them · Cancel = keep them (you can clear them later in its Settings).`)) {
+        await clearTestData(g.slug, d.requests, true);
+      }
+    }
+    return netPatchGemach(id, NET_STATUS[value], control);
+  }
   async function netPatchGemach(id, patch, control) {
     const g = netStore.gemach.get(id);
     if (!g) return;

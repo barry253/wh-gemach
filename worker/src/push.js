@@ -357,7 +357,7 @@ const dayText = s => {
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const adminLink = (g, params) => `/admin?${new URLSearchParams({ ...(g?.slug ? { g: g.slug } : {}), ...params })}`;
 
-function requestMessage(g, { requestId, recId, itemCount, isAppt, style, eventDate, from, emailed }) {
+function requestMessage(g, { requestId, recId, itemCount, isAppt, style, eventDate, from, emailed, test = false }) {
   const parts = [];
   if (isAppt) parts.push(itemCount ? `Appointment · ${plural(itemCount, "item")}` : "Appointment request");
   else parts.push(plural(itemCount, "item"));
@@ -365,7 +365,7 @@ function requestMessage(g, { requestId, recId, itemCount, isAppt, style, eventDa
   else if (from) parts.push(`needed ${dayText(from)}`);
   if (!emailed) parts.push("not emailed to the gemach");
   return {
-    event: "request", g, title: `New request · ${g.name || g.slug}`, body: parts.join(" · "),
+    event: "request", g, title: `${test ? "Test request" : "New request"} · ${g.name || g.slug}`, body: parts.join(" · "),
     url: adminLink(g, { tab: "requests", ...(recId ? { req: recId } : {}) }), tag: `request-${requestId || recId || Date.now()}`,
   };
 }

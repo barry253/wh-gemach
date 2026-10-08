@@ -145,6 +145,8 @@ const TABLES = {
       "Visit Outcome": t("visit_outcome"), "Visited At": dt("visited_at"),
       // "Admin" when the gemach made it in admin (New reservation / New appointment); blank = the public form.
       "Source": t("source"),
+      // Sent from the gemach's test link while it wasn't Live (testmode.js): left out of stats, cleared before going Live.
+      "Test": b("test"),
       "Received At": calc("received_at", "r.created_at"),
       "Gemach Slug": gemachSlug(),
     },

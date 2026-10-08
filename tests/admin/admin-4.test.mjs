@@ -58,6 +58,14 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
     if (p === "/admin/inventory/recITEM1/assign") return J({ success: true });
     if (p === "/admin/catalog/items/recITEM1" && M === "PATCH") return J({ id: "recITEM1", fields: body });
     if (p === "/admin/catalog/item-types/recT1" && M === "PATCH") return J({ id: "recT1", fields: {} });
+    if (p === "/admin/requests" && M === "GET" && st.requests) return J(st.requests);
+    if (p === "/admin/test-data" && M === "GET") {
+      const slug = u.searchParams.get("g");
+      if (slug === "wh-medical" && st.whmTest) return J(st.whmTest);
+      return J({ live: slug === "wh-medical", testUrl: slug === "wh-medical" ? null : `https://whgemachs.org/g/${slug}?test=AAAAAAAAAAAAAAAAAAAAAA`, requests: slug === "hidden-one" ? st.hiddenTests : 0, loans: 0 });
+    }
+    if (p === "/admin/test-data/clear" && M === "POST" && st.whmTest && u.searchParams.get("g") !== "hidden-one") { const n = st.whmTest.requests; st.whmTest = { ...st.whmTest, requests: 0, loans: 0 }; return J({ success: true, requests: n, loans: 1, borrowers: 1, history: 3 }); }
+    if (p === "/admin/test-data/clear" && M === "POST") { const n = st.hiddenTests; st.hiddenTests = 0; return J({ success: true, requests: n, loans: 0, borrowers: 0, history: 0 }); }
     if (p.startsWith("/admin/network/") && role !== "Network Admin") return J({ error: "Network admins only." }, 403);
     if (p === "/admin/network/overview" && M === "GET") return st.oldApi ? J({ error: "Not found" }, 404) : J({ gemachs: st.netGemachs, admins: st.admins, categories: st.cats });
     if (p === "/admin/network/gemachs" && M === "GET") return J(st.netGemachs);
@@ -87,13 +95,41 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
 
 // ── Owner: no Network tab, tab order, rename, URL copy, mode words, condition ──
 {
-  const { page, errors, reqs } = await setup("Owner");
+  const { page, errors, reqs, st } = await setup("Owner");
   const tabs = await page.$$eval(".nav-tab", ts => ts.filter(t => !t.hidden).map(t => t.textContent.trim().replace(/\s+/g, " ")));
   ok(JSON.stringify(tabs) === JSON.stringify(["Dashboard", "Requests", "Reservations", "Loans", "Inventory", "History", "Settings"]), "tab order (owner): " + tabs.join(", "));
   ok(await page.$eval("#tab-network", t => t.hidden), "Network tab hidden for non-network admin");
   ok(await page.getAttribute("#topbar-public", "href") === "https://whgemachs.org/g/wh-medical" && await page.isVisible("#topbar-public"), "top bar 'View public page' link");
   ok(await page.$("#gemach-switcher") === null, "single-gemach owner: no switcher");
 
+  // A gemach that isn't live yet: Settings offers its test link and clearing test requests
+  st.whmTest = { live: false, testUrl: "https://whgemachs.org/g/wh-medical?test=BBBBBBBBBBBBBBBBBBBBBB", requests: 2, loans: 1 };
+  await page.click("text=Settings");
+  await page.waitForSelector("#set-name");
+  await page.waitForSelector("#set-testlink:not([hidden])");
+  ok(await page.textContent("#set-test-url") === st.whmTest.testUrl && (await page.getAttribute("#open-test-btn", "href")) === st.whmTest.testUrl, "Settings shows the test link");
+  ok(decodeURIComponent(await page.getAttribute("#share-test-btn", "href")).includes(st.whmTest.testUrl), "test link WhatsApp share");
+  ok(/2 test requests so far/.test(await page.textContent("#set-testlink")), "test request count shown");
+  await page.locator("#set-testlink").screenshot({ path: "shot-r4-settings-testlink.png" });
+  await page.click("#set-testlink button:has-text('Copy')");
+  await page.waitForFunction(() => window.__copied && window.__copied.includes("?test="));
+  ok(await page.evaluate(() => window.__copied) === st.whmTest.testUrl, "Copy puts the test link on the clipboard");
+  page.once("dialog", d => d.accept());
+  await page.click("#test-clear-btn");
+  await page.waitForFunction(() => document.body.textContent.includes("Cleared 2 test requests"));
+  ok(reqs.some(r => r.method === "POST" && r.path === "/admin/test-data/clear"), "Clear test data POSTs");
+  await page.waitForFunction(() => !document.getElementById("test-clear-btn"));
+  ok(!/test requests so far/.test(await page.textContent("#set-testlink")), "count gone after clearing");
+  st.whmTest = null;
+  // Requests sent from the test link carry a Test tag
+  st.requests = [{ id: "recRQT1", requestId: "R-090", name: "Tess", phone: "(516) 555-0301", email: null, preferredContact: "Phone", itemNames: ["Wheelchair"],
+    items: [{ id: "recT1", name: "Wheelchair", photo: null, photos: null, quantity: null, available: null, owned: null }], neededFrom: "2030-01-05", neededUntil: null,
+    openEnded: true, notes: null, receivedAt: new Date().toISOString(), requestType: "Loan", eventDate: null, preferredTimes: null, partySize: null,
+    depositAcknowledged: false, appointmentAt: null, manageUrl: null, test: true }];
+  await page.click("text=Requests");
+  await page.waitForSelector("#req-recRQT1");
+  ok(await page.textContent("#req-recRQT1 .tag-test") === "Test", "test request card has a Test tag");
+  st.requests = null;
   await page.click("text=Settings");
   await page.waitForSelector("#set-name");
   ok(await page.textContent("#set-mode") === "Listing only" && (await page.textContent("#set-mode-help")).includes("contact details only"), "mode shown in plain words + help");
@@ -191,10 +227,25 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: "shot-r4-network-gemachs.png" });
 
-  // toggle active on hidden gemach
+  // Test link button on non-live rows copies that gemach's test link
+  ok(await page.$("#ng-row-recH button[title^='Copy the test link']") !== null && await page.$("#ng-row-recA button[title^='Copy the test link']") === null, "Test link button only on non-live gemachs");
+  await page.click("#ng-row-recH button[title^='Copy the test link']");
+  await page.waitForFunction(() => window.__copied && window.__copied.includes("?test="));
+  ok(await page.evaluate(() => window.__copied) === "https://whgemachs.org/g/hidden-one?test=AAAAAAAAAAAAAAAAAAAAAA", "copies the test link");
+
+  // toggle active on hidden gemach: it has test requests, so going Live offers to clear them
+  const until = async (f, ms = 5000) => { const t0 = Date.now(); while (!f() && Date.now() - t0 < ms) await page.waitForTimeout(50); };
+  st.hiddenTests = 2;
+  const dialogs = [];
+  const onDialog = d => { dialogs.push(d.message()); d.accept(); };
+  page.on("dialog", onDialog);
   await page.selectOption("#ng-status-recH", "live");
-  await page.waitForFunction(() => document.body.textContent.includes("Saved"));
+  await until(() => reqs.some(r => r.method === "PATCH" && r.path === "/admin/network/gemachs/recH"));
+  page.off("dialog", onDialog);
+  ok(dialogs.length === 1 && /2 test requests/.test(dialogs[0]), "going Live asks about the 2 test requests: " + dialogs.join(" | "));
+  ok(reqs.some(r => r.method === "POST" && r.path === "/admin/test-data/clear") && st.hiddenTests === 0, "test data cleared before going Live");
   ok(reqs.some(r => r.method === "PATCH" && r.path === "/admin/network/gemachs/recH" && r.body.active === true && r.body.comingSoon === false), "status Live PATCHes gemach");
+  await page.waitForFunction(() => document.body.textContent.includes("Saved"));
   await page.selectOption("#ng-status-recH", "soon");
   await page.waitForTimeout(300);
   ok(reqs.some(r => r.path === "/admin/network/gemachs/recH" && r.body.active === true && r.body.comingSoon === true), "status Coming soon PATCHes active + comingSoon");

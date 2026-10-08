@@ -55,6 +55,9 @@ async function handleStats({ db, g, url }) {
   return json(data);
 }
 
+// Requests sent from a gemach's test link (testmode.js) aren't demand: left out of every number.
+const noTests = list => list.filter(r => !r.fields.Test);
+
 async function buildStats(db, g, days) {
   const nowMs = Date.now();
   const sinceIso = new Date(nowMs - days * DAY_MS).toISOString();
@@ -63,8 +66,8 @@ async function buildStats(db, g, days) {
 
   const [requests, waiting, decisions, types, items, returned] = await Promise.all([
     db.listAll(T.REQUESTS, { scope: g, where: [Q.after("Received At", sinceIso)],
-      fields: ["Request ID", "Status", "Received At", "Items Requested", "Request Type", "Source"] }),
-    db.listAll(T.REQUESTS, { scope: g, where: [Q.eq("Status", "New")], fields: ["Request ID", "Name", "Received At"] }),
+      fields: ["Request ID", "Status", "Received At", "Items Requested", "Request Type", "Source", "Test"] }).then(noTests),
+    db.listAll(T.REQUESTS, { scope: g, where: [Q.eq("Status", "New")], fields: ["Request ID", "Name", "Received At", "Test"] }).then(noTests),
     db.listAll(T.LOG, { scope: g, where: [Q.in("Event Type", DECISIONS), Q.after("Timestamp", sinceIso)],
       fields: ["Loan ID", "Timestamp", "Event Type"] }),
     db.listAll(T.ITEM_TYPES, { scope: g, fields: ["Name", "Active", "Tracking", "Quantity Owned", "Out of Service"] }),

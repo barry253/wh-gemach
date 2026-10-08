@@ -3396,6 +3396,164 @@ if (D1_MODE) {
   delete env.VAPID_PRIVATE_KEY;
 }
 
+
+// ── Test link ("Test as a borrower") for gemachs that aren't Live ──
+{
+  const { testSig } = await import("../src/testmode.js");
+  const HG = { id: "recHIDDENTEST0001", slug: "hidden-test" }, SG = { id: "recSOONTEST000001", slug: "soon-test" }, IG = { id: "recINFOTEST000001", slug: "info-test" };
+  DB.Gemachs.push(
+    rec(HG.id, { Name: "Hidden Test Gemach", Slug: HG.slug, Active: false, Mode: "Full", Email: "hidden@example.com", Phone: "(516) 555-0300" }),
+    rec(SG.id, { Name: "Soon Test Gemach", Slug: SG.slug, Active: true, "Coming Soon": true, Mode: "Full", Email: "soontest@example.com" }),
+    rec(IG.id, { Name: "Info Test Gemach", Slug: IG.slug, Active: false, Mode: "Info", Email: "infotest@example.com" }));
+  DB["Item Types"].push(
+    rec("recHTTYPE00000001", { Name: "Hidden Walker", Active: true, Items: ["recHTITEM00000001"], Gemach: [HG.id], "Gemach Slug": [HG.slug] }),
+    rec("recSTTYPE00000001", { Name: "Soon Crib", Active: true, Gemach: [SG.id], "Gemach Slug": [SG.slug] }),
+    rec("recITTYPE00000001", { Name: "Info Thing", Active: true, Gemach: [IG.id], "Gemach Slug": [IG.slug] }));
+  DB.Items.push(rec("recHTITEM00000001", { "Item ID": "HW-001", "Item Type": ["recHTTYPE00000001"], Active: true, Status: "Available", Gemach: [HG.id], "Gemach Slug": [HG.slug] }));
+  DB.Admins.push(
+    rec("recADMINHT0000001", { Name: "Hilda", Email: "hilda@example.com", Active: true, Role: "Owner", Gemachs: [HG.id] }),
+    rec("recADMINHTV000001", { Name: "Hank", Email: "hank@example.com", Active: true, Role: "Volunteer", Gemachs: [HG.id] }));
+  X.clearMemo();
+  const tokH = await sign({ email: "hilda@example.com", name: "Hilda", role: "Owner", gemachs: [{ id: HG.id, slug: HG.slug, name: "H" }] });
+  const tokHV = await sign({ email: "hank@example.com", name: "Hank", role: "Volunteer", gemachs: [{ id: HG.id, slug: HG.slug, name: "H" }] });
+  const sigH = await testSig(env, HG.id), sigS = await testSig(env, SG.id), sigI = await testSig(env, IG.id), sigA = await testSig(env, A.id);
+  const form = (slug, extra = {}) => ({ gemach: slug, name: "Tess Tester", phone: "5165550301", email: "tess@example.com", preferredContact: "Phone", neededFrom: SOON, ...extra });
+  const settle = () => Promise.allSettled(waits);
+  let testReqId = null;
+
+  await t("test link: hidden gemach page opens only with its own valid signature (fresh, never cached)", async () => {
+    assert.equal(sigH.length, 22);
+    assert.equal((await call(`/public/gemach/${HG.slug}`)).status, 404, "hidden without the link");
+    assert.equal((await call(`/public/gemach/${HG.slug}?test=${sigS}`)).status, 404, "another gemach's signature");
+    assert.equal((await call(`/public/gemach/${HG.slug}?test=${"x".repeat(22)}`)).status, 404, "made-up signature");
+    const r = await call(`/public/gemach/${HG.slug}?test=${sigH}`);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("Cache-Control"), "no-store");
+    const d = await r.json();
+    assert.equal(d.gemach.testMode, true);
+    assert.equal(d.items.length, 1);
+    assert.ok(!JSON.stringify(d).includes("pickupAddress"));
+    const dir = await (await call("/public/directory?tl=1")).json();
+    assert.ok(!dir.gemachs.some(g => g.slug === HG.slug), "still not in the directory");
+  });
+
+  await t("test link: coming-soon gemach becomes requestable only through the link", async () => {
+    const plain = await (await call(`/public/gemach/${SG.slug}`)).json();
+    assert.equal(plain.gemach.comingSoon, true); assert.ok(!plain.gemach.testMode);
+    const d = await (await call(`/public/gemach/${SG.slug}?test=${sigS}`)).json();
+    assert.equal(d.gemach.comingSoon, false); assert.equal(d.gemach.testMode, true);
+    let r = await post("/submit-request", form(SG.slug, { itemsRequested: ["recSTTYPE00000001"] }));
+    assert.equal(r.status, 400, "no link → still refused");
+    r = await post("/submit-request", form(SG.slug, { itemsRequested: ["recSTTYPE00000001"], testToken: sigS }));
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).test, true);
+    await settle();
+  });
+
+  await t("test link: live gemach ignores it on the page and refuses it on submit", async () => {
+    const d = await (await call(`/public/gemach/${A.slug}?test=${sigA}`)).json();
+    assert.ok(!d.gemach.testMode);
+    const before = DB.Requests.length;
+    const r = await post("/submit-request", form(A.slug, { itemsRequested: ["recTYPEA000000002"], testToken: sigA }));
+    assert.equal(r.status, 409); assert.match((await r.json()).error, /now open for real requests/);
+    assert.equal(DB.Requests.length, before, "nothing saved");
+  });
+
+  await t("test link: Info-only gemach stays non-requestable; bad token refused", async () => {
+    let r = await post("/submit-request", form(IG.slug, { itemsRequested: ["recITTYPE00000001"], testToken: sigI }));
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /doesn't take online requests/);
+    r = await post("/submit-request", form(HG.slug, { itemsRequested: ["recHTTYPE00000001"], testToken: sigS }));
+    assert.equal(r.status, 409); assert.match((await r.json()).error, /isn't valid/);
+  });
+
+  await t("test link: request saved as Test, emails marked [TEST], manage link works while hidden", async () => {
+    const mark = calls.length;
+    const r = await post("/submit-request", form(HG.slug, { itemsRequested: ["recHTTYPE00000001"], testToken: sigH }));
+    assert.equal(r.status, 200, await r.clone().text());
+    const d = await r.json();
+    assert.equal(d.test, true);
+    await settle();
+    const saved = DB.Requests.find(x => x.fields["Request ID"] === d.requestId);
+    assert.equal(saved.fields.Test, true);
+    testReqId = saved.id;
+    const subjects = calls.slice(mark).filter(c => c.url.startsWith("https://api.resend.com")).map(c => JSON.parse(c.body).subject);
+    assert.ok(subjects.some(s => /^\[TEST\] New Hidden Test Gemach Request/.test(s)), subjects.join(" | "));
+    assert.ok(subjects.some(s => /^\[TEST\] We got your request/.test(s)), "borrower receipt");
+    const token = d.manageUrl.split("/r/")[1];
+    const m = await call(`/public/manage/${token}`);
+    assert.equal(m.status, 200);
+    assert.equal((await m.json()).test, true);
+  });
+
+  await t("test link: admin sees the Test tag; stats leave test requests out", async () => {
+    const list = await (await call("/admin/requests", { headers: J(tokH) })).json();
+    const mine = list.find(x => x.id === testReqId);
+    assert.equal(mine.test, true);
+    const st = await (await call("/admin/stats?days=30&fresh=1", { headers: J(tokH) })).json();
+    assert.equal(st.requests.received, 0); assert.equal(st.requests.waiting, 0);
+    assert.deepEqual(st.topRequested, []);
+  });
+
+  await t("test link: GET /admin/test-data gives the link and counts; volunteer can't clear", async () => {
+    const d = await (await call("/admin/test-data", { headers: J(tokHV) })).json();
+    assert.equal(d.live, false);
+    assert.equal(d.testUrl, `https://whgemachs.org/g/${HG.slug}?test=${sigH}`);
+    assert.equal(d.requests, 1);
+    const r = await call("/admin/test-data/clear", { method: "POST", headers: J(tokHV), body: "{}" });
+    assert.equal(r.status, 403);
+  });
+
+  await t("test link: Clear test data removes test requests, their loans, borrowers and history", async () => {
+    // Confirm it first, so a reservation, a borrower and History rows exist.
+    let r = await call(`/admin/requests/${testReqId}/confirm`, { method: "POST", headers: J(tokH), body: JSON.stringify({ sendMessage: false }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    await settle();
+    const loan = DB.Loans.find(l => (l.fields["Source Request"] || []).includes(testReqId));
+    assert.ok(loan, "reservation made");
+    const borrowerId = (loan.fields.Borrower || [])[0];
+    assert.ok(borrowerId);
+    const rid = DB.Requests.find(x => x.id === testReqId).fields["Request ID"];
+    assert.ok(DB.tblC3PY7f5sXQDMJK.some(x => x.fields["Loan ID"] === rid), "history logged");
+    assert.equal((await (await call("/admin/test-data", { headers: J(tokH) })).json()).loans, 1);
+    r = await call("/admin/test-data/clear", { method: "POST", headers: J(tokH), body: "{}" });
+    assert.equal(r.status, 200, await r.clone().text());
+    const out = await r.json();
+    assert.deepEqual([out.requests, out.loans, out.borrowers], [1, 1, 1]);
+    assert.ok(out.history >= 2);
+    assert.ok(!DB.Requests.some(x => x.id === testReqId));
+    assert.ok(!DB.Loans.some(l => l.id === loan.id));
+    assert.ok(!DB.Borrowers.some(b => b.id === borrowerId));
+    assert.ok(!DB.tblC3PY7f5sXQDMJK.some(x => x.fields["Loan ID"] === rid || x.fields["Loan ID"] === loan.fields["Loan ID"]));
+    assert.equal((await (await call("/admin/test-data", { headers: J(tokH) })).json()).requests, 0);
+    // The coming-soon gemach's test request is untouched (other gemach).
+    assert.ok(DB.Requests.some(x => x.fields.Test && (x.fields["Gemach Slug"] || [])[0] === SG.slug));
+  });
+
+  await t("test link: a borrower with real loans is kept when test data is cleared", async () => {
+    let r = await post("/submit-request", form(HG.slug, { itemsRequested: ["recHTTYPE00000001"], testToken: sigH, phone: "5165550399", name: "Real Person" }));
+    const newId = (await r.json()).requestId;
+    const reqId = DB.Requests.find(x => x.fields["Request ID"] === newId).id;
+    r = await call(`/admin/requests/${reqId}/confirm`, { method: "POST", headers: J(tokH), body: JSON.stringify({ sendMessage: false }) });
+    assert.equal(r.status, 200);
+    await settle();
+    const bId = (DB.Loans.find(l => (l.fields["Source Request"] || []).includes(reqId)).fields.Borrower || [])[0];
+    DB.Loans.push(rec("recREALLOANHT0001", { "Loan ID": "L-HT1", Status: "Returned", Borrower: [bId], "Date Borrowed": "2026-01-02", "Date Returned": "2026-01-09", Gemach: [HG.id], "Gemach Slug": [HG.slug] }));
+    r = await call("/admin/test-data/clear", { method: "POST", headers: J(tokH), body: "{}" });
+    assert.equal((await r.json()).borrowers, 0);
+    assert.ok(DB.Borrowers.some(b => b.id === bId));
+    assert.ok(DB.Loans.some(l => l.id === "recREALLOANHT0001"));
+  });
+
+  await t("test link: once Live, no link is offered and the page is the normal one", async () => {
+    setG(HG.id, { Active: true });
+    const d = await (await call("/admin/test-data", { headers: J(tokH) })).json();
+    assert.equal(d.live, true); assert.equal(d.testUrl, null);
+    const p = await (await call(`/public/gemach/${HG.slug}?test=${sigH}&live=1`)).json();
+    assert.ok(!p.gemach.testMode);
+    setG(HG.id, { Active: false });
+  });
+}
+
 if (D1_MODE) {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);

@@ -411,13 +411,28 @@ function makeD1Db(env) {
     return { id, deleted: true };
   }
 
+  /** Delete several rows: one DELETE … WHERE id IN (…) per chunk. Returns how many rows went. */
+  async function delMany(table, ids) {
+    const list = [...new Set((ids || []).filter(id => REC_RE.test(id || "")))];
+    if (!list.length) return 0;
+    const spec = tableSpec(table);
+    trace?.({ kind: "delMany", table, ids: list });
+    const stmts = [];
+    for (let i = 0; i < list.length; i += MAX_BOUND_PARAMS) {
+      const chunk = list.slice(i, i + MAX_BOUND_PARAMS);
+      stmts.push(prep(`DELETE FROM ${spec.sql} WHERE id IN (${chunk.map(() => "?").join(", ")})`, chunk));
+    }
+    const res = await batch(`delMany ${spec.sql}`, stmts);
+    return res.reduce((n, r) => n + (r?.meta?.changes || 0), 0);
+  }
+
   /** Lightweight check for /health. */
   async function ping() {
     await all("ping", "SELECT 1 AS ok", []);
     return true;
   }
 
-  return { engine: "d1", stats, listPage, listAll, get, create, createMany, update, updateMany, del, ping };
+  return { engine: "d1", stats, listPage, listAll, get, create, createMany, update, updateMany, del, delMany, ping };
 }
 
 export { makeD1Db, newRecordId, toRecord, writePlan };

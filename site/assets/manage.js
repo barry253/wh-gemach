@@ -101,6 +101,7 @@
 
     $("m-body").innerHTML =
       (flash ? '<div class="notice notice-ok m-flash" role="status">' + esc(flash) + "</div>" : "") +
+      (data.test ? '<div class="test-banner" role="note"><strong>Test request</strong> <span>Sent from the gemach’s test link — it isn’t a real loan.</span></div>' : "") +
       '<section class="m-card" aria-labelledby="m-status">' +
         (r.firstName ? '<p class="m-hi">Hi ' + esc(r.firstName) + ",</p>" : "") +
         '<p class="m-status ' + st[2] + '" id="m-status">' + esc(st[0]) + "</p>" +

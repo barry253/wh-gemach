@@ -134,6 +134,7 @@ function makeDb(env) {
     update: (table, id, fields) => call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }),
     updateMany: async (table, ids, fields) => { for (const id of ids || []) await call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }); return (ids || []).length; },
     del: (table, id) => call(`${tpath(table)}/${id}`, { method: "DELETE" }),
+    delMany: async (table, ids) => { for (const id of ids || []) await call(`${tpath(table)}/${id}`, { method: "DELETE" }); return (ids || []).length; },
   };
 }
 

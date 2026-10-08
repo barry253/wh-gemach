@@ -65,9 +65,11 @@ function availabilityText(a, isQty) {
   return `Only ${a.free} of ${a.needed} free` + back;
 }
 
+const TEST_NOTE = "TEST REQUEST: sent from the gemach's test link before it went live. It isn't a real loan — try out confirming, pickup and return, then clear test data before going live.";
+
 async function sendNotificationEmail(env, g, data) {
   const { requestId, name, phone, email, preferredContact, itemNames, neededFrom, neededUntil, openEnded, notes,
-    requestType, eventDate, preferredTimes, partySize, depositAck, availability = null } = data;
+    requestType, eventDate, preferredTimes, partySize, depositAck, availability = null, test = false } = data;
   const isAppt = requestType === "Appointment";
   const items = data.items || (Array.isArray(itemNames) ? itemNames : itemNames ? [itemNames] : []).map(n => ({ name: n, quantity: null }));
   const label = it => qtyLabel(it.name, it.quantity);
@@ -88,6 +90,7 @@ async function sendNotificationEmail(env, g, data) {
 
   // ── Plain text ──
   const lines = [heading, ""];
+  if (test) lines.push(TEST_NOTE, "");
   if (fallback) lines.push(`ℹ ${fallbackNote}`, "");
   if (conflicts.length) lines.push(`⚠ ${conflicts.length} of ${items.length} item${items.length === 1 ? "" : "s"} may not be available for these dates — see below.`, "");
   lines.push(`Name: ${name}`, `Phone: ${phone}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, "");
@@ -165,8 +168,12 @@ async function sendNotificationEmail(env, g, data) {
     ? `<div style="background:#e0f2fe;border:1px solid #7dd3fc;color:#0c4a6e;border-radius:6px;padding:10px 12px;margin:0 0 16px;font-size:14px;">` +
       `<strong>Why you got this:</strong> ${e(fallbackNote)}</div>`
     : "";
+  const testHtml = test
+    ? `<div style="background:#ede9fe;border:1px solid #a78bfa;color:#3b0764;border-radius:6px;padding:10px 12px;margin:0 0 16px;font-size:14px;">` +
+      `<strong>Test request.</strong> ${e(TEST_NOTE.replace(/^TEST REQUEST: s/, "S"))}</div>`
+    : "";
   const bodyHtml =
-    fallbackHtml +
+    testHtml + fallbackHtml +
     `<div style="font-size:17px;font-weight:bold;margin:0 0 12px;">${e(heading)}</div>` + warn +
     `<table role="presentation" cellpadding="0" cellspacing="0" style="font-size:14px;">${details.join("")}</table>` +
     itemsTable +
@@ -175,9 +182,9 @@ async function sendNotificationEmail(env, g, data) {
 
   const names = items.map(label);
   const itemSummary = names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
-  const subject = isAppt
+  const subject = (test ? "[TEST] " : "") + (isAppt
     ? `New appointment request (${g.name || "Gemach"}): ${name}`
-    : `${conflicts.length ? "⚠ " : ""}New ${g.name || "Gemach"} Request: ${name}${itemSummary ? ` — ${itemSummary}` : ""}`;
+    : `${conflicts.length ? "⚠ " : ""}New ${g.name || "Gemach"} Request: ${name}${itemSummary ? ` — ${itemSummary}` : ""}`);
 
   return sendEmail(env, g, {
     to: g.email || env.NOTIFY_EMAIL,

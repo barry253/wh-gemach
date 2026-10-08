@@ -150,7 +150,8 @@ CREATE TABLE IF NOT EXISTS requests (
   item_quantities TEXT,  -- Item Quantities
   visit_outcome TEXT,  -- Visit Outcome
   visited_at TEXT,  -- Visited At
-  source TEXT  -- Source
+  source TEXT,  -- Source
+  test INTEGER NOT NULL DEFAULT 0  -- Test
 );
 
 CREATE TABLE IF NOT EXISTS loans (

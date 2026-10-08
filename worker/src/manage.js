@@ -24,6 +24,7 @@ import { json } from "./http.js";
 import { itemTypeInfoMap, loanQty, parseQtyMap, qtyLabel } from "./quantity.js";
 import { publicGemach } from "./public.js";
 import { adminLink, dayText, notifyAdmins } from "./push.js";
+import { isTestRequest } from "./testmode.js";
 
 const DEFAULT_SITE_URL = "https://whgemachs.org";
 const SIG_LEN = 22; // base64url chars ≈ 132 bits
@@ -69,7 +70,8 @@ async function loadManaged(db, env, token) {
   if (!rec) return { status: 404, error: "We couldn't find this request. Please contact the gemach." };
   const slug = (rec.fields["Gemach Slug"] || [])[0];
   const g = slug ? await loadGemachBySlug(db, String(slug)) : null;
-  if (!g || !g.active) return { status: 404, error: "We couldn't find this request. Please contact the gemach." };
+  // A test request (sent from a Hidden gemach's test link) keeps working while the gemach is hidden.
+  if (!g || (!g.active && !isTestRequest(rec))) return { status: 404, error: "We couldn't find this request. Please contact the gemach." };
   const requestId = rec.fields["Request ID"] || "";
   const loans = requestId
     ? (await db.listAll(T.LOANS, { scope: g, where: [Q.linksTo("Source Request", rec.id, requestId)],
@@ -155,6 +157,7 @@ async function managePayload(db, rec, g, loans) {
       readyToReturn: active.some(l => !l.fields["Ready To Return At"]),
     },
     partlyOut: !!(active.length && reserved.length),
+    ...(isTestRequest(rec) ? { test: true } : {}),
     openCount: open.length,
   };
 }
@@ -223,7 +226,7 @@ async function handleManageCancel(db, env, ctx, token) {
   const when = isAppt(rec) && f["Appointment At"] ? `Appointment was ${formatNy(Date.parse(f["Appointment At"]))}.`
     : f["Needed From"] ? `Dates were ${longDate(f["Needed From"])}${f["Needed Until"] ? ` → ${longDate(f["Needed Until"])}` : ""}.` : "";
   ctx.waitUntil(notifyGemach(env, g, {
-    subject: `Cancelled: ${g.name || "Gemach"} request ${rid} — ${f["Name"] || "borrower"}`,
+    subject: `${isTestRequest(rec) ? "[TEST] " : ""}Cancelled: ${g.name || "Gemach"} request ${rid} — ${f["Name"] || "borrower"}`,
     lines: [
       `${f["Name"] || "The borrower"} cancelled request ${rid} using their manage link.`,
       itemsText ? `Items: ${itemsText}` : "",
@@ -274,7 +277,7 @@ async function handleManageReady(db, env, ctx, token) {
     logEvent(ctx, db, g, { eventType: "Ready to Return", borrower: f["Name"] || null, itemType: x.itemName || null, loanId: l.fields["Loan ID"] || null, admin: "Borrower (online)" });
   }
   ctx.waitUntil(notifyGemach(env, g, {
-    subject: `Ready to return: ${names.join(", ")} — ${f["Name"] || "borrower"}`,
+    subject: `${isTestRequest(rec) ? "[TEST] " : ""}Ready to return: ${names.join(", ")} — ${f["Name"] || "borrower"}`,
     lines: [
       `${f["Name"] || "The borrower"} says they're ready to return: ${names.join(", ")} (request ${rid}).`,
       `Please get in touch to arrange the return: ${whoLine(rec)}`,

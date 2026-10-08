@@ -809,6 +809,13 @@ fieldset { border: 0; }
   padding: .8rem 1rem; margin-top: 1rem; font-size: .93rem;
 }
 .soon-banner strong { font-family: var(--font-display); font-size: 1.05rem; }
+/* Test link (a gemach that isn't live yet): requests here are tests */
+.test-banner {
+  display: flex; flex-wrap: wrap; gap: .35rem .6rem; align-items: baseline;
+  background: #EFEAFB; border: 1px dashed #9B87D6; color: #33215F; border-radius: var(--radius);
+  padding: .8rem 1rem; margin-top: 1rem; font-size: .93rem;
+}
+.test-banner strong { font-family: var(--font-display); font-size: 1.05rem; }
 .info-only {
   background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
   border-top: 4px solid var(--t-strong, var(--primary));

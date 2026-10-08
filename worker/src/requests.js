@@ -26,7 +26,7 @@ async function handleGetRequests({ db, g, env }) {
     scope: g, where: [Q.eq("Status", "New")],
     sort: [{ field: "Received At", direction: "asc" }],
     fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Item Quantities", "Needed From", "Needed Until",
-      "Open-ended duration", "Notes", "Received At", "Request Type", "Event Date", "Preferred Times", "Party Size", "Deposit Acknowledged", "Appointment At"],
+      "Open-ended duration", "Notes", "Received At", "Request Type", "Event Date", "Preferred Times", "Party Size", "Deposit Acknowledged", "Appointment At", "Test"],
   });
   const info = await itemTypeInfoMap(db, reqs.flatMap(r => r.fields["Items Requested"] || []), g);
   const qtyTypeIds = Object.keys(info).filter(id => info[id].qty);
@@ -66,6 +66,7 @@ async function handleGetRequests({ db, g, env }) {
       depositAcknowledged: !!f["Deposit Acknowledged"],
       appointmentAt: f["Appointment At"] || null,
       manageUrl: await manageUrl(env, r.id), // for the {manage_link} template placeholder
+      ...(f["Test"] ? { test: true } : {}), // sent from the gemach's test link (testmode.js)
     };
   }));
   return json(records);
