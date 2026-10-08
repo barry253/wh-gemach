@@ -143,6 +143,8 @@ const TABLES = {
       "Item Quantities": t("item_quantities"),
       // Appointment visits: "Checked out" / "Nothing borrowed" / "No-show" (blank = not visited yet).
       "Visit Outcome": t("visit_outcome"), "Visited At": dt("visited_at"),
+      // "Admin" when the gemach made it in admin (New reservation / New appointment); blank = the public form.
+      "Source": t("source"),
       "Received At": calc("received_at", "r.created_at"),
       "Gemach Slug": gemachSlug(),
     },

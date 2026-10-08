@@ -460,7 +460,7 @@ async function checkReservedAdds(db, g, raw) {
   return { lines };
 }
 
-async function createReserved(c, { lines, start, end, borrowerId, borrowerName, sourceRequestId }) {
+async function createReserved(c, { lines, start, end, borrowerId, borrowerName, sourceRequestId, note = "Added in Edit", loanNotes = null }) {
   const { db, g } = c;
   const first = await getNextLoanId(db);
   const base = parseInt(first.slice(2), 10);
@@ -470,10 +470,11 @@ async function createReserved(c, { lines, start, end, borrowerId, borrowerName, 
     if (end) f["Reservation End"] = end;
     if (ln.quantity) f["Quantity"] = ln.quantity;
     if (sourceRequestId) f["Source Request"] = [sourceRequestId];
+    if (loanNotes) f["Notes"] = loanNotes;
     return f;
   });
   await (db.createMany ? db.createMany(T.LOANS, rows) : Promise.all(rows.map(f => db.create(T.LOANS, f))));
-  return lines.map((ln, i) => ({ eventType: ln.addon ? "Add-on Ordered" : "Item Reserved", itemType: ln.type.fields.Name || null, borrower: borrowerName, loanId: rows[i]["Loan ID"], admin: c.adminName || null, notes: "Added in Edit" }));
+  return lines.map((ln, i) => ({ eventType: ln.addon ? "Add-on Ordered" : "Item Reserved", itemType: ln.type.fields.Name || null, borrower: borrowerName, loanId: rows[i]["Loan ID"], admin: c.adminName || null, notes: note }));
 }
 
 /** [{ itemTypeId, quantity? }] → { ids, qty, names } (active, this gemach's) or { error }. */
@@ -554,4 +555,4 @@ async function handleCancelBooking(c) {
   return json({ success: true, cancelled: reserved.length, requestCancelled: !!(b.req && !active.length), ...(emailSent === false ? { emailSent: false } : {}) });
 }
 
-export { handleGetBooking, handlePatchBooking, handleCancelBooking, loadBooking, kindOf };
+export { handleGetBooking, handlePatchBooking, handleCancelBooking, loadBooking, kindOf, checkBorrower, checkDate, checkReservedAdds, checkRequestedItems, createReserved, sendNote, REQUEST_CONTACT };

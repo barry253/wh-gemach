@@ -55,6 +55,7 @@ Browser tests for the site and admin page are in `../tests` (`cd tests && npm in
 | `requests.js` | Admin request list, confirm/decline, appointments, reservations from requests |
 | `quantity.js` | Quantity-tracked item types (e.g. 60 folding chairs) and date-range availability |
 | `loans.js` | Loans and reservations: lists, pickup, return, cancel, assigning units |
+| `newbooking.js` | New reservation / New appointment made in admin on someone's behalf; Dashboard "Upcoming" |
 | `booking.js` | Admin "Edit": a request + its open reservations / loans edited as one (contact, dates, items, cancel) |
 | `checkout.js` | Lending at the counter: appointment check-out, "Nothing borrowed" / "No-show", walk-in loans |
 | `ids.js` / `borrowers.js` | Loan/request/item ids; borrower matching |

@@ -149,7 +149,8 @@ CREATE TABLE IF NOT EXISTS requests (
   deposit_acknowledged INTEGER NOT NULL DEFAULT 0,  -- Deposit Acknowledged
   item_quantities TEXT,  -- Item Quantities
   visit_outcome TEXT,  -- Visit Outcome
-  visited_at TEXT  -- Visited At
+  visited_at TEXT,  -- Visited At
+  source TEXT  -- Source
 );
 
 CREATE TABLE IF NOT EXISTS loans (

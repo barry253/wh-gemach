@@ -63,7 +63,7 @@ async function buildStats(db, g, days) {
 
   const [requests, waiting, decisions, types, items, returned] = await Promise.all([
     db.listAll(T.REQUESTS, { scope: g, where: [Q.after("Received At", sinceIso)],
-      fields: ["Request ID", "Status", "Received At", "Items Requested", "Request Type"] }),
+      fields: ["Request ID", "Status", "Received At", "Items Requested", "Request Type", "Source"] }),
     db.listAll(T.REQUESTS, { scope: g, where: [Q.eq("Status", "New")], fields: ["Request ID", "Name", "Received At"] }),
     db.listAll(T.LOG, { scope: g, where: [Q.in("Event Type", DECISIONS), Q.after("Timestamp", sinceIso)],
       fields: ["Loan ID", "Timestamp", "Event Type"] }),
@@ -80,9 +80,12 @@ async function buildStats(db, g, days) {
   const itemType = new Map(items.map(i => [i.id, linkedId((i.fields["Item Type"] || [])[0])]));
   const nameOf = v => (typeof v === "string" && REC_RE.test(v) ? typeName.get(v) : v) || null;
 
-  // Requests received in the period
-  const count = st => requests.filter(r => r.fields.Status === st).length;
-  const received = new Map(requests.map(r => [r.fields["Request ID"], Date.parse(r.fields["Received At"] || r.createdTime)]));
+  // Requests received in the period. Bookings the gemach made itself in admin (Source "Admin") aren't
+  // requests it received or answered, so they're left out of these counts and reply times
+  // (they still count toward "most requested" below: a phone call is demand too).
+  const online = requests.filter(r => String(r.fields.Source || "") !== "Admin");
+  const count = st => online.filter(r => r.fields.Status === st).length;
+  const received = new Map(online.map(r => [r.fields["Request ID"], Date.parse(r.fields["Received At"] || r.createdTime)]));
 
   // Response time: first decision logged for a request received in the period
   const firstDecision = new Map();
@@ -148,7 +151,7 @@ async function buildStats(db, g, days) {
 
   return {
     days,
-    requests: { received: requests.length, confirmed: count("Converted"), declined: count("Declined"), waiting: count("New") },
+    requests: { received: online.length, confirmed: count("Converted"), declined: count("Declined"), waiting: count("New") },
     response: {
       answered: hours.length,
       medianHours: hours.length ? Math.round(median(hours) * 10) / 10 : null,

@@ -357,6 +357,27 @@
     .appt-item-meta { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
     .appt-unit { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; font-weight: 600; color: var(--navy); background: var(--teal, #E8F0F5); border-radius: 5px; padding: 0.05rem 0.4rem; }
     .appt-item-desc { font-size: 0.8rem; color: var(--text); margin-top: 0.3rem; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
+    /* Dashboard: quick actions + upcoming */
+    .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+    .quick-action { display: flex; align-items: center; gap: 0.55rem; padding: 0.75rem 0.85rem; border-radius: 10px; border: 1px solid var(--border); background: var(--white);
+      font-family: inherit; font-size: 0.88rem; font-weight: 600; color: var(--navy); cursor: pointer; text-align: left; }
+    .quick-action:hover, .quick-action:focus-visible { border-color: var(--navy); background: #F4F7F9; }
+    .quick-action .qa-icon { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; background: var(--teal, #E8F0F5); display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
+    .upcoming-day { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0.9rem 0 0.4rem; }
+    .upcoming-day.late { color: var(--amber); }
+    .upcoming-day:first-child { margin-top: 0.2rem; }
+    .up-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; padding-right: 0.6rem; border: 1px solid var(--border); border-radius: 10px; background: var(--white); }
+    .up-row:hover, .up-row:focus-within { border-color: var(--navy); }
+    .up-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.65rem; padding: 0.6rem 0 0.6rem 0.7rem; border: 0; background: none; text-align: left;
+      cursor: pointer; font-family: inherit; color: var(--text); }
+    .up-open:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; border-radius: 10px; }
+    .up-when { flex: 0 0 4.4rem; font-size: 0.78rem; font-weight: 600; color: var(--navy); line-height: 1.25; }
+    .up-when small { display: block; font-weight: 400; color: var(--muted); font-size: 0.7rem; }
+    .up-main { flex: 1; min-width: 0; }
+    .up-name { font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
+    .up-items { font-size: 0.78rem; color: var(--muted); overflow-wrap: anywhere; }
+    .up-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
+    .up-empty { font-size: 0.85rem; color: var(--muted); padding: 0.6rem 0 0.2rem; }
     /* Edit booking sheet */
     .bk-section { border-top: 1px solid var(--border); padding-top: 0.9rem; margin-top: 0.4rem; }
     .bk-section > .bk-h { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.6rem; }
@@ -1303,6 +1324,7 @@
 
     <!-- Dashboard -->
     <div class="screen active" id="screen-dashboard">
+      <div class="quick-actions" id="quick-actions" role="group" aria-label="Quick actions"></div>
       <div class="stat-grid" id="stat-grid">
         <div class="stat-card red" onclick="switchTab('requests')">
           <div class="stat-number" id="stat-new-requests">—</div>
@@ -1321,6 +1343,17 @@
           <div class="stat-label">Reservations</div>
         </div>
       </div>
+
+      <div class="stats-head">
+        <div class="section-label">Upcoming</div>
+        <select id="upcoming-days" aria-label="How far ahead" onchange="setUpcomingDays(this.value)">
+          <option value="3">Next 3 days</option>
+          <option value="7" selected>Next 7 days</option>
+          <option value="14">Next 2 weeks</option>
+          <option value="30">Next 30 days</option>
+        </select>
+      </div>
+      <div id="upcoming-body" style="margin-bottom:1.25rem"><div class="loading">Loading…</div></div>
 
       <div class="stats-head">
         <div class="section-label">How it's going</div>
@@ -1356,6 +1389,10 @@
 
     <!-- Reservations -->
     <div class="screen" id="screen-reservations">
+      <div class="screen-toolbar" id="res-toolbar" style="gap:0.4rem">
+        <button class="btn btn-ghost btn-sm" id="new-appt-btn" style="display:none" onclick="openNewBooking('appointment')">+ New appointment</button>
+        <button class="btn btn-primary btn-sm" id="new-res-btn" onclick="openNewBooking('reservation')">+ New reservation</button>
+      </div>
       <div id="appointments-block" style="display:none;margin-bottom:1.25rem">
         <div class="section-label" id="appointments-section-label">Upcoming appointments</div>
         <div class="card-list" id="appointments-list"></div>
@@ -1834,6 +1871,32 @@
         <button class="btn btn-primary" id="checkout-submit-btn">Lend</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- New reservation / New appointment Sheet: book on someone's behalf -->
+<div class="sheet-overlay" id="newbk-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('newbk-sheet')">×</button>
+    <h3 id="nb-title">New reservation</h3>
+    <p class="sheet-subtitle" id="nb-subtitle"></p>
+    <div id="nb-body"><div class="loading">Loading…</div></div>
+    <div id="nb-foot" style="display:none">
+      <div class="form-group">
+        <label for="nb-message">Message to borrower</label>
+        <textarea id="nb-message" rows="6"></textarea>
+        <p class="muted-small" style="margin:0.3rem 0 0">{manage_link} becomes their private link to check or cancel, once you save.</p>
+      </div>
+      <div class="form-group" id="nb-send-by"></div>
+      <p class="co-summary" id="nb-summary"></p>
+      <p class="login-error" id="nb-error" style="text-align:left"></p>
+      <div class="sheet-actions">
+        <button class="btn btn-ghost" onclick="closeSheet('newbk-sheet')">Cancel</button>
+        <button class="btn btn-primary" id="nb-save-btn">Save</button>
+      </div>
+    </div>
+    <div id="nb-done" style="display:none"></div>
   </div>
 </div>
 
@@ -2511,6 +2574,7 @@
     const data = await api("/admin/gemach");
     if (data && !data.error) GEMACH = data;
     renderGemachSwitcher();
+    renderQuickActions(); // "New appointment" only for appointment gemachs
     return GEMACH;
   }
 
@@ -2764,6 +2828,8 @@
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   async function loadDashboard() {
+    renderQuickActions();
+    if (document.getElementById("screen-dashboard")?.classList.contains("active")) loadUpcoming();
     await snapLoad("/admin/dashboard", null, renderDashboard);
   }
   function renderDashboard(data) {
@@ -4064,6 +4130,309 @@
     refreshAfterLending();
   }
 
+  // ── New reservation / New appointment: book on someone's behalf ─────────────
+  // Saved as a confirmed request + reserved items (units chosen at pickup), so the borrower gets a manage
+  // link and it works like any other reservation. WhatsApp / text go out after saving (the link exists then).
+  // Function declarations (not const): the dashboard starts loading before this part of the script has run.
+  var NB = null;
+  function nbEl(id) { return document.getElementById(id); }
+  function nbVal(id) { return String(nbEl(id)?.value ?? "").trim(); }
+  function isApptGemach() { return GEMACH?.requestStyle === "Appointment"; }
+  function isEventGemach() { return GEMACH?.requestStyle === "Event"; }
+
+  async function openNewBooking(kind) {
+    NB = { kind, data: null, rows: [], lastAuto: null };
+    const appt = kind === "appointment";
+    nbEl("nb-title").textContent = appt ? "New appointment" : "New reservation";
+    nbEl("nb-subtitle").textContent = appt ? "Book a time for someone to come in." : "Reserve items for someone — they'll get a link to check or cancel.";
+    nbEl("nb-body").innerHTML = '<div class="loading">Loading…</div>';
+    nbEl("nb-foot").style.display = "none";
+    nbEl("nb-done").style.display = "none";
+    nbEl("nb-error").style.display = "none";
+    nbEl("nb-message").value = "";
+    openSheet("newbk-sheet");
+    let d = null;
+    try { d = await api("/admin/checkout/options"); } catch (e) { d = null; }
+    if (NB?.kind !== kind || NB.data) return;
+    if (!d || !Array.isArray(d.types)) { nbEl("nb-body").innerHTML = `<div class="empty-state">${esc(d?.error || "Couldn't load the inventory. Please try again.")}</div>`; return; }
+    NB.data = d;
+    NB.types = new Map(d.types.map(t => [t.id, t]));
+    const today = d.today;
+    const until = d.defaultLoanDays ? isoAddDays(today, d.defaultLoanDays) : "";
+    const label = GEMACH?.eventLabel || "Event date";
+    const dates = appt ? `
+        <div class="bk-grid">
+          <div class="form-group"><label for="nb-appt-date">Date <span style="color:var(--red)">*</span></label><input type="date" id="nb-appt-date" min="${esc(today)}" /></div>
+          <div class="form-group"><label for="nb-appt-time">Time <span style="color:var(--red)">*</span></label><input type="time" id="nb-appt-time" step="300" /></div>
+          <div class="form-group"><label for="nb-event">${esc(label)} <span class="muted-small">— optional</span></label><input type="date" id="nb-event" /></div>
+        </div>` : `
+        <div class="bk-grid">
+          ${isEventGemach() ? `<div class="form-group full"><label for="nb-event">${esc(label)}</label><input type="date" id="nb-event" min="${esc(today)}" onchange="nbEventChanged()" />
+            <p class="muted-small" style="margin:0.3rem 0 0">Fills in the dates below by your pickup / return rule.</p></div>` : ""}
+          <div class="form-group"><label for="nb-from">Needed from <span style="color:var(--red)">*</span></label><input type="date" id="nb-from" min="${esc(today)}" value="${esc(today)}" /></div>
+          <div class="form-group"><label for="nb-until">Until</label><input type="date" id="nb-until" min="${esc(today)}" value="${esc(until)}" /></div>
+          <label class="check-row full" style="margin-bottom:0.6rem"><input type="checkbox" id="nb-open" onchange="nbEl('nb-until').disabled=this.checked;nbRender()" /><span>Open-ended (no return date yet)</span></label>
+        </div>`;
+    nbEl("nb-body").innerHTML = `
+      <div class="bk-section"><p class="bk-h">Borrower</p>
+        <div class="bk-grid">
+          <div class="form-group full"><label for="nb-name">Name <span style="color:var(--red)">*</span></label><input type="text" id="nb-name" maxlength="100" autocomplete="off" /></div>
+          <div class="form-group"><label for="nb-phone">Phone</label><input type="tel" id="nb-phone" maxlength="40" autocomplete="off" /></div>
+          <div class="form-group"><label for="nb-email">Email</label><input type="email" id="nb-email" maxlength="200" autocomplete="off" /></div>
+          <div class="form-group"><label for="nb-pref">Prefers</label><select id="nb-pref"><option value="">—</option><option>WhatsApp</option><option value="Text">Text message</option><option value="Phone">Phone call</option><option>Email</option></select></div>
+        </div>
+      </div>
+      <div class="bk-section"><p class="bk-h">${appt ? "Appointment" : "Dates"}</p>${dates}</div>
+      <div class="bk-section"><p class="bk-h">${appt ? "Items to show her — optional" : "Items"}</p>
+        <div class="form-group" style="margin-bottom:0.6rem">
+          <div class="co-list" id="nb-items" style="margin-bottom:0.5rem"></div>
+          <input type="search" id="nb-search" aria-label="Add an item" placeholder="+ Add an item — name, size, color…" autocomplete="off" oninput="nbRenderResults()" />
+          <div class="co-results" id="nb-results"></div>
+        </div>
+      </div>
+      <div class="bk-section"><div class="form-group"><label for="nb-notes">Note <span class="muted-small">— optional, for the gemach</span></label>
+        <input type="text" id="nb-notes" maxlength="1000" placeholder="e.g. called on Sunday, paying deposit at pickup" /></div></div>`;
+    // (Not for the search box: its "change" fires as a result is tapped, and redrawing then would swallow the tap.)
+    nbEl("nb-body").addEventListener("change", e => { if (e.target.id !== "nb-search") nbRender(); });
+    nbEl("nb-body").addEventListener("input", e => { if (e.target.id !== "nb-search") { nbEl("nb-error").style.display = "none"; nbAutoMessage(); } });
+    ["nb-phone", "nb-email", "nb-pref"].forEach(id => nbEl(id).addEventListener("change", nbSetupSendBy));
+    nbEl("nb-foot").style.display = "";
+    nbSetupSendBy();
+    nbRender();
+    nbEl("nb-save-btn").onclick = nbSave;
+    nbEl("nb-name").focus();
+  }
+  function nbEventChanged() {
+    const d = eventDates(nbVal("nb-event"), GEMACH || {});
+    if (!d) return;
+    nbEl("nb-from").value = d.pickup < NB.data.today ? NB.data.today : d.pickup;
+    nbEl("nb-until").value = d.return;
+    nbEl("nb-open").checked = false; nbEl("nb-until").disabled = false;
+    nbRender();
+  }
+  const nbWindow = () => ({ from: nbVal("nb-from") || NB.data.today, to: nbEl("nb-open")?.checked ? null : nbVal("nb-until") || null });
+  /** How many of a type are free for the whole window: units (or lendable pieces) minus the peak booked. */
+  function nbFree(t, from, to) {
+    const cap = t.tracking === "Units" ? t.units.length : t.lendable || 0;
+    const over = t.bookings.filter(b => coOverlap(b, from, to));
+    let peak = 0;
+    for (const p of [from, ...over.map(b => b.from).filter(d => d > from)]) {
+      peak = Math.max(peak, over.filter(b => b.from <= p && (b.to == null || b.to >= p)).reduce((n, b) => n + (b.quantity || 1), 0));
+    }
+    return { cap, free: Math.max(0, cap - peak), backBy: over.map(b => b.to).filter(Boolean).sort()[0] || null };
+  }
+  function nbRowNote(row, i) {
+    const t = NB.types.get(row.typeId), notes = [];
+    if (NB.kind === "appointment") {
+      const out = t.bookings.filter(b => b.status === "Active" && b.unitId);
+      if (t.tracking === "Units" && t.units.length && out.length >= t.units.length) notes.push(["warn", `⚠ On loan right now${out[0].to ? ` · due back ${fmtDay(out[0].to)}` : ""}`]);
+      return notes;
+    }
+    if (t.tracking === "Add-on") {
+      notes.push(["info", t.price != null ? `Add-on (for purchase) · ${fmtMoney(t.price)} each` : "Add-on (made to order)"]);
+      return notes;
+    }
+    const { from, to } = nbWindow();
+    const f = nbFree(t, from, to);
+    // Rows of the same type above this one share the free count.
+    const need = NB.rows.slice(0, i + 1).filter(r => r.typeId === row.typeId).reduce((n, r) => n + (t.tracking === "Units" ? 1 : r.qty), 0);
+    const when = to ? "for these dates" : "from that date on";
+    if (!f.cap) notes.push(["bad", t.tracking === "Units" ? "No numbered items for this in Inventory yet." : "None to lend."]);
+    else if (need > f.free) notes.push(["warn", `⚠ ${f.free ? `Only ${f.free} of ${f.cap} free` : `All ${f.cap} booked`} ${when}${f.backBy ? ` · one is due back ${fmtDay(f.backBy)}` : ""}. You can still reserve it.`]);
+    else notes.push(["info", `${f.free} of ${f.cap} free ${when}.`]);
+    return notes;
+  }
+  function nbRender() {
+    if (!NB?.data) return;
+    nbEl("nb-items").innerHTML = NB.rows.map((row, i) => {
+      const t = NB.types.get(row.typeId);
+      const attrs = Object.entries(t.attributes || {}).map(([k, v]) => `${k} ${v.join(", ")}`).join(" · ");
+      return `<div class="co-row added">
+        <span></span>
+        ${rowThumb(t.photo, t.name, t.photos)}
+        <div class="co-main"><div class="co-name">${esc(t.name)}</div>${attrs ? `<div class="co-sub">${esc(attrs)}</div>` : ""}
+          ${t.tracking !== "Units" ? `<div class="co-ctl"><label class="muted-small" for="nb-qty-${i}">How many</label><input type="number" id="nb-qty-${i}" min="1" step="1" inputmode="numeric" value="${esc(row.qty)}" onchange="nbSetQty(${i}, this.value)" /></div>` : ""}
+          ${nbRowNote(row, i).map(([c, txt]) => `<div class="co-note ${c}">${esc(txt)}</div>`).join("")}
+        </div>
+        <button type="button" class="co-remove" onclick="nbRemove(${i})" aria-label="Remove ${esc(t.name)}">×</button>
+      </div>`;
+    }).join("");
+    nbRenderResults();
+    nbAutoMessage();
+  }
+  const nbRedraw = () => setTimeout(() => { if (NB?.data) nbRender(); }, 0);
+  function nbSetQty(i, v) { const n = parseInt(v, 10); NB.rows[i].qty = Number.isInteger(n) && n > 0 ? n : 1; nbRedraw(); }
+  function nbRemove(i) { NB.rows.splice(i, 1); nbRedraw(); }
+  function nbRenderResults() {
+    const box = nbEl("nb-results"), q = nbVal("nb-search").toLowerCase();
+    if (!q) { box.innerHTML = ""; return; }
+    const words = q.split(/\s+/);
+    const { from, to } = nbWindow();
+    const hits = NB.data.types.filter(t => words.every(w => `${t.name} ${Object.values(t.attributes || {}).flat().join(" ")} ${t.units.map(u => u.itemId).join(" ")}`.toLowerCase().includes(w)));
+    box.innerHTML = hits.slice(0, 20).map(t => {
+      const counted = t.tracking !== "Units";
+      const added = counted && NB.rows.some(r => r.typeId === t.id) || NB.kind === "appointment" && NB.rows.some(r => r.typeId === t.id);
+      const f = t.tracking === "Add-on" ? null : nbFree(t, from, to);
+      const status = added ? "Added" : t.tracking === "Add-on" ? "Add-on" : NB.kind === "appointment" ? `${f.cap} owned` : `${f.free} of ${f.cap} free`;
+      return `<button type="button" class="co-result" onclick="nbAdd('${safeId(t.id)}')"${added ? " disabled" : ""}>
+        ${t.photo ? `<img class="row-thumb" src="${esc(t.photo)}" alt="" loading="lazy" width="32" height="32" style="width:32px;height:32px;flex-basis:32px" />` : `<span class="row-thumb row-thumb-none" aria-hidden="true">▫</span>`}
+        <span style="flex:1;min-width:0"><span class="co-name">${esc(t.name)}</span></span>
+        <span class="tag ${added ? "tag-navy" : t.tracking === "Add-on" ? "tag-addon" : f && !f.free && NB.kind !== "appointment" ? "tag-amber" : "tag-green"}">${esc(status)}</span></button>`;
+    }).join("") + (!hits.length ? `<p class="muted-small" style="margin:0.25rem 0 0">Nothing in the inventory matches “${esc(q)}”.</p>` : "");
+  }
+  function nbAdd(typeId) {
+    const t = NB.data.types.find(x => safeId(x.id) === typeId);
+    if (!t) return;
+    NB.rows.push({ typeId: t.id, qty: 1 });
+    nbEl("nb-search").value = "";
+    nbRender();
+    nbEl("nb-search").focus();
+  }
+  function nbItemsText() {
+    const labels = NB.rows.map(r => { const t = NB.types.get(r.typeId); return t.tracking === "Units" ? t.name : `${t.name} × ${r.qty}`; });
+    return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+  }
+  function nbAutoMessage() {
+    if (!NB?.data) return;
+    const first = nbVal("nb-name").split(/\s+/)[0];
+    const ev = nbVal("nb-event") || "";
+    let auto;
+    if (NB.kind === "appointment") {
+      const when = fmtAppointment(nbVal("nb-appt-date"), nbVal("nb-appt-time"));
+      auto = renderMessage("appointment", first, nbItemsText(), { appointmentTime: when || "[date & time]", eventDate: ev, manageUrl: "{manage_link}" });
+    } else {
+      auto = renderMessage("confirm", first, nbItemsText() || "[items]", { eventDate: ev, manageUrl: "{manage_link}" });
+      const { from, to } = nbWindow();
+      const line = `Reserved for ${fmtDay(from, true)}${to ? ` – ${fmtDay(to, true)}` : " (no return date yet)"}.`;
+      const parts = auto.split("\n\n");
+      parts.splice(1, 0, line); // right after the opening paragraph
+      auto = parts.join("\n\n");
+    }
+    const el = nbEl("nb-message");
+    if (el.value === NB.lastAuto || !el.value.trim()) el.value = auto;
+    NB.lastAuto = auto;
+    const n = NB.rows.length;
+    nbEl("nb-summary").textContent = NB.kind === "appointment" ? "" : n ? `${n} item${n === 1 ? "" : "s"} to reserve.` : "Add the items to reserve.";
+  }
+  function nbContact() { return { phone: nbVal("nb-phone"), email: nbVal("nb-email"), preferredContact: nbVal("nb-pref") === "Text" ? "SMS" : nbVal("nb-pref") }; }
+  function nbSetupSendBy() {
+    setupSendBy("nb", nbContact(), "nb-save-btn", { whatsapp: "Save, then WhatsApp", sms: "Save, then text", email: "Save & email", none: "Save" });
+  }
+
+  async function nbSave() {
+    const fail = m => { nbEl("nb-error").textContent = m; nbEl("nb-error").style.display = "block"; };
+    nbEl("nb-error").style.display = "none";
+    const borrower = { name: nbVal("nb-name"), phone: nbVal("nb-phone"), email: nbVal("nb-email"), preferredContact: nbVal("nb-pref") || null };
+    if (!borrower.name) { fail("Enter the borrower's name."); nbEl("nb-name").focus(); return; }
+    if (!borrower.phone && !borrower.email) { fail("Enter a phone number or email so the gemach can reach them."); return; }
+    const appt = NB.kind === "appointment";
+    const body = { borrower, items: NB.rows.map(r => ({ itemTypeId: r.typeId, ...(NB.types.get(r.typeId).tracking !== "Units" ? { quantity: r.qty } : {}) })), notes: nbVal("nb-notes") };
+    if (nbVal("nb-event")) body.eventDate = nbVal("nb-event");
+    if (appt) {
+      if (!isValidDate(nbVal("nb-appt-date")) || !/^\d{2}:\d{2}$/.test(nbVal("nb-appt-time"))) { fail("Choose the appointment date and time."); return; }
+      body.appointmentAt = `${nbVal("nb-appt-date")}T${nbVal("nb-appt-time")}`;
+    } else {
+      if (!NB.rows.length) { fail("Add at least one item."); nbEl("nb-search").focus(); return; }
+      const { from, to } = nbWindow();
+      if (!isValidDate(nbVal("nb-from"))) { fail("Choose the date it's needed from."); return; }
+      body.reservationStart = from; body.reservationEnd = to;
+    }
+    const message = nbEl("nb-message").value;
+    const { choice, c } = SEND_BY.nb || { choice: "none" };
+    if (choice === "email") { body.message = message; body.sendMessage = true; }
+    const btn = nbEl("nb-save-btn");
+    btn.disabled = true;
+    let res;
+    try { res = await api(appt ? "/admin/appointments" : "/admin/reservations", "POST", body); } finally { btn.disabled = false; }
+    if (!res) return;
+    if (res.error) { fail(res.error); return; }
+    refreshAfterLending();
+    const what = appt ? "Appointment booked" : "Reservation saved";
+    if (choice === "whatsapp" || choice === "sms") {
+      // The link exists now; sending needs a tap of its own (phones block opening apps after a wait).
+      const final = message.replace(/\{manage_link\}/g, res.manageUrl || "");
+      nbEl("nb-foot").style.display = "none";
+      nbEl("nb-done").style.display = "";
+      nbEl("nb-done").innerHTML = `<div role="status" style="margin:0.5rem 0 1rem;padding:0.7rem 0.85rem;border-radius:8px;background:#DCFCE7;color:var(--green);font-weight:600;font-size:0.9rem">✓ ${what}${res.requestId ? ` · ${esc(res.requestId)}` : ""}</div>
+        <div class="sheet-actions" style="margin-top:0">
+          <button class="btn btn-ghost" onclick="closeSheet('newbk-sheet')">Done</button>
+          <button class="btn ${choice === "whatsapp" ? "btn-whatsapp" : "btn-primary"}" id="nb-send-now">${choice === "whatsapp" ? "Send on WhatsApp" : "Send the text"}</button>
+        </div>`;
+      nbEl("nb-send-now").onclick = () => { openOutbound(choice, c, final); closeSheet("newbk-sheet"); };
+      return;
+    }
+    closeSheet("newbk-sheet");
+    showToast(`${what}${res.requestId ? ` · ${res.requestId}` : ""}` + (res.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res.emailSent === false ? 8000 : undefined);
+  }
+
+  // ── Dashboard: quick actions + upcoming ─────────────────────────────────────
+  function renderQuickActions() {
+    const acts = [
+      ["reservation", "📅", "New reservation", "openNewBooking('reservation')"],
+      ["loan", "🤝", "New loan", "openCheckout()"],
+      ...(isApptGemach() ? [["appointment", "🕒", "New appointment", "openNewBooking('appointment')"]] : []),
+    ];
+    nbEl("quick-actions").innerHTML = acts.map(([k, icon, label, fn]) =>
+      `<button type="button" class="quick-action" data-qa="${k}" onclick="${fn}"><span class="qa-icon" aria-hidden="true">${icon}</span>${esc(label)}</button>`).join("");
+    const ab = nbEl("new-appt-btn");
+    if (ab) ab.style.display = isApptGemach() ? "" : "none";
+  }
+  function upcomingDays() {
+    let n = 7;
+    try { n = Number(localStorage.getItem("whg_upcoming_days")) || 7; } catch (e) { /* ignore */ }
+    return [3, 7, 14, 30].includes(n) ? n : 7;
+  }
+  function setUpcomingDays(v) {
+    try { localStorage.setItem("whg_upcoming_days", String(v)); } catch (e) { /* ignore */ }
+    loadUpcoming();
+  }
+  var UPCOMING = [];
+  async function loadUpcoming() {
+    const n = upcomingDays();
+    nbEl("upcoming-days").value = String(n);
+    await snapLoad(`/admin/upcoming?days=${n}`, nbEl("upcoming-body"), renderUpcoming);
+  }
+  function renderUpcoming(d) {
+    const box = nbEl("upcoming-body");
+    if (!d || d.error || !Array.isArray(d.items)) { box.innerHTML = '<div class="up-empty">Couldn’t load what’s coming up.</div>'; return; }
+    UPCOMING = d.items;
+    if (!d.items.length) {
+      box.innerHTML = `<div class="up-empty">Nothing booked in the next ${d.days} days.</div>`;
+      return;
+    }
+    const tomorrow = isoAddDays(d.today, 1);
+    const dayLabel = x => x === d.today ? `Today · ${fmtDay(x)}` : x === tomorrow ? `Tomorrow · ${fmtDay(x)}` : fmtDay(x, true);
+    let html = "", last = null;
+    d.items.forEach((x, i) => {
+      const head = x.late ? "late" : x.date;
+      if (head !== last) {
+        html += x.late ? `<div class="upcoming-day late">Pickup date passed — not picked up yet</div>` : `<div class="upcoming-day">${esc(dayLabel(x.date))}</div>`;
+        last = head;
+      }
+      const appt = x.kind === "appointment";
+      const time = appt ? new Date(x.at).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) : "";
+      const when = appt ? `${esc(time)}<small>Appointment</small>`
+        : x.late ? `${esc(fmtDay(x.date))}<small>Pickup was due</small>` : `Pickup<small>${x.end ? `until ${esc(fmtDay(x.end))}` : "open-ended"}</small>`;
+      const p = x.photos?.[0];
+      const checkout = appt && x.date <= d.today
+        ? `<button type="button" class="btn btn-primary btn-sm" onclick="openCheckout('${safeId(x.ref.request)}')">Check out</button>` : "";
+      html += `<div class="up-row">
+        <button type="button" class="up-open" onclick="openUpcoming(${i})" aria-label="Edit — ${esc(x.name)}, ${esc(x.items.join(", "))}">
+          <span class="up-when">${when}</span>
+          <span class="up-main"><span class="up-name" style="display:block">${esc(x.name)}</span>
+            <span class="up-items" style="display:block">${esc(x.items.join(", ") || (appt ? "Coming to look" : ""))}${x.requestId ? ` · ${esc(x.requestId)}` : ""}</span></span>
+        </button>
+        ${p ? rowThumb(p.photo, p.name, p.photos) : ""}
+        <span class="up-side"><span class="tag ${appt ? "tag-amber" : x.late ? "tag-red" : "tag-navy"}">${appt ? "Appt" : "Reserved"}</span>${checkout}</span>
+      </div>`;
+    });
+    box.innerHTML = html;
+  }
+  function openUpcoming(i) {
+    const x = UPCOMING[i];
+    if (x) openBooking({ ...x.ref, from: "dashboard" });
+  }
+
   /** Reload whatever is on screen after lending / closing a visit. */
   function refreshAfterLending() {
     loadDashboard();
@@ -4075,6 +4444,7 @@
   }
 
   async function loadReservations() {
+    renderQuickActions();
     loadAppointments();
     await snapLoad("/admin/reservations", document.getElementById("reservations-list"), renderReservations);
   }

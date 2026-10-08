@@ -42,6 +42,7 @@
  *            GET/PATCH /admin/gemach — gemach profile, branding, request style + message templates
  *            (PATCH: Owner/Manager/Network Admin); POST /admin/gemach/logo (multipart "logo", ≤2 MB, png/jpeg/webp).
  *            GET /admin/appointments — upcoming confirmed appointments, plus recent ones not marked as visited (past: true).
+ *            POST /admin/reservations | /admin/appointments (made in admin), GET /admin/upcoming — newbooking.js.
  *            GET|PATCH /admin/booking, POST /admin/booking/cancel — edit a request + its open loans as one booking (booking.js).
  *            GET /admin/checkout/options, POST /admin/requests/:id/checkout | /visit, POST /admin/loans (walk-in) — checkout.js.
  *            GET /admin/catalog/categories — active Product Categories (for the item-type "Browse category" select).
@@ -88,6 +89,7 @@ import { handleDirectory, handleLegacyInventory, handlePublicGemach, loadCategor
 import { handleGetAppointments, handleGetRequests, handleRequestDecision } from "./requests.js";
 import { handleCheckoutOptions, handleRequestCheckout, handleRequestVisit, handleWalkInLoan } from "./checkout.js";
 import { handleCancelBooking, handleGetBooking, handlePatchBooking } from "./booking.js";
+import { handleNewAppointment, handleNewReservation, handleUpcoming } from "./newbooking.js";
 import { handleGetManage, handleManageCancel, handleManageReady } from "./manage.js";
 import { handleSearchLog } from "./search.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
@@ -260,6 +262,9 @@ async function adminRoute(c, path, method) {
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/pickup-email$/))) return handlePickupEmail(c, m[1]);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/pickup$/)))     return handleMarkPickedUp(c, m[1]);
   if (method === "GET"  && path === "/admin/reservations") return handleGetReservations(c);
+  if (method === "POST" && path === "/admin/reservations") return handleNewReservation(c);
+  if (method === "POST" && path === "/admin/appointments") return handleNewAppointment(c);
+  if (method === "GET"  && path === "/admin/upcoming")     return handleUpcoming(c);
   if (method === "PATCH" && (m = path.match(/^\/admin\/reservations\/([^/]+)$/)))       return handleUpdateReservation(c, m[1]);
   if (method === "POST" && (m = path.match(/^\/admin\/reservations\/([^/]+)\/cancel$/))) return handleCancelReservation(c, m[1]);
   if (method === "GET"  && path === "/admin/inventory")    return handleAdminInventory(c);

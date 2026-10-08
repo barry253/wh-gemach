@@ -1192,6 +1192,119 @@ await t("booking cancel: reservation → its reserved items + the request; appoi
   assert.ok(DB["tblC3PY7f5sXQDMJK"].some(x => x.fields["Event Type"] === "Request Cancelled" && x.fields["Loan ID"] === "R-970" && /cancelled by the gemach/.test(x.fields.Notes)));
 });
 
+// ─── New reservation / new appointment / upcoming (newbooking.js) ───
+await t("new reservation: validation", async () => {
+  const before = DB.Requests.length;
+  const items = [{ itemTypeId: "recCOGOWNB0000001" }];
+  const borrower = { name: "Phone Caller", phone: "5165550401" };
+  const bad = async (body, re) => { const r = await postB(`/admin/reservations`, body); assert.equal(r.status, 400, JSON.stringify(body)); assert.match((await r.json()).error, re); };
+  await bad({ borrower, items: [], reservationStart: plusDays(3) }, /at least one item/);
+  await bad({ borrower, items, reservationStart: "" }, /needed from/);
+  await bad({ borrower, items, reservationStart: plusDays(-1) }, /past/);
+  await bad({ borrower, items, reservationStart: plusDays(5), reservationEnd: plusDays(4) }, /before the start/);
+  await bad({ borrower: { name: "No Contact" }, items, reservationStart: plusDays(3) }, /phone number or email/);
+  await bad({ borrower, items: [{ itemTypeId: "recCOCHAIRS000001", quantity: 9 }], reservationStart: plusDays(3) }, /8 Chairs/);
+  assert.equal((await postB(`/admin/reservations`, { borrower, items: [{ itemTypeId: "recTYPEA000000001" }], reservationStart: plusDays(3) })).status, 404, "another gemach's item");
+  assert.equal(DB.Requests.length, before, "nothing written");
+});
+
+await t("new reservation: confirmed request (Source Admin) + reserved items + manage link + History + email with the link", async () => {
+  const r = await postB(`/admin/reservations`, {
+    borrower: { name: "Phone Caller", phone: "516-555-0401", email: "caller@example.com", preferredContact: "Text" },
+    items: [{ itemTypeId: "recCOGOWNB0000001" }, { itemTypeId: "recCOCHAIRS000001", quantity: 3 }],
+    reservationStart: plusDays(2), reservationEnd: plusDays(6), eventDate: plusDays(4), notes: "Called Sunday",
+    message: "Hi, you're all set. Manage it here: {manage_link}", sendMessage: true,
+  });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.match(d.requestId, /^R-\d+$/);
+  assert.match(d.manageUrl, new RegExp(`/r/${d.request}\\.`));
+  const rq = DB.Requests.find(x => x.id === d.request).fields;
+  assert.deepEqual([rq.Status, rq["Request Type"], rq.Source, rq.Name, rq["Preferred Contact"], rq["Needed From"], rq["Needed Until"], rq["Event Date"]],
+    ["Converted", "Loan", "Admin", "Phone Caller", "SMS", plusDays(2), plusDays(6), plusDays(4)]);
+  assert.deepEqual(rq["Items Requested"], ["recCOGOWNB0000001", "recCOCHAIRS000001"]);
+  assert.equal(rq["Item Quantities"], JSON.stringify({ recCOCHAIRS000001: 3 }));
+  const loans = DB.Loans.filter(l => l.fields["Source Request"]?.[0] === d.request).map(l => l.fields);
+  assert.equal(loans.length, 2);
+  assert.ok(loans.every(f => f.Status === "Reserved" && f["Reservation Start"] === plusDays(2) && f["Reservation End"] === plusDays(6) && f.Notes === "Called Sunday" && !f.Item));
+  assert.equal(loans.find(f => f["Item to Reserve"][0] === "recCOCHAIRS000001").Quantity, 3);
+  const bor = DB.Borrowers.find(b => b.id === loans[0].Borrower[0]).fields;
+  assert.deepEqual([bor.Name, bor["Preferred Contact"]], ["Phone Caller", "Text"]);
+  await Promise.allSettled(waits);
+  const log = DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields["Loan ID"] === d.requestId).map(x => x.fields);
+  assert.equal(log.find(x => x["Event Type"] === "Reservation Made").Notes, `${plusDays(2)} → ${plusDays(6)}; Called Sunday`);
+  assert.equal(DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields["Event Type"] === "Item Reserved" && x.fields.Notes === `Made in admin (${d.requestId})`).length, 2);
+  const mail = resendCalls().at(-1);
+  assert.deepEqual(mail.to, ["caller@example.com"]);
+  assert.ok(mail.text.includes(d.manageUrl) && !mail.text.includes("{manage_link}"), "email has the real link");
+  // It behaves like any other reservation: the manage page and the Edit sheet see it.
+  const m = await (await call(`/public/manage/${d.manageUrl.split("/r/")[1]}`)).json();
+  assert.equal(m.request.status, "confirmed"); assert.equal(m.can.cancel, true);
+  const bk = await (await call(`/admin/booking?request=${d.request}`, { headers: jsonB })).json();
+  assert.equal(bk.kind, "reservation"); assert.equal(bk.loans.length, 2);
+  globalThis.__adminRes = d;
+});
+
+await t("new reservation: open-ended; not counted as a request received in How it's going", async () => {
+  const s0 = await (await call(`/admin/stats?days=30&fresh=1`, { headers: jsonB })).json();
+  const r = await postB(`/admin/reservations`, { borrower: { name: "Open Ended", email: "oe@example.com" }, items: [{ itemTypeId: "recCOGOWNC0000001" }], reservationStart: todayNy, reservationEnd: null });
+  assert.equal(r.status, 200);
+  const newId = (await r.json()).request;
+  const rq = DB.Requests.find(x => x.id === newId).fields;
+  assert.equal(rq["Open-ended duration"], true); assert.ok(!rq["Needed Until"]);
+  const s1 = await (await call(`/admin/stats?days=30&fresh=1`, { headers: jsonB })).json();
+  assert.equal(s1.requests.received, s0.requests.received, "admin-made bookings aren't requests received");
+  assert.equal(s1.requests.confirmed, s0.requests.confirmed);
+});
+
+await t("new appointment: validation; confirmed appointment request with items + calendar invite; listed", async () => {
+  const borrower = { name: "Gown Seeker", phone: "5165550402", email: "seeker@example.com" };
+  assert.equal((await postB(`/admin/appointments`, { borrower, appointmentAt: plusDays(2) })).status, 400, "time required");
+  assert.equal((await postB(`/admin/appointments`, { borrower, appointmentAt: plusDays(-1) + "T10:00" })).status, 400, "not in the past");
+  const at = plusDays(3) + "T20:15";
+  const r = await postB(`/admin/appointments`, { borrower, appointmentAt: at, items: [{ itemTypeId: "recCOGOWNA0000001" }], eventDate: plusDays(40), notes: "Bringing her mother",
+    message: "See you then! {manage_link}", sendMessage: true });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  const rq = DB.Requests.find(x => x.id === d.request).fields;
+  assert.deepEqual([rq["Request Type"], rq.Status, rq.Source, rq["Appointment At"], rq.Notes, rq["Event Date"]],
+    ["Appointment", "Converted", "Admin", new Date(X.nyLocalToUtc(plusDays(3), "20:15")).toISOString(), "Bringing her mother", plusDays(40)]);
+  const mail = resendCalls().at(-1);
+  assert.equal(mail.attachments?.[0]?.filename, "appointment.ics");
+  assert.ok(mail.text.includes(d.manageUrl));
+  const appts = await (await call(`/admin/appointments`, { headers: jsonB })).json();
+  assert.ok(appts.some(a => a.id === d.request && a.items[0].name === "Navy gown – size 8"));
+  // Appointments with nothing picked yet are fine (she's coming to look).
+  assert.equal((await postB(`/admin/appointments`, { borrower, appointmentAt: plusDays(9) + "T11:00" })).status, 200);
+  globalThis.__adminAppt = d;
+});
+
+await t("upcoming: reservations (one row per booking, late pickups flagged) and appointments within N days", async () => {
+  DB.Loans.push(rec("recUPLATE00000001", { "Loan ID": "L-990", Status: "Reserved", "Item to Reserve": ["recCOGOWNC0000001"], Borrower: [DB.Borrowers[0].id],
+    "Reservation Start": plusDays(-2), "Reservation End": plusDays(3), Gemach: [B.id], "Gemach Slug": [B.slug] }));
+  DB.Loans.push(rec("recUPFAR000000001", { "Loan ID": "L-991", Status: "Reserved", "Item to Reserve": ["recCOGOWNC0000001"], Borrower: [DB.Borrowers[0].id],
+    "Reservation Start": plusDays(25), Gemach: [B.id], "Gemach Slug": [B.slug] }));
+  const d = await (await call(`/admin/upcoming?days=7`, { headers: jsonB })).json();
+  assert.equal(d.days, 7); assert.equal(d.until, plusDays(7));
+  const res = d.items.find(x => x.requestId === globalThis.__adminRes.requestId);
+  assert.ok(res, "the new reservation is upcoming");
+  assert.deepEqual([res.kind, res.date, res.end, res.name, res.late], ["reservation", plusDays(2), plusDays(6), "Phone Caller", false]);
+  assert.deepEqual(res.items.sort(), ["Chairs × 3", "Gold gown – size 10"]);
+  assert.deepEqual(res.ref, { request: globalThis.__adminRes.request });
+  const late = d.items.find(x => x.ref.loan === "recUPLATE00000001");
+  assert.equal(late.late, true); assert.equal(late.date, plusDays(-2));
+  assert.ok(!d.items.some(x => x.ref.loan === "recUPFAR000000001"), "beyond N days left out");
+  const ap = d.items.find(x => x.requestId === globalThis.__adminAppt.requestId);
+  assert.deepEqual([ap.kind, ap.date, ap.items], ["appointment", plusDays(3), ["Navy gown – size 8"]]);
+  assert.ok(!d.items.some(x => x.kind === "appointment" && x.date > plusDays(7)), "the day-9 appointment is beyond 7 days");
+  assert.ok(d.items.every((x, i, a) => i === 0 || a[i - 1].date <= x.date), "soonest first");
+  const d30 = await (await call(`/admin/upcoming?days=30`, { headers: jsonB })).json();
+  assert.ok(d30.items.some(x => x.ref.loan === "recUPFAR000000001") && d30.items.some(x => x.kind === "appointment" && x.date === plusDays(9)));
+  assert.equal((await (await call(`/admin/upcoming?days=999`, { headers: jsonB })).json()).days, 7, "out of range → 7");
+  const other = await (await call(`/admin/upcoming`, { headers: { ...auth(tokenA), "X-Gemach": A.slug } })).json();
+  assert.ok(!other.items.some(x => x.name === "Phone Caller"), "scoped to the gemach");
+});
+
 await t("v3 GET /admin/gemach: appointment template (+ no-address variant), new placeholders, profile fields", async () => {
   const d = await (await call(`/admin/gemach`, { headers: jsonB })).json();
   assert.equal(d.templates.appointment, "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}");
