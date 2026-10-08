@@ -37,6 +37,8 @@
  *   Test link: GET /public/gemach/:slug?test=<sig> and POST /submit-request {testToken} — a Hidden or Coming-soon
  *            gemach opens and takes requests (tagged Test) through its signed test link (testmode.js).
  *            Admin: GET /admin/test-data, POST /admin/test-data/clear (Owner/Manager/Network Admin).
+ *   Borrower lookup: GET /admin/borrowers (this gemach's borrowers, newest activity first, with loan counts);
+ *            POST /admin/reservations, /admin/appointments and /admin/loans take borrower.id to use a picked borrower.
  *   Manage:  GET /public/manage/:token, POST /public/manage/:token/cancel, POST /public/manage/:token/ready —
  *            the borrower's signed link (see manage.js); POST /submit-request returns it as manageUrl.
  *   SITE_URL          var  NEW (optional) public site base for manage links; defaults to https://whgemachs.org
@@ -94,6 +96,7 @@ import { handleCheckoutOptions, handleRequestCheckout, handleRequestVisit, handl
 import { handleCancelBooking, handleGetBooking, handlePatchBooking } from "./booking.js";
 import { handleNewAppointment, handleNewReservation, handleUpcoming } from "./newbooking.js";
 import { handleClearTestData, handleGetTestData } from "./testmode.js";
+import { handleListBorrowers } from "./borrowers.js";
 import { handleGetManage, handleManageCancel, handleManageReady } from "./manage.js";
 import { handleSearchLog } from "./search.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
@@ -286,6 +289,7 @@ async function adminRoute(c, path, method) {
   if (method === "POST"  && path === "/admin/catalog/upload-photo") return handleUploadPhoto(c);
 
   if (method === "GET"  && path === "/admin/history")      return handleGetHistory(c);
+  if (method === "GET"  && path === "/admin/borrowers")    return handleListBorrowers(c);
   if (method === "GET"  && path === "/admin/test-data")    return handleGetTestData(c);
   if (method === "POST" && path === "/admin/test-data/clear") return handleClearTestData(c);
   if (path === "/admin/team" || path.startsWith("/admin/team/")) return teamDispatch(c, path, method);

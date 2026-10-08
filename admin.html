@@ -426,6 +426,18 @@
     .co-chip { border: 1px solid var(--border); background: var(--white); border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.75rem; cursor: pointer; font-family: inherit; color: var(--text); }
     .co-chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
     .co-summary { font-size: 0.85rem; font-weight: 500; margin-top: 0.25rem; }
+    /* Borrower lookup under the Name field (New reservation / appointment / loan) */
+    .bl-results { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.35rem; }
+    .bl-results:empty { display: none; }
+    .bl-result { display: block; width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.6rem; background: var(--white); cursor: pointer; font-family: inherit; color: var(--text); }
+    .bl-result:hover, .bl-result:focus-visible, .bl-result.on { border-color: var(--navy); background: #F3F7F9; }
+    .bl-result b { font-weight: 600; font-size: 0.88rem; }
+    .bl-result .bl-sub { display: block; font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; overflow-wrap: anywhere; }
+    .bl-result .bl-out { color: var(--amber); font-weight: 600; }
+    .bl-note { font-size: 0.78rem; margin-top: 0.35rem; color: var(--muted); }
+    .bl-note:empty { display: none; }
+    .bl-note.picked { color: var(--green); }
+    .bl-note .link-btn { font-size: 0.78rem; margin-left: 0.25rem; }
     .co-borrower { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6rem; }
     .co-borrower .form-group:first-child { grid-column: 1 / -1; }
     @media (max-width: 480px) { .co-borrower { grid-template-columns: 1fr; } }
@@ -3760,7 +3772,10 @@
     coSetupSendBy();
     coRenderRows();
     document.getElementById("checkout-submit-btn").onclick = coSubmit;
-    if (walkIn) document.getElementById("co-name").focus();
+    if (walkIn) {
+      attachBorrowerLookup({ name: "co-name", phone: "co-phone", email: "co-email", pref: "co-pref" }, () => { coSetupSendBy(); coUpdateFoot(); });
+      document.getElementById("co-name").focus();
+    }
   }
 
   async function coSubmit() {
@@ -3783,6 +3798,7 @@
       if (!name) { fail("Enter the borrower's name."); document.getElementById("co-name").focus(); return; }
       if (!c.phone && !c.email) { fail("Enter a phone number or email so the gemach can reach them."); return; }
       body.borrower = { name, phone: c.phone, email: c.email, preferredContact: c.preferredContact || null };
+      if (blPickedId("co-name")) body.borrower.id = blPickedId("co-name");
       body.notes = String(document.getElementById("checkout-notes").value || "").trim();
     }
     const message = document.getElementById("checkout-message").value;
@@ -4139,6 +4155,115 @@
     refreshAfterLending();
   }
 
+  // ── Borrower lookup (New reservation / New appointment / New loan) ──────────────
+  // Typing 2+ letters in Name lists this gemach's borrowers (GET /admin/borrowers, loaded once per sheet,
+  // searched here on the device). Picking one fills phone / email / prefers and sends borrower.id with the
+  // save, so that exact record is used (and any details changed here are saved to it). If nobody is picked
+  // but the phone or email typed belongs to someone, a note offers their details.
+  // Function declarations / var: these sheets can open before this part of the script has run.
+  var BL = null;
+  function blNorm(v) { return String(v || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").trim(); }
+  function blDigits(v) { return String(v || "").replace(/\D/g, ""); }
+  function blPref(v) { return { Text: "Text", SMS: "Text", WhatsApp: "WhatsApp", Phone: "Phone", Call: "Phone", Email: "Email" }[v] || ""; }
+  function blMatches(q) {
+    if (!BL || !BL.list) return [];
+    const words = blNorm(q).split(" ").filter(Boolean), digits = blDigits(q);
+    if (!words.length && digits.length < 3) return [];
+    return BL.list.filter(b => {
+      const name = blNorm(b.name).split(" ");
+      if (words.length && words.every(w => name.some(n => n.startsWith(w)))) return true;
+      if (digits.length >= 3 && blDigits(b.phone).includes(digits)) return true;
+      return q.includes("@") && String(b.email || "").toLowerCase().includes(String(q).trim().toLowerCase());
+    }).slice(0, 6);
+  }
+  function blSub(b) {
+    const parts = [b.phone, b.email].filter(Boolean);
+    parts.push(b.lastAt ? `last borrowed ${fmtDay(b.lastAt)}` : "no loans yet");
+    return esc(parts.join(" · ")) + (b.out ? ` · <span class="bl-out">${esc(b.out)} out now${b.dueBack ? ` · due ${esc(fmtDay(b.dueBack))}` : ""}</span>` : "");
+  }
+  /** ids: { name, phone, email, pref }; onPick(): redraw whatever depends on the contact details. */
+  function attachBorrowerLookup(ids, onPick) {
+    const el = k => document.getElementById(ids[k]);
+    const name = el("name");
+    if (!name) return;
+    const box = document.createElement("div"); box.className = "bl-results"; box.setAttribute("role", "listbox"); box.id = ids.name + "-matches";
+    const note = document.createElement("div"); note.className = "bl-note"; note.setAttribute("aria-live", "polite");
+    name.insertAdjacentElement("afterend", note);
+    name.insertAdjacentElement("afterend", box);
+    name.setAttribute("aria-controls", box.id);
+    BL = { ids, picked: null, list: null, hits: [], cur: -1, onPick };
+    const mine = BL;
+    api("/admin/borrowers").then(d => { if (BL === mine && d && Array.isArray(d.borrowers)) { mine.list = d.borrowers; blRender(); } }).catch(() => {});
+    name.addEventListener("input", () => {
+      if (BL !== mine) return;
+      // Name wiped after picking someone: start over as a new person (their details go too).
+      if (mine.picked && !name.value.trim()) { blClear(); return; }
+      mine.cur = -1; blRender();
+    });
+    name.addEventListener("keydown", e => {
+      if (BL !== mine || !mine.hits.length) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); mine.cur = Math.min(mine.cur + 1, mine.hits.length - 1); blRender(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); mine.cur = Math.max(mine.cur - 1, -1); blRender(); }
+      else if (e.key === "Enter" && mine.cur >= 0) { e.preventDefault(); blPick(mine.hits[mine.cur].id); }
+      else if (e.key === "Escape") { mine.hits = []; box.innerHTML = ""; }
+    });
+    ["phone", "email"].forEach(k => el(k)?.addEventListener("change", () => { if (BL === mine) blRender(); }));
+    // Keep focus where it is while tapping a row or a note button: a blur would redraw them before the tap lands.
+    box.addEventListener("mousedown", e => e.preventDefault());
+    note.addEventListener("mousedown", e => { if (e.target.closest("[data-bl]")) e.preventDefault(); });
+    box.addEventListener("click", e => { const b = e.target.closest("[data-bid]"); if (b) blPick(b.getAttribute("data-bid")); });
+    note.addEventListener("click", e => {
+      const a = e.target.closest("[data-bl]");
+      if (!a) return;
+      if (a.getAttribute("data-bl") === "clear") blClear(); else blPick(a.getAttribute("data-bl"));
+    });
+  }
+  function blRender() {
+    if (!BL) return;
+    const el = k => document.getElementById(BL.ids[k]);
+    const name = el("name"), box = document.getElementById(BL.ids.name + "-matches"), note = box?.nextElementSibling;
+    if (!name || !box) return;
+    const q = name.value.trim();
+    const p = BL.picked && BL.list?.find(b => b.id === BL.picked);
+    // Picked someone: no list, just the "Returning borrower" line.
+    BL.hits = p || q.length < 2 ? [] : blMatches(q);
+    if (BL.cur >= BL.hits.length) BL.cur = -1;
+    box.innerHTML = BL.hits.map((b, i) => `<button type="button" class="bl-result${i === BL.cur ? " on" : ""}" role="option" aria-selected="${i === BL.cur}" data-bid="${esc(b.id)}"><b>${esc(b.name)}</b><span class="bl-sub">${blSub(b)}</span></button>`).join("");
+    if (p) {
+      note.className = "bl-note picked";
+      note.innerHTML = `✓ Returning borrower · ${esc(p.loans === 1 ? "1 past loan" : `${p.loans} past loans`)}${p.out ? ` · <span class="bl-out">${esc(p.out)} out now</span>` : ""}<button type="button" class="link-btn" data-bl="clear">Not them? Clear</button>`;
+      return;
+    }
+    // Nobody picked: does the phone or email typed already belong to someone?
+    const d = blDigits(el("phone")?.value).slice(-10), em = String(el("email")?.value || "").trim().toLowerCase();
+    const same = BL.list && BL.list.find(b => (d.length >= 7 && blDigits(b.phone).slice(-10) === d) || (em && String(b.email || "").trim().toLowerCase() === em));
+    note.className = "bl-note";
+    note.innerHTML = same ? `${d.length >= 7 && blDigits(same.phone).slice(-10) === d ? "This number" : "This email"} is on file for <b>${esc(same.name)}</b>.<button type="button" class="link-btn" data-bl="${esc(same.id)}">Use their details</button>` : "";
+  }
+  function blPick(id) {
+    const b = BL?.list?.find(x => x.id === id);
+    if (!b) return;
+    const el = k => document.getElementById(BL.ids[k]);
+    BL.picked = b.id; BL.cur = -1;
+    el("name").value = b.name;
+    if (el("phone")) el("phone").value = b.phone || "";
+    if (el("email")) el("email").value = b.email || "";
+    if (el("pref")) el("pref").value = blPref(b.preferredContact);
+    blRender();
+    BL.onPick?.();
+  }
+  function blClear() {
+    if (!BL) return;
+    const el = k => document.getElementById(BL.ids[k]);
+    BL.picked = null;
+    ["name", "phone", "email", "pref"].forEach(k => { if (el(k)) el(k).value = ""; });
+    blRender();
+    BL.onPick?.();
+    el("name").focus();
+  }
+  /** The picked borrower's id for the save, if the Name still belongs to this sheet. */
+  function blPickedId(nameId) { return BL && BL.ids.name === nameId && BL.picked ? BL.picked : null; }
+
   // ── New reservation / New appointment: book on someone's behalf ─────────────
   // Saved as a confirmed request + reserved items (units chosen at pickup), so the borrower gets a manage
   // link and it works like any other reservation. WhatsApp / text go out after saving (the link exists then).
@@ -4209,6 +4334,7 @@
     nbSetupSendBy();
     nbRender();
     nbEl("nb-save-btn").onclick = nbSave;
+    attachBorrowerLookup({ name: "nb-name", phone: "nb-phone", email: "nb-email", pref: "nb-pref" }, () => { nbSetupSendBy(); nbAutoMessage(); });
     nbEl("nb-name").focus();
   }
   function nbEventChanged() {
@@ -4332,6 +4458,7 @@
     const fail = m => { nbEl("nb-error").textContent = m; nbEl("nb-error").style.display = "block"; };
     nbEl("nb-error").style.display = "none";
     const borrower = { name: nbVal("nb-name"), phone: nbVal("nb-phone"), email: nbVal("nb-email"), preferredContact: nbVal("nb-pref") || null };
+    if (blPickedId("nb-name")) borrower.id = blPickedId("nb-name");
     if (!borrower.name) { fail("Enter the borrower's name."); nbEl("nb-name").focus(); return; }
     if (!borrower.phone && !borrower.email) { fail("Enter a phone number or email so the gemach can reach them."); return; }
     const appt = NB.kind === "appointment";

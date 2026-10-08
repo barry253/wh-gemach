@@ -19,7 +19,7 @@ import { logEvent, logEvents } from "./activity.js";
 import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName } from "./airtable.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { itemAttrsFor } from "./attributes.js";
-import { findOrCreateBorrower } from "./borrowers.js";
+import { findOrCreateBorrower, useOrFindBorrower } from "./borrowers.js";
 import { REC_RE, T } from "./config.js";
 import { addDays, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
@@ -356,7 +356,7 @@ async function handleWalkInLoan(c) {
   if (v.error) return json({ error: v.error }, v.status);
   let borrowerId;
   try {
-    borrowerId = await findOrCreateBorrower(db, g, { name, phone: phone || null, email: email || null, preferredContact: pref });
+    borrowerId = await useOrFindBorrower(db, g, { id: b.id ?? null, name, phone: phone || null, email: email || null, preferredContact: pref });
   } catch (e) {
     return json({ error: e.message || "Couldn't save the borrower." }, 500);
   }

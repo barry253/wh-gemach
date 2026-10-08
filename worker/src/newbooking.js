@@ -16,7 +16,7 @@ import { logEvents } from "./activity.js";
 import { Q, belongs, fetchByIds, firstLink, linkedId, linkedName } from "./airtable.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { checkBorrower, checkDate, checkRequestedItems, checkReservedAdds, createReserved, REQUEST_CONTACT, sendNote } from "./booking.js";
-import { findOrCreateBorrower } from "./borrowers.js";
+import { useOrFindBorrower } from "./borrowers.js";
 import { T } from "./config.js";
 import { addDays, formatNy, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
 import { selName } from "./gemachs.js";
@@ -35,7 +35,8 @@ const ADMIN_SOURCE = "Admin";
 async function borrowerFrom(db, g, raw) {
   const v = checkBorrower(raw || {}, { name: "", phone: "", email: "" });
   if (v.error) return v;
-  const id = await findOrCreateBorrower(db, g, { name: v.name, phone: v.phone || null, email: v.email || null, preferredContact: v.pref || null });
+  // raw.id: a borrower picked from the lookup — that record is used (and its details updated).
+  const id = await useOrFindBorrower(db, g, { id: raw?.id ?? null, name: v.name, phone: v.phone || null, email: v.email || null, preferredContact: v.pref || null });
   return { ...v, id };
 }
 

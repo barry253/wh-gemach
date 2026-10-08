@@ -1309,6 +1309,53 @@ await t("upcoming: reservations (one row per booking, late pickups flagged) and 
   assert.ok(!other.items.some(x => x.name === "Phone Caller"), "scoped to the gemach");
 });
 
+// ─── Borrower lookup in the admin sheets (borrowers.js) ───
+await t("borrower lookup: this gemach's borrowers, most recent first, with loan counts and what's out", async () => {
+  const r = await call(`/admin/borrowers`, { headers: jsonB });
+  assert.equal(r.status, 200);
+  const { borrowers } = await r.json();
+  assert.ok(borrowers.length >= 2);
+  const leah = borrowers.find(b => b.name === "Leah Gold");
+  assert.ok(leah, "walk-in borrower listed");
+  assert.equal(leah.phone, "516-555-0199"); assert.equal(leah.preferredContact, "WhatsApp");
+  assert.ok(leah.loans >= 1 && leah.out >= 1, JSON.stringify(leah));
+  assert.equal(leah.dueBack, plusDays(7));
+  const caller = borrowers.find(b => b.name === "Phone Caller");
+  assert.ok(caller && caller.out === 0 && caller.loans === 2, JSON.stringify(caller));
+  const ats = borrowers.map(b => b.lastAt || "");
+  assert.deepEqual(ats, [...ats].sort((a, b) => b.localeCompare(a)), "most recent activity first");
+  // Gemach A's admins never see gemach B's borrowers
+  const a = await (await call(`/admin/borrowers`, { headers: auth(tokenA) })).json();
+  assert.ok(!a.borrowers.some(b => b.name === "Leah Gold" || b.name === "Phone Caller"));
+});
+
+await t("borrower lookup: picking a borrower reuses that record and saves changed details; foreign id ignored", async () => {
+  const caller = DB.Borrowers.find(b => b.fields.Name === "Phone Caller");
+  const n0 = DB.Borrowers.length;
+  // A different spelling and a new email would normally make a second record; the picked id keeps it one.
+  const r = await postB(`/admin/reservations`, { borrower: { id: caller.id, name: "Phone Caller-Katz", phone: "516-555-0401", email: "new@example.com", preferredContact: "Email" },
+    items: [{ itemTypeId: "recCOCHAIRS000001", quantity: 1 }], reservationStart: plusDays(10), reservationEnd: plusDays(11) });
+  assert.equal(r.status, 200, await r.clone().text());
+  const d = await r.json();
+  assert.equal(DB.Borrowers.length, n0, "no new borrower");
+  const loan = DB.Loans.find(l => l.fields["Source Request"]?.[0] === d.request);
+  assert.equal(loan.fields.Borrower[0], caller.id);
+  const f = DB.Borrowers.find(b => b.id === caller.id).fields;
+  assert.deepEqual([f.Name, f.Email, f["Preferred Contact"]], ["Phone Caller-Katz", "new@example.com", "Email"]);
+  // Blank phone in the sheet doesn't wipe the stored phone.
+  const w = await postB(`/admin/loans`, { borrower: { id: caller.id, name: "Phone Caller-Katz", email: "new@example.com" }, items: [{ itemTypeId: "recCOCHAIRS000001", quantity: 1 }], dueBack: plusDays(5) });
+  assert.equal(w.status, 200, await w.clone().text());
+  assert.equal(DB.Borrowers.find(b => b.id === caller.id).fields.Phone, "516-555-0401");
+  const wLoan = (await w.json()).loans[0].id;
+  assert.equal(DB.Loans.find(l => l.id === wLoan).fields.Borrower[0], caller.id);
+  // Another gemach's borrower id: ignored, matched/created as usual within this gemach.
+  DB.Borrowers.push(rec("recBORROWERA00001", { Name: "Other Gemach Person", Phone: "5165559999", Gemach: [A.id], "Gemach Slug": [A.slug] }));
+  const x = await postB(`/admin/appointments`, { borrower: { id: "recBORROWERA00001", name: "Walk In", phone: "5165558888" }, appointmentAt: `${plusDays(3)}T10:00` });
+  assert.equal(x.status, 200, await x.clone().text());
+  assert.equal(DB.Borrowers.find(b => b.id === "recBORROWERA00001").fields.Name, "Other Gemach Person", "foreign record untouched");
+  assert.ok(DB.Borrowers.some(b => b.fields.Name === "Walk In" && (b.fields.Gemach || [])[0] === B.id));
+});
+
 await t("v3 GET /admin/gemach: appointment template (+ no-address variant), new placeholders, profile fields", async () => {
   const d = await (await call(`/admin/gemach`, { headers: jsonB })).json();
   assert.equal(d.templates.appointment, "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}");
