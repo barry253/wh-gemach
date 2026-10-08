@@ -1291,6 +1291,10 @@ await t("upcoming: reservations (one row per booking, late pickups flagged) and 
   assert.deepEqual([res.kind, res.date, res.end, res.name, res.late], ["reservation", plusDays(2), plusDays(6), "Phone Caller", false]);
   assert.deepEqual(res.items.sort(), ["Chairs × 3", "Gold gown – size 10"]);
   assert.deepEqual(res.ref, { request: globalThis.__adminRes.request });
+  // Each reserved item, in the same shape the Reservations list uses (so Upcoming can mark it picked up, send pickup info).
+  assert.deepEqual(res.loans.map(l => [l.itemTypeName, l.quantity, l.isQuantity, l.borrowerName, l.reservationStart]).sort(),
+    [["Chairs", 3, true, "Phone Caller", plusDays(2)], ["Gold gown – size 10", null, false, "Phone Caller", plusDays(2)]]);
+  assert.ok(res.loans.every(l => l.id && l.loanId && l.manageUrl === globalThis.__adminRes.manageUrl));
   const late = d.items.find(x => x.ref.loan === "recUPLATE00000001");
   assert.equal(late.late, true); assert.equal(late.date, plusDays(-2));
   assert.ok(!d.items.some(x => x.ref.loan === "recUPFAR000000001"), "beyond N days left out");

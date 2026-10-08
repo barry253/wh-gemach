@@ -22,8 +22,15 @@ const TYPES = [
 const UPCOMING = { today: TODAY, days: 7, until: plus(7), items: [
   { kind: "reservation", date: plus(-1), late: true, end: plus(5), name: "Late Larry", items: ["Walker"], requestId: "R-10", photos: [], ref: { request: "recREQLATE0000001" } },
   { kind: "appointment", at: nyAt(0, 19, 30), date: TODAY, name: "Tova Stein", items: ["Navy gown"], requestId: "R-11", photos: [], ref: { request: "recAPPTTODAY00001" } },
-  { kind: "reservation", date: TODAY, end: plus(6), name: "Moshe Klein", items: ["Wheelchair", "Folding chairs × 20"], requestId: "R-12", photos: [], ref: { request: "recREQMOSHE000001" } },
-  { kind: "reservation", date: plus(1), end: null, name: "Open Ended", items: ["Walker"], requestId: null, photos: [], ref: { loan: "recLOANOPEN000001" } },
+  { kind: "reservation", date: TODAY, end: plus(6), name: "Moshe Klein", phone: "5165550500", preferredContact: "Text", items: ["Wheelchair", "Folding chairs × 20"], requestId: "R-12", photos: [], ref: { request: "recREQMOSHE000001" },
+    loans: [
+      { id: "recLOANMOSHE00001", loanId: "L-51", borrowerName: "Moshe Klein", borrowerPhone: "5165550500", itemTypeName: "Wheelchair", itemTypeId: "recWC", itemRecId: null, isQuantity: false, isAddon: false, quantity: null,
+        reservationStart: TODAY, reservationEnd: plus(6), notes: "Needs it for a wedding", requestNote: null, manageUrl: "https://whgemachs.org/r/recREQMOSHE000001.sig" },
+      { id: "recLOANMOSHE00002", loanId: "L-52", borrowerName: "Moshe Klein", borrowerPhone: "5165550500", itemTypeName: "Folding chairs", itemTypeId: "recCH", itemRecId: null, isQuantity: true, isAddon: false, quantity: 20,
+        reservationStart: TODAY, reservationEnd: plus(6), notes: null, requestNote: null, manageUrl: "https://whgemachs.org/r/recREQMOSHE000001.sig" },
+    ] },
+  { kind: "reservation", date: plus(1), end: null, name: "Open Ended", items: ["Walker"], requestId: null, photos: [], ref: { loan: "recLOANOPEN000001" },
+    loans: [{ id: "recLOANOPEN000001", loanId: "L-53", borrowerName: "Open Ended", itemTypeName: "Walker", itemTypeId: "recWK", isQuantity: false, isAddon: false, quantity: null, reservationStart: plus(1) }] },
   { kind: "appointment", at: nyAt(3, 11), date: plus(3), name: "Future Appt", items: [], requestId: "R-13", photos: [], ref: { request: "recAPPTFUTURE0001" } },
 ] };
 
@@ -49,6 +56,7 @@ async function run(G) {
     if (p === "/admin/checkout/options") return J({ today: TODAY, defaultLoanDays: G.defaultLoanDays ?? null, types: TYPES,
       ...(u.searchParams.get("request") ? { request: { id: u.searchParams.get("request"), requestId: "R-11", name: "Tova Stein", phone: "5165550111", requestType: "Appointment",
         status: "Converted", appointmentAt: nyAt(0, 19, 30), itemTypeIds: [], quantities: {}, manageUrl: "https://whgemachs.org/r/x.sig" } } : {}) });
+    if (p === "/admin/booking/cancel") return J({ success: true, cancelled: 2, requestCancelled: true });
     if (p === "/admin/booking") return J({ error: "Not found" }, 404);
     if (p === "/admin/reservations" && M === "POST") return J({ success: true, request: "recNEWREQ0000001", requestId: "R-200", manageUrl: "https://whgemachs.org/r/recNEWREQ0000001.sig", loans: ["L-1", "L-2"] });
     if (p === "/admin/appointments" && M === "POST") return J({ success: true, request: "recNEWAPPT000001", requestId: "R-201", manageUrl: "https://whgemachs.org/r/recNEWAPPT000001.sig" });
@@ -75,16 +83,45 @@ async function run(G) {
   const heads = await page.$$eval("#upcoming-body .upcoming-day", hs => hs.map(h => h.textContent));
   ok(heads[0].startsWith("Pickup date passed") && /^Today · /.test(heads[1]) && /^Tomorrow · /.test(heads[2]) && heads.length === 4, "grouped: late pickups, Today, Tomorrow, later: " + heads.join(" | "));
   const rows = await page.$$eval("#upcoming-body .up-row", rs => rs.map(r => r.innerText.replace(/\s+/g, " ").trim()));
-  ok(/7:30 PM Appointment Tova Stein Navy gown · R-11 Appt Check out/i.test(rows[1]), "today's appointment: time + Check out: " + rows[1]);
+  ok(/7:30 PM Appointment Tova Stein Navy gown · R-11 Appt/i.test(rows[1]), "today's appointment: time: " + rows[1]);
   ok(/Pickup until .* Moshe Klein Wheelchair, Folding chairs × 20 · R-12 Reserved/i.test(rows[2]), "reservation row: items + until: " + rows[2]);
   ok(/Pickup open-ended/.test(rows[3]) && /Pickup was due/.test(rows[0]), "open-ended and late rows");
-  ok(!/Check out/.test(rows[4]), "future appointment: no Check out yet");
+  ok(!(await page.isVisible("#up-panel-2")), "actions hidden until the row is tapped");
   await page.screenshot({ path: "shot-dash-upcoming.png", fullPage: true });
-  await page.click("#upcoming-body .up-row >> nth=2 >> .up-open");
+
+  // Tap a reservation: the Reservations page's actions, per item when there are several
+  await page.click("#up-2 .up-open");
+  ok(await page.isVisible("#up-panel-2") && (await page.getAttribute("#up-2 .up-open", "aria-expanded")) === "true", "tap opens its actions");
+  const panel = (await page.innerText("#up-panel-2")).replace(/\s+/g, " ");
+  ok(/Wheelchair ✓ Mark picked up/.test(panel) && /Folding chairs × 20 ✓ Mark picked up/.test(panel), "each item has Mark picked up: " + panel);
+  ok(/💬 Needs it for a wedding/.test(panel) && /Send pickup info/.test(panel) && /Edit/.test(panel) && /Cancel/.test(panel) && /Send a text/.test(panel), "notes, pickup info, edit, cancel, contact");
+  await page.screenshot({ path: "shot-dash-upcoming-open.png", fullPage: true });
+  await page.click("#up-panel-2 .up-item >> nth=1 >> button");
+  await page.waitForFunction(() => document.getElementById("pickup-sheet").classList.contains("open"));
+  ok((await page.textContent("#pickup-subtitle")) === "Moshe Klein · Folding chairs" && await page.isVisible("#pickup-qty") && (await page.inputValue("#pickup-qty")) === "20", "Mark picked up opens the pickup sheet for that item");
+  await page.click("#pickup-sheet .sheet-close");
+  await page.click("#up-panel-2 button:has-text('Send pickup info')");
+  await page.waitForFunction(() => document.getElementById("pickup-instructions-sheet").classList.contains("open"));
+  ok(/Wheelchair and Folding chairs × 20/.test(await page.inputValue("#pickup-instructions-message")), "pickup info covers every item of the booking");
+  await page.click("#pickup-instructions-sheet .sheet-close");
+  await page.click("#up-panel-2 button:has-text('Edit')");
   await page.waitForFunction(() => document.getElementById("booking-sheet").classList.contains("open"));
-  ok(reqs.some(r => r.path === "/admin/booking" && r.search === "?request=recREQMOSHE000001"), "tap a row → its Edit sheet");
+  ok(reqs.some(r => r.path === "/admin/booking" && r.search === "?request=recREQMOSHE000001"), "Edit opens the Edit sheet");
   await page.click("#booking-sheet .sheet-close");
-  await page.click("#upcoming-body .up-row >> nth=1 >> button:has-text('Check out')");
+  await page.click("#up-panel-2 button:has-text('Cancel')");
+  await page.waitForFunction(() => document.body.textContent.includes("Reservation cancelled"));
+  ok(reqs.some(r => r.path === "/admin/booking/cancel" && r.body.request === "recREQMOSHE000001"), "Cancel cancels the whole reservation");
+
+  // Single item: one Mark picked up button
+  await page.waitForSelector("#up-3 .up-open");
+  await page.click("#up-3 .up-open");
+  ok(!(await page.$("#up-panel-3 .up-item")) && /✓ Mark picked up/.test(await page.innerText("#up-panel-3")), "single item: one Mark picked up");
+  ok(!(await page.isVisible("#up-panel-2")), "opening another row closes the first");
+
+  // Appointment: Check out / Nothing borrowed / Edit
+  await page.click("#up-1 .up-open");
+  ok(/Check out/.test(await page.innerText("#up-panel-1")) && /Nothing borrowed/.test(await page.innerText("#up-panel-1")), "appointment: Check out + Nothing borrowed");
+  await page.click("#up-panel-1 button:has-text('Check out')");
   await page.waitForFunction(() => document.getElementById("checkout-sheet").classList.contains("open"));
   ok(reqs.some(r => r.path === "/admin/checkout/options" && r.search === "?request=recAPPTTODAY00001"), "Check out from Upcoming");
   await page.click("#checkout-sheet .sheet-close");

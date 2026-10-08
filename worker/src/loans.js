@@ -325,9 +325,14 @@ async function handleGetReservations({ db, g, env }) {
     sort: [{ field: "Reservation Start", direction: "asc" }],
     fields: LOAN_LIST_FIELDS,
   });
+  return json(await reservationRecords(db, g, env, loans));
+}
+
+/** Reserved loans → the rows the Reservations list (and Dashboard "Upcoming") show and act on. */
+async function reservationRecords(db, g, env, loans) {
   const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
 
-  const records = await Promise.all(loans.map(async r => {
+  return Promise.all(loans.map(async r => {
     const f = r.fields;
     const q = loanQtyInfo(f, typeInfo);
     const bRaw = firstLink(f["Borrower"]);
@@ -359,7 +364,6 @@ async function handleGetReservations({ db, g, env }) {
       manageUrl: await sourceManageUrl(env, f),
     };
   }));
-  return json(records);
 }
 
 async function handleUpdateReservation(c, id) {
@@ -520,4 +524,4 @@ async function handleAssignItem(c, itemRecId) {
   return json({ success: true, loanId, data: loanData });
 }
 
-export { handlePickupEmail, handleLoanReminder, borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem, BORROWER_FIELDS, LOAN_LIST_FIELDS };
+export { reservationRecords, handlePickupEmail, handleLoanReminder, borrowerInfo, loadLoanRelations, loanQtyInfo, handleGetLoans, loanLogDetails, handleReturnLoan, qtyTypeForLoan, handleMarkPickedUp, handleGetReservations, handleUpdateReservation, handleCancelReservation, handleAssignItem, BORROWER_FIELDS, LOAN_LIST_FIELDS };

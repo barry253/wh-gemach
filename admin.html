@@ -366,7 +366,14 @@
     .upcoming-day { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0.9rem 0 0.4rem; }
     .upcoming-day.late { color: var(--amber); }
     .upcoming-day:first-child { margin-top: 0.2rem; }
-    .up-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; padding-right: 0.6rem; border: 1px solid var(--border); border-radius: 10px; background: var(--white); }
+    .up-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.5rem; margin-bottom: 0.4rem; padding-right: 0.6rem; border: 1px solid var(--border); border-radius: 10px; background: var(--white); }
+    .up-row.open { border-color: var(--navy); }
+    .up-panel { display: none; flex: 1 0 100%; padding: 0.15rem 0 0.7rem 0.7rem; border-top: 1px solid var(--border); }
+    .up-row.open .up-panel { display: block; }
+    .up-panel .card-actions { margin-top: 0.6rem; }
+    .up-item { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.45rem 0; border-bottom: 1px dashed var(--border); font-size: 0.85rem; }
+    .up-item:last-of-type { border-bottom: 0; }
+    .up-item .muted-small { display: block; }
     .up-row:hover, .up-row:focus-within { border-color: var(--navy); }
     .up-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.65rem; padding: 0.6rem 0 0.6rem 0.7rem; border: 0; background: none; text-align: left;
       cursor: pointer; font-family: inherit; color: var(--text); }
@@ -4414,23 +4421,78 @@
       const when = appt ? `${esc(time)}<small>Appointment</small>`
         : x.late ? `${esc(fmtDay(x.date))}<small>Pickup was due</small>` : `Pickup<small>${x.end ? `until ${esc(fmtDay(x.end))}` : "open-ended"}</small>`;
       const p = x.photos?.[0];
-      const checkout = appt && x.date <= d.today
-        ? `<button type="button" class="btn btn-primary btn-sm" onclick="openCheckout('${safeId(x.ref.request)}')">Check out</button>` : "";
-      html += `<div class="up-row">
-        <button type="button" class="up-open" onclick="openUpcoming(${i})" aria-label="Edit — ${esc(x.name)}, ${esc(x.items.join(", "))}">
+      html += `<div class="up-row" id="up-${i}">
+        <button type="button" class="up-open" onclick="toggleUpcoming(${i})" aria-expanded="false" aria-controls="up-panel-${i}">
           <span class="up-when">${when}</span>
           <span class="up-main"><span class="up-name" style="display:block">${esc(x.name)}</span>
             <span class="up-items" style="display:block">${esc(x.items.join(", ") || (appt ? "Coming to look" : ""))}${x.requestId ? ` · ${esc(x.requestId)}` : ""}</span></span>
         </button>
         ${p ? rowThumb(p.photo, p.name, p.photos) : ""}
-        <span class="up-side"><span class="tag ${appt ? "tag-amber" : x.late ? "tag-red" : "tag-navy"}">${appt ? "Appt" : "Reserved"}</span>${checkout}</span>
+        <span class="up-side"><span class="tag ${appt ? "tag-amber" : x.late ? "tag-red" : "tag-navy"}">${appt ? "Appt" : "Reserved"}</span></span>
+        <div class="up-panel" id="up-panel-${i}">${upcomingPanel(x, i, d.today)}</div>
       </div>`;
     });
     box.innerHTML = html;
   }
-  function openUpcoming(i) {
+  /** The same actions as on the Reservations page (or the appointment cards), for one Upcoming row. */
+  function upcomingPanel(x, i, today) {
+    const contact = contactActions(contactOf(x));
+    if (x.kind === "appointment") {
+      return `<div class="card-actions">
+        <button class="btn btn-primary btn-sm" onclick="openCheckout('${safeId(x.ref.request)}')">Check out</button>
+        <button class="btn btn-ghost btn-sm" onclick="markVisit('${safeId(x.ref.request)}', 'nothing')">Nothing borrowed</button>
+        <button class="btn btn-ghost btn-sm" onclick="openUpcomingEdit(${i})">✏️ Edit</button>
+        ${contact}
+      </div>`;
+    }
+    const loans = x.loans || [];
+    const pickLabel = l => (l.isAddon ? "Mark handed over" : "Mark picked up");
+    const one = loans.length === 1 ? loans[0] : null;
+    const notes = [...new Set(loans.map(l => l.requestNote).filter(Boolean))].map(n => `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(n)}</div>`).join("")
+      + [...new Set(loans.map(l => l.notes).filter(Boolean))].map(n => `<div class="loan-notes">💬 ${esc(n)}</div>`).join("");
+    const list = one ? "" : loans.map((l, j) => `<div class="up-item">
+        <span>${esc(l.itemTypeName || "Item")}${l.quantity != null ? ` × ${esc(l.quantity)}` : ""}${l.itemId ? ` <span class="muted-small" style="display:inline">${esc(l.itemId)}</span>` : ""}</span>
+        <button class="btn btn-ghost btn-sm" onclick="upcomingPickup(${i}, ${j})">✓ ${pickLabel(l)}</button>
+      </div>`).join("");
+    return `${notes}${list}
+      <div class="card-actions">
+        ${one ? `<button class="btn btn-primary btn-sm" onclick="upcomingPickup(${i}, 0)">✓ ${pickLabel(one)}</button>` : ""}
+        ${loans.length ? `<button class="btn btn-ghost btn-sm" onclick="upcomingPickupInfo(${i})">📍 Send pickup info</button>` : ""}
+        <button class="btn btn-ghost btn-sm" onclick="openUpcomingEdit(${i})">✏️ Edit</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="upcomingCancel(${i})">✕ Cancel</button>
+        ${contact}
+      </div>`;
+  }
+  function toggleUpcoming(i) {
+    const row = document.getElementById(`up-${i}`);
+    const open = !row.classList.contains("open");
+    document.querySelectorAll("#upcoming-body .up-row.open").forEach(r => { r.classList.remove("open"); r.querySelector(".up-open")?.setAttribute("aria-expanded", "false"); });
+    if (open) { row.classList.add("open"); row.querySelector(".up-open").setAttribute("aria-expanded", "true"); }
+  }
+  function openUpcomingEdit(i) {
     const x = UPCOMING[i];
     if (x) openBooking({ ...x.ref, from: "dashboard" });
+  }
+  function upcomingPickup(i, j) {
+    const l = UPCOMING[i]?.loans?.[j];
+    if (l) openPickup(l);
+  }
+  function upcomingPickupInfo(i) {
+    const x = UPCOMING[i];
+    if (!x?.loans?.length) return;
+    const labels = x.loans.map(l => (l.quantity != null ? `${l.itemTypeName} × ${l.quantity}` : l.itemTypeName));
+    openPickupInstructions(x.loans[0], labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`);
+  }
+  async function upcomingCancel(i) {
+    const x = UPCOMING[i];
+    if (!x) return;
+    const n = x.loans?.length || 0;
+    if (!confirm(`Cancel ${x.name}'s reservation${n > 1 ? ` (${n} items)` : ""}? The items become available for others.`)) return;
+    const res = await api("/admin/booking/cancel", "POST", x.ref);
+    if (!res) return;
+    if (res.error) { showToast(res.error); return; }
+    showToast("Reservation cancelled");
+    refreshAfterLending();
   }
 
   /** Reload whatever is on screen after lending / closing a visit. */
@@ -4655,9 +4717,11 @@
     openSheet("reminder-sheet");
   }
 
-  function openPickupInstructions(r) {
-    document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
-    const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName, { manageUrl: r.manageUrl });
+  /** itemsText: all the items of a booking ("Wheelchair and Folding chairs × 20"); default = this one item. */
+  function openPickupInstructions(r, itemsText) {
+    const items = itemsText || (r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName);
+    document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${items}`;
+    const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], items, { manageUrl: r.manageUrl });
     document.getElementById("pickup-instructions-message").value = msg;
     setupSendBy("pickup-instructions", r, "pickup-instructions-send-btn",
       { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Send email", none: "Close" }, { noNone: true });

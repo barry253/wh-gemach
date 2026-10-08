@@ -23,6 +23,7 @@ import { selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { getNextRequestId } from "./ids.js";
 import { manageUrl } from "./manage.js";
+import { LOAN_LIST_FIELDS, reservationRecords } from "./loans.js";
 import { itemTypeInfoMap, loanQty, qtyLabel } from "./quantity.js";
 import { APPT_AT_RE } from "./requests.js";
 
@@ -136,15 +137,14 @@ async function handleNewAppointment(c) {
 
 // ─── Upcoming ─────────────────────────────────────────────────────────────────
 
-async function handleUpcoming({ db, g, url }) {
+async function handleUpcoming({ db, g, url, env }) {
   const n = Number(url.searchParams.get("days"));
   const days = Number.isInteger(n) && n >= 1 && n <= 60 ? n : 7;
   const t = nyToday(), until = addDays(t, days);
   const fromIso = new Date(nyLocalToUtc(t, "00:00")).toISOString();
   const untilIso = new Date(nyLocalToUtc(addDays(until, 1), "00:00")).toISOString();
   const [loans, appts] = await Promise.all([
-    db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Reserved")],
-      fields: ["Loan ID", "Item to Reserve", "Borrower", "Status", "Quantity", "Reservation Start", "Reservation End", "Source Request", "Gemach"] }),
+    db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Reserved")], fields: [...new Set([...LOAN_LIST_FIELDS, "Gemach"])] }),
     db.listAll(T.REQUESTS, { scope: g, where: [Q.eq("Request Type", "Appointment"), Q.eq("Status", "Converted"), Q.notBlank("Appointment At"), Q.notBefore("Appointment At", fromIso)],
       sort: [{ field: "Appointment At", direction: "asc" }],
       fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Item Quantities", "Appointment At", "Event Date", "Status", "Request Type", "Visit Outcome", "Gemach"] }),
@@ -159,11 +159,13 @@ async function handleUpcoming({ db, g, url }) {
   const reqIds = [...groups.keys()].filter(k => groups.get(k)[0].id !== k);
   const bIds = due.map(l => linkedId(firstLink(l.fields["Borrower"]))).filter(Boolean);
   const visibleAppts = appts.filter(a => belongs(a, g) && !String(a.fields["Visit Outcome"] || "").trim() && a.fields["Appointment At"] >= fromIso && a.fields["Appointment At"] < untilIso);
-  const [reqs, borrowers, info] = await Promise.all([
+  const [reqs, borrowers, info, rows] = await Promise.all([
     fetchByIds(db, T.REQUESTS, reqIds, { g, fields: ["Request ID", "Event Date", "Gemach"] }),
     fetchByIds(db, T.BORROWERS, bIds, { g, fields: ["Name", "Phone", "Email", "Preferred Contact", "Gemach"] }),
     itemTypeInfoMap(db, [...due.map(l => linkedId(firstLink(l.fields["Item to Reserve"]))), ...visibleAppts.flatMap(a => (a.fields["Items Requested"] || []).map(linkedId))].filter(Boolean), g),
+    reservationRecords(db, g, env, due), // the same rows the Reservations list acts on (pick up, pickup info)
   ]);
+  const rowById = Object.fromEntries(rows.map(r => [r.id, r]));
   const reqMap = Object.fromEntries(reqs.map(r => [r.id, r]));
   const bMap = Object.fromEntries(borrowers.map(b => [b.id, b]));
   const out = [];
@@ -188,6 +190,7 @@ async function handleUpcoming({ db, g, url }) {
       }),
       photos: list.map(l => info[linkedId(firstLink(l.fields["Item to Reserve"]))]).filter(x => x?.photo).slice(0, 4).map(x => ({ name: x.name, photo: x.photo, photos: x.photos })),
       ref: rq ? { request: rq.id } : { loan: list[0].id },
+      loans: list.map(l => rowById[l.id]).filter(Boolean),
     });
   }
   for (const a of visibleAppts) {
