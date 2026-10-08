@@ -10,7 +10,7 @@ Rules:
 - Release flow (Barry's choice — he approves in chat, not on GitHub):
   1. Work on a branch; run `cd worker && npm test` and `cd tests && npm test`; push the branch (GitHub Actions runs both suites).
   2. Show Barry what changed and ask for approval in the conversation.
-  3. Only after he says yes: `git fetch`, merge the branch into `main` (fast-forward or merge commit), re-run the tests, push `main`, then delete the branch. Pages and Workers Builds deploy from `main`; Workers Builds re-runs the worker tests and refuses to deploy on failure.
+  3. Only after he says yes: `git fetch`, merge the branch into `main` (fast-forward or merge commit), re-run the tests, push `main`. Don't delete the branch yourself (pushes that delete branches are blocked here): `.github/workflows/cleanup-branches.yml` deletes branches already merged into main on every push to main and daily, skipping ones touched in the last hour or still level with main. Pages and Workers Builds deploy from `main`; Workers Builds re-runs the worker tests and refuses to deploy on failure.
   4. After the deploy, confirm: live worker code matches `npm run check` output, `/health` is ok, and the change works.
   Don't ask Barry to open or merge pull requests himself. Small docs-only changes to CLAUDE.md/README can go straight to `main`.
 - Add tests for new behavior.
