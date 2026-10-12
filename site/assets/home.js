@@ -16,66 +16,15 @@
   var typingTimer = null;
   var searchPushed = false; // whether the current typing session already has a history entry
 
-  // ── Text normalization / matching ──
-  var STOP = { a:1, an:1, the:1, for:1, i:1, im:1, need:1, needs:1, needed:1, to:1, borrow:1, of:1, my:1, some:1, and:1, with:1, me:1, looking:1, want:1, please:1, any:1, who:1, has:1, have:1, do:1, you:1, is:1, there:1 };
-  function norm(s) {
-    return String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
-      .replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-  }
-  function tokens(q) {
-    var t = norm(q).split(" ").filter(Boolean);
-    var kept = t.filter(function (w) { return !STOP[w]; });
-    return kept.length ? kept : t;
-  }
-  function variants(tok) {
-    var v = [tok];
-    if (tok.length > 4 && /ies$/.test(tok)) v.push(tok.slice(0, -3) + "y");
-    if (tok.length > 4 && /(ches|shes|xes|sses)$/.test(tok)) v.push(tok.slice(0, -2));
-    if (tok.length > 3 && /s$/.test(tok) && !/ss$/.test(tok)) v.push(tok.slice(0, -1));
-    return v;
-  }
-  function lev1(a, b) { // true if edit distance <= 1
-    if (a === b) return true;
-    var la = a.length, lb = b.length;
-    if (Math.abs(la - lb) > 1) return false;
-    var i = 0, j = 0, edits = 0;
-    while (i < la && j < lb) {
-      if (a[i] === b[j]) { i++; j++; continue; }
-      if (++edits > 1) return false;
-      if (la > lb) i++; else if (lb > la) j++; else { i++; j++; }
-    }
-    return edits + (la - i) + (lb - j) <= 1;
-  }
-  /** "Size 8 Color Navy Gold" from an item's filter values, so searches like "navy gown" or "size 8" find it. */
-  function attrText(it) {
-    var a = it && it.attributes;
-    if (!a || typeof a !== "object") return "";
-    return Object.keys(a).map(function (k) { return k + " " + (Array.isArray(a[k]) ? a[k].join(" ") : ""); }).join(" ");
-  }
-  function makeHay(parts) {
-    var text = norm(parts.join(" "));
-    return { text: " " + text + " ", compact: text.replace(/ /g, ""), words: text.split(" ") };
-  }
-  function tokMatch(tok, hay) {
-    var vs = variants(tok);
-    for (var i = 0; i < vs.length; i++) {
-      if (hay.text.indexOf(vs[i]) !== -1 || hay.compact.indexOf(vs[i]) !== -1) return 2;
-    }
-    if (tok.length >= 5) { // small typo tolerance
-      for (var k = 0; k < hay.words.length; k++) {
-        var w = hay.words[k];
-        if (w.length >= 4 && lev1(tok, w)) return 1;
-      }
-    }
-    return 0;
-  }
+  // ── Text matching (shared with the gemach page, in site.js) ──
+  var tokens = W.searchTokens, makeHay = W.makeHay, tokMatch = W.tokMatch, attrText = W.attrText;
 
   // ── Data helpers ──
   function catById(id) {
     for (var i = 0; i < data.categories.length; i++) if (data.categories[i].id === id) return data.categories[i];
     return null;
   }
-  function catSlug(c) { return norm(c.name).replace(/ /g, "-"); }
+  var catSlug = W.catSlug;
   function findCat(key) {
     if (!key) return null;
     for (var i = 0; i < data.categories.length; i++) {
@@ -321,6 +270,16 @@
                  : '<span class="badge badge-out">All on loan</span>';
   }
 
+  // Rows shown per gemach before "See all N at …" (browsing a category vs. a typed search).
+  var CAP_CATEGORY = 4, CAP_SEARCH = 6;
+  /** "size and color" from the gemach's item filters (blank if it has none). */
+  function filterNames(g) {
+    var names = (Array.isArray(g.itemAttributes) ? g.itemAttributes : [])
+      .map(function (d) { return String((d && d.name) || "").toLowerCase(); }).filter(Boolean);
+    if (names.length < 2) return names.join("");
+    return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  }
+
   function renderResults() {
     var active = !!(state.q.trim() || state.cat);
     document.body.classList.toggle("filtering", active);
@@ -351,9 +310,26 @@
       (r.count ? "<strong>" + W.plural(r.count, "item") + "</strong>" + " from " : "") +
       "<strong>" + W.plural(nG, "gemach") + "</strong>" + (what.length && !r.partial ? " for " + what.join(" in ") : (r.partial ? " " + what.join(" in ") : ""));
 
-    resultsEl.innerHTML = r.groups.map(function (grp) {
-      var g = grp.g;
-      var rows = grp.rows.map(function (h) {
+    // Each gemach shows a short preview; the rest is one tap away on the gemach page, which opens
+    // narrowed to the same category/search and has that gemach's own filters (size, color, …).
+    var cap = r.cat ? CAP_CATEGORY : CAP_SEARCH;
+    var scope = { cat: r.cat ? catSlug(r.cat) : "", q: r.partial ? "" : state.q };
+    var summary = "";
+    if (r.cat && r.groups.length > 1) {
+      summary = '<nav class="rg-summary" aria-label="Gemachs with ' + esc(r.cat.name) + '"><ul>' + r.groups.map(function (grp) {
+        var g = grp.g, n = grp.rows.length;
+        var avail = g._dir || g._appt ? 0 : grp.rows.reduce(function (s, h) { return s + Math.max(0, h.e.item.availableCount || 0); }, 0);
+        var meta = n ? W.plural(n, "item") + (avail ? ' · <span class="ok">' + avail + " available</span>" : "")
+          : (g._soon ? "Coming soon" : "Contact for details");
+        return '<li><button type="button" class="rg-card" data-goto="rg-' + esc(g.slug) + '">' +
+          '<span class="rg-card-name">' + esc(g.name) + '</span><span class="rg-card-meta">' + meta + "</span></button></li>";
+      }).join("") + "</ul></nav>";
+    }
+
+    resultsEl.innerHTML = summary + r.groups.map(function (grp) {
+      var g = grp.g, link = W.gemachScopeUrl(g.slug, scope);
+      var more = grp.rows.length > cap ? grp.rows.length : 0;
+      var rows = grp.rows.slice(0, cap).map(function (h) {
         var it = h.e.item, c = h.e.cat;
         var thumb = it.photoUrl && W.safeUrl(it.photoUrl)
           ? '<img src="' + esc(it.photoUrl) + '" alt="" loading="lazy" width="44" height="44" />'
@@ -364,6 +340,12 @@
           (c ? '<span class="result-sub">' + esc(c.name) + "</span>" : "") + '<span class="sr-only"> at ' + esc(g.name) + "</span></span>" +
           badge(g, it) + W.ICONS.chevron + "</a></li>";
       }).join("");
+      if (more) {
+        rows += '<li><a class="result-row result-more" href="' + link + '">' +
+          '<span class="result-main"><span class="result-name">See all ' + more + " at " + esc(g.name) + "</span>" +
+          '<span class="result-sub">' + (filterNames(g) ? "Filter by " + esc(filterNames(g)) : "See everything") + " on the gemach’s page</span></span>" +
+          W.ICONS.chevron + "</a></li>";
+      }
       if (!grp.rows.length) {
         rows = '<li><a class="result-row" href="' + W.gemachUrl(g.slug) + '">' +
           '<span class="result-thumb"><span aria-hidden="true">🏠</span></span>' +
@@ -371,9 +353,9 @@
           '<span class="result-sub">' + esc(g.tagline || g.name) + "</span></span>" +
           (g._soon ? '<span class="badge badge-soon">Coming soon</span>' : g._info ? '<span class="badge badge-dir">Info</span>' : g._dir ? '<span class="badge badge-dir">Directory</span>' : "") + W.ICONS.chevron + "</a></li>";
       }
-      return '<section class="result-group" aria-label="' + esc(g.name) + '">' +
-        '<div class="result-group-head"><h3>' + esc(g.name) + "</h3>" +
-        '<a href="' + W.gemachUrl(g.slug) + '">View gemach</a></div>' +
+      return '<section class="result-group" id="rg-' + esc(g.slug) + '" aria-label="' + esc(g.name) + '">' +
+        '<div class="result-group-head"><h3><a href="' + link + '">' + esc(g.name) + "</a></h3>" +
+        '<a href="' + link + '">View gemach</a></div>' +
         '<ul class="result-list">' + rows + "</ul></section>";
     }).join("");
   }
@@ -548,6 +530,16 @@
       if (sel) sel.focus({ preventScroll: true });
     }
     revealActiveChip();
+  });
+  resultsEl.addEventListener("click", function (e) {
+    var b = e.target.closest(".rg-card[data-goto]");
+    if (!b) return;
+    var sec = document.getElementById(b.getAttribute("data-goto"));
+    if (!sec) return;
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    sec.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+    var a = sec.querySelector(".result-group-head a");
+    if (a) a.focus({ preventScroll: true });
   });
   window.addEventListener("popstate", function () {
     readUrl(); searchPushed = false;

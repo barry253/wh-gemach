@@ -35,6 +35,10 @@
   var sortBySize = false;
   var lastFocus = null;
   var loadedFresh = false;
+  // Arriving from the home page's "See all N at …": ?cat=<category slug>&q=<search text> narrows the
+  // inventory to what the person was looking at, until they tap "Show all items".
+  var scopeCat = (params.get("cat") || "").trim().toLowerCase().slice(0, 80);
+  var scopeQ = (params.get("q") || "").trim().slice(0, 100);
 
   // ── Render ──
   function contactButtons(g) {
@@ -305,6 +309,76 @@
                  : '<span class="badge badge-out">All on loan</span>';
   }
 
+  // ── Scope from the home page (?cat= / ?q=), matched the same way the home page searches ──
+  var scopeMemo = null;
+  function scopeCategory() {
+    if (!scopeCat) return null;
+    for (var i = 0; i < categories.length; i++) {
+      var c = categories[i];
+      if (c && (W.catSlug(c) === scopeCat || String(c.id || "").toLowerCase() === scopeCat)) return c;
+    }
+    return null;
+  }
+  /** The ids of items in scope, or null when there's no scope (or nothing would match it — then show everything). */
+  function scopeIds() {
+    var key = scopeCat + "|" + scopeQ + "|" + items.length + "|" + categories.length;
+    if (scopeMemo && scopeMemo.key === key) return scopeMemo.ids;
+    var cat = scopeCategory(), toks = scopeQ ? W.searchTokens(scopeQ) : [];
+    var ids = null, empty = false;
+    if (cat || toks.length) {
+      var catOf = {};
+      categories.forEach(function (c) { if (c && c.id) catOf[c.id] = c; });
+      var pool = items.filter(function (it) { return !cat || it.categoryId === cat.id; });
+      var hays = pool.map(function (it) {
+        var c = catOf[it.categoryId];
+        return W.makeHay([it.name, it.description, c && c.name, c && (c.keywords || []).join(" "), gemach && gemach.name, W.attrText(it)]);
+      });
+      var run = function (mode) {
+        return pool.filter(function (it, i) {
+          if (!toks.length) return true;
+          var hit = 0;
+          for (var k = 0; k < toks.length; k++) {
+            if (W.tokMatch(toks[k], hays[i])) hit++; else if (mode === "all") return false;
+          }
+          return hit > 0;
+        });
+      };
+      var found = run("all");
+      if (!found.length && toks.length > 1) found = run("any");
+      if (found.length) { ids = {}; found.forEach(function (it) { ids[it.id] = 1; }); }
+      else empty = true;
+    }
+    scopeMemo = { key: key, ids: ids, empty: empty, cat: cat };
+    return ids;
+  }
+  function inScope(it) { var ids = scopeIds(); return !ids || !!ids[it.id]; }
+  /** Items the page works with: everything, or just the ones in scope. */
+  function pool() { return scopeIds() ? items.filter(inScope) : items; }
+  function scopeNote(shown) {
+    scopeIds();
+    var m = scopeMemo, what = [];
+    if (!m || (!m.ids && !m.empty)) return "";
+    if (scopeQ) what.push("“" + esc(scopeQ) + "”");
+    if (m.cat) what.push(esc(m.cat.name));
+    var label = what.join(" in ");
+    if (m.empty) {
+      return '<div class="notice notice-info scope-note" role="status">Nothing here matches ' + label +
+        ", so all of this gemach’s items are shown.</div>";
+    }
+    var total = items.filter(function (it) { return !isAddon(it); }).length;
+    return '<div class="notice notice-info scope-note" role="status"><span>Showing <strong>' + W.plural(shown, "item") +
+      "</strong> for " + label + (total > shown ? " (of " + total + ")" : "") + '.</span> <button type="button" class="btn-link" id="scope-clear">Show all items</button></div>';
+  }
+  function clearScope() {
+    scopeCat = ""; scopeQ = ""; scopeMemo = null;
+    try {
+      var p = new URLSearchParams(location.search);
+      p.delete("cat"); p.delete("q");
+      var s2 = p.toString();
+      history.replaceState(history.state, "", location.pathname + (s2 ? "?" + s2 : "") + location.hash);
+    } catch (e) { /* ignore */ }
+  }
+
   // ── Item filters (gemach-defined, e.g. Size / Color) ──
   function attrDefs() { return (gemach && Array.isArray(gemach.itemAttributes)) ? gemach.itemAttributes : []; }
   function itemVals(it, name) { return (it.attributes && it.attributes[name]) || []; }
@@ -313,7 +387,7 @@
   function usableDefs() {
     return attrDefs().map(function (d) {
       var used = {};
-      items.forEach(function (it) { if (!isAddon(it)) itemVals(it, d.name).forEach(function (v) { used[v] = 1; }); });
+      pool().forEach(function (it) { if (!isAddon(it)) itemVals(it, d.name).forEach(function (v) { used[v] = 1; }); });
       return { name: d.name, values: d.values.filter(function (v) { return used[v]; }) };
     }).filter(function (d) { return d.values.length; });
   }
@@ -342,7 +416,7 @@
   /** Per filter: how many items have each choice, given the picks in the *other* filters (0 → grayed out)
       (OR within a filter, so picking size 8 never rules out size 10). */
   function facetCounts(defs) {
-    var base = items.filter(function (it) { return !isAddon(it); });
+    var base = pool().filter(function (it) { return !isAddon(it); });
     return defs.map(function (d) {
       var c = {};
       base.forEach(function (it) {
@@ -528,12 +602,13 @@
       attrFilter[k] = d ? attrFilter[k].filter(function (v) { return d.values.indexOf(v) !== -1; }) : [];
       if (!attrFilter[k].length) delete attrFilter[k];
     });
-    var listed = items.filter(passesFilter);
+    var scoped = pool();
+    var listed = scoped.filter(passesFilter);
     if (sortBySize && sizeDef()) {
       listed = listed.map(function (it, i) { return { it: it, i: i, r: sizeRank(it) }; })
         .sort(function (a, b) { return a.r - b.r || a.i - b.i; }).map(function (x) { return x.it; });
     }
-    var counted = items.filter(function (it) { return !isAddon(it); });
+    var counted = scoped.filter(function (it) { return !isAddon(it); });
     listed.forEach(function (it) {
       var b = isAddon(it) ? addons : it.categoryId && byCat[it.categoryId] ? byCat[it.categoryId] : other;
       b.items.push(it);
@@ -544,7 +619,7 @@
     var showHeads = order.length > 1 || order[0] !== other;
 
     var st = style(), view = currentView();
-    html += '<div class="inv-head"><div class="inv-title"><h2 class="section-title">Gemach Inventory</h2>' +
+    html += '<div class="inv-head"><div class="inv-title"><h2 class="section-title" id="inv-title" tabindex="-1">Gemach Inventory</h2>' +
       (dir || st === "Appointment" ? "" : '<span class="section-sub">Availability updates in real time</span>') + "</div>" + viewSwitcher(view) + "</div>";
     var help = {
       Dates: "Tap the items you need, then send one request. Items on loan can still be requested — the gemach will let you know.",
@@ -556,6 +631,7 @@
       : dir
       ? '<div class="notice">This gemach is listed in our directory. To borrow, contact them directly using the buttons above.</div>'
       : '<p class="inv-help">' + help[st] + "</p>";
+    html += scopeNote(counted.length);
     html += filterBar(defs, listed.filter(function (it) { return !isAddon(it); }).length, counted.length);
     if (activeFilterCount() && !listed.some(function (it) { return !isAddon(it); })) {
       html += '<div class="notice notice-info af-none">Nothing matches these filters. <button type="button" class="af-clear" id="af-clear-2">Clear filters</button></div>';
@@ -693,6 +769,7 @@
       return;
     }
     if (t.closest(".af-clear")) { attrFilter = {}; rerenderInventory("#af-bar .af-chip"); return; }
+    if (t.closest("#scope-clear")) { clearScope(); rerenderInventory("#inv-title"); return; }
     var vb = t.closest(".view-btn");
     if (vb) {
       var v = vb.getAttribute("data-view");

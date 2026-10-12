@@ -314,6 +314,37 @@ main { flex: 1; }
 .result-name { display: block; font-weight: 600; font-size: .95rem; line-height: 1.3; }
 .result-sub { display: block; font-size: .78rem; color: var(--muted); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chev { color: #A89A80; flex-shrink: 0; }
+.result-group { scroll-margin-top: 72px; }
+.result-group-head h3 a {
+  font-size: inherit; font-weight: inherit; white-space: normal; min-height: 0; display: inline;
+  color: var(--text); text-decoration: none;
+}
+.result-group-head h3 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.result-more { background: var(--grey); }
+.result-more .result-name { color: var(--primary); }
+.result-more:hover { background: var(--bg-tint); }
+
+/* Category results: one card per gemach, above the groups (scrolls sideways on phones) */
+.rg-summary { margin: 0 0 .85rem; }
+.rg-summary ul {
+  list-style: none; display: flex; gap: .5rem; overflow-x: auto; padding: 2px 2px .35rem;
+  scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+}
+.rg-summary li { flex: 0 0 auto; scroll-snap-align: start; max-width: 78%; }
+.rg-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; text-align: left;
+  min-height: 56px; padding: .55rem .85rem; cursor: pointer; font: inherit; color: var(--text);
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.rg-card:hover { border-color: var(--border-strong); }
+.rg-card:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.rg-card-name { font-weight: 600; font-size: .9rem; line-height: 1.3; }
+.rg-card-meta { font-size: .78rem; color: var(--muted); line-height: 1.3; white-space: nowrap; }
+.rg-card-meta .ok { color: var(--green); font-weight: 500; }
+@media (min-width: 640px) {
+  .rg-summary ul { flex-wrap: wrap; overflow: visible; }
+  .rg-summary li { max-width: none; }
+}
 
 /* ── Badges ── */
 .badge {
@@ -451,6 +482,9 @@ main { flex: 1; }
   background: var(--amber-bg); color: #6B3406; border: 1px solid #F1D3AE;
 }
 .notice-info { background: var(--teal); color: var(--text); border-color: var(--border); }
+.scope-note { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .5rem; margin-bottom: .75rem; }
+.scope-note .btn-link { min-height: 36px; }
+#inv-title:focus { outline: none; }
 
 /* ── Inventory ── */
 .inv-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 1.75rem 0 .35rem; }
