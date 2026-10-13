@@ -1804,6 +1804,10 @@ await t("r4 PATCH /admin/network/gemachs: slug only while inactive, unique & val
   assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${createdG.id}`, { slug: "wh-medical" })).status, 409);
   assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${createdG.id}`, { slug: "-bad" })).status, 400);
   assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${createdG.id}`, { category: "Toys" })).status, 400);
+  const books = await req(tokNet, "PATCH", `/admin/network/gemachs/${createdG.id}`, { category: "Books" });
+  assert.equal(books.status, 200, "Books is a gemach category");
+  assert.equal(DB.Gemachs.find(x => x.id === createdG.id).fields.Category, "Books");
+  assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${createdG.id}`, { category: "Wedding & Events" })).status, 200);
   assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${createdG.id}`, { active: "yes" })).status, 400);
   assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/recNOPENOPENOPE01`, { name: "x" })).status, 404);
   const r = await req(tokNet, "PATCH", `/admin/network/gemachs/${createdG.id}`, { slug: "kallah-gowns", name: "Kallah Gowns", displayOrder: 5, mode: "Full" });
