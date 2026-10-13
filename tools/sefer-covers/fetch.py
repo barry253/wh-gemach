@@ -18,6 +18,7 @@ def get(url, binary=False, tries=2):
                 data = r.read()
                 return (data, r.headers.get("Content-Type", "")) if binary else json.loads(data.decode("utf-8"))
         except urllib.error.HTTPError as e:
+            if "googleapis" in url: print("google", e.code, flush=True)
             if e.code in (404, 400): return None
             time.sleep(1)
         except Exception:
@@ -35,6 +36,15 @@ def image(url):
     data, ct = r
     if len(data) < 2500 or not ct.startswith("image/"): return None  # placeholders / 1×1 gifs
     return data, ("png" if "png" in ct else "jpg")
+
+def isbn10(isbn):
+    if len(isbn) == 10: return isbn
+    if len(isbn) == 13 and isbn.startswith("978"):
+        core = isbn[3:12]
+        tot = sum((10 - i) * int(c) for i, c in enumerate(core))
+        chk = (11 - tot % 11) % 11
+        return core + ("X" if chk == 10 else str(chk))
+    return None
 
 def year_of(s):
     m = re.search(r"(1[89]\d\d|20\d\d)", s or "")
@@ -70,6 +80,9 @@ def one(b):
         if not got:
             img = image(f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg?default=false")
             if img: got, m["source"], m["matched"] = img, "openlibrary-isbn", isbn
+        if not got and isbn10(isbn):
+            img = image(f"https://images-na.ssl-images-amazon.com/images/P/{isbn10(isbn)}.01.LZZZZZZZ.jpg")
+            if img: got, m["source"], m["matched"] = img, "amazon-isbn", isbn
         if not got and gi:
             img = google_cover(gi)
             if img: got, m["source"], m["matched"] = img, "google-isbn", gi.get("volumeInfo", {}).get("title")
@@ -104,7 +117,7 @@ def one(b):
 
 START = time.time()
 todo = [b for b in books if not (b["key"] in meta and meta[b["key"]].get("source"))]
-with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
     futs = [ex.submit(one, b) for b in todo]
     for i, f in enumerate(concurrent.futures.as_completed(futs)):
         try:
