@@ -1118,3 +1118,6 @@ fieldset { border: 0; }
   .shelf-link { flex: 0 0 auto; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .strip-card:hover .strip-cover { transform: none; } }
+/* tall covers: more across, so a page of books isn't a wall of huge covers */
+@media (min-width: 640px) { .photos-portrait .item-list.item-grid { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+@media (min-width: 880px) { .photos-portrait .item-list.item-grid { grid-template-columns: repeat(6, minmax(0,1fr)); } }
