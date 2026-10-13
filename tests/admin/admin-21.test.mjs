@@ -86,7 +86,7 @@ ok((await page.$$eval("#set-groupBy option", o => o.map(x => x.textContent))).jo
 await page.check('input[name="set-photoShape"][value="Portrait"]');
 await page.selectOption("#set-groupBy", "Shelf");
 await page.selectOption("#set-spotlightFilter", "Holiday");
-ok(await page.isVisible("#settings-savebar"), "unsaved bar appears");
+ok(await page.waitForSelector("#settings-savebar", { state: "visible", timeout: 5000 }).then(() => true, () => false), "unsaved bar appears");
 await page.evaluate(() => document.getElementById("set-groupBy").scrollIntoView());
 await page.screenshot({ path: "shot-sections-settings.png" });
 await page.click("#settings-save-btn");
