@@ -29,10 +29,12 @@ const ANALYTICS = days => ({
   gemachs: { live: 2, comingSoon: 1, hidden: 0 },
   now: { waiting: 5, waitingOver48h: 2, reserved: 7, out: 23, overdue: 3, borrowers: 140, itemTypes: 860 },
   period: { requests: 48, confirmed: 39, declined: 4, cancelled: 2, stillWaiting: 3, adminBookings: 6, loansStarted: 41, loansReturned: 30, answered: 43, medianReplyHours: 5.5, within24hPct: 88 },
+  people: { total: 212, records: 230, withLoanNow: 19, withReservationNow: 6, overdue: 2, borrowedInPeriod: 37, newInPeriod: 22, returningInPeriod: 15,
+    repeat: 41, multiGemach: 9, requesters: 44, requestersNeverBorrowed: 18, loansPerPerson: 1.8 },
   trend: { by: days === 365 ? "month" : "week", buckets: Array.from({ length: days === 365 ? 13 : Math.ceil(days / 7) }, (_, i) => ({ start: plus(-7 * (12 - i) - 6), requests: i % 5, loans: (i * 2) % 4 })) },
   topRequested: [{ name: "Wheelchair", gemach: "WH Medical", requests: 14 }, { name: "Navy <b>gown</b> – size 8", gemach: "Simcha Dress", requests: 6 }],
   byGemach: [
-    row({ id: "recA", slug: "wh-medical", name: "WH Medical", requests: 30, confirmed: 26, waiting: 1, reserved: 4, out: 15, overdue: 3, loansStarted: 28, medianReplyHours: 3, lastActivity: hoursAgo(2), adminBookings: 4 }),
+    row({ id: "recA", slug: "wh-medical", name: "WH Medical", peopleInPeriod: 21, requests: 30, confirmed: 26, waiting: 1, reserved: 4, out: 15, overdue: 3, loansStarted: 28, medianReplyHours: 3, lastActivity: hoursAgo(2), adminBookings: 4 }),
     row({ id: "recS", slug: "simcha-dress", name: "Simcha Dress", requests: 18, waiting: 4, waitingOver48h: 2, reserved: 3, out: 8, loansStarted: 13, medianReplyHours: 30, lastActivity: hoursAgo(24 * 9) }),
     row({ id: "recC", slug: "coming", name: "Aardvark Coming", status: "Coming soon" }),
   ],
@@ -88,6 +90,9 @@ ok(/3\s*Gemachs\s*2 live · 1 coming soon · 0 hidden/.test(t), "gemach count KP
 ok(/48\s*Requests received\s*39 confirmed · 4 declined · 2 cancelled · 3 waiting/.test(t), "requests KPI");
 ok(/6 hours\s*Typical time to reply\s*88% within a day/.test(t), "reply KPI");
 ok(/41\s*Loans went out\s*30 returned · 6 booked in admin/.test(t), "loans KPI");
+ok(/212\s*People on file\s*9 use more than one gemach/.test(t) && /19\s*Have something out now\s*2 with an overdue loan/.test(t), "people KPIs: on file, out now");
+ok(/37\s*Borrowed in 90 days\s*22 new · 15 returning/.test(t) && /41\s*Borrowed 2\+ times\s*1.8 loans per person/.test(t), "people KPIs: period, repeat");
+ok(/44\s*Asked online in 90 days\s*18 never borrowed before/.test(t) && /6\s*Waiting to pick up/.test(t), "people KPIs: requesters, waiting to pick up");
 ok(await page.$$eval(".net-an-col", c => c.length) === 13, "13 weekly columns");
 ok(/Requests and loans by week/.test(t) && /Requests/.test(await page.textContent(".net-an-legend")), "chart title + legend");
 await page.hover(".net-an-col >> nth=1");
@@ -96,6 +101,7 @@ ok(await page.$$eval(".net-an-table tbody tr", r => r.length) === 13, "table vie
 const order = async () => (await page.$$eval(".net-an-gemachs tbody tr td:first-child a", a => a.map(x => x.textContent))).join("|");
 ok(await order() === "WH Medical|Simcha Dress|Aardvark Coming", "busiest first by default: " + await order());
 const sd = await page.$eval(".net-an-gemachs tbody tr:nth-child(2)", e => e.innerText);
+ok(/\b21\b/.test(await page.$eval(".net-an-gemachs tbody tr:nth-child(1)", e => e.innerText)), "people column");
 ok(/2 > 2 days/.test(sd) && /2 days/.test(sd) && /9 days ago/.test(sd), "Simcha row: waiting flag, reply, last activity: " + sd);
 ok(/Coming soon/.test(await page.textContent(".net-an-gemachs tbody tr:nth-child(3)")), "status tag on non-live gemach");
 await page.click(".net-an-gemachs th >> text=Waiting");

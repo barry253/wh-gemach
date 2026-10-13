@@ -37,19 +37,20 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
   const sinceDate = addDays(todayNy, -days);
 
   // 9 reads, all in parallel. Date conditions narrow the reads; every one is re-checked below as well.
+  // Loans are read in full (a few fields): "new vs returning borrower" needs each person's whole history.
   const [gemachs, requests, waiting, testReqs, open, recent, log, types, borrowers] = await Promise.all([
     db.listAll(T.GEMACHS, { fields: ["Name", "Slug", "Active", "Coming Soon", "Mode"] }),
     db.listAll(T.REQUESTS, { where: [Q.after("Received At", sinceIso)],
-      fields: ["Request ID", "Status", "Received At", "Items Requested", "Source", "Test", "Gemach"] }),
+      fields: ["Request ID", "Status", "Received At", "Items Requested", "Source", "Test", "Gemach", "Phone", "Email"] }),
     db.listAll(T.REQUESTS, { where: [Q.eq("Status", "New")], fields: ["Status", "Received At", "Test", "Gemach"] }),
     db.listAll(T.REQUESTS, { where: [Q.isTrue("Test")], fields: ["Test"] }),
     db.listAll(T.LOANS, { where: [Q.in("Status", ["Reserved", "Active"])],
-      fields: ["Status", "Gemach", "Item", "Item to Reserve", "Quantity", "Date Borrowed", "Expected Return", "Source Request"] }),
-    db.listAll(T.LOANS, { where: [Q.or(Q.after("Date Borrowed", addDays(sinceDate, -1)), Q.after("Date Returned", addDays(sinceDate, -1)))],
-      fields: ["Status", "Gemach", "Item", "Item to Reserve", "Date Borrowed", "Date Returned", "Source Request"] }),
+      fields: ["Status", "Gemach", "Item", "Item to Reserve", "Quantity", "Date Borrowed", "Expected Return", "Source Request", "Borrower"] }),
+    db.listAll(T.LOANS, {
+      fields: ["Status", "Gemach", "Item", "Item to Reserve", "Date Borrowed", "Date Returned", "Source Request", "Borrower"] }),
     db.listAll(T.LOG, { where: [Q.after("Timestamp", sinceIso)], fields: ["Timestamp", "Event Type", "Loan ID", "Gemach"] }),
     db.listAll(T.ITEM_TYPES, { fields: ["Name", "Active", "Tracking", "Gemach"] }),
-    db.listAll(T.BORROWERS, { fields: ["Gemach"] }),
+    db.listAll(T.BORROWERS, { fields: ["Gemach", "Phone", "Email"] }),
   ]);
 
   const testIds = new Set(testReqs.filter(r => r.fields.Test).map(r => r.id));
@@ -67,7 +68,7 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
       id: g.id, name: g.fields.Name || "", slug: g.fields.Slug || null, status: statusOf(g.fields), mode: selName(g.fields.Mode) || "Full",
       requests: 0, confirmed: 0, declined: 0, adminBookings: 0, waiting: 0, waitingOver48h: 0,
       reserved: 0, out: 0, overdue: 0, loansStarted: 0, loansReturned: 0,
-      borrowers: 0, itemTypes: 0, replyHours: [], lastActivity: null,
+      borrowers: 0, itemTypes: 0, replyHours: [], lastActivity: null, people: new Set(),
     });
   }
   const row = id => per.get(id);
@@ -160,8 +161,69 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
     if (realLoan(l) && isValidDate(b) && b >= sinceDate && ["Active", "Returned"].includes(l.fields.Status)) bump(b, "loans");
   }
 
-  const rows = [...per.values()].map(({ replyHours, ...p }) => ({
-    ...p, medianReplyHours: replyHours.length ? Math.round(median(replyHours) * 10) / 10 : null,
+  // ── People ──
+  // Each gemach has its own Borrowers record for a person, so the same person is matched across gemachs
+  // by phone (last 10 digits) or email; records sharing either are one person.
+  const parent = new Map();
+  const find = k => { while (parent.get(k) !== k) { parent.set(k, parent.get(parent.get(k))); k = parent.get(k); } return k; };
+  const add = k => { if (!parent.has(k)) parent.set(k, k); return k; };
+  const union = (a, b) => { a = find(add(a)); b = find(add(b)); if (a !== b) parent.set(b, a); };
+  const keysOf = f => {
+    const digits = String(f.Phone || "").replace(/\D/g, ""), email = String(f.Email || "").trim().toLowerCase();
+    return [digits.length >= 10 ? "p:" + digits.slice(-10) : null, email.includes("@") ? "e:" + email : null].filter(Boolean);
+  };
+  for (const b of borrowers) { add("b:" + b.id); for (const k of keysOf(b.fields)) union("b:" + b.id, k); }
+  const personOf = id => (id && parent.has("b:" + id) ? find("b:" + id) : null);
+  const personGemachs = new Map(); // person -> Set(gemach)
+  for (const b of borrowers) { const k = personOf(b.id); (personGemachs.get(k) || personGemachs.set(k, new Set()).get(k)).add(gOf(b)); }
+
+  const withLoanNow = new Set(), withReservationNow = new Set(), overduePeople = new Set();
+  for (const l of open) {
+    if (!realLoan(l)) continue;
+    const k = personOf(first(l.fields.Borrower)); if (!k) continue;
+    if (l.fields.Status === "Active") { withLoanNow.add(k); if (isOverdue(l.fields, todayNy)) overduePeople.add(k); }
+    else if (l.fields.Status === "Reserved") withReservationNow.add(k);
+  }
+  const firstBorrowed = new Map(), loansPer = new Map(), borrowedInPeriod = new Set();
+  for (const l of recent) {
+    const b = l.fields["Date Borrowed"];
+    if (!realLoan(l) || !isValidDate(b) || !["Active", "Returned"].includes(l.fields.Status)) continue;
+    const k = personOf(first(l.fields.Borrower)); if (!k) continue;
+    loansPer.set(k, (loansPer.get(k) || 0) + 1);
+    if (!firstBorrowed.has(k) || b < firstBorrowed.get(k)) firstBorrowed.set(k, b);
+    if (b >= sinceDate) { borrowedInPeriod.add(k); row(gOf(l))?.people.add(k); }
+  }
+  const newPeople = [...borrowedInPeriod].filter(k => firstBorrowed.get(k) >= sinceDate).length;
+  // Who sent online requests in the period, and how many of them have never borrowed anything (anywhere).
+  const requesters = new Set();
+  let requestersNeverBorrowed = 0;
+  for (const r of online) {
+    const ks = keysOf(r.fields); if (!ks.length) continue;
+    const known = ks.find(k => parent.has(k));
+    const id = known ? find(known) : "r:" + ks[0];
+    if (requesters.has(id)) continue;
+    requesters.add(id);
+    if (!known || !loansPer.has(id)) requestersNeverBorrowed++;
+  }
+  const allPeople = new Set([...parent.keys()].filter(k => k.startsWith("b:")).map(find));
+  const people = {
+    total: allPeople.size,
+    records: borrowers.length,
+    withLoanNow: withLoanNow.size,
+    withReservationNow: [...withReservationNow].filter(k => !withLoanNow.has(k)).length, // reserved only, nothing out yet
+    overdue: overduePeople.size,
+    borrowedInPeriod: borrowedInPeriod.size,
+    newInPeriod: newPeople,
+    returningInPeriod: borrowedInPeriod.size - newPeople,
+    repeat: [...loansPer.values()].filter(n => n >= 2).length,
+    multiGemach: [...personGemachs.values()].filter(s => s.size >= 2).length,
+    requesters: requesters.size,
+    requestersNeverBorrowed,
+    loansPerPerson: loansPer.size ? Math.round(10 * [...loansPer.values()].reduce((a, b) => a + b, 0) / loansPer.size) / 10 : null,
+  };
+
+  const rows = [...per.values()].map(({ replyHours, people: ppl, ...p }) => ({
+    ...p, peopleInPeriod: ppl.size, medianReplyHours: replyHours.length ? Math.round(median(replyHours) * 10) / 10 : null,
   })).sort((a, b) => a.name.localeCompare(b.name));
   const sum = k => rows.reduce((n, p) => n + p[k], 0);
   const hidden = new Set(rows.filter(p => p.status === "Hidden").map(p => p.id));
@@ -180,6 +242,7 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
       medianReplyHours: allHours.length ? Math.round(median(allHours) * 10) / 10 : null,
       within24hPct: allHours.length ? Math.round(100 * allHours.filter(h => h <= 24).length / allHours.length) : null,
     },
+    people,
     trend: { by: byMonth ? "month" : "week", buckets: [...buckets.values()] },
     topRequested,
     byGemach: rows,

@@ -1284,7 +1284,7 @@
     .net-an-tip { min-height:1.1rem; font-size:.75rem; color:var(--text); }
     .net-an-table summary { cursor:pointer; font-size:.75rem; color:var(--muted); margin-top:.35rem; }
     .net-an-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -.25rem; }
-    .net-an-gemachs { min-width:560px; }
+    .net-an-gemachs { min-width:600px; }
     .net-an-gemachs th:first-child, .net-an-gemachs td:first-child { position:sticky; left:0; background:var(--white); max-width:11rem; }
     .net-an-gemachs td:first-child a { color:var(--navy); font-weight:600; text-decoration:none; }
     .th-sort { background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; white-space:nowrap; }
@@ -6359,6 +6359,7 @@
     { key: "reserved",        label: "Reserved", num: true, title: "Reserved now, not picked up yet" },
     { key: "out",             label: "Out", num: true, title: "Out on loan now" },
     { key: "loansStarted",    label: "Lent", num: true, title: "Loans that went out in the period" },
+    { key: "peopleInPeriod",  label: "People", num: true, title: "Different people who borrowed in the period" },
     { key: "lastActivity",    label: "Last activity", num: true, title: "Last thing logged in History (in the period)" },
   ];
   function sortNetAnalytics(key) {
@@ -6394,6 +6395,25 @@
         <div class="kpi"><div class="kpi-num">${esc(p.loansStarted ?? 0)}</div><div class="kpi-label">Loans went out</div>
           <div class="kpi-sub">${esc(p.loansReturned ?? 0)} returned${p.adminBookings ? ` · ${esc(p.adminBookings)} booked in admin` : ""}</div></div>
       </div>`;
+
+    // People: the same person at several gemachs (matched by phone or email) counts once.
+    const pp = d.people;
+    if (pp) html += `<div class="section-label net-an-label">People</div>
+      <div class="kpi-grid net-kpis-6">
+        <div class="kpi"><div class="kpi-num">${esc(pp.total)}</div><div class="kpi-label">People on file</div>
+          <div class="kpi-sub">${pp.multiGemach ? `${esc(pp.multiGemach)} use more than one gemach` : "each uses one gemach"}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(pp.withLoanNow)}</div><div class="kpi-label">Have something out now</div>
+          <div class="kpi-sub">${pp.overdue ? `<span class="net-an-warn">${esc(pp.overdue)} with an overdue loan</span>` : "none overdue"}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(pp.withReservationNow)}</div><div class="kpi-label">Waiting to pick up</div>
+          <div class="kpi-sub">reserved, nothing out yet</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(pp.borrowedInPeriod)}</div><div class="kpi-label">Borrowed in ${esc(d.days === 365 ? "12 months" : d.days + " days")}</div>
+          <div class="kpi-sub">${esc(pp.newInPeriod)} new · ${esc(pp.returningInPeriod)} returning</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(pp.repeat)}</div><div class="kpi-label">Borrowed 2+ times</div>
+          <div class="kpi-sub">${pp.loansPerPerson == null ? "no loans yet" : `${esc(pp.loansPerPerson)} loans per person on average`}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(pp.requesters)}</div><div class="kpi-label">Asked online in ${esc(d.days === 365 ? "12 months" : d.days + " days")}</div>
+          <div class="kpi-sub">${esc(pp.requestersNeverBorrowed)} never borrowed before</div></div>
+      </div>
+      <p class="stat-note" style="margin:-.35rem 0 .9rem">A person is counted once even if they're on file at several gemachs (matched by phone or email). "New" means their first loan anywhere was in this period.</p>`;
 
     // Trend: requests and loans per week (or month), grouped bars on one count axis.
     const bk = d.trend?.buckets || [];
@@ -6433,9 +6453,10 @@
         <td class="num">${esc(r.reserved)}</td>
         <td class="num">${esc(r.out)}${r.overdue ? `<div class="net-an-warn">${esc(r.overdue)} overdue</div>` : ""}</td>
         <td class="num">${esc(r.loansStarted)}</td>
+        <td class="num">${esc(r.peopleInPeriod ?? "—")}</td>
         <td class="num card-id">${esc(ago(r.lastActivity))}</td>
       </tr>`).join("")}</tbody></table></div>
-      <p class="stat-note">Requests, reply time, lent and last activity cover ${esc(period)}; waiting, reserved and out are right now. Test requests and add-on sales aren't counted. Tap a gemach to open it.</p></div>`;
+      <p class="stat-note">Requests, reply time, lent, people and last activity cover ${esc(period)}; waiting, reserved and out are right now. Test requests and add-on sales aren't counted. Tap a gemach to open it.</p></div>`;
 
     const top = d.topRequested || [];
     html += `<div class="card stat-block"><h4>Most requested across the network</h4>` + (top.length

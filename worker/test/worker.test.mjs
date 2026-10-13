@@ -1977,6 +1977,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
   });
   await t("network analytics: Network Admin only; per-gemach numbers leave out test requests and add-ons; reused for 5 minutes", async () => {
     assert.equal((await call("/admin/network/analytics", { headers: auth(tokenA) })).status, 403);
+    const before = (await (await call("/admin/network/analytics?days=90&fresh=1", { headers: auth(tokNet) })).json()).people;
     const N = { id: "recANALYTICSGEM01", slug: "analytics-gemach" };
     DB.Gemachs.push(rec(N.id, { Name: "Analytics Gemach", Slug: N.slug, Active: true, "Coming Soon": true }));
     const sc = { Gemach: [N.id], "Gemach Slug": [N.slug] };
@@ -1989,8 +1990,8 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     DB.Items.push(rec("recANITEM00000001", { "Item ID": "AN-001", "Item Type": ["recANTYPE00000001"], Active: true, ...sc }),
                   rec("recANITEM00000002", { "Item ID": "AN-002", "Item Type": ["recANTYPE00000001"], Active: true, ...sc }));
     DB.Requests.push(
-      R("recANREQ000000001", { "Request ID": "AN-1", Status: "Converted", "Items Requested": ["recANTYPE00000001"] }, 10),
-      R("recANREQ000000002", { "Request ID": "AN-2", Status: "Declined", "Items Requested": ["recANTYPE00000001"] }, 30),
+      R("recANREQ000000001", { "Request ID": "AN-1", Status: "Converted", Phone: "212-555-0199", "Items Requested": ["recANTYPE00000001"] }, 10),
+      R("recANREQ000000002", { "Request ID": "AN-2", Status: "Declined", Email: "new.person@example.com", "Items Requested": ["recANTYPE00000001"] }, 30),
       R("recANREQ000000003", { "Request ID": "AN-3", Status: "New", Name: "Waiter" }, 60),
       R("recANREQ000000004", { "Request ID": "AN-4", Status: "New", Test: true }, 1),
       R("recANREQ000000005", { "Request ID": "AN-5", Status: "Converted", Source: "Admin" }, 2),
@@ -1998,11 +1999,15 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     DB.tblC3PY7f5sXQDMJK.push(
       rec("recANLOG000000001", { Timestamp: ago(8), "Event Type": "Request Confirmed", "Loan ID": "AN-1", ...sc }),
       rec("recANLOG000000002", { Timestamp: ago(26), "Event Type": "Request Declined", "Loan ID": "AN-2", ...sc }));
-    DB.Borrowers.push(rec("recANBOR000000001", { Name: "One", ...sc }), rec("recANBOR000000002", { Name: "Two", ...sc }));
+    // One: borrows twice in the period (new). Two: borrowed 200 days ago, reserved now (not in the period).
+    // One also has a record at gemach A (same phone, different format) = one person in two gemachs.
+    DB.Borrowers.push(rec("recANBOR000000001", { Name: "One", Phone: "(212) 555-0199", ...sc }), rec("recANBOR000000002", { Name: "Two", Email: "Two.Analytics@Example.com", ...sc }),
+                      rec("recANBOR000000003", { Name: "One", Phone: "+12125550199", Gemach: [A.id], "Gemach Slug": [A.slug] }));
     DB.Loans.push(
-      rec("recANLOAN00000001", { "Loan ID": "AL-1", Status: "Active", Item: ["recANITEM00000001"], "Item to Reserve": ["recANTYPE00000001"], "Date Borrowed": day(-3), "Expected Return": day(-1), "Source Request": ["recANREQ000000001"], ...sc }),
-      rec("recANLOAN00000002", { "Loan ID": "AL-2", Status: "Reserved", "Item to Reserve": ["recANTYPE00000001"], "Reservation Start": day(5), ...sc }),
-      rec("recANLOAN00000003", { "Loan ID": "AL-3", Status: "Returned", Item: ["recANITEM00000002"], "Date Borrowed": day(-10), "Date Returned": day(-5), ...sc }),
+      rec("recANLOAN00000001", { "Loan ID": "AL-1", Status: "Active", Item: ["recANITEM00000001"], "Item to Reserve": ["recANTYPE00000001"], "Date Borrowed": day(-3), "Expected Return": day(-1), "Source Request": ["recANREQ000000001"], Borrower: ["recANBOR000000001"], ...sc }),
+      rec("recANLOAN00000002", { "Loan ID": "AL-2", Status: "Reserved", "Item to Reserve": ["recANTYPE00000001"], "Reservation Start": day(5), Borrower: ["recANBOR000000002"], ...sc }),
+      rec("recANLOAN00000003", { "Loan ID": "AL-3", Status: "Returned", Item: ["recANITEM00000002"], "Date Borrowed": day(-10), "Date Returned": day(-5), Borrower: ["recANBOR000000003"], Gemach: [A.id], "Gemach Slug": [A.slug] }),
+      rec("recANLOAN00000006", { "Loan ID": "AL-6", Status: "Returned", Item: ["recANITEM00000002"], "Date Borrowed": day(-200), "Date Returned": day(-190), Borrower: ["recANBOR000000002"], ...sc }),
       rec("recANLOAN00000004", { "Loan ID": "AL-4", Status: "Reserved", "Item to Reserve": ["recANTYPE00000001"], "Source Request": ["recANREQ000000004"], ...sc }),
       rec("recANLOAN00000005", { "Loan ID": "AL-5", Status: "Reserved", "Item to Reserve": ["recANTYPE00000002"], Quantity: 3, ...sc }));
     const r = await call("/admin/network/analytics?days=90&fresh=1", { headers: auth(tokNet) });
@@ -2014,13 +2019,20 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.deepEqual({ ...g, lastActivity: !!g.lastActivity }, {
       id: N.id, name: "Analytics Gemach", slug: N.slug, status: "Coming soon", mode: "Full",
       requests: 3, confirmed: 1, declined: 1, adminBookings: 1, waiting: 1, waitingOver48h: 1,
-      reserved: 1, out: 1, overdue: 1, loansStarted: 2, loansReturned: 1, borrowers: 2, itemTypes: 1,
-      medianReplyHours: 3, lastActivity: true,
+      reserved: 1, out: 1, overdue: 1, loansStarted: 1, loansReturned: 0, borrowers: 2, itemTypes: 1,
+      medianReplyHours: 3, lastActivity: true, peopleInPeriod: 1,
     });
     assert.ok(d.byGemach.every(x => x.name), "every gemach listed");
     assert.ok(d.topRequested.some(x => x.name === "Analytics Crib" && x.gemach === "Analytics Gemach" && x.requests === 2));
     for (const k of ["waiting", "reserved", "out", "overdue"]) assert.equal(d.now[k], d.byGemach.reduce((n, x) => n + x[k], 0), k);
     assert.ok(d.period.requests >= 3 && d.period.loansStarted >= 2 && d.gemachs.comingSoon >= 1);
+    const dp = k => d.people[k] - before[k];
+    assert.equal(dp("records"), 3); assert.equal(dp("total"), 2, "One's two records are one person " + JSON.stringify([before, d.people]));
+    assert.equal(dp("multiGemach"), 1); assert.equal(dp("withLoanNow"), 1); assert.equal(dp("overdue"), 1);
+    assert.equal(dp("withReservationNow"), 1, "Two has a reservation and nothing out");
+    assert.equal(dp("borrowedInPeriod"), 1); assert.equal(dp("newInPeriod"), 1); assert.equal(dp("returningInPeriod"), 0);
+    assert.equal(dp("repeat"), 1, "One borrowed twice (across two gemachs)");
+    assert.equal(dp("requesters"), 2); assert.equal(dp("requestersNeverBorrowed"), 1, "the declined new person");
     assert.ok(d.trend.buckets.reduce((n, b) => n + b.requests, 0) === d.period.requests, "trend adds up to the period total");
     const y = await (await call("/admin/network/analytics?days=365&fresh=1", { headers: auth(tokNet) })).json();
     assert.equal(y.trend.by, "month"); assert.equal(y.byGemach.find(x => x.id === N.id).requests, 4, "the 200-day-old request counts in 12 months");
