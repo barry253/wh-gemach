@@ -31,6 +31,8 @@
  *   Search:  POST /public/search-log {q, outcome:"none"|"all-on-loan", category?} — home-page searches that came up
  *            empty; always 204. GET /admin/network/searches?days=N (Network Admin) lists them.
  *   GET /admin/network/analytics?days=30|90|365[&fresh=1] (Network Admin): network-wide numbers (analytics.js).
+ *   POST /public/event {kind, …} — item photos opened / ticked, browser errors, "couldn't load" (events.js); always 204.
+ *   GET /admin/network/traffic?days=30|90|365[&fresh=1] (Network Admin): Cloudflare visitors + errors (traffic.js).
  *   Stats:   GET /admin/stats?days=30|90|365 — per-gemach request/loan/inventory stats for the Dashboard.
  *   Health:  GET /health — checks Airtable is reachable; 200 {ok:true} or 503 (for uptime monitors).
  *   Public:  GET /inventory (legacy, wh-medical only), GET /public/directory,
@@ -100,6 +102,7 @@ import { handleClearTestData, handleGetTestData } from "./testmode.js";
 import { handleListBorrowers } from "./borrowers.js";
 import { handleGetManage, handleManageCancel, handleManageReady } from "./manage.js";
 import { handleSearchLog } from "./search.js";
+import { handleSiteEvent } from "./events.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
 import { handleDashboard, handleStats } from "./stats.js";
 import { handleSubmitRequest } from "./submit.js";
@@ -118,7 +121,7 @@ export default {
     // Anonymous endpoints answer any origin (public site, Pages previews, embeds).
     const isSubmit = method === "POST" && path === "/submit-request";
     const isPublicRoute = isPublicGet || isSubmit || (method === "GET" && path === "/health") || (method === "POST" && path === "/public/search-log")
-      || (method === "POST" && path.startsWith("/public/manage/"));
+      || (method === "POST" && path === "/public/event") || (method === "POST" && path.startsWith("/public/manage/"));
 
     if (method === "OPTIONS") return withCors(new Response(null, { status: 204 }), request, path === "/inventory" || path.startsWith("/public/") || path === "/submit-request");
 
@@ -186,6 +189,7 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
   if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)), url.searchParams.get("test"));
   if (method === "POST" && path === "/submit-request")   return handleSubmitRequest(request, db, env, ctx);
   if (method === "POST" && path === "/public/search-log") return handleSearchLog(request, db, ctx);
+  if (method === "POST" && path === "/public/event") return handleSiteEvent(request, db, ctx);
   if (path.startsWith("/public/manage/")) { // borrower manage link (signed; no login)
     const rest = path.slice("/public/manage/".length).split("/");
     const token = safeDecode(rest[0] || "");

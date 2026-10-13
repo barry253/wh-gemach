@@ -1287,8 +1287,22 @@
     .net-an-table summary { cursor:pointer; font-size:.75rem; color:var(--muted); margin-top:.35rem; }
     .net-an-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -.25rem; }
     .net-an-gemachs { min-width:600px; }
+    .net-an-gemachs th, .net-an-gemachs td { white-space:nowrap; }
+    .net-an-gemachs td:first-child { white-space:normal; }
     .net-an-gemachs th:first-child, .net-an-gemachs td:first-child { position:sticky; left:0; background:var(--white); max-width:11rem; }
     .net-an-gemachs td:first-child a { color:var(--navy); font-weight:600; text-decoration:none; }
+    .net-an-two { display:grid; grid-template-columns:1fr; gap:0 .75rem; }
+    @media (min-width: 700px) { .net-an-two { grid-template-columns:1fr 1fr; } }
+    .net-an-barlist { list-style:none; margin:0; padding:0; font-size:.82rem; }
+    .net-an-barlist li { display:grid; grid-template-columns:1fr auto; gap:.15rem .5rem; padding:.3rem 0; }
+    .net-an-barlist .nm { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .net-an-barlist .val { text-align:right; font-variant-numeric:tabular-nums; }
+    .net-an-barlist .track { grid-column:1 / -1; height:6px; background:var(--border); border-radius:4px; overflow:hidden; }
+    .net-an-barlist .track i { display:block; height:100%; background:#2E7AA6; border-radius:4px; }
+    .net-an-bad { color:var(--red); }
+    .net-an-setup code { font-size:.75rem; background:var(--bg, #F6F7F9); padding:0 .25rem; border-radius:4px; }
+    .net-an-looked { min-width:480px; }
+    .net-an-problems { min-width:520px; }
     .th-sort { background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; white-space:nowrap; }
     .th-sort.on { color:var(--text); font-weight:600; }
     /* ── Notifications (bell) ── */
@@ -1533,7 +1547,7 @@
       <div class="net-area" id="net-area-analytics" role="tabpanel" aria-labelledby="net-tab-analytics" hidden>
         <div class="net-toolbar">
           <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-analytics">Across all gemachs</div>
-          <select class="days" id="net-an-days" aria-label="Analytics period" onchange="loadNetAnalytics(); loadNetSearches()">
+          <select class="days" id="net-an-days" aria-label="Analytics period" onchange="loadNetAnalytics(); loadNetTraffic(); loadNetSearches()">
             <option value="30">Last 30 days</option>
             <option value="90" selected>Last 90 days</option>
             <option value="365">Last 12 months</option>
@@ -6313,7 +6327,7 @@
     if (Array.isArray(g)) renderNetGemachs();
     if (Array.isArray(a)) { fillAdminFilter(); renderNetAdmins(); }
     if (Array.isArray(c)) renderNetCategories();
-    if (NET_AREA === "analytics") { loadNetAnalytics(); loadNetSearches(); }
+    if (NET_AREA === "analytics") { loadNetAnalytics(); loadNetTraffic(); loadNetSearches(); }
   }
 
   // ── Network sub-tabs (Gemachs / Admins / Categories / Analytics), same look as the Settings areas ──
@@ -6331,7 +6345,7 @@
     }
     if (!quiet) { const tabs = document.querySelector(".net-tabs"); if (tabs && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: "start" }); }
     // Analytics loads only when someone looks at it (it reads every gemach's requests and loans).
-    if (id === "analytics" && (changed || !NET_AN.at || Date.now() - NET_AN.at > 60000)) { loadNetAnalytics(); loadNetSearches(); }
+    if (id === "analytics" && (changed || !NET_AN.at || Date.now() - NET_AN.at > 60000)) { loadNetAnalytics(); loadNetTraffic(); loadNetSearches(); }
   }
 
   // ── Network → Analytics ──
@@ -6361,7 +6375,9 @@
   }
   const NET_AN_COLS = [
     { key: "name",            label: "Gemach" },
+    { key: "views",           label: "Views", num: true, traffic: true, title: "Page views of the gemach's page (Cloudflare)" },
     { key: "requests",        label: "Requests", num: true, title: "Online requests received in the period" },
+    { key: "per100",          label: "Req / 100 views", num: true, traffic: true, title: "Requests per 100 page views" },
     { key: "medianReplyHours", label: "Reply", num: true, title: "Typical time to answer a request" },
     { key: "waiting",         label: "Waiting", num: true, title: "Requests waiting for an answer now" },
     { key: "reserved",        label: "Reserved", num: true, title: "Reserved now, not picked up yet" },
@@ -6425,37 +6441,34 @@
 
     // Trend: requests and loans per week (or month), grouped bars on one count axis.
     const bk = d.trend?.buckets || [];
-    const max = Math.max(1, ...bk.map(b => Math.max(b.requests, b.loans)));
     const by = d.trend?.by === "month" ? "month" : "week";
-    const label = b => by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "short" }) : fmt(b.start);
-    const tip = b => `${by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "Week of " + fmt(b.start)}: ${plural(b.requests, "request")}, ${plural(b.loans, "loan")} went out`;
-    const every = Math.ceil(bk.length / 6); // a few x labels, not one per bar
-    html += `<div class="card stat-block"><h4>Requests and loans by ${by}</h4>
-      <div class="net-an-legend"><span><i class="sw sw-req"></i>Requests</span><span><i class="sw sw-loan"></i>Loans went out</span><span class="card-id">max ${esc(max)}</span></div>
-      <div class="net-an-chart" role="img" aria-label="${esc(`Requests and loans by ${by}, ${period}`)}">${bk.map((b, i) => `
-        <div class="net-an-col" tabindex="0" title="${esc(tip(b))}" data-tip="${esc(tip(b))}">
-          <div class="net-an-bars"><i class="bar bar-req" style="height:${(100 * b.requests / max).toFixed(1)}%"></i><i class="bar bar-loan" style="height:${(100 * b.loans / max).toFixed(1)}%"></i></div>
-          <div class="net-an-x">${i % every === 0 || i === bk.length - 1 ? esc(label(b)) : ""}</div>
-        </div>`).join("")}</div>
-      <div class="net-an-tip" aria-live="polite"></div>
-      <details class="net-an-table"><summary>Show as a table</summary>
-        <table class="stat-table"><thead><tr><th>${by === "month" ? "Month" : "Week of"}</th><th class="num">Requests</th><th class="num">Loans</th></tr></thead><tbody>${
-          bk.map(b => `<tr><td>${esc(by === "month" ? label(b) + " " + b.start.slice(0, 4) : fmt(b.start))}</td><td class="num">${esc(b.requests)}</td><td class="num">${esc(b.loans)}</td></tr>`).join("")}</tbody></table>
-      </details></div>`;
+    html += netBarChart({ title: `Requests and loans by ${by}`, by, period, buckets: bk,
+      series: [{ key: "requests", label: "Requests", cls: "req", one: "request" }, { key: "loans", label: "Loans went out", cls: "loan", one: "loan", tail: " went out" }] });
+
+    // Visitors (Cloudflare Web Analytics), loaded separately: it waits on Cloudflare.
+    html += netTrafficHtml(d, period, bk, by);
 
     // By gemach: tap a column to sort; busiest first by default.
-    const rows = [...(d.byGemach || [])];
+    const gv = NET_TR.data?.visitors?.gemachViews || null;
+    const rows = (d.byGemach || []).map(r => {
+      if (!gv) return r;
+      const v = (r.slug && gv[r.slug]?.pageViews) || 0;
+      return { ...r, views: v, per100: v ? Math.round(1000 * r.requests / v) / 10 : null };
+    });
+    const cols = NET_AN_COLS.filter(c => gv || !c.traffic);
     const sk = NET_AN.sort.replace(/^-/, ""), asc = NET_AN.sort.startsWith("-") || sk === "name";
     const val = r => sk === "lastActivity" ? (r.lastActivity ? Date.parse(r.lastActivity) : -1) : sk === "name" ? r.name.toLowerCase() : (r[sk] ?? -1);
     rows.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1) || a.name.localeCompare(b.name); });
     const ago = iso => { if (!iso) return "—"; const dd = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return dd <= 0 ? "Today" : dd === 1 ? "Yesterday" : `${dd} days ago`; };
     html += `<div class="card stat-block"><h4>By gemach</h4>
-      <div class="net-an-scroll"><table class="stat-table net-an-gemachs"><thead><tr>${NET_AN_COLS.map(c => {
+      <div class="net-an-scroll"><table class="stat-table net-an-gemachs"><thead><tr>${cols.map(c => {
         const on = sk === c.key;
         return `<th class="${c.num ? "num" : ""}"${c.title ? ` title="${esc(c.title)}"` : ""} aria-sort="${on ? (asc ? "ascending" : "descending") : "none"}"><button type="button" class="th-sort${on ? " on" : ""}" onclick="sortNetAnalytics('${c.key}')">${esc(c.label)}${on ? (asc ? " ▲" : " ▼") : ""}</button></th>`;
       }).join("")}</tr></thead><tbody>${rows.map(r => `<tr>
         <td><a href="#" onclick="${r.slug ? `switchGemach(${esc(JSON.stringify(r.slug))}, 'dashboard')` : ""};return false">${esc(r.name)}</a>${r.status !== "Live" ? ` <span class="tag tag-amber">${esc(r.status)}</span>` : ""}${r.mode === "Directory" ? ' <span class="tag">Listing</span>' : r.mode === "Info" ? ' <span class="tag">Info</span>' : ""}</td>
+        ${gv ? `<td class="num">${esc(r.views)}</td>` : ""}
         <td class="num">${esc(r.requests)}${r.adminBookings ? `<div class="card-id">+${esc(r.adminBookings)} admin</div>` : ""}</td>
+        ${gv ? `<td class="num">${r.per100 == null ? "—" : esc(r.per100)}</td>` : ""}
         <td class="num">${esc(fmtHours(r.medianReplyHours))}</td>
         <td class="num">${esc(r.waiting)}${r.waitingOver48h ? `<div class="net-an-warn">${esc(r.waitingOver48h)} &gt; 2 days</div>` : ""}</td>
         <td class="num">${esc(r.reserved)}</td>
@@ -6464,20 +6477,149 @@
         <td class="num">${esc(r.peopleInPeriod ?? "—")}</td>
         <td class="num card-id">${esc(ago(r.lastActivity))}</td>
       </tr>`).join("")}</tbody></table></div>
-      <p class="stat-note">Requests, reply time, lent, people and last activity cover ${esc(period)}; waiting, reserved and out are right now. Test requests and add-on sales aren't counted. Tap a gemach to open it.</p></div>`;
+      <p class="stat-note">${gv ? "Views, requests" : "Requests"}, reply time, lent, people and last activity cover ${esc(period)}; waiting, reserved and out are right now. Test requests and add-on sales aren't counted. Tap a gemach to open it.</p></div>`;
 
     const top = d.topRequested || [];
     html += `<div class="card stat-block"><h4>Most requested across the network</h4>` + (top.length
       ? `<table class="stat-table"><thead><tr><th>Item</th><th>Gemach</th><th class="num">Requests</th></tr></thead><tbody>` +
         top.map(t => `<tr><td>${esc(t.name)}${t.addon ? ' <span class="tag tag-addon">Add-on</span>' : ""}</td><td class="card-id">${esc(t.gemach || "")}</td><td class="num">${esc(t.requests)}</td></tr>`).join("") + `</tbody></table>`
       : `<p class="stat-note">No requests in ${esc(period)}.</p>`) + `</div>`;
+
+    // What visitors look at on gemach pages (counted by the site itself, since this feature went live).
+    const lk = d.topLooked || [];
+    html += `<div class="card stat-block"><h4>Most looked at</h4>` + (lk.length
+      ? `<div class="net-an-scroll"><table class="stat-table net-an-looked"><thead><tr><th>Item</th><th>Gemach</th><th class="num" title="Times someone opened its photos">Photos opened</th><th class="num" title="Times someone ticked it to request">Ticked</th><th class="num">Requested</th></tr></thead><tbody>` +
+        lk.map(t => `<tr><td>${esc(t.name)}</td><td class="card-id">${esc(t.gemach || "")}</td><td class="num">${esc(t.photos)}</td><td class="num">${esc(t.picks)}</td><td class="num">${esc(t.requests)}${t.photos + t.picks >= 10 && !t.requests ? '<div class="net-an-warn">no requests</div>' : ""}</td></tr>`).join("") +
+        `</tbody></table></div><p class="stat-note">Items people look at a lot but rarely request may need a better photo, description or price.</p>`
+      : `<p class="stat-note">Nothing counted yet in ${esc(period)}. Counting started when this feature went live.</p>`) + `</div>`;
+
+    html += netHealthHtml(d, period);
     if (d.cachedAt) html += `<p class="stat-note" style="margin:-.25rem 0 1rem">Numbers from ${esc(ago(d.cachedAt) === "Today" ? new Date(d.cachedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ago(d.cachedAt))} (refreshed every 5 minutes).</p>`;
     el.innerHTML = html;
-    const tipEl = el.querySelector(".net-an-tip");
-    el.querySelectorAll(".net-an-col").forEach(c => {
-      const show = () => { el.querySelectorAll(".net-an-col.on").forEach(x => x.classList.remove("on")); c.classList.add("on"); tipEl.textContent = c.dataset.tip; };
-      c.addEventListener("mouseenter", show); c.addEventListener("focus", show); c.addEventListener("click", show);
+    el.querySelectorAll(".net-an-chartcard").forEach(card => {
+      const tipEl = card.querySelector(".net-an-tip");
+      card.querySelectorAll(".net-an-col").forEach(c => {
+        const show = () => { card.querySelectorAll(".net-an-col.on").forEach(x => x.classList.remove("on")); c.classList.add("on"); tipEl.textContent = c.dataset.tip; };
+        c.addEventListener("mouseenter", show); c.addEventListener("focus", show); c.addEventListener("click", show);
+      });
     });
+  }
+
+  /** Bars by week or month (1–2 series on one count axis), with hover/tap numbers and a table view. */
+  function netBarChart({ title, by, period, buckets, series }) {
+    const max = Math.max(1, ...buckets.map(b => Math.max(...series.map(x => b[x.key] || 0))));
+    const label = b => by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "short" }) : fmt(b.start);
+    const when = b => by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "Week of " + fmt(b.start);
+    const tip = b => `${when(b)}: ${series.map(x => plural(b[x.key] || 0, x.one) + (x.tail || "")).join(", ")}`;
+    const every = Math.ceil(buckets.length / 6); // a few x labels, not one per bar
+    return `<div class="card stat-block net-an-chartcard"><h4>${esc(title)}</h4>
+      <div class="net-an-legend">${series.length > 1 ? series.map(x => `<span><i class="sw sw-${x.cls}"></i>${esc(x.label)}</span>`).join("") : ""}<span class="card-id">max ${esc(max)}</span></div>
+      <div class="net-an-chart" role="img" aria-label="${esc(`${title}, ${period}`)}">${buckets.map((b, i) => `
+        <div class="net-an-col" tabindex="0" title="${esc(tip(b))}" data-tip="${esc(tip(b))}">
+          <div class="net-an-bars">${series.map(x => `<i class="bar bar-${x.cls}" style="height:${(100 * (b[x.key] || 0) / max).toFixed(1)}%"></i>`).join("")}</div>
+          <div class="net-an-x">${i % every === 0 || i === buckets.length - 1 ? esc(label(b)) : ""}</div>
+        </div>`).join("")}</div>
+      <div class="net-an-tip" aria-live="polite"></div>
+      <details class="net-an-table"><summary>Show as a table</summary>
+        <table class="stat-table"><thead><tr><th>${by === "month" ? "Month" : "Week of"}</th>${series.map(x => `<th class="num">${esc(x.label)}</th>`).join("")}</tr></thead><tbody>${
+          buckets.map(b => `<tr><td>${esc(by === "month" ? label(b) + " " + b.start.slice(0, 4) : fmt(b.start))}</td>${series.map(x => `<td class="num">${esc(b[x.key] || 0)}</td>`).join("")}</tr>`).join("")}</tbody></table>
+      </details></div>`;
+  }
+
+  // ── Visitors and errors from Cloudflare (GET /admin/network/traffic) ──
+  var NET_TR = { key: "", at: 0, data: null, error: null };
+  async function loadNetTraffic() {
+    const days = document.getElementById("net-an-days").value, key = days;
+    NET_TR.key = key; NET_TR.at = Date.now(); NET_TR.error = null;
+    const path = `/admin/network/traffic?days=${encodeURIComponent(days)}`;
+    const old = snapGet(path);
+    NET_TR.data = old || null; NET_TR.loading = true;
+    if (NET_AN.data) renderNetAnalytics();
+    let d;
+    try { d = await api(path); } catch (e) { d = { error: "Couldn't reach Cloudflare's numbers right now." }; }
+    if (key !== NET_TR.key) return;
+    NET_TR.loading = false;
+    if (!d || d.error) { NET_TR.at = 0; NET_TR.error = /not found/i.test(d?.error || "") ? "Visitor numbers aren't available yet — try again in a few minutes." : (d?.error || "Couldn't load visitor numbers"); }
+    else { NET_TR.data = d; if (d.configured && d.visitors) snapPut(path, d); }
+    if (NET_AN.data) renderNetAnalytics();
+  }
+  const netSourceIcon = n => /WhatsApp/.test(n) ? "💬" : /Google|search/i.test(n) ? "🔎" : /Facebook|Instagram/.test(n) ? "👥" : /^Direct/.test(n) ? "↩" : /Email/.test(n) ? "✉" : "🔗";
+  function netBarList(rows, valueKey, total) {
+    const max = Math.max(1, ...rows.map(r => r[valueKey]));
+    return `<ul class="net-an-barlist">${rows.map(r => `<li><span class="nm">${esc(r.name)}</span><span class="val">${esc(r[valueKey])}${total ? ` <span class="card-id">${esc(Math.round(100 * r[valueKey] / total))}%</span>` : ""}</span>
+      <span class="track" aria-hidden="true"><i style="width:${(100 * r[valueKey] / max).toFixed(1)}%"></i></span></li>`).join("")}</ul>`;
+  }
+  function netTrafficHtml(d, period, bk, by) {
+    const tr = NET_TR.data;
+    if (!tr && NET_TR.loading) return `<div class="section-label net-an-label">Visitors</div><div class="card stat-block"><div class="loading">Loading visitor numbers from Cloudflare…</div></div>`;
+    if (!tr) return NET_TR.error ? `<div class="section-label net-an-label">Visitors</div><div class="card stat-block"><p class="stat-note">${esc(NET_TR.error)}</p></div>` : "";
+    if (!tr.configured) return `<div class="section-label net-an-label">Visitors</div><div class="card stat-block net-an-setup"><h4>Visitor numbers aren't connected yet</h4>
+      <p class="stat-note">Add a read-only Cloudflare API token to the worker (secret <code>CF_ANALYTICS_TOKEN</code>) to see visits, where visitors come from, page views per gemach and site errors here.</p></div>`;
+    const v = tr.visitors, stale = NET_TR.loading ? " is-stale" : "";
+    const notes = (tr.problems || []).length ? `<div class="card warning stat-block"><h4>Some Cloudflare numbers didn't load</h4><ul class="stat-list">${tr.problems.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
+    if (!v) return `<div class="section-label net-an-label">Visitors</div>${notes}`;
+    const reqs = d.period?.requests ?? 0;
+    // Visits into the same weeks/months as the requests chart.
+    const starts = bk.map(b => b.start);
+    const vb = bk.map(b => ({ start: b.start, visits: 0, pageViews: 0 }));
+    for (const x of v.byDate || []) {
+      let i = -1;
+      for (let k = 0; k < starts.length; k++) if (x.date >= starts[k]) i = k;
+      if (i >= 0) { vb[i].visits += x.visits; vb[i].pageViews += x.pageViews; }
+    }
+    const partial = v.from && tr.since && v.from > tr.since ? `<p class="stat-note" style="margin:-.35rem 0 .9rem">Cloudflare only has visitor numbers from ${esc(fmt(v.from))}.</p>` : "";
+    const totalSrc = (v.sources || []).reduce((n, x) => n + x.visits, 0);
+    const devTotal = (v.devices || []).reduce((n, x) => n + x.visits, 0);
+    return `<div class="section-label net-an-label">Visitors</div>${notes}
+      <div class="${stale.trim()}">
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-num">${esc(v.visits)}</div><div class="kpi-label">Visits</div><div class="kpi-sub">${v.botsExcluded ? "bots left out" : "may include some bots"}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(v.pageViews)}</div><div class="kpi-label">Page views</div><div class="kpi-sub">${v.visits ? `${esc(Math.round(10 * v.pageViews / v.visits) / 10)} pages per visit` : "—"}</div></div>
+        <div class="kpi"><div class="kpi-num">${v.visits ? esc(Math.round(1000 * reqs / v.visits) / 10) : "—"}</div><div class="kpi-label">Requests per 100 visits</div><div class="kpi-sub">${esc(plural(reqs, "online request"))}</div></div>
+      </div>${partial}
+      ${netBarChart({ title: `Visits by ${by}`, by, period, buckets: vb, series: [{ key: "visits", label: "Visits", cls: "req", one: "visit" }] })}
+      <div class="net-an-two">
+        <div class="card stat-block"><h4>Where visitors come from</h4>${(v.sources || []).length
+          ? netBarList(v.sources.map(x => ({ ...x, name: `${netSourceIcon(x.name)} ${x.name}` })), "visits", totalSrc)
+            + `<p class="stat-note">WhatsApp and other apps often don't say where a visit came from, so some of them count as Direct.</p>`
+          : `<p class="stat-note">No visits in ${esc(period)}.</p>`}</div>
+        <div class="card stat-block"><h4>Devices and places</h4>${(v.devices || []).length ? netBarList(v.devices.map(x => ({ ...x, name: x.name.charAt(0).toUpperCase() + x.name.slice(1) })), "visits", devTotal) : ""}
+          ${(v.countries || []).length ? `<h4 style="margin-top:.75rem">Countries</h4>${netBarList(v.countries.slice(0, 5), "visits", devTotal)}` : ""}</div>
+      </div>
+      <div class="card stat-block"><h4>Most viewed pages</h4>${(v.pages || []).length ? `<table class="stat-table"><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Visits</th></tr></thead><tbody>${
+        v.pages.slice(0, 10).map(x => `<tr><td>${esc(netPageName(x.name, d))}</td><td class="num">${esc(x.pageViews)}</td><td class="num">${esc(x.visits)}</td></tr>`).join("")}</tbody></table>` : `<p class="stat-note">No page views in ${esc(period)}.</p>`}</div>
+      </div>`;
+  }
+  /** "/g/simcha-dress" → "Simcha Dress (gemach page)"; "/" → "Home page". */
+  function netPageName(path, d) {
+    if (path === "/") return "Home page";
+    const m = path.match(/^\/g\/([a-z0-9-]+)$/);
+    if (m) { const g = (d.byGemach || []).find(x => x.slug === m[1]); return g ? g.name : path; }
+    return { "/about": "About", "/disclaimer": "Disclaimer", "/r/…": "Borrower request links", "/admin": "Admin" }[path] || path;
+  }
+  const NET_WORKER_STATUS = { exceededResources: "over the CPU limit", scriptThrewException: "crashed", internalError: "Cloudflare error", exceededMemory: "out of memory" };
+  function netHealthHtml(d, period) {
+    const tr = NET_TR.data?.configured ? NET_TR.data : null, sh = d.siteHealth || { jsErrors: 0, loadFails: 0, top: [] };
+    const w = tr?.worker, h = tr?.http;
+    const wBad = w ? Object.entries(w.byStatus || {}).filter(([k]) => NET_WORKER_STATUS[k]) : [];
+    const wErr = wBad.reduce((n, [, c]) => n + c, 0);
+    let html = `<div class="section-label net-an-label">Site health</div><div class="kpi-grid">
+      <div class="kpi"><div class="kpi-num${wErr ? " net-an-bad" : ""}">${w ? esc(wErr) : "—"}</div><div class="kpi-label">Server errors${w ? ` (${esc(w.days)} days)` : ""}</div>
+        <div class="kpi-sub">${w ? (wErr ? esc(wBad.map(([k, c]) => `${c} ${NET_WORKER_STATUS[k]}`).join(" · ")) : `none in ${esc(plural(w.requests, "API call"))}`) : "needs the Cloudflare token"}</div></div>
+      <div class="kpi"><div class="kpi-num${h && h.site5xx ? " net-an-bad" : ""}">${h ? esc(h.site4xx + h.site5xx) : "—"}</div><div class="kpi-label">Pages not found or failed${h ? ` (${esc(h.days)} days)` : ""}</div>
+        <div class="kpi-sub">${h ? `${esc(h.site5xx)} failed · API ${esc(h.api5xx)} failed` : "needs the Cloudflare token"}</div></div>
+      <div class="kpi"><div class="kpi-num${sh.jsErrors + sh.loadFails ? " net-an-bad" : ""}">${esc(sh.jsErrors + sh.loadFails)}</div><div class="kpi-label">Problems in visitors' browsers</div>
+        <div class="kpi-sub">${esc(sh.loadFails)} couldn't load · ${esc(sh.jsErrors)} script errors</div></div>
+    </div>`;
+    if (sh.top.length) html += `<div class="card stat-block"><h4>Problems visitors ran into</h4><div class="net-an-scroll"><table class="stat-table net-an-problems"><thead><tr><th>What happened</th><th>Where</th><th class="num">Times</th><th class="num">Last</th></tr></thead><tbody>${
+      sh.top.map(x => `<tr><td>${x.kind === "load-fail" ? `Couldn't load the ${esc(x.label === "directory" ? "home page" : x.label === "manage" ? "request link page" : "gemach page")}` : esc(x.label)}</td>
+        <td class="card-id">${esc([x.page && netPageName(x.page, d), x.src && x.src + (x.line ? ":" + x.line : ""), x.browser].filter(Boolean).join(" · "))}</td>
+        <td class="num">${esc(x.count)}</td><td class="num card-id">${esc(x.lastAt ? fmt(x.lastAt.slice(0, 10)) : "")}</td></tr>`).join("")}</tbody></table></div>
+      <p class="stat-note">"Couldn't load" usually means a slow or dropped connection; the same script error many times is worth a look.</p></div>`;
+    if (h && h.top.length) html += `<div class="card stat-block"><h4>Addresses that weren't found or failed</h4><table class="stat-table"><thead><tr><th>Address</th><th class="num">Status</th><th class="num">Times</th></tr></thead><tbody>${
+      h.top.slice(0, 10).map(x => `<tr><td>${esc(x.path)}</td><td class="num">${x.status >= 500 ? `<span class="tag tag-red">${esc(x.status)}</span>` : esc(x.status)}</td><td class="num">${esc(x.count)}</td></tr>`).join("")}</tbody></table>
+      <p class="stat-note">Mostly old links and robots trying addresses that don't exist. A real page here (like a gemach page) means a broken link somewhere.</p></div>`;
+    return html;
   }
 
   async function loadNetSearches() {

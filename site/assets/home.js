@@ -562,6 +562,7 @@
 
   W.loadDirectory().then(show, function () {
     if (data) return; // keep cached view
+    if (W.loadFailed) W.loadFailed("directory");
     var msg = '<div class="empty-state"><div class="big" aria-hidden="true">📡</div><h3>We couldn’t load the directory</h3>' +
       "<p>Please check your connection and try again.</p>" +
       '<p><button type="button" class="btn btn-primary" id="retry">Try again</button></p>' +

@@ -33,12 +33,32 @@ const ANALYTICS = days => ({
     repeat: 41, multiGemach: 9, requesters: 44, requestersNeverBorrowed: 18, loansPerPerson: 1.8 },
   trend: { by: days === 365 ? "month" : "week", buckets: Array.from({ length: days === 365 ? 13 : Math.ceil(days / 7) }, (_, i) => ({ start: plus(-7 * (12 - i) - 6), requests: i % 5, loans: (i * 2) % 4 })) },
   topRequested: [{ name: "Wheelchair", gemach: "WH Medical", requests: 14 }, { name: "Navy <b>gown</b> – size 8", gemach: "Simcha Dress", requests: 6 }],
+  topLooked: [{ name: "Navy gown – size 8", gemach: "Simcha Dress", photos: 41, picks: 9, requests: 6 }, { name: "Gold gown – size 12", gemach: "Simcha Dress", photos: 25, picks: 3, requests: 0 }],
+  siteHealth: { jsErrors: 4, loadFails: 3, top: [
+    { kind: "js-error", label: "TypeError: <img src=x> is undefined", count: 4, days: 2, lastAt: hoursAgo(3), page: "/g/simcha-dress", src: "/assets/gemach.js", line: 412, browser: "iPhone/iPad Safari" },
+    { kind: "load-fail", label: "gemach", count: 3, days: 3, lastAt: hoursAgo(30), page: "/g/wh-medical", src: null, line: null, browser: "Android Chrome" },
+  ] },
   byGemach: [
     row({ id: "recA", slug: "wh-medical", name: "WH Medical", peopleInPeriod: 21, requests: 30, confirmed: 26, waiting: 1, reserved: 4, out: 15, overdue: 3, loansStarted: 28, medianReplyHours: 3, lastActivity: hoursAgo(2), adminBookings: 4 }),
     row({ id: "recS", slug: "simcha-dress", name: "Simcha Dress", requests: 18, waiting: 4, waitingOver48h: 2, reserved: 3, out: 8, loansStarted: 13, medianReplyHours: 30, lastActivity: hoursAgo(24 * 9) }),
     row({ id: "recC", slug: "coming", name: "Aardvark Coming", status: "Coming soon" }),
   ],
 });
+const TRAFFIC = days => ({
+  configured: true, days, since: plus(-days + 1), today: TODAY, problems: [],
+  visitors: {
+    visits: 820, pageViews: 2460, botsExcluded: true, from: plus(-days + 1),
+    byDate: Array.from({ length: 20 }, (_, i) => ({ date: plus(-i * 4), visits: 10 + (i % 7) * 3, pageViews: 30 + i })),
+    sources: [{ name: "Direct (typed, bookmark or app)", visits: 410 }, { name: "WhatsApp", visits: 220 }, { name: "Google", visits: 120 }, { name: "anshei.org", visits: 40 }, { name: "evil<b>host</b>.com", visits: 30 }],
+    devices: [{ name: "mobile", visits: 690, pageViews: 2000 }, { name: "desktop", visits: 130, pageViews: 460 }],
+    countries: [{ name: "US", visits: 800, pageViews: 2400 }, { name: "IL", visits: 20, pageViews: 60 }],
+    pages: [{ name: "/", pageViews: 900, visits: 500 }, { name: "/g/simcha-dress", pageViews: 700, visits: 200 }, { name: "/g/wh-medical", pageViews: 400, visits: 90 }, { name: "/r/…", pageViews: 40, visits: 30 }],
+    gemachViews: { "simcha-dress": { pageViews: 700, visits: 200 }, "wh-medical": { pageViews: 400, visits: 90 } },
+  },
+  worker: { days: 30, requests: 51234, errors: 9, byStatus: { exceededResources: 7, scriptThrewException: 2, clientDisconnected: 40 }, byDate: [] },
+  http: { days: 30, site4xx: 64, site5xx: 1, api4xx: 120, api5xx: 3, top: [{ path: "/wp-login.php", status: 404, count: 40 }, { path: "/g/old-gemach", status: 404, count: 6 }, { path: "/about", status: 502, count: 1 }] },
+});
+let TRAFFIC_MODE = "on";
 const SEARCHES = { days: 90, total: 1, searches: [{ id: "recS1", query: "hospital bed", count: 4, nothingFound: 4, allOnLoan: 0, lastSearched: hoursAgo(5) }] };
 
 const reqs = [];
@@ -58,6 +78,7 @@ await page.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
   if (p === "/admin/stats") return J({ requests: {} });
   if (p === "/admin/network/overview") return J(OVERVIEW);
   if (p === "/admin/network/analytics") return J(ANALYTICS(Number(u.searchParams.get("days"))));
+  if (p === "/admin/network/traffic") return J(TRAFFIC_MODE === "off" ? { configured: false, days: 90 } : TRAFFIC(Number(u.searchParams.get("days"))));
   if (p === "/admin/network/searches") return J({ ...SEARCHES, days: Number(u.searchParams.get("days")) });
   return J([]);
 });
@@ -93,11 +114,32 @@ ok(/41\s*Loans went out\s*30 returned · 6 booked in admin/.test(t), "loans KPI"
 ok(/212\s*People on file\s*9 use more than one gemach/.test(t) && /19\s*Have something out now\s*2 with an overdue loan/.test(t), "people KPIs: on file, out now");
 ok(/37\s*Borrowed in 90 days\s*22 new · 15 returning/.test(t) && /41\s*Borrowed 2\+ times\s*1.8 loans per person/.test(t), "people KPIs: period, repeat");
 ok(/44\s*Asked online in 90 days\s*18 never borrowed before/.test(t) && /6\s*Waiting to pick up/.test(t), "people KPIs: requesters, waiting to pick up");
-ok(await page.$$eval(".net-an-col", c => c.length) === 13, "13 weekly columns");
+ok(await page.$$eval(".net-an-chartcard", c => c.map(x => x.querySelectorAll(".net-an-col").length).join(",")) === "13,13", "13 weekly columns in the requests and visits charts");
 ok(/Requests and loans by week/.test(t) && /Requests/.test(await page.textContent(".net-an-legend")), "chart title + legend");
 await page.hover(".net-an-col >> nth=1");
-ok(/Week of .*: 1 request, 2 loans went out/.test(await page.textContent(".net-an-tip")), "hover shows the week's numbers: " + await page.textContent(".net-an-tip"));
-ok(await page.$$eval(".net-an-table tbody tr", r => r.length) === 13, "table view of the chart");
+ok(/Week of .*: 1 request, 2 loans went out/.test(await page.textContent(".net-an-tip >> nth=0")), "hover shows the week's numbers: " + await page.textContent(".net-an-tip >> nth=0"));
+ok(await page.$$eval(".net-an-table", t => t[0].querySelectorAll("tbody tr").length) === 13, "table view of the chart");
+// Visitors (Cloudflare)
+await page.waitForFunction(() => /Where visitors come from/.test(document.getElementById("net-analytics").innerText));
+const t2 = await page.$eval("#net-analytics", e => e.innerText);
+ok(/820\s*Visits\s*bots left out/.test(t2), "visits KPI");
+ok(/2460\s*Page views\s*3 pages per visit/.test(t2) && /5.9\s*Requests per 100 visits\s*48 online requests/.test(t2), "page views + requests per 100 visits: " + t2.match(/Visits[\s\S]{0,200}/)?.[0]);
+ok(/Visits by week/.test(t2) && !/Cloudflare only has visitor numbers/.test(t2), "visits chart; no 'only has numbers from' note when it has the whole period");
+ok(/Where visitors come from[\s\S]*WhatsApp\s*220\s*27%/.test(t2), "sources with share: " + t2.match(/Where visitors come from[\s\S]{0,200}/)?.[0]);
+ok(/Mobile\s*690\s*84%/.test(t2) && /US\s*800/.test(t2), "devices and countries");
+ok(/Most viewed pages[\s\S]*Home page\s*900[\s\S]*Simcha Dress\s*700[\s\S]*Borrower request links/.test(t2), "page names readable");
+const heads = (await page.$$eval(".net-an-gemachs th", h => h.map(x => x.innerText.replace(/[▲▼]/g, "").trim()))).join("|");
+ok(heads === "Gemach|Views|Requests|Req / 100 views|Reply|Waiting|Reserved|Out|Lent|People|Last activity", "views columns: " + heads);
+ok(/Simcha Dress\s*700\s*18\s*2.6/.test(await page.$eval(".net-an-gemachs", e => e.innerText)), "simcha views + per 100");
+// Most looked at + site health
+ok(/Most looked at[\s\S]*Navy gown – size 8\s*Simcha Dress\s*41\s*9\s*6/.test(t2) && /Gold gown – size 12[\s\S]*no requests/.test(t2), "most looked at: " + t2.match(/Most looked at[\s\S]{0,250}/)?.[0]);
+ok(/9\s*Server errors \(30 days\)\s*7 over the CPU limit · 2 crashed/.test(t2), "server errors KPI (client disconnects left out)");
+ok(/65\s*Pages not found or failed \(30 days\)\s*1 failed · API 3 failed/.test(t2), "page errors KPI");
+ok(/7\s*Problems in visitors' browsers\s*3 couldn't load · 4 script errors/.test(t2), "browser problems KPI");
+ok(/TypeError: <img src=x> is undefined[\s\S]*Simcha Dress · \/assets\/gemach.js:412 · iPhone\/iPad Safari/.test(t2) && await page.$("#net-analytics img") === null, "problem rows (escaped)");
+ok(/Couldn't load the gemach page\s*WH Medical · Android Chrome/.test(t2), "load failure row");
+ok(/\/wp-login.php\s*404\s*40/.test(t2) && await page.$(".tag-red >> text=502") !== null, "not-found addresses with failed ones flagged");
+ok(/evil<b>host<\/b>\.com/.test(t2), "source names escaped");
 const order = async () => (await page.$$eval(".net-an-gemachs tbody tr td:first-child a", a => a.map(x => x.textContent))).join("|");
 ok(await order() === "WH Medical|Simcha Dress|Aardvark Coming", "busiest first by default: " + await order());
 const sd = await page.$eval(".net-an-gemachs tbody tr:nth-child(2)", e => e.innerText);
@@ -143,6 +185,7 @@ await p2.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
   if (p === "/admin/gemach") return J(G);
   if (p === "/admin/network/overview") return J(OVERVIEW);
   if (p === "/admin/network/analytics") return J(ANALYTICS(90));
+  if (p === "/admin/network/traffic") return J(TRAFFIC(90));
   if (p === "/admin/network/searches") return J(SEARCHES);
   return J([]);
 });
@@ -151,8 +194,38 @@ await p2.goto("http://admin.test/admin.html");
 await p2.waitForTimeout(500);
 await p2.click(".nav-tab:has-text('Network')");
 await p2.waitForSelector("#net-analytics .kpi-grid");
+await p2.waitForFunction(() => /Where visitors come from/.test(document.getElementById("net-analytics").innerText));
 await p2.locator("#net-area-analytics").screenshot({ path: "shot-net-analytics-desktop.png" });
+
 await p2.close();
+// Without the Cloudflare token: says so, everything else still there.
+TRAFFIC_MODE = "off";
+const p3 = await browser.newPage({ viewport: { width: 390, height: 844 } });
+p3.on("pageerror", e => errors.push(String(e)));
+await p3.route("https://accounts.google.com/**", r => r.fulfill({ contentType: "text/javascript", body: "" }));
+await p3.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ body: "" }));
+await p3.route("http://admin.test/**", r => r.fulfill({ contentType: "text/html", body: html }));
+await p3.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
+  const u = new URL(r.request().url()), p = u.pathname;
+  const J = d => r.fulfill({ contentType: "application/json", body: JSON.stringify(d) });
+  if (p === "/admin/me") return J({ email: "b@x", name: "Barry", role: "Network Admin", gemachs: [{ id: "recA", slug: G.slug, name: G.name, active: true }] });
+  if (p === "/admin/gemach") return J(G);
+  if (p === "/admin/network/overview") return J(OVERVIEW);
+  if (p === "/admin/network/analytics") return J({ ...ANALYTICS(90), siteHealth: undefined, topLooked: undefined });
+  if (p === "/admin/network/traffic") return J({ configured: false, days: 90 });
+  if (p === "/admin/network/searches") return J(SEARCHES);
+  return J([]);
+});
+await p3.addInitScript(() => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", "wh-medical"); sessionStorage.setItem("whg_network_area", "analytics"); });
+await p3.goto("http://admin.test/admin.html");
+await p3.waitForTimeout(500);
+await p3.click(".nav-tab:has-text('Network')");
+await p3.waitForSelector("#net-analytics .kpi-grid");
+await p3.waitForFunction(() => /Visitor numbers aren't connected yet/.test(document.getElementById("net-analytics").innerText));
+const t3 = await p3.$eval("#net-analytics", e => e.innerText);
+ok(/CF_ANALYTICS_TOKEN/.test(t3) && /needs the Cloudflare token/.test(t3) && !/Views/.test(await p3.$eval(".net-an-gemachs thead", e => e.innerText)), "not connected: explained; no views column");
+ok(/Nothing counted yet/.test(t3) && /0\s*Problems in visitors' browsers/.test(t3), "older API answer without site events still renders");
+await p3.close();
 
 ok(!errors.length, "no page errors: " + errors.join(" | "));
 await page.close();

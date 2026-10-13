@@ -207,6 +207,19 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   last_error TEXT  -- Last Error
 );
 
+CREATE TABLE IF NOT EXISTS site_events (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  date TEXT,  -- Date
+  kind TEXT,  -- Kind
+  key TEXT,  -- Key
+  count REAL,  -- Count
+  slug TEXT,  -- Slug
+  label TEXT,  -- Label
+  detail TEXT,  -- Detail
+  last_at TEXT  -- Last At
+);
+
 CREATE TABLE IF NOT EXISTS search_log (
   id TEXT PRIMARY KEY,
   created_at TEXT NOT NULL,
@@ -319,6 +332,11 @@ CREATE VIEW push_subscriptions_v AS SELECT r.*,
   r.rowid AS _seq
 FROM push_subscriptions r;
 
+DROP VIEW IF EXISTS site_events_v;
+CREATE VIEW site_events_v AS SELECT r.*,
+  r.rowid AS _seq
+FROM site_events r;
+
 DROP VIEW IF EXISTS search_log_v;
 CREATE VIEW search_log_v AS SELECT r.*,
   r.rowid AS _seq
@@ -343,5 +361,6 @@ CREATE INDEX IF NOT EXISTS loans_borrower ON loans(borrower_id);
 CREATE INDEX IF NOT EXISTS activity_gemach_time ON activity_log(gemach_id, timestamp);
 CREATE UNIQUE INDEX IF NOT EXISTS search_log_query ON search_log(query);
 CREATE INDEX IF NOT EXISTS search_log_last ON search_log(last_searched);
+CREATE INDEX IF NOT EXISTS site_events_day ON site_events(date, kind, key);
 CREATE UNIQUE INDEX IF NOT EXISTS push_endpoint ON push_subscriptions(endpoint);
 CREATE INDEX IF NOT EXISTS push_admin ON push_subscriptions(admin_id);

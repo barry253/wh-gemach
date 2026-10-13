@@ -497,6 +497,38 @@
   ICONS.info = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
   ICONS.clock = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
 
+  // ── Site events (Network → Analytics): item photos opened / ticked, browser errors, "couldn't load" ──
+  // Counts only: no names, no contact details, nothing stored on the device. At most 25 per page view,
+  // each item counted once per page view.
+  var tracked = {}, trackedN = 0;
+  function track(ev) {
+    try {
+      if (!ev || trackedN >= 25 || navigator.webdriver) return;
+      var key = ev.kind + "|" + (ev.item || ev.msg || ev.what || "");
+      if (tracked[key]) return;
+      tracked[key] = 1; trackedN++;
+      fetch(API_BASE + "/public/event", {
+        method: "POST", keepalive: true, headers: { "Content-Type": "text/plain" }, body: JSON.stringify(ev),
+      }).catch(function () {});
+    } catch (e) { /* never get in the visitor's way */ }
+  }
+  function loadFailed(what) { track({ kind: "load-fail", what: what, page: location.pathname }); }
+  var errorsSent = 0;
+  function reportError(msg, src, line) {
+    if (errorsSent >= 3 || !msg) return;
+    if (/^Script error\.?$/.test(msg) || /ResizeObserver loop/.test(msg)) return; // other sites' scripts / harmless browser noise
+    errorsSent++;
+    track({ kind: "js-error", msg: String(msg).slice(0, 300), src: src || "", line: line || 0, page: location.pathname });
+  }
+  window.addEventListener("error", function (e) {
+    if (e && e.message) reportError(e.message, e.filename, e.lineno);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e && e.reason;
+    if (r && r.name === "AbortError") return;
+    reportError(r && (r.message || String(r)), r && r.fileName, r && r.lineNumber);
+  });
+
   // ── Footer year ──
   function initFooter() {
     var y = document.querySelectorAll("[data-year]");
@@ -507,6 +539,8 @@
 
   window.WHG = {
     API_BASE: API_BASE,
+    track: track,
+    loadFailed: loadFailed,
     CONTACT_EMAIL: CONTACT_EMAIL,
     fetchJSON: fetchJSON,
     readDirCache: readDirCache,

@@ -726,9 +726,14 @@
     var chk = row.querySelector('input[type="checkbox"]');
     if (chk) chk.checked = on;
   }
+  /** Network → Analytics counts which items people look at (not on test-link pages). */
+  function trackItem(kind, id) {
+    if (testToken || !gemach || !W.track) return;
+    W.track({ kind: kind, gemach: gemach.slug || slug, item: id });
+  }
   function toggleItem(id, force) {
     var on = typeof force === "boolean" ? force : !selected.has(id);
-    if (on) selected.add(id); else selected.delete(id);
+    if (on) { selected.add(id); trackItem("item-pick", id); } else selected.delete(id);
     syncRow(id);
     updateCTA();
   }
@@ -826,7 +831,10 @@
     var photoBtn = t.closest("[data-photo]");
     if (photoBtn) {
       var it = items.filter(function (i) { return i.id === photoBtn.getAttribute("data-photo"); })[0];
-      if (it) openLightbox(photoList(it), it.name, photoBtn, Number(photoBtn.getAttribute("data-pi")) || 0, it.description);
+      if (it) {
+        openLightbox(photoList(it), it.name, photoBtn, Number(photoBtn.getAttribute("data-pi")) || 0, it.description);
+        trackItem("item-photos", it.id);
+      }
       return;
     }
     var descBtn = t.closest(".item-desc-toggle");
@@ -1413,6 +1421,6 @@
   var hadCache = testToken ? false : fromDirectory(); // test link: wait for the test-mode page instead
   refresh().catch(function (err) {
     if (err && err.status === 404) { gemach = null; renderNotFound(); return; }
-    if (!hadCache) renderLoadError();
+    if (!hadCache) { renderLoadError(); if (W.loadFailed) W.loadFailed("gemach"); }
   });
 })();

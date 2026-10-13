@@ -46,10 +46,12 @@ const DB = {
   ],
   // WC-002 is out on loan (Items.Status is computed from loans in D1, so the loan has to exist).
   "Loans": [rec("recLOANWC0020000A", { "Loan ID": "L-001", Status: "Active", Item: ["recITEMA000000002"], "Date Borrowed": "2026-01-02", Gemach: [A.id], "Gemach Slug": [A.slug] })],
-  "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [], "Push Subscriptions": [],
+  "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [], "Push Subscriptions": [], "Site Events": [],
 };
 
 const calls = [];
+// Fake Cloudflare analytics API (traffic.js): set cfAnswer to change what it says.
+let cfAnswer = () => new Response("{}", { status: 500 });
 // Web Push: messages "delivered" to push services, and what each endpoint answers (status code).
 const pushes = [];
 let pushStatusFor = () => 201;
@@ -79,6 +81,8 @@ function evalFilter(table, f, r) {
   if (/\{Status\}="Active"/.test(f) && !/OR\(\{Status\}/.test(f) && r.fields.Status !== "Active") return false;
   if (/OR\(\{Status\}="Active",\{Status\}="Reserved"\)/.test(f) && !["Active", "Reserved"].includes(r.fields.Status)) return false;
   if ((m = f.match(/\{Query\}="([^"]*)"/)) && r.fields.Query !== m[1]) return false;
+  for (const k of ["Kind", "Key", "Date"]) if ((m = f.match(new RegExp(`\\{${k}\\}="((?:[^"\\\\]|\\\\.)*)"`))) && String(r.fields[k] ?? "") !== JSON.parse(`"${m[1]}"`)) return false;
+  if ((m = f.match(/NOT\(IS_BEFORE\(\{Date\},"([^"]+)"\)\)/)) && !(r.fields.Date >= m[1])) return false;
   const evs = [...f.matchAll(/\{Event Type\}="([^"]+)"/g)].map(x => x[1]);
   if (evs.length && !evs.includes(r.fields["Event Type"])) return false;
   if (/\{Request Type\}="Appointment"/.test(f) && r.fields["Request Type"] !== "Appointment") return false;
@@ -105,6 +109,7 @@ globalThis.fetch = async (input, init = {}) => {
     const status = pushStatusFor(url);
     return new Response(status >= 300 ? "nope" : "", { status });
   }
+  if (url.startsWith("https://api.cloudflare.com/")) return cfAnswer(url, init);
   if (url === "https://api.airtable.com/v0/meta/whoami") return new Response('{"id":"usrTEST"}');
   if (D1_MODE && url.startsWith("https://api.airtable.com/")) throw new Error("Airtable called in D1 mode: " + method + " " + url);
   const m = url.match(/^https:\/\/api\.airtable\.com\/v0\/appTEST\/([^/?]+)(?:\/([^/?]+))?/);
@@ -2043,6 +2048,124 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
       for (let i = DB[t].length - 1; i >= 0; i--) if (DB[t][i].id.startsWith(pre)) DB[t].splice(i, 1);
     }
   });
+  await t("site events: item photos / ticks, browser errors and load failures counted per day; junk and personal details dropped", async () => {
+    const SE = DB["Site Events"];
+    const send = (body, ip = "1.1.1.1", ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605 Version/17.0 Mobile Safari/604.1") =>
+      call("/public/event", { method: "POST", headers: { "Content-Type": "text/plain", Origin: "https://whgemachs.org", "CF-Connecting-IP": ip, "User-Agent": ua }, body: typeof body === "string" ? body : JSON.stringify(body) });
+    const settle = () => Promise.allSettled(waits);
+    let r = await send({ kind: "item-photos", gemach: A.slug, item: "recTYPEA000000001" });
+    assert.equal(r.status, 204); assert.ok(["*", "https://whgemachs.org"].includes(r.headers.get("Access-Control-Allow-Origin")));
+    await settle();
+    assert.equal(SE.length, 1); assert.equal(SE[0].fields.Kind, "item-photos"); assert.equal(SE[0].fields.Key, "recTYPEA000000001");
+    assert.equal(SE[0].fields.Count, 1); assert.equal(SE[0].fields.Slug, A.slug); assert.equal(SE[0].fields.Date, __WHG_TEST__.nyToday());
+    await send({ kind: "item-photos", gemach: A.slug, item: "recTYPEA000000001" }); await settle();
+    assert.equal(SE[0].fields.Count, 1, "same visitor again within 30 minutes isn't counted twice");
+    await send({ kind: "item-photos", gemach: A.slug, item: "recTYPEA000000001" }, "2.2.2.2"); await settle();
+    assert.equal(SE.length, 1); assert.equal(SE[0].fields.Count, 2, "another visitor adds to the same row");
+    await send({ kind: "item-pick", gemach: A.slug, item: "recTYPEA000000001" }); await settle();
+    assert.equal(SE.length, 2, "a tick is its own row");
+    for (const b of ["nope", "null", { kind: "item-photos", gemach: "Bad Slug!", item: "recTYPEA000000001" }, { kind: "item-photos", gemach: A.slug, item: "x" },
+                     { kind: "hack" }, { kind: "js-error", msg: "" }, { kind: "load-fail", what: "everything" }]) assert.equal((await send(b)).status, 204);
+    await settle();
+    assert.equal(SE.length, 2, "junk ignored");
+    await send({ kind: "js-error", msg: "TypeError: x is undefined for me@example.com at https://whgemachs.org/r/recREQA0000000002.sigsig?x=1 phone 5165551234 recTYPEA000000001",
+      src: "https://whgemachs.org/assets/gemach.js?v=25", line: 412, page: "https://whgemachs.org/r/recREQA0000000002.sig?test=abc" }); await settle();
+    const je = SE.find(x => x.fields.Kind === "js-error");
+    assert.ok(je, "error stored");
+    assert.ok(!/example\.com|5165551234|recREQA|recTYPEA|sigsig/.test(JSON.stringify(je.fields)), "no personal details: " + JSON.stringify(je.fields));
+    assert.match(je.fields.Label, /^TypeError: x is undefined for \[email\] at whgemachs\.org\/r\/… phone # \[id\]$/);
+    const det = JSON.parse(je.fields.Detail);
+    assert.deepEqual(det, { src: "/assets/gemach.js", line: 412, page: "/r/…", browser: "iPhone/iPad Safari" });
+    await send({ kind: "load-fail", what: "gemach", page: "/g/wh-medical?x=1" }); await settle();
+    const lf = SE.find(x => x.fields.Kind === "load-fail");
+    assert.equal(lf.fields.Key, "gemach|/g/wh-medical"); assert.equal(lf.fields.Slug, "wh-medical");
+    // In Network → Analytics
+    const d = await (await call("/admin/network/analytics?days=30&fresh=1", { headers: auth(tokNet) })).json();
+    const wc = d.topLooked.find(x => x.name === "Wheelchair");
+    assert.ok(wc && wc.photos === 2 && wc.picks === 1 && wc.gemach, "most looked at: " + JSON.stringify(d.topLooked));
+    assert.equal(d.siteHealth.jsErrors, 1); assert.equal(d.siteHealth.loadFails, 1);
+    const top = d.siteHealth.top.find(x => x.kind === "js-error");
+    assert.ok(top.label.startsWith("TypeError") && top.src === "/assets/gemach.js" && top.line === 412 && top.browser === "iPhone/iPad Safari" && top.page === "/r/…");
+    SE.length = 0;
+  });
+
+  await t("traffic: not set up without the token; with it, visitors / sources / gemach views / errors from Cloudflare", async () => {
+    assert.equal((await call("/admin/network/traffic", { headers: auth(tokenA) })).status, 403);
+    let d = await (await call("/admin/network/traffic?days=30", { headers: auth(tokNet) })).json();
+    assert.deepEqual(d, { configured: false, days: 30 });
+    env.CF_ANALYTICS_TOKEN = "cf-test-token";
+    const seen = [];
+    const day = n => __WHG_TEST__.nyToday(Date.now() + n * 864e5);
+    let rejectBot = false;
+    cfAnswer = (url, init) => {
+      assert.equal(init.headers.Authorization, "Bearer cf-test-token");
+      if (url.includes("/zones?name=whgemachs.org")) return new Response(JSON.stringify({ result: [{ id: "zone123" }] }));
+      const b = JSON.parse(init.body); seen.push(b);
+      const J = o => new Response(JSON.stringify(o));
+      if (/query Rum/.test(b.query)) {
+        if (rejectBot && /bot: 0/.test(b.query)) return J({ data: null, errors: [{ message: "unknown field \"bot\"" }] });
+        if (b.variables.to < day(-40)) return J({ data: null, errors: [{ message: "cannot request data older than 31 days" }] });
+        const g = (count, visits, dimensions) => ({ count, sum: { visits }, dimensions });
+        return J({ data: { viewer: { accounts: [{
+          byDate: [g(30, 12, { date: day(-1) }), g(20, 8, { date: day(0) })],
+          bySource: [g(0, 9, { refererHost: "" }), g(0, 6, { refererHost: "l.wl.co" }), g(0, 3, { refererHost: "www.google.com" }), g(0, 1, { refererHost: "whgemachs.org" }), g(0, 1, { refererHost: "www.anshei.org" })],
+          byPath: [g(25, 10, { requestPath: "/" }), g(15, 6, { requestPath: "/g/wh-medical" }), g(5, 2, { requestPath: "/g/other-gemach" }), g(3, 1, { requestPath: "/r/recREQA0000000002.secret" })],
+          byDevice: [g(40, 16, { deviceType: "mobile" }), g(10, 4, { deviceType: "desktop" })],
+          byCountry: [g(48, 19, { countryName: "US" })],
+        }] } } });
+      }
+      if (/query Worker/.test(b.query)) {
+        assert.equal(b.variables.script, "wh-gemach");
+        return J({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [
+          { sum: { requests: 900, errors: 0 }, dimensions: { date: day(-1), status: "success" } },
+          { sum: { requests: 4, errors: 4 }, dimensions: { date: day(-1), status: "exceededResources" } },
+          { sum: { requests: 1, errors: 1 }, dimensions: { date: day(0), status: "scriptThrewException" } },
+        ] }] } } });
+      }
+      if (/query Http/.test(b.query)) {
+        assert.equal(b.variables.zone, "zone123");
+        return J({ data: { viewer: { zones: [{
+          byStatus: [{ count: 7, dimensions: { clientRequestHTTPHost: "whgemachs.org", edgeResponseStatus: 404 } }, { count: 2, dimensions: { clientRequestHTTPHost: "api.whgemachs.org", edgeResponseStatus: 500 } },
+                     { count: 30, dimensions: { clientRequestHTTPHost: "api.whgemachs.org", edgeResponseStatus: 401 } }],
+          byPath: [{ count: 5, dimensions: { clientRequestPath: "/wp-login.php", edgeResponseStatus: 404 } }, { count: 2, dimensions: { clientRequestPath: "/r/recREQA0000000002.zz", edgeResponseStatus: 404 } }],
+        }] } } });
+      }
+      return J({ errors: [{ message: "unexpected" }] });
+    };
+    try {
+      d = await (await call("/admin/network/traffic?days=30&fresh=1", { headers: auth(tokNet) })).json();
+      assert.equal(d.configured, true); assert.deepEqual(d.problems, []);
+      const v = d.visitors;
+      assert.equal(v.visits, 20); assert.equal(v.pageViews, 50); assert.equal(v.byDate.length, 2); assert.equal(v.botsExcluded, true);
+      assert.deepEqual(v.sources.map(x => x.name), ["Direct (typed, bookmark or app)", "WhatsApp", "Google", "anshei.org"], "moving around inside the site isn't a source");
+      assert.deepEqual(v.gemachViews, { "wh-medical": { pageViews: 15, visits: 6 }, "other-gemach": { pageViews: 5, visits: 2 } });
+      assert.ok(v.pages.some(p => p.name === "/r/…") && !JSON.stringify(d).includes("secret") && !JSON.stringify(d).includes("recREQA"), "private links hidden");
+      assert.equal(v.devices[0].name, "mobile");
+      assert.deepEqual({ requests: d.worker.requests, errors: d.worker.errors, byStatus: d.worker.byStatus }, { requests: 905, errors: 5, byStatus: { exceededResources: 4, scriptThrewException: 1 } });
+      assert.deepEqual({ site4xx: d.http.site4xx, api5xx: d.http.api5xx, api4xx: d.http.api4xx }, { site4xx: 7, api5xx: 2, api4xx: 30 });
+      assert.deepEqual(d.http.top.map(x => x.path), ["/wp-login.php", "/r/…"]);
+      // 12 months: 13 windows asked for; ones older than Cloudflare keeps are skipped quietly.
+      seen.length = 0;
+      d = await (await call("/admin/network/traffic?days=365&fresh=1", { headers: auth(tokNet) })).json();
+      assert.equal(seen.filter(b => /query Rum/.test(b.query)).length, 13);
+      assert.deepEqual(d.problems, []); assert.equal(d.visitors.visits, 40, "the two windows Cloudflare had");
+      assert.equal(d.worker.days, 30, "errors cover 30 days at most");
+      assert.ok(d.visitors.from > d.since);
+      // A Cloudflare that doesn't take the bot filter: asked again without it.
+      rejectBot = true;
+      d = await (await call("/admin/network/traffic?days=30&fresh=1", { headers: auth(tokNet) })).json();
+      assert.equal(d.visitors.botsExcluded, false); assert.equal(d.visitors.visits, 20);
+      // Reused for 10 minutes
+      const n = seen.length;
+      d = await (await call("/admin/network/traffic?days=30", { headers: auth(tokNet) })).json();
+      assert.ok(d.cachedAt && seen.length === n);
+      // A bad token: shown as a problem, not a crash.
+      cfAnswer = () => new Response(JSON.stringify({ errors: [{ message: "Authentication error" }] }), { status: 401 });
+      d = await (await call("/admin/network/traffic?days=90&fresh=1", { headers: auth(tokNet) })).json();
+      assert.equal(d.visitors, null); assert.ok(d.problems.some(p => /Authentication error/.test(p)), JSON.stringify(d.problems));
+    } finally { delete env.CF_ANALYTICS_TOKEN; }
+  });
+
   await t("stats: request outcomes, reply time, waiting >48h, most requested, loan length, never lent", async () => {
     const G = { id: "recSTATSGEMACH001", slug: "stats-gemach" };
     DB.Gemachs.push(rec(G.id, { Name: "Stats Gemach", Slug: G.slug, Active: true, Email: "s@example.com" }));

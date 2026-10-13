@@ -36,9 +36,9 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
   const todayNy = nyDateOf(nowMs);
   const sinceDate = addDays(todayNy, -days);
 
-  // 9 reads, all in parallel. Date conditions narrow the reads; every one is re-checked below as well.
+  // 10 reads, all in parallel. Date conditions narrow the reads; every one is re-checked below as well.
   // Loans are read in full (a few fields): "new vs returning borrower" needs each person's whole history.
-  const [gemachs, requests, waiting, testReqs, open, recent, log, types, borrowers] = await Promise.all([
+  const [gemachs, requests, waiting, testReqs, open, recent, log, types, borrowers, events] = await Promise.all([
     db.listAll(T.GEMACHS, { fields: ["Name", "Slug", "Active", "Coming Soon", "Mode"] }),
     db.listAll(T.REQUESTS, { where: [Q.after("Received At", sinceIso)],
       fields: ["Request ID", "Status", "Received At", "Items Requested", "Source", "Test", "Gemach", "Phone", "Email"] }),
@@ -51,6 +51,9 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
     db.listAll(T.LOG, { where: [Q.after("Timestamp", sinceIso)], fields: ["Timestamp", "Event Type", "Loan ID", "Gemach"] }),
     db.listAll(T.ITEM_TYPES, { fields: ["Name", "Active", "Tracking", "Gemach"] }),
     db.listAll(T.BORROWERS, { fields: ["Gemach", "Phone", "Email"] }),
+    // Counts the public site reports (events.js). Missing table (older database) = nothing reported yet.
+    db.listAll(T.SITE_EVENTS, { where: [Q.notBefore("Date", sinceDate)], fields: ["Date", "Kind", "Key", "Count", "Slug", "Label", "Detail", "Last At"] })
+      .catch(e => { console.error("site events read failed:", e.message); return []; }),
   ]);
 
   const testIds = new Set(testReqs.filter(r => r.fields.Test).map(r => r.id));
@@ -222,6 +225,40 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
     loansPerPerson: loansPer.size ? Math.round(10 * [...loansPer.values()].reduce((a, b) => a + b, 0) / loansPer.size) / 10 : null,
   };
 
+  // ── What visitors look at (photos opened, items ticked) and problems they hit (site events) ──
+  const looked = new Map(); // item type id -> { photos, picks }
+  const problems = new Map(); // kind|key -> { kind, label, count, lastAt, detail }
+  let jsErrors = 0, loadFails = 0;
+  for (const e of events) {
+    const f = e.fields, c = Number(f.Count) || 0;
+    if (!isValidDate(f.Date) || f.Date < sinceDate || c <= 0) continue;
+    if (f.Kind === "item-photos" || f.Kind === "item-pick") {
+      if (!typeById.has(f.Key)) continue; // deleted item
+      const x = looked.get(f.Key) || looked.set(f.Key, { photos: 0, picks: 0 }).get(f.Key);
+      x[f.Kind === "item-photos" ? "photos" : "picks"] += c;
+    } else if (f.Kind === "js-error" || f.Kind === "load-fail") {
+      if (f.Kind === "js-error") jsErrors += c; else loadFails += c;
+      const k = `${f.Kind}|${f.Key}`;
+      const x = problems.get(k) || problems.set(k, { kind: f.Kind, label: f.Label || "", count: 0, days: 0, lastAt: null, detail: null }).get(k);
+      x.count += c; x.days++;
+      if (!x.lastAt || String(f["Last At"] || "") > x.lastAt) {
+        x.lastAt = f["Last At"] || null;
+        try { x.detail = f.Detail ? JSON.parse(f.Detail) : null; } catch { x.detail = null; }
+      }
+    }
+  }
+  const topLooked = [...looked]
+    .map(([id, x]) => ({ id, name: typeById.get(id)?.fields?.Name || "Item", gemach: row(gOf(typeById.get(id)))?.name || null,
+      photos: x.photos, picks: x.picks, requests: asked.get(id) || 0 }))
+    .sort((a, b) => (b.photos + b.picks) - (a.photos + a.picks) || b.requests - a.requests || a.name.localeCompare(b.name))
+    .slice(0, 15).map(({ id, ...x }) => x);
+  const siteHealth = {
+    jsErrors, loadFails,
+    top: [...problems.values()].sort((a, b) => b.count - a.count || String(b.lastAt).localeCompare(String(a.lastAt))).slice(0, 15)
+      .map(p => ({ kind: p.kind, label: p.label, count: p.count, days: p.days, lastAt: p.lastAt,
+        page: p.detail?.page || null, src: p.detail?.src || null, line: p.detail?.line ?? null, browser: p.detail?.browser || null })),
+  };
+
   const rows = [...per.values()].map(({ replyHours, people: ppl, ...p }) => ({
     ...p, peopleInPeriod: ppl.size, medianReplyHours: replyHours.length ? Math.round(median(replyHours) * 10) / 10 : null,
   })).sort((a, b) => a.name.localeCompare(b.name));
@@ -245,6 +282,8 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
     people,
     trend: { by: byMonth ? "month" : "week", buckets: [...buckets.values()] },
     topRequested,
+    topLooked,
+    siteHealth,
     byGemach: rows,
   };
 }

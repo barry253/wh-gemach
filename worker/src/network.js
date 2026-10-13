@@ -8,6 +8,7 @@ import { DEFAULT_THEME, GEMACH_MODES, byOrderThenName, gemachFromRecord, gemachM
 import { json, readJson } from "./http.js";
 import { netListSearches } from "./search.js";
 import { handleNetworkAnalytics } from "./analytics.js";
+import { handleNetworkTraffic } from "./traffic.js";
 import { EMAIL_RE } from "./settings.js";
 import { handleRemindersPreview } from "./reminders.js";
 
@@ -42,6 +43,7 @@ async function networkDispatch(c, path, method) {
   if (method === "GET"   && path === "/admin/network/categories") return netListCategories(c);
   if (method === "GET"   && path === "/admin/network/searches")   return netListSearches(c);
   if (method === "GET"   && path === "/admin/network/analytics")  return handleNetworkAnalytics(c);
+  if (method === "GET"   && path === "/admin/network/traffic")    return handleNetworkTraffic(c);
   if (method === "GET"   && path === "/admin/network/reminders")  return handleRemindersPreview(c); // dry run: sends nothing
   if (method === "POST"  && path === "/admin/network/categories") return netCreateCategory(c);
   if (method === "PATCH" && (m = path.match(/^\/admin\/network\/categories\/([^/]+)$/))) return netUpdateCategory(c, m[1]);

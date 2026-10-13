@@ -202,6 +202,21 @@ const TABLES = {
       "Last Error": t("last_error"),
     },
   },
+  // Daily counts the public site reports (events.js): item photos opened / ticked, browser errors, "couldn't load".
+  // One row per (Date, Kind, Key); network-wide (no gemach scope), like the Search Log. D1 only.
+  "Site Events": {
+    sql: "site_events",
+    fields: {
+      "Date": d("date"),            // New York date
+      "Kind": t("kind"),            // item-photos / item-pick / js-error / load-fail
+      "Key": t("key"),              // item type id, or the cleaned error / page
+      "Count": n("count"),
+      "Slug": t("slug"),            // the gemach's slug (items, gemach-page load failures)
+      "Label": t("label"),          // cleaned error text, or what failed to load
+      "Detail": t("detail"),        // JSON: { src, line, page, browser } of the latest one
+      "Last At": dt("last_at"),
+    },
+  },
   "Search Log": {
     sql: "search_log",
     airtableIds: ["tblpy91cyNSkKx1NL"],
@@ -234,6 +249,7 @@ const INDEXES = [
   "CREATE INDEX IF NOT EXISTS activity_gemach_time ON activity_log(gemach_id, timestamp)",
   "CREATE UNIQUE INDEX IF NOT EXISTS search_log_query ON search_log(query)",
   "CREATE INDEX IF NOT EXISTS search_log_last ON search_log(last_searched)",
+  "CREATE INDEX IF NOT EXISTS site_events_day ON site_events(date, kind, key)",
   "CREATE UNIQUE INDEX IF NOT EXISTS push_endpoint ON push_subscriptions(endpoint)",
   "CREATE INDEX IF NOT EXISTS push_admin ON push_subscriptions(admin_id)",
 ];
