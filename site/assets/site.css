@@ -1112,5 +1112,9 @@ fieldset { border: 0; }
 @media (max-width: 560px) {
   .photos-portrait .item-thumb { width: 56px; height: 76px; }
   .strip-list { grid-auto-columns: 6.6rem; }
+  /* one swipeable row of section links on phones instead of a tall block */
+  .shelf-nav { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-left: -1rem; margin-right: -1rem; padding: 0 1rem 2px; }
+  .shelf-nav::-webkit-scrollbar { display: none; }
+  .shelf-link { flex: 0 0 auto; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .strip-card:hover .strip-cover { transform: none; } }
