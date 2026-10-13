@@ -4,7 +4,7 @@ name: Sefer Shelf covers
 on:
   push:
     branches: [sefer-covers]
-    paths: [tools/sefer-covers/books.json, tools/sefer-covers/retry.json, tools/sefer-covers/fetch.py, .github/workflows/sefer-covers.yml]
+    paths: [tools/sefer-covers/books.json, tools/sefer-covers/retry.json, tools/sefer-covers/fetch.py, tools/sefer-covers/fetch2.py, tools/sefer-covers/missing.json, .github/workflows/sefer-covers.yml]
 permissions:
   contents: write
 jobs:
@@ -13,13 +13,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - run: python3 tools/sefer-covers/fetch.py
+      - run: python3 tools/sefer-covers/fetch2.py
         timeout-minutes: 25
       - name: Commit results
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tools/sefer-covers/raw tools/sefer-covers/meta.json
+          git add tools/sefer-covers/raw2 tools/sefer-covers/meta2.json
           git commit -m "Sefer Shelf covers: lookup results" || exit 0
           git push
