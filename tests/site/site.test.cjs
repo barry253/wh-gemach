@@ -156,7 +156,7 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
       await checkPair('.back-link', '.hero-gemach', 4.5, 'back link on band');
       if (label === 'm') await checkPair('.g-eyebrow', '.hero-gemach', 4.5, 'eyebrow on band');
       await checkPair('.btn-pill', null, 4.5, 'Donate pill');
-      await checkPair('.info-side a:not(.btn)', '.info-panel', 4.5, 'info link (--accent-text) on white');
+      await checkPair('.info-ctas .btn', '.info-panel', 4.5, 'info contact button text on white');
       await checkPair('.cat-block h3', 'body', 4.5, 'category heading on bg');
       await csp();
       await page.evaluate(() => window.scrollTo(0, 0)); await shot('medical-top', false); await shot('medical');

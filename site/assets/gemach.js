@@ -116,21 +116,14 @@
     var side = [];
     var v3 = isV3(g);
     if (g.hours && !v3) side.push('<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div>");
-    var contact = [];
-    var acts = W.contactActions(g);
-    if (acts) {
-      acts.forEach(function (a) {
-        var shown = a.type === "Email" ? g.email : (a.type === "WhatsApp" ? (g.whatsapp || g.phone) : g.phone);
-        contact.push('<span class="info-sub">' + esc(a.label) + ':</span> <a href="' + esc(a.href) + '"' + (a.ext ? ' target="_blank" rel="noopener"' : "") + ">" + esc(shown) + "</a>");
-      });
-    } else if (g.phone) { var tel = W.telHref(g.phone); contact.push(tel ? '<a href="' + tel + '">' + esc(g.phone) + "</a>" : esc(g.phone)); }
-    if (!acts && g.whatsapp && W.waHref(g.whatsapp) && W.telHref(g.whatsapp) !== W.telHref(g.phone)) {
-      contact.push('WhatsApp: <a href="' + W.waHref(g.whatsapp) + '" target="_blank" rel="noopener">' + esc(g.whatsapp) + "</a>");
-    }
-    if (!acts && g.email) contact.push('<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + "</a>");
-    if (contact.length && !W.isInfoOnly(g)) side.push('<div><div class="info-label">Contact</div><div>' + contact.join("<br>") + "</div></div>"); // Info only: already in the big box
+    // Contact and website as buttons — numbers, addresses and links aren't printed on the page.
+    var contact = contactLinks(g).map(function (a) {
+      return '<a class="btn btn-sm" href="' + esc(a.href) + '"' + (a.ext ? ' target="_blank" rel="noopener"' : "") +
+        ' data-contact="' + esc(a.type) + '">' + W.ICONS[a.icon] + esc(a.label) + "</a>";
+    });
+    if (contact.length && !W.isInfoOnly(g)) side.push('<div><div class="info-label">Contact</div><div class="info-ctas">' + contact.join("") + "</div></div>"); // Info only: already in the big box
     var web = W.safeUrl(g.website);
-    if (web) side.push('<div><div class="info-label">Website</div><a href="' + esc(web) + '" target="_blank" rel="noopener">' + esc(W.prettyUrl(web)) + "</a></div>");
+    if (web) side.push('<div><div class="info-label">Website</div><div class="info-ctas"><a class="btn btn-sm" href="' + esc(web) + '" target="_blank" rel="noopener" data-contact="Website">' + W.ICONS.globe + "Visit website</a></div></div>");
     // Donations: link only -> the Donate button opens it in a new tab.
     // Donation text (with or without a link) -> the Donate button opens it in a pop-up (see openDonate).
     var don = W.safeUrl(g.donationUrl);
@@ -145,6 +138,17 @@
     return '<section class="info-panel' + (desc && side.length ? " has-side" : "") + '" aria-label="About this gemach">' +
       (desc ? '<div class="prose">' + desc + "</div>" : "") +
       (side.length ? '<div class="info-side">' + side.join("") + "</div>" : "") + "</section>";
+  }
+
+  /** Contact buttons: the gemach's chosen methods (v3), or Call / WhatsApp / Email from whatever is set (older payloads). */
+  function contactLinks(g) {
+    var acts = W.contactActions(g);
+    if (acts) return acts;
+    var out = [], tel = W.telHref(g.phone), wa = W.waHref(g.whatsapp);
+    if (tel) out.push({ type: "Call", label: "Call", icon: "phone", href: tel });
+    if (wa && W.telHref(g.whatsapp) !== tel) out.push({ type: "WhatsApp", label: "WhatsApp", icon: "whatsapp", href: wa, ext: true });
+    if (g.email) out.push({ type: "Email", label: "Email", icon: "mail", href: "mailto:" + String(g.email).trim() });
+    return out;
   }
 
   function isV3(g) { return !!g && ("requestStyle" in g || "depositRequired" in g || "gemachInfo" in g); }
@@ -287,9 +291,8 @@
     var info = W.formatText(g.gemachInfo);
     var acts = W.contactActions(g) || [];
     var btns = acts.map(function (a) {
-      var shown = a.type === "Email" ? g.email : (a.type === "WhatsApp" ? (g.whatsapp || g.phone) : g.phone);
       return '<a class="btn' + (a.primary ? " btn-primary" : (a.type === "WhatsApp" ? " btn-wa" : "")) + '" href="' + esc(a.href) + '"' +
-        (a.ext ? ' target="_blank" rel="noopener"' : "") + ">" + W.ICONS[a.icon] + esc(a.label) + (shown ? ' <span class="io-detail">' + esc(shown) + "</span>" : "") + "</a>";
+        (a.ext ? ' target="_blank" rel="noopener"' : "") + ">" + W.ICONS[a.icon] + esc(a.label) + "</a>";
     }).join("");
     var rows = [];
     if (g.hours) rows.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");

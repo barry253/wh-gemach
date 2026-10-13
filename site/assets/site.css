@@ -1050,3 +1050,7 @@ fieldset { border: 0; }
 .notice.form-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
 .notice.form-notice p { margin: 0; flex: 1 1 16rem; }
 .notice.form-notice .btn { flex: 0 0 auto; }
+
+/* Contact / website buttons in the gemach info card */
+.info-ctas { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
+.info-ctas .btn { overflow-wrap: normal; }
