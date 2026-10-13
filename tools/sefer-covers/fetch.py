@@ -3,25 +3,25 @@
 Reads books.json ([{key, title, author, isbns}]), writes raw/<key>.<ext> and meta.json.
 Tries, in order: Open Library cover by ISBN, Google Books by ISBN, then a title + author search on both.
 """
-import json, os, re, sys, time, urllib.parse, urllib.request
+import concurrent.futures, json, os, re, sys, time, urllib.parse, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
 os.makedirs(RAW, exist_ok=True)
 UA = {"User-Agent": "whgemachs.org cover lookup (whmedicalgemach@gmail.com)"}
 
-def get(url, binary=False, tries=3):
+def get(url, binary=False, tries=2):
     for i in range(tries):
         try:
             req = urllib.request.Request(url, headers=UA)
-            with urllib.request.urlopen(req, timeout=25) as r:
+            with urllib.request.urlopen(req, timeout=12) as r:
                 data = r.read()
                 return (data, r.headers.get("Content-Type", "")) if binary else json.loads(data.decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code in (404, 400): return None
-            time.sleep(2 * (i + 1))
+            time.sleep(1)
         except Exception:
-            time.sleep(2 * (i + 1))
+            time.sleep(1)
     return None
 
 norm = lambda s: re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
@@ -58,9 +58,8 @@ books = json.load(open(os.path.join(HERE, "books.json")))
 meta = {}
 mp = os.path.join(HERE, "meta.json")
 if os.path.exists(mp): meta = json.load(open(mp))
-for n, b in enumerate(books):
+def one(b):
     key = b["key"]
-    if key in meta and meta[key].get("source"): continue
     m = {"title": b["title"], "source": None, "matched": None, "year": None}
     got = None
     for isbn in b["isbns"]:
@@ -101,9 +100,19 @@ for n, b in enumerate(books):
         data, ext = got
         open(os.path.join(RAW, f"{key}.{ext}"), "wb").write(data)
         m["file"] = f"{key}.{ext}"
-    meta[key] = m
-    print(f"{n + 1}/{len(books)} {key}: {m['source']} {m['year']}", flush=True)
-    if n % 20 == 0: json.dump(meta, open(mp, "w"), indent=1, ensure_ascii=False)
-    time.sleep(0.3)
+    return key, m
+
+START = time.time()
+todo = [b for b in books if not (b["key"] in meta and meta[b["key"]].get("source"))]
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+    futs = [ex.submit(one, b) for b in todo]
+    for i, f in enumerate(concurrent.futures.as_completed(futs)):
+        try:
+            key, m = f.result()
+            meta[key] = m
+            print(f"{i + 1}/{len(todo)} {key}: {m['source']} {m['year']}", flush=True)
+        except Exception as e:
+            print("error", e, flush=True)
+        if i % 25 == 0: json.dump(meta, open(mp, "w"), indent=1, ensure_ascii=False)
 json.dump(meta, open(mp, "w"), indent=1, ensure_ascii=False)
 print("covers:", sum(1 for v in meta.values() if v.get("source")), "of", len(books))
