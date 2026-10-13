@@ -2840,6 +2840,26 @@
     return res.json();
   }
 
+  // Saves from the action sheets: one tap only (the button stays disabled until the answer is back), and every
+  // outcome is said out loud — a dropped connection or an error page is "Not saved", never silence.
+  async function saveAction(btn, path, method, body) {
+    if (btn && btn.disabled) return null;
+    if (btn) btn.disabled = true;
+    try {
+      return await api(path, method, body);
+    } catch (e) {
+      return { error: "Not saved — check your connection and try again." };
+    } finally { if (btn) btn.disabled = false; }
+  }
+  // Added to the error when WhatsApp / a text message was already opened for a save that didn't go through.
+  function outboundNotSaved(choice) {
+    return choice === "whatsapp" || choice === "sms" ? " The message you opened wasn't saved here — don't send it." : "";
+  }
+  // Today's date in New York ("YYYY-MM-DD"), whatever the device's clock zone; UTC would be tomorrow after 8 pm.
+  function nyTodayStr() {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+  }
+
   // ── Saved copies ("snapshots") ────────────────────────────────────────────
   // Each list's last good answer is kept on this device (per gemach, up to 7 days, cleared on sign-out
   // and after any change). Opening a tab shows it at once, marked "Updating…" with its buttons paused,
@@ -3123,6 +3143,8 @@
     });
 
     document.getElementById("confirm-submit-btn").onclick = async () => {
+      const btn = document.getElementById("confirm-submit-btn");
+      if (btn.disabled) return;
       const quantities = currentQty();
       const badQty = qtyItems.find(i => !(Number.isInteger(quantities[i.id]) && quantities[i.id] >= 1));
       if (badQty) { showToast(`Enter how many ${badQty.name} (1 or more)`); return; }
@@ -3132,8 +3154,13 @@
       const sendMessage = choice === "email";
       const body = { message, sendMessage, adminName };
       if (qtyItems.length) body.quantities = quantities;
-      const res = await api(`/admin/requests/${r.id}/confirm`, "POST", body);
-      if (res && res.error) { showToast(res.error); return; }
+      const res = await saveAction(btn, `/admin/requests/${r.id}/confirm`, "POST", body);
+      if (!res) return;
+      if (res.error) {
+        showToast(res.error + outboundNotSaved(choice), 8000);
+        if (res.current) { closeSheet("confirm-sheet"); loadRequests(); loadDashboard(); } // handled elsewhere
+        return;
+      }
       closeSheet("confirm-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
@@ -3179,23 +3206,25 @@
 
     const btn = document.getElementById("appointment-submit-btn");
     btn.onclick = async () => {
+      if (btn.disabled) return;
       if (!isValidDate(dateEl.value) || !/^\d{2}:\d{2}$/.test(timeEl.value)) { showToast("Choose a date and time for the appointment"); return; }
       const message = msgEl.value;
       if (/\[date & time\]/.test(message)) { showToast("Choose a date and time for the appointment"); return; }
       const { choice, c } = SEND_BY.appointment;
       if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
-      btn.disabled = true;
-      try {
-        const res = await api(`/admin/requests/${safeId(r.id)}/confirm`, "POST", {
-          appointmentAt: `${dateEl.value}T${timeEl.value}`, message, sendMessage: choice === "email", adminName,
-        });
-        if (!res) return;
-        if (res.error) { showToast(res.error); return; }
-        closeSheet("appointment-sheet");
-        document.getElementById(`req-${safeId(r.id)}`)?.remove();
-        loadDashboard();
-        showToast(`Appointment set · ${fmtAppointment(dateEl.value, timeEl.value)}` + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
-      } finally { btn.disabled = false; }
+      const res = await saveAction(btn, `/admin/requests/${safeId(r.id)}/confirm`, "POST", {
+        appointmentAt: `${dateEl.value}T${timeEl.value}`, message, sendMessage: choice === "email", adminName,
+      });
+      if (!res) return;
+      if (res.error) {
+        showToast(res.error + outboundNotSaved(choice), 8000);
+        if (res.current) { closeSheet("appointment-sheet"); loadRequests(); loadDashboard(); }
+        return;
+      }
+      closeSheet("appointment-sheet");
+      document.getElementById(`req-${safeId(r.id)}`)?.remove();
+      loadDashboard();
+      showToast(`Appointment set · ${fmtAppointment(dateEl.value, timeEl.value)}` + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
     };
     openSheet("appointment-sheet");
   }
@@ -3214,12 +3243,18 @@
     });
 
     document.getElementById("decline-submit-btn").onclick = async () => {
+      const btn = document.getElementById("decline-submit-btn");
+      if (btn.disabled) return;
       const message = document.getElementById("decline-message").value;
       const { choice, c } = SEND_BY.decline;
       if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
-      const res = await api(`/admin/requests/${r.id}/decline`, "POST", { message, sendMessage: choice === "email", adminName });
+      const res = await saveAction(btn, `/admin/requests/${r.id}/decline`, "POST", { message, sendMessage: choice === "email", adminName });
       if (!res) return;
-      if (res.error) { showToast(res.error); return; }
+      if (res.error) {
+        showToast(res.error + outboundNotSaved(choice), 8000);
+        if (res.current) { closeSheet("decline-sheet"); loadRequests(); loadDashboard(); }
+        return;
+      }
       closeSheet("decline-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
@@ -3359,7 +3394,7 @@
     list.innerHTML = loans.map(l => {
       const lid = keep("loan", l);
       // Warning: due within 3 days (if expectedReturn set), or out > 7 days (fallback)
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = nyTodayStr();
       const dueSoon = l.expectedReturn
         ? (l.expectedReturn >= todayStr && (new Date(l.expectedReturn) - new Date(todayStr)) / 86400000 <= 3)
         : l.daysOut > 7;
@@ -3419,7 +3454,7 @@
     currentLoan = l;
     document.getElementById("return-subtitle").textContent =
       `${l.borrowerName} · ${l.itemId || l.itemTypeName}${l.isQuantity ? ` × ${l.quantity}` : ""}`;
-    document.getElementById("return-date").value = new Date().toISOString().split("T")[0];
+    document.getElementById("return-date").value = nyTodayStr();
 
     // Quantity loans: count what came back; anything short is noted, and can come off the inventory count.
     const qGroup = document.getElementById("return-qty-group");
@@ -3453,11 +3488,15 @@
         body.quantityReturned = back;
         if (back < l.quantity && reduce.checked) body.reduceOwned = true;
       }
-      const res = await api(`/admin/loans/${l.id}/return`, "POST", body);
+      const res = await saveAction(document.getElementById("return-submit-btn"), `/admin/loans/${l.id}/return`, "POST", body);
       if (!res) return;
-      if (res.error) { showToast(res.error); return; }
+      if (res.error) {
+        showToast(res.error, 6000);
+        if (res.current) { closeSheet("return-sheet"); loadLoans(); loadDashboard(); }
+        return;
+      }
       closeSheet("return-sheet");
-      document.getElementById(`loan-${safeId(l.id)}`)?.remove();
+      document.getElementById(`loan-row-${safeId(l.id)}`)?.remove();
       loadDashboard();
       loadLoans();
       showToast(res.missing ? `Returned · ${res.missing} missing (noted)` : "Item marked as returned");
@@ -4763,11 +4802,16 @@
     document.getElementById("cancel-res-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
     document.getElementById("cancel-res-submit-btn").onclick = async () => {
       const btn = document.getElementById("cancel-res-submit-btn");
-      btn.disabled = true;
+      if (btn.disabled) return;
       btn.textContent = "Cancelling…";
-      await api(`/admin/reservations/${r.id}/cancel`, "POST");
-      btn.disabled = false;
+      const res = await saveAction(btn, `/admin/reservations/${r.id}/cancel`, "POST");
       btn.textContent = "Yes, cancel it";
+      if (!res) return;
+      if (res.error) {
+        showToast(res.error, 6000);
+        if (res.current) { closeSheet("cancel-res-sheet"); loadReservations(); loadDashboard(); }
+        return;
+      }
       closeSheet("cancel-res-sheet");
       document.getElementById(`res-row-${safeId(r.id)}`)?.remove();
       document.getElementById(`res-panel-${safeId(r.id)}`)?.remove();
@@ -4784,7 +4828,7 @@
     document.getElementById("pickup-title").textContent = r.isAddon ? "Mark as handed over" : "Mark as picked up";
     document.getElementById("pickup-qty-label").textContent = r.isAddon ? "How many are being handed over?" : "How many are going out?";
     document.getElementById("pickup-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
-    document.getElementById("pickup-date").value = new Date().toISOString().split("T")[0];
+    document.getElementById("pickup-date").value = nyTodayStr();
     const group = document.getElementById("pickup-item-group");
     const select = document.getElementById("pickup-item");
     const errEl = document.getElementById("pickup-item-error");
@@ -4844,8 +4888,10 @@
         if (!(Number.isInteger(n) && n >= 1)) { qErr.textContent = r.isAddon ? "Enter how many (1 or more)." : "Enter how many are going out (1 or more)."; qErr.style.display = "block"; return; }
         body.quantity = n;
       }
-      const res = await api(`/admin/loans/${r.id}/pickup`, "POST", body);
-      if (res && res.error) {
+      const res = await saveAction(document.getElementById("pickup-submit-btn"), `/admin/loans/${r.id}/pickup`, "POST", body);
+      if (!res) return;
+      if (res.current) { showToast(res.error, 6000); closeSheet("pickup-sheet"); loadReservations(); loadDashboard(); return; }
+      if (res.error) {
         const el = counted ? qErr : errEl;
         el.textContent = res.error;
         el.style.display = "block";
@@ -5174,7 +5220,7 @@
       document.getElementById("assign-borrower-phone").value   = loan.borrowerPhone   || "";
       document.getElementById("assign-borrower-email").value   = loan.borrowerEmail   || "";
       document.getElementById("assign-borrower-contact").value = loan.borrowerContact || "";
-      document.getElementById("assign-date-borrowed").value    = loan.dateBorrowed    || new Date().toISOString().split("T")[0];
+      document.getElementById("assign-date-borrowed").value    = loan.dateBorrowed    || nyTodayStr();
       document.getElementById("assign-res-start").value        = loan.reservationStart || "";
       document.getElementById("assign-res-end").value          = loan.reservationEnd   || "";
       document.getElementById("assign-notes").value            = loan.notes || item.notes || "";
@@ -5183,7 +5229,7 @@
       document.getElementById("assign-borrower-phone").value   = "";
       document.getElementById("assign-borrower-email").value   = "";
       document.getElementById("assign-borrower-contact").value = "";
-      document.getElementById("assign-date-borrowed").value    = new Date().toISOString().split("T")[0];
+      document.getElementById("assign-date-borrowed").value    = nyTodayStr();
       document.getElementById("assign-res-start").value        = "";
       document.getElementById("assign-res-end").value          = "";
       document.getElementById("assign-notes").value            = item.notes || "";
@@ -7588,8 +7634,11 @@
     const itemId = document.getElementById("pi-id").value || editingItemId;
     if (!confirm(`Delete item "${itemId}"? This cannot be undone.`)) return;
     const btn = document.getElementById("physical-item-delete-btn");
-    btn.disabled = true; btn.textContent = "Deleting…";
-    await api(`/admin/catalog/items/${editingItemId}`, "DELETE");
+    btn.textContent = "Deleting…";
+    const res = await saveAction(btn, `/admin/catalog/items/${editingItemId}`, "DELETE");
+    btn.textContent = "Delete";
+    if (!res) return;
+    if (res.error) { showToast(res.error, 6000); return; }
     closeSheet("physical-item-sheet");
     await refreshItemScreens();
     showToast("Item deleted");

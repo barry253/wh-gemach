@@ -133,6 +133,21 @@ function makeDb(env) {
     createMany: async (table, list) => { const out = []; for (const fields of list || []) out.push(await call(tpath(table), { method: "POST", body: { fields } })); return out; },
     update: (table, id, fields) => call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }),
     updateMany: async (table, ids, fields) => { for (const id of ids || []) await call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } }); return (ids || []).length; },
+    // Conditional write (see d1.js updateManyIf). Not atomic on Airtable — it's only a fallback now.
+    updateManyIf: async (table, ids, where, fields) => {
+      const list = [...new Set((ids || []).filter(id => REC_RE.test(id || "")))];
+      if (!list.length) return 0;
+      const match = await listAll(table, { where: [Q.idIn(list), ...(where || [])], fields: [] });
+      for (const r of match) await call(`${tpath(table)}/${r.id}`, { method: "PATCH", body: { fields } });
+      return match.length;
+    },
+    updateIf: async (table, id, where, fields) => {
+      if (!REC_RE.test(id || "")) return false;
+      const match = await listAll(table, { where: [Q.idIn([id]), ...(where || [])], fields: [] });
+      if (!match.length) return false;
+      await call(`${tpath(table)}/${id}`, { method: "PATCH", body: { fields } });
+      return true;
+    },
     del: (table, id) => call(`${tpath(table)}/${id}`, { method: "DELETE" }),
     delMany: async (table, ids) => { for (const id of ids || []) await call(`${tpath(table)}/${id}`, { method: "DELETE" }); return (ids || []).length; },
   };
@@ -144,7 +159,9 @@ function makeDb(env) {
 const linkedId = v => (!v ? null : typeof v === "string" ? v : v.id || null);
 const linkedName = v => (v && typeof v === "object" ? v.name || null : null);
 const firstLink = v => (Array.isArray(v) ? v[0] : v);
-const today = () => new Date().toISOString().split("T")[0];
+// Today's date in New York ("YYYY-MM-DD"): the gemachs' calendar day, not UTC (which flips at 8 pm EDT / 7 pm EST).
+const NY_DATE_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+const today = () => NY_DATE_FMT.format(new Date());
 
 function belongs(rec, g) {
   const links = (rec?.fields?.Gemach || []).map(linkedId);

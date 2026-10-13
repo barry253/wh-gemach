@@ -13,8 +13,8 @@
 //   POST /public/manage/:token/ready    "Ready to return": stamps its active loans, emails the gemach, logs History.
 // Links stop working 30 days after everything from the request is finished (returned / cancelled / declined).
 
-import { logEvent } from "./activity.js";
-import { AirtableError, Q, firstLink, linkedId } from "./airtable.js";
+import { logEvent, logEvents } from "./activity.js";
+import { AirtableError, Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
 import { purgePublicCache } from "./cache.js";
 import { REC_RE, T } from "./config.js";
 import { formatNy } from "./dates.js";
@@ -195,18 +195,30 @@ async function handleManageCancel(db, env, ctx, token) {
   const f = rec.fields, rid = f["Request ID"] || rec.id;
   const by = "Borrower (online)";
   const wasWaiting = reqStatus(rec) === "New" && !isAppt(rec); // nothing confirmed yet: it was in Requests
-  const cancelled = [];
+  let cancelled = [], reserved = [];
   try {
-    if (reqStatus(rec) === "New" || isAppt(rec)) {
-      await db.update(T.REQUESTS, rec.id, { "Status": "Cancelled" });
+    // Conditional writes: if the gemach confirmed, declined or handed something over a moment ago, those
+    // changes win (nothing that's out is ever cancelled).
+    if (reqStatus(rec) === "New" && !isAppt(rec)) {
+      if (!(await db.updateIf(T.REQUESTS, rec.id, [Q.eq("Status", "New")], { "Status": "Cancelled" }))) {
+        return json({ error: "The gemach just updated this request — reload the page to see it." }, 409);
+      }
+    } else if (isAppt(rec)) {
+      if (!(await db.updateIf(T.REQUESTS, rec.id, [Q.in("Status", ["New", "Converted"])], { "Status": "Cancelled" }))) {
+        return json({ error: "The gemach just updated this request — reload the page to see it." }, 409);
+      }
     }
-    for (const l of loans.filter(x => selName(x.fields.Status) === "Reserved")) {
-      await db.update(T.LOANS, l.id, { "Status": "Cancelled" });
-      cancelled.push(l);
+    reserved = loans.filter(x => selName(x.fields.Status) === "Reserved");
+    const n = await db.updateManyIf(T.LOANS, reserved.map(l => l.id), [Q.eq("Status", "Reserved")], { "Status": "Cancelled" });
+    if (n === reserved.length) cancelled = reserved;
+    else {
+      const now = await fetchByIds(db, T.LOANS, reserved.map(l => l.id), { g, fields: ["Status"] });
+      const isCancelled = new Set(now.filter(l => selName(l.fields.Status) === "Cancelled").map(l => l.id));
+      cancelled = reserved.filter(l => isCancelled.has(l.id));
     }
-    if (reqStatus(rec) === "Converted" && !isAppt(rec) && !loans.some(x => selName(x.fields.Status) === "Active")) {
-      await db.update(T.REQUESTS, rec.id, { "Status": "Cancelled" });
-    }
+    // Close the request when nothing from it is out (a reservation we couldn't cancel was just picked up).
+    const somethingOut = loans.some(x => selName(x.fields.Status) === "Active") || cancelled.length < reserved.length;
+    if (reqStatus(rec) === "Converted" && !isAppt(rec) && !somethingOut) await db.update(T.REQUESTS, rec.id, { "Status": "Cancelled" });
   } catch (e) {
     if (!(e instanceof AirtableError)) throw e;
     console.error("manage cancel failed:", JSON.stringify(e.detail));
@@ -214,13 +226,12 @@ async function handleManageCancel(db, env, ctx, token) {
   }
 
   const itemsText = payload.request.items.map(i => qtyLabel(i.name, i.quantity)).join(", ");
-  logEvent(ctx, db, g, { eventType: "Request Cancelled", borrower: f["Name"] || null, itemType: itemsText || (isAppt(rec) ? "Appointment" : null), loanId: rid, admin: by,
-    notes: cancelled.length ? `Cancelled by the borrower online; released ${cancelled.map(l => l.fields["Loan ID"]).filter(Boolean).join(", ")}` : "Cancelled by the borrower online" });
   const infoByLoan = Object.fromEntries(payload.loans.map(l => [l.loanId, l]));
-  for (const l of cancelled) {
-    const li = infoByLoan[l.fields["Loan ID"]] || {};
-    logEvent(ctx, db, g, { eventType: "Reservation Cancelled", borrower: f["Name"] || null, itemType: li.itemName || null, loanId: l.fields["Loan ID"] || null, admin: by });
-  }
+  logEvents(ctx, db, g, [
+    { eventType: "Request Cancelled", borrower: f["Name"] || null, itemType: itemsText || (isAppt(rec) ? "Appointment" : null), loanId: rid, admin: by,
+      notes: cancelled.length ? `Cancelled by the borrower online; released ${cancelled.map(l => l.fields["Loan ID"]).filter(Boolean).join(", ")}` : "Cancelled by the borrower online" },
+    ...cancelled.map(l => ({ eventType: "Reservation Cancelled", borrower: f["Name"] || null, itemType: (infoByLoan[l.fields["Loan ID"]] || {}).itemName || null, loanId: l.fields["Loan ID"] || null, admin: by })),
+  ]);
   if (cancelled.length) purgePublicCache(env, ctx, g.slug); // quantities free up on the public page
 
   const when = isAppt(rec) && f["Appointment At"] ? `Appointment was ${formatNy(Date.parse(f["Appointment At"]))}.`

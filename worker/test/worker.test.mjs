@@ -391,8 +391,12 @@ await t("confirm creates one reservation per item type, once", async () => {
   const req = DB["Requests"].find(x => x.id === "recREQA0000000002");
   assert.equal(req.fields.Status, "Converted");
   const again = await call(`/admin/requests/recREQA0000000002/confirm`, { method: "POST", headers: auth(tokenA), body: "{}" });
-  assert.equal(again.status, 200);
+  assert.equal(again.status, 409, "already confirmed");
+  assert.match((await again.json()).error, /already confirmed/);
   assert.equal(DB["Loans"].length, before + 2, "no duplicate reservations");
+  // declining a confirmed request is refused too (it would strand its reservations)
+  assert.equal((await call(`/admin/requests/recREQA0000000002/decline`, { method: "POST", headers: auth(tokenA), body: "{}" })).status, 409);
+  assert.equal(req.fields.Status, "Converted");
   // pickup needs a unit when none assigned
   const loanId = made[0].id;
   assert.equal((await call(`/admin/loans/${loanId}/pickup`, { method: "POST", headers: auth(tokenA), body: "{}" })).status, 400);
@@ -1019,6 +1023,109 @@ await t("walk-in loan: 20 items at once stays well inside D1's 50-queries-per-re
   if (D1_MODE) assert.ok(d1Queries <= 30, `used ${d1Queries} queries`);
 });
 
+// ─── Pre-launch guards (Oct 13, 2026): state checks, one-write confirm/cancel, NY "today" ──────────────
+// d1Queries is reset by call(); awaiting waits afterwards adds the background work (History, cache) to it.
+const bgQueries = async () => { await Promise.allSettled(waits); return d1Queries; };
+
+await t("guards: confirming a 15-item request and the borrower cancelling it each stay under 50 D1 queries", async () => {
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  const ids = [];
+  for (let i = 0; i < 15; i++) {
+    const n = String(i).padStart(2, "0");
+    DB["Item Types"].push(rec(`recGDBULKTYPE00${n}`, { Name: `Gown ${n}`, Active: true, ...Bf }));
+    ids.push(`recGDBULKTYPE00${n}`);
+  }
+  DB.Requests.push(rec("recREQGUARDBULK01", { "Request ID": "R-950", Name: "Many Gowns", Phone: "5165550950", Status: "New", "Items Requested": ids,
+    "Needed From": "2027-03-01", "Needed Until": "2027-03-05", ...Bf }));
+  const before = DB.Loans.length;
+  const r = await postB(`/admin/requests/recREQGUARDBULK01/confirm`, {});
+  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal((await r.json()).reservations.length, 15);
+  const used = await bgQueries();
+  if (D1_MODE) assert.ok(used <= 50, `confirm used ${used} queries`);
+  const made = DB.Loans.slice(before);
+  assert.equal(made.length, 15);
+  assert.equal(new Set(made.map(l => l.fields["Loan ID"])).size, 15, "distinct Loan IDs");
+  assert.equal(DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields.Borrower === "Many Gowns" && x.fields["Event Type"] === "Item Reserved").length, 15);
+
+  const res = await (await call("/admin/reservations", { headers: jsonB })).json();
+  const url = res.find(x => x.id === made[0].id).manageUrl;
+  const c = await call(`/public/manage/${url.split("/r/")[1]}/cancel`, { method: "POST", body: "{}" });
+  assert.equal(c.status, 200, await c.clone().text());
+  const used2 = await bgQueries();
+  if (D1_MODE) assert.ok(used2 <= 50, `cancel used ${used2} queries`);
+  assert.ok(made.every(l => l.fields.Status === "Cancelled"));
+  assert.equal(DB.Requests.find(x => x.id === "recREQGUARDBULK01").fields.Status, "Cancelled");
+});
+
+await t("guards: confirm / decline only while the request is New (cancelled by the borrower → 409, nothing reserved)", async () => {
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  DB.Requests.push(rec("recREQGUARDCANC01", { "Request ID": "R-951", Name: "Changed Mind", Status: "Cancelled", "Items Requested": ["recTYPEB000000001"], ...Bf }));
+  const before = DB.Loans.length;
+  const r = await postB(`/admin/requests/recREQGUARDCANC01/confirm`, {});
+  assert.equal(r.status, 409);
+  assert.match((await r.json()).error, /cancelled by the borrower/);
+  assert.equal((await postB(`/admin/requests/recREQGUARDCANC01/decline`, {})).status, 409);
+  assert.equal(DB.Loans.length, before);
+  assert.equal(DB.Requests.find(x => x.id === "recREQGUARDCANC01").fields.Status, "Cancelled");
+  // appointment requests too
+  DB.Requests.push(rec("recREQGUARDAPPT01", { "Request ID": "R-952", Name: "Late Appt", Status: "Declined", "Request Type": "Appointment", ...Bf }));
+  assert.equal((await postB(`/admin/requests/recREQGUARDAPPT01/confirm`, { appointmentAt: "2027-03-01T10:00" })).status, 409);
+  // two confirms at once: one wins, the other gets 409, one set of reservations
+  DB.Requests.push(rec("recREQGUARDTWIC01", { "Request ID": "R-953", Name: "Double Tap", Status: "New", "Items Requested": ["recTYPEB000000001"], "Needed From": "2027-04-01", ...Bf }));
+  const before2 = DB.Loans.length;
+  const [a, b] = await Promise.all([postB(`/admin/requests/recREQGUARDTWIC01/confirm`, {}), postB(`/admin/requests/recREQGUARDTWIC01/confirm`, {})]);
+  if (D1_MODE) assert.deepEqual([a.status, b.status].sort(), [200, 409]); // atomic on D1 (the Airtable fallback isn't)
+  if (D1_MODE) assert.equal(DB.Loans.length, before2 + 1);
+});
+
+await t("guards: pickup / return / cancel check the loan's state; unit pickups get a due date", async () => {
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  DB["Item Types"].push(rec("recGUARDTYPEU0001", { Name: "Guard Chair", Active: true, ...Bf }), rec("recGUARDTYPEU0002", { Name: "Other Thing", Active: true, ...Bf }),
+    rec("recGUARDTYPEQ0001", { Name: "Guard Tables", Active: true, Tracking: "Quantity", "Quantity Owned": 10, ...Bf }));
+  DB.Items.push(rec("recGUARDUNIT00001", { "Item ID": "GC-001", "Item Type": ["recGUARDTYPEU0001"], Active: true, Status: "Available", ...Bf }),
+    rec("recGUARDUNIT00002", { "Item ID": "OT-001", "Item Type": ["recGUARDTYPEU0002"], Active: true, Status: "Available", ...Bf }));
+  DB.Borrowers.push(rec("recGUARDBORROW001", { Name: "Guard Person", ...Bf }));
+  const loan = (id, f) => rec(id, { Borrower: ["recGUARDBORROW001"], ...Bf, ...f });
+  DB.Loans.push(
+    loan("recGUARDLOANRES01", { "Loan ID": "L-960", Status: "Reserved", "Item to Reserve": ["recGUARDTYPEU0001"], "Reservation Start": "2027-05-01", "Reservation End": "2027-05-20" }),
+    loan("recGUARDLOANCAN01", { "Loan ID": "L-961", Status: "Cancelled", "Item to Reserve": ["recGUARDTYPEU0001"] }),
+    loan("recGUARDLOANQTY01", { "Loan ID": "L-962", Status: "Active", "Item to Reserve": ["recGUARDTYPEQ0001"], Quantity: 4, "Date Borrowed": "2027-01-01" }),
+  );
+  const L = id => DB.Loans.find(x => x.id === id).fields;
+  // wrong unit type → 400; cancelled loan can't be picked up → 409
+  assert.equal((await postB(`/admin/loans/recGUARDLOANRES01/pickup`, { itemId: "recGUARDUNIT00002" })).status, 400);
+  assert.equal((await postB(`/admin/loans/recGUARDLOANCAN01/pickup`, { itemId: "recGUARDUNIT00001" })).status, 409);
+  assert.equal(L("recGUARDLOANCAN01").Status, "Cancelled");
+  // a reserved loan can't be "returned"
+  assert.equal((await postB(`/admin/loans/recGUARDLOANRES01/return`, {})).status, 409);
+  // pickup: Active, and the reservation's end date becomes the due date
+  assert.equal((await postB(`/admin/loans/recGUARDLOANRES01/pickup`, { itemId: "recGUARDUNIT00001" })).status, 200);
+  assert.equal(L("recGUARDLOANRES01").Status, "Active");
+  assert.equal(L("recGUARDLOANRES01")["Expected Return"], "2027-05-20");
+  // picking it up again, or cancelling it now that it's out → 409
+  assert.equal((await postB(`/admin/loans/recGUARDLOANRES01/pickup`, { itemId: "recGUARDUNIT00001" })).status, 409);
+  assert.equal((await postB(`/admin/reservations/recGUARDLOANRES01/cancel`, {})).status, 409);
+  assert.equal(L("recGUARDLOANRES01").Status, "Active");
+  // quantity return with "gone for good": a second tap is refused and the count owned drops once
+  const back = () => postB(`/admin/loans/recGUARDLOANQTY01/return`, { quantityReturned: 3, reduceOwned: true });
+  assert.equal((await back()).status, 200);
+  assert.equal((await back()).status, 409);
+  assert.equal(DB["Item Types"].find(x => x.id === "recGUARDTYPEQ0001").fields["Quantity Owned"], 9);
+});
+
+await t("guards: server 'today' is the New York date, not UTC", async () => {
+  const { today } = await import("../src/airtable.js");
+  const ny = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+  assert.equal(today(), ny);
+  const RealDate = Date;
+  try {
+    // 9:30 pm EDT on Oct 20 = 01:30 UTC Oct 21
+    globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : ["2026-10-21T01:30:00Z"])); } static now() { return new RealDate("2026-10-21T01:30:00Z").getTime(); } };
+    assert.equal(today(), "2026-10-20");
+  } finally { globalThis.Date = RealDate; }
+});
+
 await t("settings: usual loan length is optional (1–365 days, blank clears)", async () => {
   const patch = v => call(`/admin/gemach`, { method: "PATCH", headers: jsonB, body: JSON.stringify({ defaultLoanDays: v }) });
   assert.equal((await patch(0)).status, 400);
@@ -1447,7 +1554,8 @@ await t("v3 POST /admin/gemach/logo: type/magic/size checks, Volunteer 403, stor
 });
 
 await t("v3 borrower emails: HTML with theme band, logo, contrast text; text part unchanged", async () => {
-  const r = await call(`/admin/requests/recREQA0000000002/decline`, { method: "POST", headers: jsonH(tokenA), body: JSON.stringify({ message: "Sorry <b>Barry</b>", sendMessage: true }) });
+  DB.Requests.push(rec("recREQA0000000V31", { "Request ID": "R-931", Name: "Barry", Status: "New", "Items Requested": ["recTYPEA000000002"], Gemach: [A.id], "Gemach Slug": [A.slug] }));
+  const r = await call(`/admin/requests/recREQA0000000V31/decline`, { method: "POST", headers: jsonH(tokenA), body: JSON.stringify({ message: "Sorry <b>Barry</b>", sendMessage: true }) });
   assert.equal(r.status, 200);
   // R-004 has no email -> no mail; use a fresh request with email on gemach B
   DB.Requests.push(rec("recREQB0000000009", { "Request ID": "R-990", Name: "Z", Email: "z@example.com", Status: "New", "Items Requested": ["recTYPEB000000001"], Gemach: [B.id], "Gemach Slug": [B.slug] }));
@@ -1694,9 +1802,13 @@ await t("r4 history from loan record: cancel (empty body), return, pickup log bo
   l = await lastLog("Item Returned");
   assert.equal(l.Borrower, "Leah Stern", "record wins over body"); assert.equal(l["Loan ID"], "L-502");
   assert.equal(l["Item Code"], "WC-002"); assert.equal(l["Item Type"], "Wheelchair");
-  await call("/admin/loans/recLOANRES0000002/pickup", { method: "POST", headers: H, body: JSON.stringify({ itemId: "recITEMA000000001" }) });
+  // WC-001 went out in an earlier test: a unit can't be on two loans at once
+  const busy = await call("/admin/loans/recLOANRES0000002/pickup", { method: "POST", headers: H, body: JSON.stringify({ itemId: "recITEMA000000001" }) });
+  assert.equal(busy.status, 409); assert.match((await busy.json()).error, /already out on loan/);
+  DB.Items.push(rec("recITEMA000000003", { "Item ID": "WC-003", "Item Type": ["recTYPEA000000001"], Active: true, Status: "Available", Gemach: [A.id], "Gemach Slug": [A.slug] }));
+  assert.equal((await call("/admin/loans/recLOANRES0000002/pickup", { method: "POST", headers: H, body: JSON.stringify({ itemId: "recITEMA000000003" }) })).status, 200);
   l = await lastLog("Loan Created");
-  assert.equal(l.Borrower, "Leah Stern"); assert.equal(l["Item Code"], "WC-001"); assert.equal(l["Item Type"], "Wheelchair"); assert.equal(l["Loan ID"], "L-503");
+  assert.equal(l.Borrower, "Leah Stern"); assert.equal(l["Item Code"], "WC-003"); assert.equal(l["Item Type"], "Wheelchair"); assert.equal(l["Loan ID"], "L-503");
   // cross-gemach loan still 404
   const tB = await sign({ email: "b@example.com", name: "Bee", role: "Manager", gemachs: [{ id: B.id, slug: B.slug, name: "Other" }] });
   assert.equal((await call("/admin/reservations/recLOANRES0000001/cancel", { method: "POST", headers: J(tB, { "X-Gemach": B.slug }) })).status, 404);

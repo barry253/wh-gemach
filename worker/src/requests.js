@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { logEvent } from "./activity.js";
+import { logEvent, logEvents } from "./activity.js";
 import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./airtable.js";
 import { itemAttrsFor } from "./attributes.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
@@ -97,30 +97,33 @@ async function handleRequestDecision(c, id, kind) {
   const nameMap = Object.fromEntries(Object.entries(info).map(([id, t]) => [id, qtyLabel(t.name, qtyMap[id])]));
   const itemNames = itemIds.filter(i => nameMap[i]).map(i => nameMap[i]);
 
-  // Confirming turns the request into one reservation per requested item type (only once:
-  // a request that is already Converted never creates duplicates).
-  let reservations = [];
-  if (kind === "confirm" && fields["Status"] !== "Converted") {
+  // Claim the request first (New → Converted / Declined in one conditional write) so two taps, two admins, or a
+  // borrower cancelling at the same moment can never both win: only the call that changed the row goes on.
+  const reqUpdate = { "Status": kind === "confirm" ? "Converted" : "Declined" };
+  if (kind === "confirm" && Object.keys(qtyMap).length) reqUpdate["Item Quantities"] = JSON.stringify(qtyMap);
+  if (!(await db.updateIf(T.REQUESTS, id, [Q.eq("Status", "New")], reqUpdate))) return alreadyHandled(db, id);
+
+  // Confirming turns the request into one reservation per requested item type, written in one go.
+  let reservations = [], events = [];
+  if (kind === "confirm") {
     try {
       const addonIds = new Set(itemIds.filter(i => info[i]?.addon));
-      reservations = await createReservationsFromRequest(c, rec, itemIds.filter(i => nameMap[i]), nameMap, qtyMap, addonIds);
+      ({ reservations, events } = await createReservationsFromRequest(c, rec, itemIds.filter(i => nameMap[i]), nameMap, qtyMap, addonIds));
     } catch (e) {
       console.error("Reservation creation failed:", e.message, JSON.stringify(e.detail || ""));
-      return json({ error: "Could not create reservations: " + (e.message || "Airtable error") }, 500);
+      // Put the request back so it can be confirmed again (nothing was reserved: the loans are one write).
+      await db.update(T.REQUESTS, id, { "Status": "New" }).catch(err => console.error("Request status rollback failed:", err.message));
+      return json({ error: "Couldn't save the reservations — nothing was changed. Please try again." }, 500);
     }
   }
 
-  const reqUpdate = { "Status": kind === "confirm" ? "Converted" : "Declined" };
-  if (kind === "confirm" && Object.keys(qtyMap).length) reqUpdate["Item Quantities"] = JSON.stringify(qtyMap);
-  await db.update(T.REQUESTS, id, reqUpdate);
-
-  logEvent(ctx, db, g, {
+  logEvents(ctx, db, g, [{
     eventType: kind === "confirm" ? "Request Confirmed" : "Request Declined",
     borrower: fields["Name"] || null,
     itemType: itemNames.join(", ") || null,
     loanId: fields["Request ID"] || id,
     admin: c.adminName || adminName || null,
-  });
+  }, ...events]);
 
   let emailSent;
   if (sendMessage && message && fields["Email"]) {
@@ -149,7 +152,7 @@ async function confirmAppointment(c, rec, body) {
   const when = formatNy(startMs);
   const f = rec.fields;
 
-  await db.update(T.REQUESTS, rec.id, { "Status": "Converted", "Appointment At": appointmentAt });
+  if (!(await db.updateIf(T.REQUESTS, rec.id, [Q.eq("Status", "New")], { "Status": "Converted", "Appointment At": appointmentAt }))) return alreadyHandled(db, rec.id);
   const nameMap = await itemTypeNameMap(db, (f["Items Requested"] || []).map(linkedId), g);
   logEvent(ctx, db, g, {
     eventType: "Request Confirmed",
@@ -274,9 +277,9 @@ async function appointmentItemDetails(db, g, typeIds) {
 }
 
 async function createReservationsFromRequest(c, rec, typeIds, nameMap, qtyMap = {}, addonIds = new Set()) {
-  const { db, g, ctx } = c;
-  if (!typeIds.length) return [];
-  const f = rec.fields;
+  const { db, g } = c;
+  if (!typeIds.length) return { reservations: [], events: [] };
+  const f = rec.fields, f0 = f;
   const borrowerId = await findOrCreateBorrower(db, g, {
     name: f["Name"] || "Unknown",
     phone: f["Phone"] || null,
@@ -286,35 +289,43 @@ async function createReservationsFromRequest(c, rec, typeIds, nameMap, qtyMap = 
   const start = DATE_RE.test(f["Needed From"] || "") ? f["Needed From"] : today();
   const end = !f["Open-ended duration"] && DATE_RE.test(f["Needed Until"] || "") ? f["Needed Until"] : null;
 
-  // Sequential Loan IDs: read the current max once, then count up.
+  // Sequential Loan IDs: read the current max once, then count up. All loans in one write (few D1 queries
+  // however many items were asked for), History rows returned for the caller to log together.
   const first = await getNextLoanId(db);
   const base = parseInt(first.slice(2), 10);
-  const created = [];
-  for (let i = 0; i < typeIds.length; i++) {
-    const loanId = `L-${String(base + i).padStart(3, "0")}`;
+  const rows = typeIds.map((typeId, i) => {
     const fields = {
-      "Loan ID": loanId,
+      "Loan ID": `L-${String(base + i).padStart(3, "0")}`,
       "Borrower": [borrowerId],
-      "Item to Reserve": [typeIds[i]],
+      "Item to Reserve": [typeId],
       "Status": "Reserved",
       "Reservation Start": start,
       "Source Request": [rec.id],
       "Gemach": [g.id],
     };
     if (end) fields["Reservation End"] = end;
-    if (qtyMap[typeIds[i]]) fields["Quantity"] = qtyMap[typeIds[i]];
-    const data = await db.create(T.LOANS, fields);
-    created.push({ id: data.id, loanId, itemTypeName: nameMap[typeIds[i]] || null, quantity: qtyMap[typeIds[i]] || null });
-    logEvent(ctx, db, g, {
-      eventType: addonIds.has(typeIds[i]) ? "Add-on Ordered" : "Item Reserved",
-      itemType: nameMap[typeIds[i]] || null,
-      borrower: f["Name"] || null,
-      loanId,
-      admin: c.adminName || null,
-      notes: `From request ${f["Request ID"] || rec.id}`,
-    });
-  }
-  return created;
+    if (qtyMap[typeId]) fields["Quantity"] = qtyMap[typeId];
+    return fields;
+  });
+  const made = await db.createMany(T.LOANS, rows);
+  const reservations = rows.map((f, i) => ({ id: made[i]?.id || null, loanId: f["Loan ID"], itemTypeName: nameMap[typeIds[i]] || null, quantity: qtyMap[typeIds[i]] || null }));
+  const events = rows.map((f, i) => ({
+    eventType: addonIds.has(typeIds[i]) ? "Add-on Ordered" : "Item Reserved",
+    itemType: nameMap[typeIds[i]] || null,
+    borrower: f0["Name"] || null,
+    loanId: f["Loan ID"],
+    admin: c.adminName || null,
+    notes: `From request ${f0["Request ID"] || rec.id}`,
+  }));
+  return { reservations, events };
+}
+
+/** 409 for a request that isn't waiting any more (confirmed, declined or cancelled elsewhere). */
+async function alreadyHandled(db, id) {
+  const now = await db.get(T.REQUESTS, id).catch(() => null);
+  const st = selName(now?.fields?.Status);
+  const what = st === "Converted" ? "already confirmed" : st === "Declined" ? "already declined" : st === "Cancelled" ? "cancelled by the borrower" : "no longer waiting";
+  return json({ error: `This request was ${what}. Refresh to see the latest.`, current: st || null }, 409);
 }
 
 export { itemTypeNameMap, handleGetRequests, handleRequestDecision, APPT_AT_RE, confirmAppointment, handleGetAppointments, createReservationsFromRequest };

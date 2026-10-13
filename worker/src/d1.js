@@ -402,6 +402,33 @@ function makeD1Db(env) {
     return res.reduce((n, r) => n + (r?.meta?.changes || 0), 0);
   }
 
+  /**
+   * Conditional write: set `fields` on the rows in `ids` that still match `where` (Q.* conditions on plain
+   * columns, e.g. Q.eq("Status", "New")), in one UPDATE per chunk. Returns how many rows changed, so a
+   * caller can "claim" a record (0 = someone else got there first). No read-back.
+   */
+  async function updateManyIf(table, ids, where, fields) {
+    const list = [...new Set((ids || []).filter(id => REC_RE.test(id || "")))];
+    if (!list.length) return 0;
+    const spec = tableSpec(table);
+    const plan = writePlan(spec, fields);
+    if (plan.joins.length || !plan.cols.length) throw new Error("updateManyIf: only plain columns can be set");
+    trace?.({ kind: "updateManyIf", table, ids: list, where, fields });
+    const condParams = [];
+    const cond = (where || []).filter(Boolean).map(c => condSql(spec, c, condParams));
+    const condSqlText = cond.length ? ` AND ${cond.join(" AND ")}` : "";
+    const per = Math.max(1, MAX_BOUND_PARAMS - plan.cols.length - condParams.length);
+    const stmts = [];
+    for (let i = 0; i < list.length; i += per) {
+      const chunk = list.slice(i, i + per);
+      stmts.push(prep(`UPDATE ${spec.sql} SET ${plan.cols.map(c => `${c} = ?`).join(", ")} WHERE id IN (${chunk.map(() => "?").join(", ")})${condSqlText}`,
+        [...plan.vals, ...chunk, ...condParams]));
+    }
+    const res = await batch(`updateManyIf ${spec.sql}`, stmts);
+    return res.reduce((n, r) => n + (r?.meta?.changes || 0), 0);
+  }
+  const updateIf = async (table, id, where, fields) => (await updateManyIf(table, [id], where, fields)) > 0;
+
   async function del(table, id) {
     const spec = tableSpec(table);
     if (!REC_RE.test(id || "")) throw err(404, "NOT_FOUND", "Could not find record");
@@ -432,7 +459,7 @@ function makeD1Db(env) {
     return true;
   }
 
-  return { engine: "d1", stats, listPage, listAll, get, create, createMany, update, updateMany, del, delMany, ping };
+  return { engine: "d1", stats, listPage, listAll, get, create, createMany, update, updateMany, updateManyIf, updateIf, del, delMany, ping };
 }
 
 export { makeD1Db, newRecordId, toRecord, writePlan };

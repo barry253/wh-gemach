@@ -210,6 +210,7 @@ async function handleReturnLoan(c, id) {
   const body = await readJson(c.request);
   const loan = await getOwned(db, T.LOANS, id, g);
   if (!loan) return json({ error: "Not found" }, 404);
+  if (selName(loan.fields.Status) !== "Active") return wrongLoanState(loan, "mark it returned");
   const returnDate = DATE_RE.test(body.returnDate || "") ? body.returnDate : today();
   const fields = { "Status": "Returned", "Date Returned": returnDate };
 
@@ -226,16 +227,17 @@ async function handleReturnLoan(c, id) {
     missing = q - back;
     fields["Quantity Returned"] = back;
     notes = missing ? `${back} of ${q} returned — ${missing} missing` : `All ${q} returned`;
-    if (missing && body.reduceOwned === true) {
-      const owned = wholeNum(typeRec.fields["Quantity Owned"]);
-      const next = Math.max(0, owned - missing);
-      const oos = wholeNum(typeRec.fields["Out of Service"]);
-      await db.update(T.ITEM_TYPES, typeRec.id, { "Quantity Owned": next, ...(oos > next ? { "Out of Service": next } : {}) });
-      notes += `; ${typeRec.fields.Name || "item"} owned ${owned} → ${next}`;
-    }
   }
-
-  await db.update(T.LOANS, id, fields);
+  // Only the call that moves the loan from Active to Returned goes on (a double tap can't count it twice).
+  if (!(await db.updateIf(T.LOANS, id, [Q.eq("Status", "Active")], fields))) return wrongLoanState((await db.get(T.LOANS, id)) || loan, "mark it returned");
+  if (typeRec && missing && body.reduceOwned === true) {
+    // Missing pieces gone for good: take them out of the count owned.
+    const owned = wholeNum(typeRec.fields["Quantity Owned"]);
+    const next = Math.max(0, owned - missing);
+    const oos = wholeNum(typeRec.fields["Out of Service"]);
+    await db.update(T.ITEM_TYPES, typeRec.id, { "Quantity Owned": next, ...(oos > next ? { "Out of Service": next } : {}) });
+    notes += `; ${typeRec.fields.Name || "item"} owned ${owned} → ${next}`;
+  }
 
   logEvent(ctx, db, g, {
     eventType: "Item Returned",
@@ -244,6 +246,13 @@ async function handleReturnLoan(c, id) {
     notes,
   });
   return json({ success: true, ...(typeRec ? { missing } : {}) });
+}
+
+/** 409 when a loan isn't in the state an action needs (already returned, cancelled, picked up…). */
+function wrongLoanState(loan, action) {
+  const st = selName(loan.fields.Status) || "unknown";
+  const now = st === "Active" ? "already out on loan" : st === "Reserved" ? "still a reservation (not picked up)" : st === "Returned" ? "already returned" : st === "Cancelled" ? "cancelled" : `marked ${st}`;
+  return json({ error: `Can't ${action}: this loan is ${now}. Refresh to see the latest.`, current: st }, 409);
 }
 
 /** The loan's item type record when it's an add-on order (add-on type, no unit linked), else null. */
@@ -267,6 +276,7 @@ async function handleMarkPickedUp(c, id) {
   const body = await readJson(c.request);
   const loan = await getOwned(db, T.LOANS, id, g);
   if (!loan) return json({ error: "Not found" }, 404);
+  if (selName(loan.fields.Status) !== "Reserved") return wrongLoanState(loan, "mark it picked up");
   // Add-on order (made to order, for purchase): handing it over completes it — it never goes "out on loan".
   const addonRec = await addonTypeForLoan(db, g, loan);
   if (addonRec) {
@@ -276,7 +286,9 @@ async function handleMarkPickedUp(c, id) {
       if (!Number.isInteger(n) || n < 1 || n > 500) return json({ error: "How many are being handed over? Enter 1 or more." }, 400);
     }
     const day = DATE_RE.test(body.pickupDate || "") ? body.pickupDate : today();
-    await db.update(T.LOANS, id, { "Status": "Returned", "Quantity": n, "Date Borrowed": day, "Date Returned": day });
+    if (!(await db.updateIf(T.LOANS, id, [Q.eq("Status", "Reserved")], { "Status": "Returned", "Quantity": n, "Date Borrowed": day, "Date Returned": day }))) {
+      return wrongLoanState((await db.get(T.LOANS, id)) || loan, "mark it handed over");
+    }
     logEvent(ctx, db, g, {
       eventType: "Add-on Handed Over",
       ...(await loanLogDetails(db, g, loan, body)),
@@ -302,13 +314,20 @@ async function handleMarkPickedUp(c, id) {
     if (!loan.fields["Expected Return"] && isValidDate(loan.fields["Reservation End"])) fields["Expected Return"] = loan.fields["Reservation End"];
     notes = `Picked up ${n}`;
   } else {
-    if (body.itemId && !(await getOwned(db, T.ITEMS, body.itemId, g))) return json({ error: "Item not found" }, 404);
-    if (!body.itemId && !(loan.fields["Item"] || []).length) {
-      return json({ error: "Choose which item is being picked up." }, 400);
-    }
+    const unitId = body.itemId || linkedId(firstLink(loan.fields["Item"]));
+    if (!unitId) return json({ error: "Choose which item is being picked up." }, 400);
+    const unit = await getOwned(db, T.ITEMS, unitId, g);
+    if (!unit) return json({ error: "Item not found" }, 404);
+    const typeId = linkedId(firstLink(loan.fields["Item to Reserve"]));
+    if (typeId && linkedId(firstLink(unit.fields["Item Type"])) !== typeId) return json({ error: "That unit isn't the item that was reserved. Choose one of the reserved item's units." }, 400);
+    if (!unit.fields.Active) return json({ error: `${unit.fields["Item ID"] || "That unit"} is marked inactive.` }, 409);
+    const out = await db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Active"), Q.linksTo("Item", unitId, unit.fields["Item ID"] || "")], fields: ["Loan ID", "Item"] });
+    if (out.some(l => l.id !== id && linkedId(firstLink(l.fields["Item"])) === unitId)) return json({ error: `${unit.fields["Item ID"] || "That unit"} is already out on loan (${out[0].fields["Loan ID"] || "another loan"}). Choose another, or mark that one returned first.` }, 409);
     if (body.itemId) fields["Item"] = [body.itemId];
   }
-  await db.update(T.LOANS, id, fields);
+  // Due back = the reservation's end date when nothing else was set (reminders and "overdue" need one).
+  if (!loan.fields["Expected Return"] && !fields["Expected Return"] && isValidDate(loan.fields["Reservation End"])) fields["Expected Return"] = loan.fields["Reservation End"];
+  if (!(await db.updateIf(T.LOANS, id, [Q.eq("Status", "Reserved")], fields))) return wrongLoanState((await db.get(T.LOANS, id)) || loan, "mark it picked up");
 
   logEvent(ctx, db, g, {
     eventType: "Loan Created",
@@ -392,9 +411,11 @@ async function handleCancelReservation(c, id) {
   const body = await readJson(c.request);
   const loan = await getOwned(db, T.LOANS, id, g);
   if (!loan) return json({ error: "Not found" }, 404);
+  if (selName(loan.fields.Status) !== "Reserved") return wrongLoanState(loan, "cancel it");
   let data;
   try {
-    data = await db.update(T.LOANS, id, { "Status": "Cancelled" });
+    if (!(await db.updateIf(T.LOANS, id, [Q.eq("Status", "Reserved")], { "Status": "Cancelled" }))) return wrongLoanState((await db.get(T.LOANS, id)) || loan, "cancel it");
+    data = await db.get(T.LOANS, id);
   } catch (e) {
     if (e instanceof AirtableError) return json(e.detail || { error: e.message }, 500);
     throw e;
@@ -447,7 +468,8 @@ async function handleAssignItem(c, itemRecId) {
         fields: ["Item", "Status"],
       });
       const mine = loans.filter(l => (l.fields["Item"] || []).map(linkedId).includes(itemRecId));
-      await Promise.all(mine.map(l => db.update(T.LOANS, l.id, { "Status": "Returned", "Date Returned": t })));
+      // Out on loan → returned; a reservation that never went out → cancelled (not a phantom return).
+      await Promise.all(mine.map(l => db.update(T.LOANS, l.id, selName(l.fields.Status) === "Reserved" ? { "Status": "Cancelled" } : { "Status": "Returned", "Date Returned": t })));
     }
     await db.update(T.ITEMS, itemRecId, { "Condition": "Good" });
     logEvent(ctx, db, g, {
