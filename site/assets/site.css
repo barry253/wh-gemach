@@ -457,6 +457,76 @@ main { flex: 1; }
   .contact-row .btn { flex: 1 1 calc(50% - .5rem); }
 }
 
+/* ── Gemach page: storefront header (band, big logo over its edge, centered name) ── */
+.g-store { padding: 0; background: none; color: var(--text); border-bottom: 1px solid var(--border); text-align: center; }
+.g-store .g-band { background-color: var(--t); color: var(--t-on); border-bottom: 3px solid var(--t-accent); height: 96px; }
+.g-store .g-band .wrap { display: flex; align-items: flex-start; padding-top: 10px; }
+.net-pill {
+  display: inline-flex; align-items: center; gap: .4rem; min-height: 32px; padding: 0 .75rem 0 .5rem; border-radius: 999px;
+  background: var(--t-chip); color: var(--t-on); text-decoration: none; font-size: .8rem; font-weight: 500;
+  position: relative;
+}
+.net-pill::after { content: ""; position: absolute; inset: -6px -4px; } /* 44px tap target */
+.net-pill:hover { background: var(--t-glass-2); color: var(--t-on); }
+.net-pill img { width: 20px; height: 20px; border-radius: 5px; }
+.net-long { display: none; }
+@media (min-width: 640px) { .net-short { display: none; } .net-long { display: inline; } .g-store .g-band { height: 120px; } }
+.g-store #g-head { display: flex; flex-direction: column; align-items: center; padding: 0 0 1.1rem; margin-top: -60px; position: relative; }
+@media (min-width: 640px) { .g-store #g-head { margin-top: -72px; padding-bottom: 1.4rem; } }
+.g-store .g-logo {
+  width: 112px; height: 112px; border-radius: 24px; object-fit: cover; background: #FFFFFF;
+  border: 4px solid var(--bg); box-shadow: 0 6px 18px rgba(20,30,50,.16); margin: 0;
+}
+@media (min-width: 640px) { .g-store .g-logo { width: 128px; height: 128px; border-radius: 28px; } }
+.g-store .g-logo-bare { object-fit: contain; background: var(--t); padding: 14px; }
+.g-store .g-logo-initials { background: var(--t); color: var(--t-on); font-size: 2.4rem; display: flex; }
+.g-store .g-logo-sk { border-radius: 24px; }
+.g-store h1.g-name {
+  font-family: var(--font-display); font-weight: 600; font-size: 1.75rem; line-height: 1.15; letter-spacing: -.01em;
+  margin: .7rem 0 0; color: var(--t-strong); overflow-wrap: anywhere; max-width: 36rem;
+}
+@media (min-width: 640px) { .g-store h1.g-name { font-size: 2.1rem; } }
+.g-store .g-eyebrow {
+  display: block; font-family: var(--font-body); font-size: 11px; font-weight: 600; line-height: 1.4;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--text-muted); margin-bottom: .15rem;
+}
+.g-store .g-rest { display: block; }
+.g-store .tagline { color: var(--text-muted); font-size: .95rem; line-height: 1.45; margin-top: .3rem; max-width: 34rem; }
+.g-store .chip-soon { margin-top: .6rem; }
+.g-store .contact-row { justify-content: center; margin-top: 1rem; width: 100%; max-width: 26rem; }
+.g-store .contact-row .btn { flex: 1 1 0; }
+.g-cta { border-radius: 999px; min-height: 44px; background: #FFFFFF; border-color: var(--t-border); color: var(--t-strong); font-weight: 600; }
+.g-cta:hover { background: var(--t-tint); border-color: var(--t-strong); color: var(--t-strong); }
+.g-cta-solid { background: var(--t-strong); border-color: var(--t-strong); color: #FFFFFF; }
+.g-cta-solid:hover { background: var(--t-strong-2); border-color: var(--t-strong-2); color: #FFFFFF; }
+.g-facts { margin-top: .9rem; font-size: .9rem; line-height: 1.6; color: var(--text); max-width: 34rem; }
+.g-facts a { color: var(--t-link, var(--t-strong)); }
+
+/* Slim bar once the header has scrolled away */
+.g-mini {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 60; background-color: var(--t); color: var(--t-on);
+  border-bottom: 3px solid var(--t-accent); box-shadow: 0 2px 10px rgba(0,0,0,.15);
+  transform: translateY(-110%); visibility: hidden; transition: transform .2s ease, visibility 0s linear .2s;
+}
+.g-mini.show { transform: translateY(0); visibility: visible; transition: transform .2s ease; }
+.g-mini .wrap { display: flex; align-items: center; gap: .6rem; min-height: 57px; padding-right: .5rem; }
+.g-mini .g-logo { width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0; object-fit: cover; background: #FFFFFF; box-shadow: none; }
+.g-mini .g-logo-bare { object-fit: contain; background: none; }
+.g-mini .g-logo-initials { width: 38px; height: 38px; background: var(--t-on); color: var(--t); font-size: .95rem; display: flex; }
+.g-mini-name {
+  flex: 1; min-width: 0; color: var(--t-on); text-decoration: none; font-family: var(--font-display); font-weight: 600;
+  font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 44px; display: flex; align-items: center;
+}
+.g-mini-name:hover { color: var(--t-on); }
+.g-mini-btn {
+  width: 44px; height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--t-on); flex-shrink: 0;
+}
+.g-mini-btn:hover { background: var(--t-glass-2); color: var(--t-on); }
+.g-mini-btn svg { width: 21px; height: 21px; }
+.lb-open .g-mini { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .g-mini, .g-mini.show { transition: none; } }
+
 .info-panel {
   background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 1.1rem 1.1rem; margin-top: 1.25rem; display: grid; gap: 1rem;
@@ -1116,6 +1186,10 @@ fieldset { border: 0; }
   .shelf-nav { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-left: -1rem; margin-right: -1rem; padding: 0 1rem 2px; }
   .shelf-nav::-webkit-scrollbar { display: none; }
   .shelf-link { flex: 0 0 auto; white-space: nowrap; }
+  /* Phones: the shelf row stays on screen, just under the slim gemach bar */
+  .shelf-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-top: .5rem; padding-bottom: .5rem; margin-top: .6rem; box-shadow: 0 1px 0 var(--border); transition: top .2s ease; }
+  body.mini-on .shelf-nav { top: 60px; }
+  .shelf-block { scroll-margin-top: 8.5rem; }
 }
 @media (prefers-reduced-motion: reduce) { .strip-card:hover .strip-cover { transform: none; } }
 /* tall covers: more across, so a page of books isn't a wall of huge covers */

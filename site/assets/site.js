@@ -430,10 +430,11 @@
     return toHex([f(0), f(8), f(4)]);
   }
   /** Same hue, darkened until white text reaches 4.5:1 (for buttons / borders / links on white). */
+  /** The theme color, darkened until text in it reads at 4.5:1 on the cream page (and so on white too). */
   function strongOf(h) {
-    if (contrast(h, "#FFFFFF") >= 4.5) return h;
+    if (contrast(h, CREAM) >= 4.5) return h;
     var x = toHsl(h), s = Math.max(x[1], 0.35), l = x[2], out = h;
-    while (l > 0.05) { l -= 0.02; out = fromHsl(x[0], x[1] < 0.08 ? x[1] : s, l); if (contrast(out, "#FFFFFF") >= 4.5) break; }
+    while (l > 0.05) { l -= 0.02; out = fromHsl(x[0], x[1] < 0.08 ? x[1] : s, l); if (contrast(out, CREAM) >= 4.5) break; }
     return out;
   }
   function mix(a, b, t) { var x = rgb(a), y = rgb(b); return toHex([0, 1, 2].map(function (i) { return x[i] * t + y[i] * (1 - t); })); }

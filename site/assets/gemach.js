@@ -41,21 +41,45 @@
   var scopeQ = (params.get("q") || "").trim().slice(0, 100);
 
   // ── Render ──
+  /** Header contact buttons (pills on the cream area under the band). */
   function contactButtons(g) {
-    var acts = W.contactActions(g);
-    if (acts) {
-      if (!acts.length) return "";
-      return '<div class="contact-row">' + acts.map(function (a) {
-        return '<a class="btn btn-on-dark' + (a.primary ? " btn-solid" : "") + '" href="' + esc(a.href) + '"' +
-          (a.ext ? ' target="_blank" rel="noopener"' : "") + ' data-contact="' + a.type + '">' + W.ICONS[a.icon] + a.label + "</a>";
+    var links = contactLinks(g);
+    if (!links.length) return "";
+    return '<div class="contact-row">' + links.map(function (a, i) {
+      return '<a class="btn g-cta' + (i === 0 ? " g-cta-solid" : "") + '" href="' + esc(a.href) + '"' +
+        (a.ext ? ' target="_blank" rel="noopener"' : "") + ' data-contact="' + esc(a.type) + '">' + W.ICONS[a.icon] + esc(a.label) + "</a>";
+    }).join("") + "</div>";
+  }
+  /** Slim bar once the header has scrolled away: logo, name, icon-only contact buttons. */
+  function miniBar(g) {
+    var links = contactLinks(g);
+    return '<div class="wrap">' + logoHtml(g, "g-mini-logo") +
+      '<a class="g-mini-name" href="#main" tabindex="-1">' + esc(g.name) + "</a>" +
+      links.map(function (a) {
+        return '<a class="g-mini-btn" href="' + esc(a.href) + '"' + (a.ext ? ' target="_blank" rel="noopener"' : "") +
+          ' data-contact="' + esc(a.type) + '" aria-label="' + esc(a.label + " " + g.name) + '" tabindex="-1">' + W.ICONS[a.icon] + "</a>";
       }).join("") + "</div>";
-    }
-    var out = [];
-    var tel = W.telHref(g.phone), wa = W.waHref(g.whatsapp);
-    if (tel) out.push('<a class="btn btn-on-dark btn-solid" href="' + tel + '">' + W.ICONS.phone + "Call</a>");
-    if (wa) out.push('<a class="btn btn-on-dark" href="' + wa + '" target="_blank" rel="noopener">' + W.ICONS.whatsapp + "WhatsApp</a>");
-    if (g.email) out.push('<a class="btn btn-on-dark" href="mailto:' + esc(g.email) + '">' + W.ICONS.mail + "Email</a>");
-    return out.length ? '<div class="contact-row">' + out.join("") + "</div>" : "";
+  }
+  var miniObs = null;
+  function setupMini(g) {
+    var bar = $("g-mini"), head = $("g-header");
+    if (!bar || !head) return;
+    bar.innerHTML = miniBar(g);
+    bar.hidden = false;
+    var show = function (on) {
+      bar.classList.toggle("show", on);
+      document.body.classList.toggle("mini-on", on);
+      bar.setAttribute("aria-hidden", on ? "false" : "true");
+      Array.prototype.forEach.call(bar.querySelectorAll("a"), function (el) { el.tabIndex = on ? 0 : -1; });
+    };
+    show(false);
+    if (miniObs || !("IntersectionObserver" in window)) return;
+    // Shown once the contact buttons (bottom of the header) have scrolled under the top edge.
+    miniObs = new IntersectionObserver(function (ents) {
+      var e = ents[0];
+      show(!e.isIntersecting && e.boundingClientRect.top < 0);
+    }, { threshold: 0 });
+    miniObs.observe(head);
   }
 
   var appliedVars = [];
@@ -84,25 +108,29 @@
     }
     return esc(name);
   }
-  function logoHtml(g) {
+  /** Logo tile: the logo on white; a logo made for dark backgrounds on the band color; else initials. */
+  function logoHtml(g, cls) {
     var dark = W.safeUrl(g.logoDarkUrl), light = W.safeUrl(g.logoUrl);
     if (dark && dark.indexOf("https:") !== 0) dark = null;
-    if (dark) return '<img class="g-logo g-logo-bare" src="' + esc(dark) + '" alt="' + esc(g.name) + '" width="48" height="48" decoding="async" />';
-    if (light) return '<img class="g-logo" src="' + esc(light) + '" alt="' + esc(g.name) + '" width="56" height="56" decoding="async" />';
-    return '<span class="g-logo g-logo-initials" aria-hidden="true">' + esc(W.initials(g)) + "</span>";
+    var c = cls ? " " + cls : "";
+    if (light) return '<img class="g-logo' + c + '" src="' + esc(light) + '" alt="' + esc(g.name) + '" width="112" height="112" decoding="async" />';
+    if (dark) return '<img class="g-logo g-logo-bare' + c + '" src="' + esc(dark) + '" alt="' + esc(g.name) + '" width="112" height="112" decoding="async" />';
+    return '<span class="g-logo g-logo-initials' + c + '" aria-hidden="true">' + esc(W.initials(g)) + "</span>";
   }
 
   function renderHeader() {
     var g = gemach;
     applyTheme(g);
     applyFavicon(g);
+    var facts = shortInfo(g);
     $("g-head").innerHTML =
-      (g.category ? '<span class="chip">' + esc(g.category) + "</span>" : "") +
+      logoHtml(g) +
+      '<h1 class="g-name">' + nameHtml(g) + "</h1>" +
+      (g.tagline ? '<p class="tagline">' + esc(g.tagline) + "</p>" : "") +
       (W.isComingSoon(g) ? '<span class="chip chip-soon">Coming soon</span>' : "") +
-      '<div class="g-lockup">' + logoHtml(g) +
-        '<div class="g-lockup-text"><h1 class="g-name">' + nameHtml(g) + "</h1>" +
-        (g.tagline ? '<p class="tagline">' + esc(g.tagline) + "</p>" : "") + "</div></div>" +
-      contactButtons(g);
+      contactButtons(g) +
+      (facts ? '<div class="g-facts">' + facts + "</div>" : "");
+    setupMini(g);
     document.title = g.name + " — West Hempstead Gemachs";
     var md = document.querySelector('meta[name="description"]');
     if (md && g.tagline) md.setAttribute("content", g.tagline);
@@ -116,12 +144,8 @@
     var side = [];
     var v3 = isV3(g);
     if (g.hours && !v3) side.push('<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div>");
-    // Contact and website as buttons — numbers, addresses and links aren't printed on the page.
-    var contact = contactLinks(g).map(function (a) {
-      return '<a class="btn btn-sm" href="' + esc(a.href) + '"' + (a.ext ? ' target="_blank" rel="noopener"' : "") +
-        ' data-contact="' + esc(a.type) + '">' + W.ICONS[a.icon] + esc(a.label) + "</a>";
-    });
-    if (contact.length && !W.isInfoOnly(g)) side.push('<div><div class="info-label">Contact</div><div class="info-ctas">' + contact.join("") + "</div></div>"); // Info only: already in the big box
+    // Numbers, addresses and links aren't printed on the page; the website is a button.
+    // Contact buttons live in the header (and the slim bar), so they aren't repeated here.
     var web = W.safeUrl(g.website);
     if (web) side.push('<div><div class="info-label">Website</div><div class="info-ctas"><a class="btn btn-sm" href="' + esc(web) + '" target="_blank" rel="noopener" data-contact="Website">' + W.ICONS.globe + "Visit website</a></div></div>");
     // Donations: link only -> the Donate button opens it in a new tab.
@@ -262,9 +286,18 @@
     return "<strong>" + W.ICONS.info + (isPayment(g) ? "Payment required" : "Deposit required") + "</strong>" +
       (g.depositInfo ? '<div class="prose">' + W.formatText(g.depositInfo) + "</div>" : "");
   }
+  /** Short "Gemach Info" (a few brief lines, no hours or deposit) goes in the header instead of its own box. */
+  function shortInfo(g) {
+    if (!isV3(g) || g.depositRequired || g.hours || W.isInfoOnly(g)) return "";
+    var raw = String(g.gemachInfo || "").trim();
+    if (!raw || raw.length > 200) return "";
+    var lines = raw.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+    if (lines.length > 4 || lines.some(function (l) { return l.length > 70; })) return "";
+    return W.formatText(lines.join("\n"));
+  }
   function gemachInfoSection() {
     var g = gemach;
-    if (!isV3(g)) return "";
+    if (!isV3(g) || shortInfo(g)) return "";
     var parts = [];
     if (g.depositRequired) parts.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
     if (g.hours) parts.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");

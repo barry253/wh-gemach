@@ -76,7 +76,7 @@ const items = [
 ];
 directory.gemachs.push(
   { ...base, id: 'recSEFER', slug: 'sefer', name: 'Sefer Shelf', items },
-  { ...base, id: 'recSEFER2', slug: 'sefer-plain', name: 'Plain Library', groupBy: null, spotlightFilter: null, photoShape: 'Landscape', borrowNote: null, items: items.map(it => ({ ...it, id: it.id + 'p', featured: false, newUntil: null })) });
+  { ...base, id: 'recSEFER2', slug: 'sefer-plain', name: 'Plain Library', hours: null, gemachInfo: '📍 LOCATION: 12 Main St\n🕓 Tuesdays 6–8 PM', groupBy: null, spotlightFilter: null, photoShape: 'Landscape', borrowNote: null, items: items.map(it => ({ ...it, id: it.id + 'p', featured: false, newUntil: null })) });
 
 const txt = (page, sel) => page.$$eval(sel, els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
 
@@ -124,6 +124,9 @@ const txt = (page, sel) => page.$$eval(sel, els => els.map(e => e.textContent.re
     await page.waitForTimeout(300);
     const top = await page.locator('#sec-1').boundingBox();
     assert(top && top.y >= 0 && top.y < 400, 'jump bar scrolls to the section');
+    const stick = await page.evaluate(() => { const n = document.querySelector('.shelf-nav').getBoundingClientRect(), m = document.getElementById('g-mini');
+      return { mini: m.classList.contains('show'), miniB: Math.round(m.getBoundingClientRect().bottom), navTop: Math.round(n.top), navB: Math.round(n.bottom), h3: Math.round(document.querySelector('#sec-1 h3').getBoundingClientRect().top) }; });
+    assert(stick.mini && stick.navTop === 60 && stick.h3 >= stick.navB, 'phone: slim bar on top, shelf row sticks right under it, section heading not hidden — ' + JSON.stringify(stick));
     await page.screenshot({ path: path.join(SHOTS, 'm-catalog-shelf.png') });
     // a filter hides the strips
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -156,6 +159,7 @@ const txt = (page, sel) => page.$$eval(sel, els => els.map(e => e.textContent.re
     assert(!(await page.locator('.strip-spotlight').count()) && await page.locator('.strip-new').count() === 1, 'no holiday strip when none is near');
     await page.goto(BASE + '/g/sefer-plain', { waitUntil: 'networkidle' });
     assert(!(await page.locator('.strip, .shelf-nav, .shelf-block, .borrow-note, .photos-portrait').count()), 'plain listing: no strips, sections, note or portrait');
+    assert(/12 Main St/.test(await page.textContent('#g-head .g-facts')) && !(await page.locator('#ginfo-title').count()), 'short Gemach Info shown in the header instead of its own box');
     assert(await page.locator('.badge-dir').count() > 0, 'plain listing keeps “Contact to check”');
     await ctx.close();
 

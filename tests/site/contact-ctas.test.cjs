@@ -82,16 +82,18 @@ const RAW = /555-01(42|88)|contact\.me@example\.com|example\.org\/our-page/;
     await setup(ctx);
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-    const ctas = () => page.$$eval('.info-side .info-ctas a', as => as.map(a => [a.dataset.contact, a.textContent.trim(), a.getAttribute('href'), a.target]));
+    const ctas = () => page.$$eval('#g-head .contact-row a, .info-side .info-ctas a', as => as.map(a => [a.dataset.contact, a.textContent.trim(), a.getAttribute('href'), a.target]));
 
     await page.goto(BASE + '/g/cta', { waitUntil: 'networkidle' });
     const c = await ctas();
-    assert(JSON.stringify(c.map(x => x[0])) === '["WhatsApp","Email","Website"]', 'info card buttons: WhatsApp, Email, Website — ' + JSON.stringify(c));
+    assert(JSON.stringify(c.map(x => x[0])) === '["WhatsApp","Email","Website"]', 'header contact buttons + info card website: WhatsApp, Email, Website — ' + JSON.stringify(c));
     assert(c[0][2] === 'https://wa.me/13475550188' && c[0][3] === '_blank', 'WhatsApp button opens wa.me in a new tab');
     assert(c[1][2] === 'mailto:contact.me@example.com', 'Email button is a mailto');
     assert(c[2][1] === 'Visit website' && c[2][2] === 'https://example.org/our-page' && c[2][3] === '_blank', 'Visit website button');
     assert(!RAW.test(await page.innerText('body')), 'no phone number, email or web address printed on the page');
-    await page.locator('.info-panel').screenshot({ path: path.join(SHOTS, 'm-contact-ctas.png') });
+    assert(await page.locator('.info-side .info-ctas a[data-contact="WhatsApp"], .info-side .info-ctas a[data-contact="Email"]').count() === 0, 'contact buttons not repeated in the info card');
+    assert(await page.locator('#g-mini .g-mini-btn').count() === 2, 'slim bar carries the same two contact buttons');
+    await page.locator('#g-header').screenshot({ path: path.join(SHOTS, 'm-contact-ctas.png') });
 
     await page.goto(BASE + '/g/ctai', { waitUntil: 'networkidle' });
     assert(await page.locator('.io-actions a').count() === 2 && !RAW.test(await page.innerText('body')), 'Info only box: buttons without the number/email');

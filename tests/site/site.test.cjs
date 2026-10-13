@@ -122,45 +122,65 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
       }
       await shot('search-walker');
 
-      // ── WH Medical header ──
+      // ── WH Medical header (storefront: band, big logo over its edge, centered name, contact pills) ──
       await go('/g/wh-medical');
       const med = await page.evaluate(() => {
         const q = s => document.querySelector(s), g = s => getComputedStyle(q(s)), r = s => q(s).getBoundingClientRect();
         return {
-          topbar: [g('.topbar').backgroundColor, g('.topbar').borderBottom, g('.brand').color, g('.brand').fontFamily, g('.brand').fontWeight].join(' | '),
-          band: [g('.hero-gemach').backgroundColor, g('.hero-gemach').borderBottom].join(' | '),
-          logo: [q('.g-logo').tagName, q('.g-logo').className, q('.g-logo').getAttribute('src'), q('.g-logo').alt, Math.round(r('.g-logo').width), g('.g-logo').backgroundColor].join(' | '),
+          topbar: !!q('.topbar'),
+          band: [g('.g-band').backgroundColor, g('.g-band').borderBottom].join(' | '),
+          pillNet: [q('.net-pill').getAttribute('href'), q('.net-pill').textContent.trim(), g('.net-pill').color].join(' | '),
+          logo: [q('#g-head .g-logo').tagName, q('#g-head .g-logo').className, q('#g-head .g-logo').getAttribute('src'), q('#g-head .g-logo').alt, Math.round(r('#g-head .g-logo').width), g('#g-head .g-logo').backgroundColor].join(' | '),
+          overlap: r('#g-head .g-logo').top < r('.g-band').bottom && r('#g-head .g-logo').bottom > r('.g-band').bottom,
+          centered: Math.abs((r('#g-head .g-logo').left + r('#g-head .g-logo').right) / 2 - (r('h1').left + r('h1').right) / 2) < 4 && g('h1').textAlign === 'center',
           h1: [q('h1').textContent, g('h1').fontFamily, g('h1').fontWeight, g('h1').fontSize, g('h1').color].join(' | '),
-          eyebrow: [g('.g-eyebrow').display, g('.g-eyebrow').fontSize, g('.g-eyebrow').color, g('.g-eyebrow').textTransform, g('.g-eyebrow').letterSpacing, g('.g-rest').fontSize].join(' | '),
-          tagline: [g('.tagline').fontSize, g('.tagline').color].join(' | '),
-          logoLeft: r('.g-logo').left < r('h1').left && Math.abs((r('.g-logo').top + r('.g-logo').bottom) / 2 - (r('.g-lockup-text').top + r('.g-lockup-text').bottom) / 2) < 40,
+          eyebrow: [g('.g-eyebrow').display, g('.g-eyebrow').fontSize, g('.g-eyebrow').textTransform].join(' | '),
+          ctas: [...document.querySelectorAll('#g-head .contact-row a')].map(a => [a.dataset.contact, a.className].join(':')),
+          dupContact: !!q('.info-panel .info-ctas a[data-contact="Call"], .info-panel .info-ctas a[data-contact="WhatsApp"], .info-panel .info-ctas a[data-contact="Email"]'),
+          chip: !!q('#g-head .chip:not(.chip-soon)'),
           pill: [q('.btn-pill').textContent.trim(), g('.btn-pill').backgroundColor, g('.btn-pill').color, g('.btn-pill').borderTopLeftRadius, Math.round(r('.btn-pill').height)].join(' | '),
-          taps: [...document.querySelectorAll('.back-link, .contact-row a, .btn-pill, .brand')].map(e => Math.round(e.getBoundingClientRect().height)),
+          taps: [...document.querySelectorAll('.net-pill, .contact-row a, .btn-pill')].map(e => { const b = e.getBoundingClientRect(); return Math.round(Math.max(b.height, parseFloat(getComputedStyle(e, '::after').height) || 0)); }),
           fav: q('link[rel=icon]').getAttribute('href'),
           style: document.documentElement.getAttribute('style')
         };
       });
       console.log('   medical:', JSON.stringify(med));
-      assert(med.topbar.startsWith('rgb(27, 58, 75) | 3px solid rgb(224, 166, 58) | rgb(251, 246, 236) | "Source Serif 4"') && med.topbar.endsWith('| 600'), `${label} gemach top bar: navy, gold rule, cream serif wordmark`);
-      assert(med.band === 'rgb(27, 58, 75) | 3px solid rgb(224, 166, 58)', `${label} band + 3px accentColor rule`);
-      const logoW = label === 'm' ? 36 : 48;
-      assert(med.logo.startsWith('IMG | g-logo g-logo-bare | ') && med.logo.includes('/logo-dark/') && med.logo.includes('| West Hempstead Medical Gemach | ' + logoW + ' | rgba(0, 0, 0, 0)'), `${label} logoDarkUrl shown bare at ${logoW}px`);
-      assert(med.logoLeft, `${label} lockup: logo left of the text block`);
-      const h1Size = label === 'm' ? '19px' : '24px';
-      assert(med.h1 === `West Hempstead Medical Gemach | "Source Serif 4", Georgia, "Times New Roman", serif | 600 | ${h1Size} | rgb(251, 246, 236)`, `${label} name: full text for AT, serif 600 ${h1Size}, cream`);
-      if (label === 'm') assert(med.eyebrow === 'block | 10px | rgb(224, 166, 58) | uppercase | 1.6px | 19px', `m two-line lockup: 10px gold uppercase eyebrow (.16em) + 19px rest`);
-      else assert(med.eyebrow.startsWith('inline | 24px | rgb(251, 246, 236) | none'), `d desktop: single-line name`);
-      assert(med.tagline === '14px | rgb(213, 222, 227)', `${label} tagline 14px --on-primary-muted`);
+      assert(!med.topbar && med.pillNet.startsWith('/ | ') && med.pillNet.includes(label === 'm' ? 'All gemachs' : 'West Hempstead Gemachs'), `${label} network link is a pill on the band (no separate top bar)`);
+      assert(med.band === 'rgb(27, 58, 75) | 3px solid rgb(224, 166, 58)', `${label} band + 3px accent rule`);
+      const logoW = label === 'm' ? 112 : 128;
+      assert(med.logo.startsWith('IMG | g-logo | ') && med.logo.includes('/logo-light/') && med.logo.includes('| West Hempstead Medical Gemach | ' + logoW + ' | rgb(255, 255, 255)'), `${label} logoUrl shown on a white ${logoW}px tile (it sits on the cream page now)`);
+      const darkOnly = await page.evaluate(() => { const d = document.createElement('div'); d.className = 'g-store'; d.innerHTML = '<div id="g-head"><img class="g-logo g-logo-bare" alt=""></div>'; document.body.appendChild(d);
+        const c = getComputedStyle(d.querySelector('.g-logo')); const out = [c.backgroundColor, c.objectFit].join(' | '); d.remove(); return out; });
+      assert(darkOnly === 'rgb(27, 58, 75) | contain', `${label} a logo made for dark backgrounds (no regular logo) sits on a band-colored tile (${darkOnly})`);
+      assert(med.overlap && med.centered, `${label} logo straddles the band edge; logo and name centered`);
+      const h1Size = label === 'm' ? '28px' : '33.6px';
+      assert(med.h1 === `West Hempstead Medical Gemach | "Source Serif 4", Georgia, "Times New Roman", serif | 600 | ${h1Size} | rgb(27, 58, 75)`, `${label} name: full text for AT, serif 600 ${h1Size}, theme color on cream`);
+      assert(med.eyebrow === 'block | 11px | uppercase', `${label} community name as a small eyebrow`);
+      assert(med.ctas.join() === 'Call:btn g-cta g-cta-solid,WhatsApp:btn g-cta', `${label} contact pills: first solid (${med.ctas})`);
+      assert(!med.dupContact && !med.chip, `${label} contact buttons not repeated in the info panel; no category chip`);
       assert(med.pill === 'Donate | rgb(224, 166, 58) | rgb(27, 58, 75) | 999px | 44', `${label} Donate pill: gold bg, navy text`);
       assert(med.taps.every(h => h >= 44), `${label} header tap targets >= 44px (${med.taps})`);
       assert(!med.style, `${label} network-default gemach sets no theme overrides`);
-      await checkPair('h1', '.hero-gemach', 4.5, 'medical name on band');
-      await checkPair('.hero-gemach .tagline', '.hero-gemach', 4.5, 'medical tagline on band');
-      await checkPair('.back-link', '.hero-gemach', 4.5, 'back link on band');
-      if (label === 'm') await checkPair('.g-eyebrow', '.hero-gemach', 4.5, 'eyebrow on band');
+      await checkPair('h1', 'body', 4.5, 'medical name on cream');
+      await checkPair('#g-head .tagline', 'body', 4.5, 'medical tagline on cream');
+      await checkPair('.g-eyebrow', 'body', 4.5, 'eyebrow on cream');
+      await checkPair('.net-pill', '.g-band', 4.5, 'network pill on band');
+      await checkPair('.g-cta-solid', null, 4.5, 'solid contact pill');
+      await checkPair('.g-cta:not(.g-cta-solid)', null, 4.5, 'outline contact pill');
       await checkPair('.btn-pill', null, 4.5, 'Donate pill');
-      await checkPair('.info-ctas .btn', '.info-panel', 4.5, 'info contact button text on white');
       await checkPair('.cat-block h3', 'body', 4.5, 'category heading on bg');
+      // slim bar: hidden at the top, shown once the header has scrolled away
+      const mini0 = await page.evaluate(() => { const b = document.getElementById('g-mini'); return [b.classList.contains('show'), b.getAttribute('aria-hidden'), [...b.querySelectorAll('a')].every(a => a.tabIndex === -1)]; });
+      assert(mini0.join() === 'false,true,true', `${label} slim bar hidden (and out of the tab order) at the top: ${mini0}`);
+      await page.evaluate(() => window.scrollTo(0, document.getElementById('g-header').offsetHeight + 200)); await page.waitForTimeout(400);
+      const mini1 = await page.evaluate(() => { const b = document.getElementById('g-mini'), r = b.getBoundingClientRect();
+        return [b.classList.contains('show'), b.getAttribute('aria-hidden'), Math.round(r.top), b.querySelector('.g-mini-name').textContent,
+          [...b.querySelectorAll('.g-mini-btn')].map(a => a.dataset.contact + ':' + a.getAttribute('aria-label') + ':' + Math.round(a.getBoundingClientRect().height)).join(',')]; });
+      assert(mini1[0] && mini1[1] === 'false' && mini1[2] === 0 && mini1[3] === 'West Hempstead Medical Gemach' && mini1[4] === 'Call:Call West Hempstead Medical Gemach:44,WhatsApp:WhatsApp West Hempstead Medical Gemach:44', `${label} slim bar after scrolling: name + labeled 44px contact buttons (${mini1})`);
+      await checkPair('.g-mini-name', '.g-mini', 4.5, 'slim bar name');
+      await shot('medical-scrolled', false);
+      await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(400);
+      assert(!(await page.$eval('#g-mini', b => b.classList.contains('show'))), `${label} slim bar hides again back at the top`);
       await csp();
       await page.evaluate(() => window.scrollTo(0, 0)); await shot('medical-top', false); await shot('medical');
 
@@ -181,27 +201,34 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
       await go('/g/wedding-shtick');
       const sh = await page.evaluate(() => {
         const q = s => document.querySelector(s), g = s => getComputedStyle(q(s));
-        return { band: [g('.hero-gemach').backgroundColor, g('.hero-gemach').borderBottom].join(' | '), h1: g('h1').color,
-          logo: [q('.g-logo').className, g('.g-logo').backgroundColor].join(' | '), eyebrow: !!q('.g-eyebrow'),
-          pill: g('.btn-pill').backgroundColor, btn: g('#btn-open-modal').backgroundColor };
+        return { band: [g('.g-band').backgroundColor, g('.g-band').borderBottom].join(' | '), h1: g('h1').color,
+          logo: [q('#g-head .g-logo').className, g('#g-head .g-logo').backgroundColor].join(' | '), eyebrow: !!q('.g-eyebrow'),
+          pill: g('.btn-pill').backgroundColor, btn: g('#btn-open-modal').backgroundColor, mini: g('#g-mini').backgroundColor };
       });
       console.log('   shtick:', JSON.stringify(sh));
-      assert(sh.band === 'rgb(123, 45, 91) | 3px solid rgb(224, 184, 79)' && sh.h1 === 'rgb(251, 246, 236)', `${label} per-gemach theme band + accent rule, cream name`);
-      assert(sh.logo === 'g-logo | rgb(255, 255, 255)' && !sh.eyebrow, `${label} logoUrl -> light tile; no eyebrow when name doesn't start with community`);
+      assert(sh.band === 'rgb(123, 45, 91) | 3px solid rgb(224, 184, 79)' && sh.h1 === 'rgb(123, 45, 91)' && sh.mini === 'rgb(123, 45, 91)', `${label} per-gemach theme: band + accent rule, name and slim bar in the theme color`);
+      assert(sh.logo === 'g-logo | rgb(255, 255, 255)' && !sh.eyebrow, `${label} logoUrl -> white tile; no eyebrow when name doesn't start with community`);
       assert(sh.pill === 'rgb(224, 184, 79)', `${label} pill uses gemach accent (navy text contrast ok)`);
-      await checkPair('h1', '.hero-gemach', 4.5, 'shtick name on band');
-      await checkPair('.hero-gemach .tagline', '.hero-gemach', 4.5, 'shtick tagline on band');
+      await checkPair('h1', 'body', 4.5, 'shtick name on cream');
+      await checkPair('.net-pill', '.g-band', 4.5, 'shtick network pill on band');
+      await checkPair('.g-cta-solid', null, 4.5, 'shtick solid contact pill');
       await checkPair('.btn-pill', null, 4.5, 'shtick Donate pill');
       await csp();
       await page.evaluate(() => window.scrollTo(0, 0)); await shot('shtick-top', false);
 
       // ── Light theme (gowns #F4D9E0, no logo) ──
       await go('/g/gowns');
-      const gw = await page.evaluate(() => ({ logo: document.querySelector('.g-logo').className, txt: document.querySelector('.g-logo').textContent }));
-      assert(gw.logo === 'g-logo g-logo-initials' && gw.txt === 'AC', `${label} no logo -> initials avatar on band`);
-      await checkPair('h1', '.hero-gemach', 4.5, 'gowns name on light band');
-      await checkPair('.hero-gemach .tagline', '.hero-gemach', 4.5, 'gowns tagline (derived muted) on light band');
-      await checkPair('.g-logo-initials', null, 4.5, 'gowns initials');
+      const gw = await page.evaluate(() => ({ logo: document.querySelector('#g-head .g-logo').className, txt: document.querySelector('#g-head .g-logo').textContent }));
+      assert(gw.logo === 'g-logo g-logo-initials' && gw.txt === 'AC', `${label} no logo -> initials tile`);
+      await checkPair('h1', 'body', 4.5, 'gowns name on cream');
+      await checkPair('#g-head .tagline', 'body', 4.5, 'gowns tagline on cream');
+      await checkPair('.net-pill', '.g-band', 4.5, 'gowns network pill on light band');
+      await checkPair('#g-head .g-logo-initials', null, 4.5, 'gowns initials');
+      await checkPair('.g-cta-solid', null, 4.5, 'gowns solid contact pill');
+      await checkPair('.g-cta:not(.g-cta-solid)', null, 4.5, 'gowns outline contact pill');
+      await page.evaluate(() => window.scrollTo(0, document.getElementById('g-header').offsetHeight + 200)); await page.waitForTimeout(400);
+      await checkPair('.g-mini-name', '.g-mini', 4.5, 'gowns slim bar name on light band');
+      await checkPair('.g-mini .g-logo-initials', null, 4.5, 'gowns slim bar initials');
       await csp();
       await page.evaluate(() => window.scrollTo(0, 0)); await shot('gowns-top', false);
 
@@ -225,7 +252,7 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
 
       // ── v2 payload (no v3/v5 fields) still renders ──
       await go('/g/baby-gear');
-      const bb = await page.evaluate(() => ({ h1: document.querySelector('h1').textContent, band: getComputedStyle(document.querySelector('.hero-gemach')).borderBottom, init: !!document.querySelector('.g-logo-initials'), style: document.documentElement.getAttribute('style') }));
+      const bb = await page.evaluate(() => ({ h1: document.querySelector('h1').textContent, band: getComputedStyle(document.querySelector('.g-band')).borderBottom, init: !!document.querySelector('.g-logo-initials'), style: document.documentElement.getAttribute('style') }));
       assert(bb.h1 === 'Bais Chaim Baby Gear Gemach' && bb.band === '3px solid rgb(224, 166, 58)' && bb.init && !bb.style, `${label} v2 payload: network look, initials, gold rule`);
       await csp();
 
