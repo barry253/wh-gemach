@@ -175,7 +175,11 @@
   "source": "store",
   "matched": "israelbookshoppublications.com: I Can Ask Nicely",
   "year": null,
-  "file": "i-can-help.gif"
+  "file": "i-can-help.gif",
+  "alt": {
+   "file": "i-can-help-alt.gif",
+   "from": "israelbookshoppublications.com: I Can Ask Nicely"
+  }
  },
  "i-love-you-just-because-you-re-you": {
   "title": "I Love You, Just Because You're You",
@@ -286,7 +290,11 @@
   "source": "store",
   "matched": "israelbookshoppublications.com: Story Tyme with Rabbi Juravel - Chanukah",
   "year": 2008,
-  "file": "the-story-of-chanukah.jpg"
+  "file": "the-story-of-chanukah.jpg",
+  "alt": {
+   "file": "the-story-of-chanukah-alt.jpg",
+   "from": "israelbookshoppublications.com: Story Tyme with Rabbi Juravel - Chanukah"
+  }
  },
  "round-and-round-the-jewish-year": {
   "title": "Round and Round the Jewish Year",
@@ -306,7 +314,11 @@
   "source": "openlibrary-isbn",
   "matched": "9780899069760",
   "year": 1990,
-  "file": "rosh-hashanah-with-bina-benny-and-chaggai-hayonah.jpg"
+  "file": "rosh-hashanah-with-bina-benny-and-chaggai-hayonah.jpg",
+  "alt": {
+   "file": "rosh-hashanah-with-bina-benny-and-chaggai-hayonah-alt.jpg",
+   "from": "amazon 9780899069760"
+  }
  },
  "artscroll-children-s-siddur": {
   "title": "ArtScroll Children's Siddur",
@@ -333,7 +345,8 @@
   "source": "openlibrary-isbn",
   "matched": "9780899069784",
   "year": 1991,
-  "file": "succos-with-bina-benny-and-chaggai-hayonah.jpg"
+  "file": "succos-with-bina-benny-and-chaggai-hayonah.jpg",
+  "alt": null
  },
  "chanukah-with-bina-benny-and-chaggai-hayonah": {
   "title": "Chanukah with Bina, Benny, and Chaggai HaYonah",
@@ -361,7 +374,11 @@
   "source": "openlibrary-isbn",
   "matched": "9780899069777",
   "year": 1991,
-  "file": "yom-kippur-with-bina-benny-and-chaggai-hayonah.jpg"
+  "file": "yom-kippur-with-bina-benny-and-chaggai-hayonah.jpg",
+  "alt": {
+   "file": "yom-kippur-with-bina-benny-and-chaggai-hayonah-alt.jpg",
+   "from": "amazon 9780899069777"
+  }
  },
  "shavuos-with-bina-benny-and-chaggai-hayonah": {
   "title": "Shavuos with Bina, Benny, and Chaggai HaYonah",
@@ -410,7 +427,11 @@
   "source": "openlibrary-isbn",
   "matched": "9780899068169",
   "year": null,
-  "file": "tales-from-the-gemara-3.jpg"
+  "file": "tales-from-the-gemara-3.jpg",
+  "alt": {
+   "file": "tales-from-the-gemara-3-alt.jpg",
+   "from": "amazon 9780899068169"
+  }
  },
  "the-39-avoth-melacha-of-shabbath": {
   "title": "The 39 Avoth Melacha of Shabbath",
@@ -575,7 +596,8 @@
   "source": "openlibrary-isbn",
   "matched": "9781929628056",
   "year": 2001,
-  "file": "get-well-soon.jpg"
+  "file": "get-well-soon.jpg",
+  "alt": null
  },
  "shabbos-shabbos-i-love-you": {
   "title": "Shabbos, Shabbos, I Love You",
@@ -666,7 +688,11 @@
   "source": "openlibrary-isbn",
   "matched": "9780899065007",
   "year": 1988,
-  "file": "arrogant-ari-learns-a-lesson.jpg"
+  "file": "arrogant-ari-learns-a-lesson.jpg",
+  "alt": {
+   "file": "arrogant-ari-learns-a-lesson-alt.jpg",
+   "from": "amazon 9780899065007"
+  }
  },
  "the-very-good-fisherman": {
   "title": "The Very Good Fisherman",
@@ -722,21 +748,33 @@
   "source": "openlibrary-search",
   "matched": "Reb Yitzchak's jewel / Nosson Scherman",
   "year": 1988,
-  "file": "reb-yitzchak-s-jewel.jpg"
+  "file": "reb-yitzchak-s-jewel.jpg",
+  "alt": {
+   "file": "reb-yitzchak-s-jewel-alt.jpg",
+   "from": "amazon 9780899065250"
+  }
  },
  "tales-out-of-middos-town": {
   "title": "Tales Out of Middos Town",
   "source": "store",
   "matched": "israelbookshoppublications.com: Tales Out of Middos Town #4: Mr. Mesudar & Mr. Tzufloigen",
   "year": null,
-  "file": "tales-out-of-middos-town.gif"
+  "file": "tales-out-of-middos-town.gif",
+  "alt": {
+   "file": "tales-out-of-middos-town-alt.gif",
+   "from": "israelbookshoppublications.com: Tales Out of Middos Town #4: Mr. Mesudar & Mr. Tzufloigen"
+  }
  },
  "beis-hamikdash": {
   "title": "Beis Hamikdash",
   "source": "store",
   "matched": "israelbookshoppublications.com: Just Imagine! We're Going to the Beis Hamikdash",
   "year": null,
-  "file": "beis-hamikdash.jpg"
+  "file": "beis-hamikdash.jpg",
+  "alt": {
+   "file": "beis-hamikdash-alt.jpg",
+   "from": "israelbookshoppublications.com: Just Imagine! We're Going to the Beis Hamikdash"
+  }
  },
  "i-act-with-derech-eretz": {
   "title": "I Act with Derech Eretz",
@@ -843,7 +881,8 @@
   "source": "openlibrary-search",
   "matched": "The magic mirror and other stories / Enid Blyton",
   "year": 1983,
-  "file": "the-magic-mirror.jpg"
+  "file": "the-magic-mirror.jpg",
+  "alt": null
  },
  "shuki-s-upside-down-dream": {
   "title": "Shuki's Upside Down Dream",
@@ -875,14 +914,19 @@
   "source": "openlibrary-isbn",
   "matched": "9780922613762",
   "year": 1997,
-  "file": "the-very-best-book.jpg"
+  "file": "the-very-best-book.jpg",
+  "alt": {
+   "file": "the-very-best-book-alt.jpg",
+   "from": "amazon 9780922613762"
+  }
  },
  "avi-s-adventures-in-the-mitzvah-car": {
   "title": "Avi's Adventures in the Mitzvah Car",
   "source": "openlibrary-isbn",
   "matched": "9789652291387",
   "year": 1996,
-  "file": "avi-s-adventures-in-the-mitzvah-car.jpg"
+  "file": "avi-s-adventures-in-the-mitzvah-car.jpg",
+  "alt": null
  },
  "a-daily-dose-of-bitachon-for-children": {
   "title": "A Daily Dose of Bitachon for Children",
@@ -958,7 +1002,11 @@
   "source": "store",
   "matched": "israelbookshoppublications.com: Sha'ar Alef Bais",
   "year": null,
-  "file": "sefer-alef-bais.jpg"
+  "file": "sefer-alef-bais.jpg",
+  "alt": {
+   "file": "sefer-alef-bais-alt.jpg",
+   "from": "israelbookshoppublications.com: Sha'ar Alef Bais"
+  }
  },
  "and-then-there-were-four": {
   "title": "And Then There Were Four",
@@ -1109,7 +1157,8 @@
   "source": "openlibrary-isbn",
   "matched": "9781930925069",
   "year": 2004,
-  "file": "miracle-lights.jpg"
+  "file": "miracle-lights.jpg",
+  "alt": null
  },
  "the-terrifying-trap-of-the-bad-middos-pirates": {
   "title": "The Terrifying Trap of the Bad Middos Pirates",
@@ -1150,7 +1199,8 @@
   "source": "openlibrary-search",
   "matched": "Love and Respect for a Lifetime / Emerson Eggerichs",
   "year": 2023,
-  "file": "love-and-respect.jpg"
+  "file": "love-and-respect.jpg",
+  "alt": null
  },
  "the-garden-of-emuna": {
   "title": "The Garden of Emuna",
@@ -1283,7 +1333,8 @@
   "source": "openlibrary-search",
   "matched": "Uncle Arthur's Bedtime Stories / Arthur Stanley Maxwell",
   "year": 1928,
-  "file": "bedtime-stories.jpg"
+  "file": "bedtime-stories.jpg",
+  "alt": null
  },
  "the-story-of-sarah-schenirer": {
   "title": "The Story of Sarah Schenirer",
@@ -1339,7 +1390,11 @@
   "source": "openlibrary-isbn",
   "matched": "9781583305157",
   "year": 2002,
-  "file": "who-is-the-builder.jpg"
+  "file": "who-is-the-builder.jpg",
+  "alt": {
+   "file": "who-is-the-builder-alt.jpg",
+   "from": "amazon 9781583305157"
+  }
  },
  "tannaim-series-rabbi-meir-baal-hanes": {
   "title": "Tannaim Series: Rabbi Meir Baal HaNes",
@@ -1428,7 +1483,11 @@
   "source": "store",
   "matched": "israelbookshoppublications.com: Tell Me The Truth! - Expanded Edition",
   "year": null,
-  "file": "tell-me-a-tale.gif"
+  "file": "tell-me-a-tale.gif",
+  "alt": {
+   "file": "tell-me-a-tale-alt.gif",
+   "from": "israelbookshoppublications.com: Tell Me The Truth! - Expanded Edition"
+  }
  },
  "what-are-we-waiting-for": {
   "title": "What Are We Waiting For?",
@@ -1449,7 +1508,11 @@
   "source": "openlibrary-search",
   "matched": "More Maggid stories for children / Chaviva Krohn Pfeiffer",
   "year": 1998,
-  "file": "maggid-stories-for-children.jpg"
+  "file": "maggid-stories-for-children.jpg",
+  "alt": {
+   "file": "maggid-stories-for-children-alt.jpg",
+   "from": "amazon 9781578192953"
+  }
  },
  "watching-my-words": {
   "title": "Watching My Words",
@@ -1463,7 +1526,8 @@
   "source": "openlibrary-search",
   "matched": "Stories for a child's heart / Binyomin Pruzansky",
   "year": 2009,
-  "file": "stories-for-a-child-s-heart.jpg"
+  "file": "stories-for-a-child-s-heart.jpg",
+  "alt": null
  },
  "miracle-at-sea-and-other-stories": {
   "title": "Miracle at Sea and Other Stories",
@@ -1512,7 +1576,11 @@
   "source": "openlibrary-isbn",
   "matched": "9781578191741",
   "year": 1998,
-  "file": "bedtime-stories-of-jewish-holidays.jpg"
+  "file": "bedtime-stories-of-jewish-holidays.jpg",
+  "alt": {
+   "file": "bedtime-stories-of-jewish-holidays-alt.jpg",
+   "from": "amazon 9781578191741"
+  }
  },
  "just-love-them-for-children": {
   "title": "Just Love Them for Children",
@@ -1526,14 +1594,19 @@
   "source": "store",
   "matched": "israelbookshoppublications.com: Avigdor's Amazing Adventure Vol. 2",
   "year": null,
-  "file": "avigdor-s-amazing-adventure.jpg"
+  "file": "avigdor-s-amazing-adventure.jpg",
+  "alt": {
+   "file": "avigdor-s-amazing-adventure-alt.jpg",
+   "from": "israelbookshoppublications.com: Avigdor's Amazing Adventure Vol. 2"
+  }
  },
  "a-treasury-of-shabbos-bedtime-stories": {
   "title": "A Treasury of Shabbos Bedtime Stories",
   "source": "openlibrary-isbn",
   "matched": "9781578194315",
   "year": 2004,
-  "file": "a-treasury-of-shabbos-bedtime-stories.jpg"
+  "file": "a-treasury-of-shabbos-bedtime-stories.jpg",
+  "alt": null
  },
  "a-house-full-of-chesed": {
   "title": "A House Full of Chesed",
@@ -1648,7 +1721,11 @@
   "source": "openlibrary-search",
   "matched": "Picture Perfect / Sukey S. Gross",
   "year": 1992,
-  "file": "picture-perfect.jpg"
+  "file": "picture-perfect.jpg",
+  "alt": {
+   "file": "picture-perfect-alt.jpg",
+   "from": "www.menuchapublishers.com: Picture Perfect"
+  }
  },
  "time-bomb": {
   "title": "Time Bomb",
@@ -1703,7 +1780,11 @@
   "source": "openlibrary-isbn",
   "matched": "9781881939085",
   "year": 1996,
-  "file": "a-midrash-and-a-maaseh.jpg"
+  "file": "a-midrash-and-a-maaseh.jpg",
+  "alt": {
+   "file": "a-midrash-and-a-maaseh-alt.jpg",
+   "from": "amazon 9781881939085"
+  }
  },
  "forever-a-talmid": {
   "title": "Forever a Talmid",
@@ -1749,7 +1830,11 @@
   "source": "openlibrary-isbn",
   "matched": "9781881939054",
   "year": 1990,
-  "file": "give-peace-a-stance.jpg"
+  "file": "give-peace-a-stance.jpg",
+  "alt": {
+   "file": "give-peace-a-stance-alt.jpg",
+   "from": "amazon 9781881939054"
+  }
  },
  "the-house-that-shlomo-built": {
   "title": "The House That Shlomo Built",
@@ -1802,7 +1887,11 @@
   "source": "openlibrary-isbn",
   "matched": "9780899069814",
   "year": 1991,
-  "file": "pesach-with-bina-benny-and-chaggai-hayonah.jpg"
+  "file": "pesach-with-bina-benny-and-chaggai-hayonah.jpg",
+  "alt": {
+   "file": "pesach-with-bina-benny-and-chaggai-hayonah-alt.jpg",
+   "from": "amazon 9780899069814"
+  }
  },
  "loving-kindness": {
   "title": "Loving Kindness",
