@@ -35,7 +35,7 @@ def image(url):
     if not r: return None
     data, ct = r
     if len(data) < 2500 or not ct.startswith("image/"): return None  # placeholders / 1×1 gifs
-    return data, ("png" if "png" in ct else "jpg")
+    return data, ("png" if "png" in ct else "gif" if "gif" in ct else "webp" if "webp" in ct else "jpg")
 
 def isbn10(isbn):
     if len(isbn) == 10: return isbn
@@ -62,6 +62,24 @@ def google_cover(item):
     for zoom in ("&zoom=0", ""):  # zoom=0 is often the larger scan
         img = image(re.sub(r"&zoom=\d", "", u) + zoom if zoom else u)
         if img: return img
+    return None
+
+STORES = ["israelbookshoppublications.com", "www.menuchapublishers.com", "www.feldheim.com", "www.hachai.com", "www.eichlers.com",
+          "www.judaicaplace.com", "www.artscroll.com", "www.mekorjudaica.com", "www.seforimcenter.com", "www.zaidysjudaica.com"]
+
+def store_cover(b):
+    """Jewish publishers / bookstores on Shopify: /search/suggest.json gives product titles + images."""
+    q = urllib.parse.quote(b["title"])
+    for host in STORES:
+        d = get(f"https://{host}/search/suggest.json?q={q}&resources[type]=product&resources[limit]=5")
+        prods = (((d or {}).get("resources") or {}).get("results") or {}).get("products") or []
+        for pr in prods:
+            if not title_ok(b["title"], pr.get("title", "")): continue
+            u = pr.get("image") or (pr.get("featured_image") or {}).get("url")
+            if not u: continue
+            if u.startswith("//"): u = "https:" + u
+            img = image(u + ("&" if "?" in u else "?") + "width=900")
+            if img: return img, f'{host}: {pr.get("title")}'
     return None
 
 books = json.load(open(os.path.join(HERE, "books.json")))
@@ -109,6 +127,9 @@ def one(b):
                 got, m["source"], m["matched"] = img, "openlibrary-search", f'{doc.get("title")} / {", ".join(doc.get("author_name", [])[:2])}'
                 m["year"] = m["year"] or doc.get("first_publish_year")
                 break
+    if not got:
+        r = store_cover(b)
+        if r: (got, m["matched"]), m["source"] = r, "store"
     if got:
         data, ext = got
         open(os.path.join(RAW, f"{key}.{ext}"), "wb").write(data)
