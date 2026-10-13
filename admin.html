@@ -5279,6 +5279,7 @@
     email:              { label: "Email",               type: "email", max: 200, hint: "Request notifications go here; borrowers' replies too." },
     depositInfo:        { label: "Deposit / payment info", type: "area",  max: 2000, rows: 2, placeholder: "e.g. $100 refundable check, returned when the item comes back — or: $15 per tablecloth, paid by Zelle to …", hint: "Shown on your page and on the request form. Say how much, how to pay, and whether it comes back." },
     gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
+    requestFormUrl:     { label: "Request form link",   type: "url",   max: 600, placeholder: "https://forms.gle/…", hint: "Only for Listing only gemachs that take requests through their own form (e.g. a Google Form). Your page shows an “Open the request form” button instead of live availability." },
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
   };
   // Settings are split into four areas (sub-tabs); one Save covers all of them.
@@ -5307,7 +5308,7 @@
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
     info: ["depositRequired", "chargeType", "depositInfo", "gemachInfo"],
-    requests: ["requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
+    requests: ["requestFormUrl", "requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
     reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView"],
     attrs: ["itemAttributes"], browsecats: ["browseCategoryIds"],
   };
@@ -5461,6 +5462,7 @@
         ["Appointment", "Book an appointment", "Borrowers ask for an appointment and suggest times; you confirm a time."],
       ];
       inner += `
+        <div id="request-form-wrap">${fieldHtml("requestFormUrl")}</div>
         <div class="form-group" role="radiogroup" aria-label="Request style">
           <label>Request style</label>
           ${styles.map(([v, t, d]) => `<label class="radio-card" id="rs-card-${v}">
@@ -5587,11 +5589,15 @@
     setEl("title").textContent = g.name || "";
     setEl("slug").textContent = `${g.slug || ""}${g.communityName ? " · " + g.communityName : ""}`;
     const listing = g.mode === "Directory", infoOnly = g.mode === "Info";
+    const formWrap = document.getElementById("request-form-wrap");
+    if (formWrap) formWrap.hidden = !(listing || g.requestFormUrl); // only Listing only gemachs use it
     setEl("mode").textContent = (infoOnly ? "Info only" : listing ? "Listing only" : "Online requests") + (g.comingSoon ? " · Coming soon" : "");
     const modeHelp = (infoOnly
       ? "Your public page shows your General info in a large box with contact buttons; no items or online requests."
       : listing
-      ? "Your public page shows contact details only; borrowers can't send requests online."
+      ? (g.requestFormUrl
+        ? "Your public page shows your items (no live availability) and an “Open the request form” button that goes to your own form."
+        : "Your public page shows your items and contact details (no live availability); borrowers can't send requests online.")
       : "Borrowers can see your items and send requests online.") +
       (g.comingSoon ? " It's marked Coming soon: listed on the home page, but not in search and not taking requests yet." : "");
     setEl("mode").title = modeHelp;

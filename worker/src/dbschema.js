@@ -65,6 +65,7 @@ const TABLES = {
       "Theme Color": t("theme_color"), "Accent Color": t("accent_color"),
       "Deposit Required": b("deposit_required"), "Charge Type": t("charge_type"), "Deposit Info": t("deposit_info"),
       "Gemach Info": t("gemach_info"),
+      "Request Form URL": t("request_form_url"), // optional: Listing-only gemachs send borrowers to their own form (e.g. a Google Form)
       "Request Style": t("request_style"), "Event Label": t("event_label"),
       "Pickup Days Before": n("pickup_days_before"), "Return Days After": n("return_days_after"), "Shabbos Adjust": b("shabbos_adjust"),
       "Default Loan Days": n("default_loan_days"), // optional: fills in the due date when lending (blank = ask each time)

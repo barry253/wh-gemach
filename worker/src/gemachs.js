@@ -27,7 +27,7 @@ const clampInt = (v, lo, hi, dflt) => {
 // Activity Log, lists that only grow — reading them costs the worker CPU for nothing, so reads name their fields.
 const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", "Website", "Donation URL", "Donation Info", "Hours",
   "Description", "Category", "Mode", "Primary Contact", "Secondary Contact", "Theme Color", "Accent Color", "Deposit Required",
-  "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Style", "Event Label", "Pickup Days Before", "Return Days After", "Default Loan Days",
+  "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Form URL", "Request Style", "Event Label", "Pickup Days Before", "Return Days After", "Default Loan Days",
   "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
   "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories"];
@@ -66,6 +66,7 @@ function gemachFromRecord(r) {
     itemView: ITEM_VIEWS.includes(selName(f["Item View"])) ? selName(f["Item View"]) : "List", // how items first show on the public page
     depositInfo: nonBlank(f["Deposit Info"]),
     gemachInfo: nonBlank(f["Gemach Info"]),
+    requestFormUrl: formUrl(f["Request Form URL"]),                         // optional; Listing-only page shows a "Request on our form" button
     requestStyle: REQUEST_STYLES.includes(selName(f["Request Style"])) ? selName(f["Request Style"]) : "Dates",
     eventLabel: nonBlank(f["Event Label"]) ? String(f["Event Label"]).trim() : DEFAULT_EVENT_LABEL,
     pickupDaysBefore: clampInt(f["Pickup Days Before"], 0, 14, 1),
@@ -94,6 +95,13 @@ function gemachFromRecord(r) {
     comingSoon: !!f["Coming Soon"],                              // listed, not searchable, no requests (only meaningful when active)
     browseCategoryIds: (f["Browse Categories"] || []).map(linkedId).filter(Boolean),
   };
+}
+
+/** "Request Form URL": an https:// link, else null (not set). */
+function formUrl(v) {
+  const s = nonBlank(v);
+  if (!s) return null;
+  try { const u = new URL(s); return u.protocol === "https:" ? u.href : null; } catch { return null; }
 }
 
 /** "Default Loan Days": a whole number 1..365, else null (not set). */

@@ -299,8 +299,22 @@
       rows.join("") + (btns ? '<div class="io-actions">' + btns + "</div>" : "") + "</section>";
   }
 
+  /** Listing-only gemachs can send borrowers to their own request form (e.g. a Google Form). https only. */
+  function formUrl() {
+    var g = gemach;
+    if (!g || !W.isDirectory(g) || W.isComingSoon(g)) return null;
+    var u = W.safeUrl(g.requestFormUrl);
+    return u && /^https:/i.test(u) ? u : null;
+  }
+  function formNotice() {
+    var u = formUrl();
+    return '<div class="notice form-notice"><p>This gemach takes requests through its own form. Browse the items here, then open the form and list the ones you’d like.</p>' +
+      '<a class="btn btn-primary" href="' + esc(u) + '" target="_blank" rel="noopener">Open the request form</a></div>';
+  }
+
   function availBadge(it) {
     if (W.isComingSoon(gemach)) return "";
+    if (formUrl()) return "";
     if (W.isDirectory(gemach)) return '<span class="badge badge-dir">Contact to check</span>';
     if (isAddon(it)) return '<span class="badge badge-addon">Add-on' + (it.price != null ? " · " + money(it.price) : "") + "</span>";
     if (style() === "Appointment") return "";
@@ -585,6 +599,7 @@
     var soon = W.isComingSoon(gemach) && !W.isDirectory(gemach);
     var html = "";
     if (!items.length) {
+      if (formUrl()) return formNotice();
       html = '<div class="notice notice-info">' + (dir
         ? "Please contact this gemach directly to borrow — use the call, WhatsApp or email buttons above."
         : "This gemach hasn’t listed its items online yet. Please contact them directly using the buttons above.") + "</div>";
@@ -628,6 +643,8 @@
     };
     html += soon
       ? '<p class="inv-help">A preview of what this gemach will lend. It isn’t taking requests online yet — contact them using the buttons above.</p>'
+      : formUrl()
+      ? formNotice()
       : dir
       ? '<div class="notice">This gemach is listed in our directory. To borrow, contact them directly using the buttons above.</div>'
       : '<p class="inv-help">' + help[st] + "</p>";
@@ -713,6 +730,17 @@
     updateCTA();
   }
   function updateCTA() {
+    var form = formUrl();
+    if (form) { // Listing only + request form: the bar just opens the gemach's form
+      $("cta-count").textContent = "Found what you need?";
+      $("cta-suffix").hidden = true;
+      $("cta-clear").hidden = true;
+      $("sticky-cta").classList.add("visible", "always");
+      document.body.classList.add("has-cta");
+      $("btn-open-modal").textContent = "Open the request form";
+      return;
+    }
+    $("sticky-cta").classList.remove("always");
     var n = selected.size;
     var appt = W.acceptsRequests(gemach) && style() === "Appointment";
     $("cta-count").textContent = appt && !n ? "Visit by appointment" : (n === 1 ? "1 item" : n + " items");
@@ -1010,7 +1038,11 @@
     modal.classList.remove("open"); modal.hidden = true; lockScroll(false);
     if (lastFocus && lastFocus.focus && document.body.contains(lastFocus)) lastFocus.focus();
   }
-  $("btn-open-modal").addEventListener("click", openModal);
+  $("btn-open-modal").addEventListener("click", function (e) {
+    var form = formUrl();
+    if (form) { window.open(form, "_blank", "noopener"); return; }
+    openModal(e);
+  });
   $("modal-close").addEventListener("click", closeModal);
   $("success-done").addEventListener("click", closeModal);
   $("manage-copy").addEventListener("click", function () {

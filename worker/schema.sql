@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS gemachs (
   charge_type TEXT,  -- Charge Type
   deposit_info TEXT,  -- Deposit Info
   gemach_info TEXT,  -- Gemach Info
+  request_form_url TEXT,  -- Request Form URL
   request_style TEXT,  -- Request Style
   event_label TEXT,  -- Event Label
   pickup_days_before REAL,  -- Pickup Days Before

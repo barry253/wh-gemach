@@ -2645,6 +2645,24 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.equal((await (await call(`/public/gemach/${G.slug}?p=2`)).json()).gemach.chargeType, "Payment");
   });
 
+  await t("request form link: blank by default; Settings saves an https link; http/garbage refused; blank clears", async () => {
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?f=1`)).json()).gemach.requestFormUrl, null);
+    const form = "https://docs.google.com/forms/d/e/1FAIpQLSexample/viewform?usp=sf_link";
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ requestFormUrl: form }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).requestFormUrl, form);
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Request Form URL"], form);
+    for (const bad of ["http://docs.google.com/forms/x", "not a link", "javascript:alert(1)", "https://" + "a".repeat(600) + ".com"]) {
+      assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ requestFormUrl: bad }) })).status, 400, bad);
+    }
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?f=2`)).json()).gemach.requestFormUrl, form);
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ requestFormUrl: "" }) });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).requestFormUrl, null);
+  });
+
   await t("item view: blank = List; Settings sets Grid/Photos; bad value refused", async () => {
     __WHG_TEST__.clearMemo();
     assert.equal((await (await call(`/public/gemach/${G.slug}?v=1`)).json()).gemach.itemView, "List");

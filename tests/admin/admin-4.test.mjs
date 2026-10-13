@@ -132,7 +132,8 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   st.requests = null;
   await page.click("text=Settings");
   await page.waitForSelector("#set-name");
-  ok(await page.textContent("#set-mode") === "Listing only" && (await page.textContent("#set-mode-help")).includes("contact details only"), "mode shown in plain words + help");
+  ok(await page.textContent("#set-mode") === "Listing only" && (await page.textContent("#set-mode-help")).includes("no live availability"), "mode shown in plain words + help");
+  ok(await page.$eval("#request-form-wrap", el => !el.hidden), "request form link field offered for Listing only");
   ok(await page.textContent("#set-public-url") === "https://whgemachs.org/g/wh-medical", "public URL shown");
   ok((await page.getAttribute("#share-url-btn", "href")).startsWith("https://wa.me/?text=") && (await page.getAttribute("#share-url-btn", "href")).includes(encodeURIComponent("https://whgemachs.org/g/wh-medical")), "WhatsApp share link");
   ok(await page.getAttribute("#open-url-btn", "href") === "https://whgemachs.org/g/wh-medical", "Open link");

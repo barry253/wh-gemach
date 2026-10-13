@@ -1045,3 +1045,8 @@ fieldset { border: 0; }
 .lightbox.has-desc { flex-direction: column; padding-bottom: calc(1rem + env(safe-area-inset-bottom)); gap: .75rem; }
 .lightbox.has-desc img { flex: 1 1 0; min-height: 0; width: 100%; max-height: none; object-fit: contain; background: transparent; }
 .lightbox.has-desc .lightbox-caption { position: static; flex: 0 0 auto; max-height: 34vh; overflow-y: auto; width: 100%; }
+
+/* Listing-only gemach with its own request form (e.g. a Google Form) */
+.notice.form-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+.notice.form-notice p { margin: 0; flex: 1 1 16rem; }
+.notice.form-notice .btn { flex: 0 0 auto; }

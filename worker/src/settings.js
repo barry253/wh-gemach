@@ -97,6 +97,7 @@ const GEMACH_EDITABLE = {
   itemView:           ["Item View", "view"],
   depositInfo:        ["Deposit Info", "long"],
   gemachInfo:         ["Gemach Info", "long"],
+  requestFormUrl:     ["Request Form URL", "formurl"],
   requestStyle:       ["Request Style", "style"],
   eventLabel:         ["Event Label", "label"],
   pickupDaysBefore:   ["Pickup Days Before", "days"],
@@ -118,12 +119,12 @@ const GEMACH_LABELS = {
   pickupInstructions: "Pickup instructions", confirmMessage: "Confirm message", declineMessage: "Decline message",
   pickupMessage: "Pickup message", name: "Gemach name",
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
-  depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestStyle: "Request style",
+  depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
-const MAX_LINE = 200, MAX_LONG = 2000;
+const MAX_LINE = 200, MAX_LONG = 2000, MAX_FORM_URL = 600; // pre-filled Google Form links run long
 const EMAIL_RE = /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[^\s@<>()",;]+$/;
 
 /**
@@ -227,7 +228,7 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
       fields[field] = v;
       continue;
     }
-    const max = kind === "long" ? MAX_LONG : kind === "label" ? 60 : MAX_LINE;
+    const max = kind === "long" ? MAX_LONG : kind === "label" ? 60 : kind === "formurl" ? MAX_FORM_URL : MAX_LINE;
     if (v.length > max) return { error: `${label} is too long (max ${max} characters).` };
     if (v && kind === "email" && !EMAIL_RE.test(v)) return { error: `${label} doesn't look like a valid email address.` };
     if (v && kind === "url") {
@@ -237,6 +238,14 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
       if (u.username || u.password) return { error: `${label} must not contain a username or password.` };
       v = u.href; // store the normalized form
       if (v.length > MAX_LINE) return { error: `${label} is too long (max ${MAX_LINE} characters).` };
+    }
+    if (v && kind === "formurl") {
+      let u = null;
+      try { u = new URL(v); } catch { /* invalid */ }
+      if (!u || u.protocol !== "https:" || !u.hostname.includes(".")) return { error: `${label} must be a full web address starting with https://.` };
+      if (u.username || u.password) return { error: `${label} must not contain a username or password.` };
+      v = u.href;
+      if (v.length > MAX_FORM_URL) return { error: `${label} is too long (max ${MAX_FORM_URL} characters).` };
     }
     fields[field] = v === "" ? null : v;
   }
