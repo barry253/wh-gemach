@@ -2189,8 +2189,17 @@
       <input type="text" id="it-name" placeholder="e.g. Wheelchair" />
     </div>
     <div class="form-group">
+      <label for="it-byline">Line under the name <span style="color:var(--muted);font-weight:400">— optional</span></label>
+      <input type="text" id="it-byline" maxlength="120" placeholder="e.g. a book's author: Dina Rosenfeld · Hachai" />
+    </div>
+    <div class="form-group">
       <label>Description</label>
       <textarea id="it-description" rows="3" placeholder="Help borrowers understand what this item is"></textarea>
+    </div>
+    <div class="form-group">
+      <label for="it-search">Extra search words <span style="color:var(--muted);font-weight:400">— optional</span></label>
+      <input type="text" id="it-search" maxlength="300" placeholder="e.g. series name, topic, other spellings" />
+      <div class="muted-small" style="margin-top:0.3rem">Never shown — helps searches on your page and the home page find this item.</div>
     </div>
     <div class="form-group">
       <label for="it-category">Browse category</label>
@@ -2201,6 +2210,20 @@
       <label>Filters</label>
       <div id="it-attrs"></div>
       <div class="muted-small" style="margin-top:0.2rem">Tap to choose. Borrowers can filter and sort by these on your page. Change the choices in Settings → Item filters.</div>
+    </div>
+    <div class="form-group">
+      <label>Highlight on your page</label>
+      <div class="checkbox-row" style="margin-bottom:0.5rem">
+        <input type="checkbox" id="it-featured" />
+        <label for="it-featured">Featured — show it in the “Featured” row at the top</label>
+      </div>
+      <label for="it-new-until" style="font-weight:500">New until</label>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+        <input type="date" id="it-new-until" style="max-width:12rem" />
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setNewUntil(180)">New for 6 months</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setNewUntil(null)">Not new</button>
+      </div>
+      <div class="muted-small" style="margin-top:0.3rem">Shown in “New releases” with a New tag through this date. Leave blank if it isn't new.</div>
     </div>
     <div class="form-group">
       <label for="it-tracking">How do you keep track of these?</label>
@@ -5343,6 +5366,7 @@
     gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
     requestFormUrl:     { label: "Request form link",   type: "url",   max: 600, placeholder: "https://forms.gle/…", hint: "Only for Listing only gemachs that take requests through their own form (e.g. a Google Form). Your page shows an “Open the request form” button instead of live availability." },
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
+    borrowNote:         { label: "How to borrow",       type: "area",  max: 2000, rows: 3, placeholder: "e.g. Come visit during our open hours to browse and borrow — up to 3 books at a time.", hint: "Only for Listing only gemachs. Shown above your items instead of “contact them directly”, and the “Contact to check” tags are dropped." },
   };
   // Settings are split into four areas (sub-tabs); one Save covers all of them.
   const SETTINGS_AREAS = [
@@ -5370,9 +5394,9 @@
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
     info: ["depositRequired", "chargeType", "depositInfo", "gemachInfo"],
-    requests: ["requestFormUrl", "requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
-    reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView"],
-    attrs: ["itemAttributes"], browsecats: ["browseCategoryIds"],
+    requests: ["requestFormUrl", "borrowNote", "requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
+    reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView", "photoShape"],
+    attrs: ["itemAttributes", "groupBy", "spotlightFilter"], browsecats: ["browseCategoryIds"],
   };
   function settingsKeyArea(key) {
     for (const gr of SETTINGS_GROUPS) {
@@ -5525,6 +5549,7 @@
       ];
       inner += `
         <div id="request-form-wrap">${fieldHtml("requestFormUrl")}</div>
+        <div id="borrow-note-wrap">${fieldHtml("borrowNote")}</div>
         <div class="form-group" role="radiogroup" aria-label="Request style">
           <label>Request style</label>
           ${styles.map(([v, t, d]) => `<label class="radio-card" id="rs-card-${v}">
@@ -5572,6 +5597,13 @@
             <span>Grid<small>Photo tiles, two across on a phone. Good for browsing many looks, like gowns or tablecloths.</small></span></label>
           <label class="radio-card"><input type="radio" name="set-itemView" value="Photos" onchange="onSettingsInput()" />
             <span>Large photos<small>One item at a time across the screen; swipe through its photos.</small></span></label>
+        </div>
+        <div class="form-group" role="radiogroup" aria-label="Photo shape" style="margin:0.9rem 0 0">
+          <label>Photo shape</label>
+          <label class="radio-card"><input type="radio" name="set-photoShape" value="Landscape" onchange="onSettingsInput()" />
+            <span>Wide or square<small>The usual — most photos of equipment and clothing.</small></span></label>
+          <label class="radio-card"><input type="radio" name="set-photoShape" value="Portrait" onchange="onSettingsInput()" />
+            <span>Tall<small>For book covers and other tall photos, so they aren't cut off.</small></span></label>
         </div>`;
     }
     if (group.extra === "attrs") {
@@ -5579,7 +5611,20 @@
         <p class="settings-help" style="margin:0 0 0.6rem">Let borrowers filter your items — e.g. <b>Size</b> and <b>Color</b> for gowns. Most gemachs don't need this.
           List the choices in the order to sort by (sizes small → large); then pick each item's values when you edit it.</p>
         <div id="attr-defs"></div>
-        ${ro ? "" : `<div class="attr-presets" id="attr-presets"></div>`}`;
+        ${ro ? "" : `<div class="attr-presets" id="attr-presets"></div>`}
+        <div class="settings-grid2" style="margin-top:0.9rem">
+          <div class="form-group">
+            <label for="set-groupBy">Split your page into sections by</label>
+            <select id="set-groupBy" onchange="onSettingsInput()"></select>
+            <div class="muted-small" style="margin-top:0.3rem">E.g. a “Shelf” filter: each choice becomes a heading with its items, in the order listed, and a jump bar at the top.</div>
+          </div>
+          <div class="form-group">
+            <label for="set-spotlightFilter">Holiday spotlight from</label>
+            <select id="set-spotlightFilter" onchange="onSettingsInput()"></select>
+            <div class="muted-small" style="margin-top:0.3rem">A filter whose choices are holidays (Rosh Hashanah, Sukkos, Chanukah, Purim, Pesach, Shavuos…). About a month before each one, its items show in a row at the top.</div>
+          </div>
+        </div>
+        <div class="muted-small">New filters show up in these two lists after you save.</div>`;
     }
     return `<div class="section-label" id="settings-sec-${group.title.toLowerCase().replace(/\s+/g, "-")}">${group.title}</div>
       <div class="card" style="margin-bottom:1.25rem">${inner}</div>`;
@@ -5653,6 +5698,8 @@
     const listing = g.mode === "Directory", infoOnly = g.mode === "Info";
     const formWrap = document.getElementById("request-form-wrap");
     if (formWrap) formWrap.hidden = !(listing || g.requestFormUrl); // only Listing only gemachs use it
+    const noteWrap = document.getElementById("borrow-note-wrap");
+    if (noteWrap) noteWrap.hidden = !(listing || g.borrowNote);
     setEl("mode").textContent = (infoOnly ? "Info only" : listing ? "Listing only" : "Online requests") + (g.comingSoon ? " · Coming soon" : "");
     const modeHelp = (infoOnly
       ? "Your public page shows your General info in a large box with contact buttons; no items or online requests."
@@ -5700,6 +5747,15 @@
     const view = ["List", "Grid", "Photos"].includes(g.itemView) ? g.itemView : "List";
     document.querySelectorAll('input[name="set-itemView"]').forEach(r => { r.checked = r.value === view; r.disabled = ro; });
     remember("itemView", view);
+    const shape = g.photoShape === "Portrait" ? "Portrait" : "Landscape";
+    document.querySelectorAll('input[name="set-photoShape"]').forEach(r => { r.checked = r.value === shape; r.disabled = ro; });
+    remember("photoShape", shape);
+    for (const k of ["groupBy", "spotlightFilter"]) {
+      const sel = setEl(k), cur = g[k] || "";
+      sel.innerHTML = '<option value="">— none —</option>' + (g.itemAttributes || []).map(a => `<option value="${esc(a.name)}">${esc(a.name)}</option>`).join("");
+      sel.value = cur; sel.disabled = ro;
+      remember(k, cur);
+    }
     const style = ["Dates", "Event", "Appointment"].includes(g.requestStyle) ? g.requestStyle : "Dates";
     document.querySelectorAll('input[name="set-requestStyle"]').forEach(r => { r.checked = r.value === style; r.disabled = ro; });
     remember("requestStyle", style);
@@ -6270,6 +6326,9 @@
     put("depositRequired", setEl("depositRequired").checked);
     put("chargeType", document.querySelector('input[name="set-chargeType"]:checked')?.value || "Deposit");
     put("itemView", document.querySelector('input[name="set-itemView"]:checked')?.value || "List");
+    put("photoShape", document.querySelector('input[name="set-photoShape"]:checked')?.value || "Landscape");
+    put("groupBy", setEl("groupBy").value);
+    put("spotlightFilter", setEl("spotlightFilter").value);
     put("requestStyle", document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates");
     for (const k of ["pickupDaysBefore", "returnDaysAfter"]) {
       const raw = setEl(k).value.trim();
@@ -7435,7 +7494,33 @@
       const v = Object.entries(a).find(([k]) => attrKey(k) === attrKey(d.name))?.[1];
       return v?.length ? `${d.name} ${v.join(", ")}` : "";
     }).filter(Boolean);
+    if (type.byline) parts.unshift(type.byline);
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    if (type.featured) parts.push("★ Featured");
+    if (type.newUntil && type.newUntil >= today) parts.push(`New until ${type.newUntil}`);
     return parts.length ? `<div class="inv-attrs">${esc(parts.join(" · "))}</div>` : "";
+  }
+
+  /** Byline / search words / Featured / New until on the item sheet (originals kept to send only changes). */
+  let extrasOriginal = "";
+  const extrasFromSheet = () => JSON.stringify({
+    byline: document.getElementById("it-byline").value.replace(/\s+/g, " ").trim(),
+    searchWords: document.getElementById("it-search").value.replace(/\s+/g, " ").trim(),
+    featured: document.getElementById("it-featured").checked,
+    newUntil: document.getElementById("it-new-until").value || "",
+  });
+  function setExtraFields(t) {
+    document.getElementById("it-byline").value = t.byline || "";
+    document.getElementById("it-search").value = t.searchWords || "";
+    document.getElementById("it-featured").checked = !!t.featured;
+    document.getElementById("it-new-until").value = t.newUntil || "";
+    extrasOriginal = extrasFromSheet();
+  }
+  function setNewUntil(days) {
+    const el = document.getElementById("it-new-until");
+    if (days == null) { el.value = ""; return; }
+    const d = new Date(); d.setDate(d.getDate() + days);
+    el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
   function openAddItemType() {
@@ -7452,6 +7537,7 @@
     renderItemAttrPickers({});
     itemAttrOriginal = "{}";
     setTrackingFields({ tracking: "Units", quantityOwned: "", outOfService: "", itemCount: 0 });
+    setExtraFields({});
     clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
     openSheet("item-type-sheet");
@@ -7524,6 +7610,7 @@
     renderItemAttrPickers(t.attributes || {});
     if (Object.keys(t.attributes || {}).length && itemAttrsJson() === "{}") itemAttrOriginal = "(orphans)";
     setTrackingFields(t);
+    setExtraFields(t);
     clearPhotoUI();
     document.getElementById("item-type-submit-btn").onclick = saveItemType;
     openSheet("item-type-sheet");
@@ -7545,6 +7632,10 @@
     const tracking = document.getElementById("it-tracking").value;
     if (!editingItemTypeId || tracking !== editingTracking) body.tracking = tracking;
     if ((GEMACH?.itemAttributes || []).length && itemAttrsJson() !== itemAttrOriginal) body.attributes = JSON.parse(itemAttrsJson());
+    {
+      const now = JSON.parse(extrasFromSheet()), was = JSON.parse(extrasOriginal || "{}");
+      for (const k of ["byline", "searchWords", "featured", "newUntil"]) if (now[k] !== was[k]) body[k] = now[k];
+    }
     if (tracking === "Quantity") {
       const owned = document.getElementById("it-owned").value.trim();
       const oos = document.getElementById("it-oos").value.trim();

@@ -318,7 +318,7 @@
   function availBadge(it) {
     if (W.isComingSoon(gemach)) return "";
     if (formUrl()) return "";
-    if (W.isDirectory(gemach)) return '<span class="badge badge-dir">Contact to check</span>';
+    if (W.isDirectory(gemach)) return borrowNote() ? "" : '<span class="badge badge-dir">Contact to check</span>';
     if (isAddon(it)) return '<span class="badge badge-addon">Add-on' + (it.price != null ? " · " + money(it.price) : "") + "</span>";
     if (style() === "Appointment") return "";
     var n = Math.max(0, it.availableCount || 0);
@@ -348,7 +348,7 @@
       var pool = items.filter(function (it) { return !cat || it.categoryId === cat.id; });
       var hays = pool.map(function (it) {
         var c = catOf[it.categoryId];
-        return W.makeHay([it.name, it.description, c && c.name, c && (c.keywords || []).join(" "), gemach && gemach.name, W.attrText(it)]);
+        return W.makeHay([it.name, it.byline, it.searchWords, it.description, c && c.name, c && (c.keywords || []).join(" "), gemach && gemach.name, W.attrText(it)]);
       });
       var run = function (mode) {
         return pool.filter(function (it, i) {
@@ -398,11 +398,119 @@
 
   // ── Item filters (gemach-defined, e.g. Size / Color) ──
   function attrDefs() { return (gemach && Array.isArray(gemach.itemAttributes)) ? gemach.itemAttributes : []; }
+  /** A gemach setting naming one of its filters (sections / holiday spotlight) → that filter, else null. */
+  function defNamed(name) {
+    if (!name) return null;
+    var k = String(name).toLowerCase();
+    return attrDefs().filter(function (d) { return d.name.toLowerCase() === k; })[0] || null;
+  }
+  function groupDef() { return defNamed(gemach && gemach.groupBy); }
+  /** Filters shown on each item (the section filter is already the heading above it). */
+  function shownDefs() { var gd = groupDef(); return attrDefs().filter(function (d) { return !gd || d.name !== gd.name; }); }
+  function spotDef() { return defNamed(gemach && gemach.spotlightFilter); }
+
+  // ── Catalog extras: byline, New tag, Featured / New / holiday strips, sections ──
+  /** Today in New York as YYYY-MM-DD (tests can set window.WHG_TODAY). */
+  function nyToday() {
+    if (window.WHG_TODAY) return window.WHG_TODAY;
+    try { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
+    catch (e) { return new Date().toISOString().slice(0, 10); }
+  }
+  function isNew(it) { return !!(it && it.newUntil && it.newUntil >= nyToday()); }
+  function newTag(it) { return isNew(it) ? ' <span class="tag-new">New</span>' : ""; }
+  function bylineHtml(it, cls) { return it.byline ? '<div class="' + cls + '">' + esc(it.byline) + "</div>" : ""; }
+  function borrowNote() {
+    var g = gemach;
+    return g && W.isDirectory(g) && !W.isComingSoon(g) && !formUrl() && g.borrowNote ? String(g.borrowNote) : "";
+  }
+  function borrowNoteHtml() { return '<div class="notice borrow-note">' + W.formatRich(borrowNote()) + "</div>"; }
+
+  // Holidays a spotlight filter's values can name (spellings compared without apostrophes / case).
+  // m = Hebrew month names as Intl gives them; shown from LEAD days before the first day through the last.
+  var HOLIDAYS = [
+    { label: "Rosh Hashanah", m: ["Tishri"], d: 1, len: 2, names: ["rosh hashanah", "rosh hashana", "rosh hashono"] },
+    { label: "Yom Kippur", m: ["Tishri"], d: 10, len: 1, names: ["yom kippur"] },
+    { label: "Sukkos", m: ["Tishri"], d: 15, len: 9, names: ["sukkos", "sukkot", "succos", "succot", "simchas torah", "simchat torah"] },
+    { label: "Chanukah", m: ["Kislev"], d: 25, len: 8, names: ["chanukah", "hanukkah", "chanuka", "hanukah", "hanuka"] },
+    { label: "Tu B’Shvat", m: ["Shevat"], d: 15, len: 1, names: ["tu bshvat", "tu bishvat", "tu beshvat"] },
+    { label: "Purim", m: ["Adar", "Adar II"], d: 14, len: 1, names: ["purim"] },
+    { label: "Pesach", m: ["Nisan"], d: 15, len: 8, names: ["pesach", "passover"] },
+    { label: "Lag BaOmer", m: ["Iyar"], d: 18, len: 1, names: ["lag baomer", "lag bomer"] },
+    { label: "Shavuos", m: ["Sivan"], d: 6, len: 2, names: ["shavuos", "shavuot"] },
+    { label: "Tisha B’Av", m: ["Av"], d: 9, len: 1, names: ["tisha bav", "tisha beav", "the three weeks", "three weeks"] }
+  ];
+  var LEAD = 30;
+  function holKey(s) { return String(s || "").toLowerCase().replace(/[’'`‘]/g, "").replace(/[^a-z0-9]+/g, " ").trim(); }
+  var holMemo = null;
+  /** Holidays whose window (LEAD days before → last day) includes today: [{ h, off }], soonest first. off = days until it starts. */
+  function holidaysNow() {
+    var today = nyToday();
+    if (holMemo && holMemo.day === today) return holMemo.list;
+    var list = [];
+    try {
+      var fmt = new Intl.DateTimeFormat("en-u-ca-hebrew", { timeZone: "UTC", month: "long", day: "numeric" });
+      var base = Date.parse(today + "T12:00:00Z");
+      for (var off = -10; off <= LEAD; off++) {
+        var parts = fmt.formatToParts(new Date(base + off * 864e5)), mon = "", day = 0;
+        parts.forEach(function (p) { if (p.type === "month") mon = p.value; if (p.type === "day") day = Number(p.value); });
+        HOLIDAYS.forEach(function (h) {
+          if (h.d === day && h.m.indexOf(mon) !== -1 && off + h.len - 1 >= 0) list.push({ h: h, off: off });
+        });
+      }
+    } catch (e) { list = []; } // no Hebrew calendar in this browser: no spotlight
+    holMemo = { day: today, list: list };
+    return list;
+  }
+  /** The holiday strip: the soonest holiday in its window that has items tagged with it. */
+  function spotlight() {
+    var d = spotDef();
+    if (!d) return null;
+    var hols = holidaysNow();
+    for (var i = 0; i < hols.length; i++) {
+      var h = hols[i].h;
+      var vals = d.values.filter(function (v) { return h.names.indexOf(holKey(v)) !== -1; });
+      if (!vals.length) continue;
+      var list = items.filter(function (it) {
+        return !isAddon(it) && itemVals(it, d.name).some(function (v) { return vals.indexOf(v) !== -1; });
+      });
+      if (list.length) return { title: hols[i].off > 0 ? h.label + " is coming" : "For " + h.label, items: list, key: "spotlight" };
+    }
+    return null;
+  }
+  function stripCard(it) {
+    var photo = it.photoUrl && W.safeUrl(it.photoUrl) ? it.photoUrl : null;
+    return '<li><a class="strip-card" href="#row-' + esc(it.id) + '" data-jump="' + esc(it.id) + '">' +
+      '<span class="strip-cover">' + (photo ? '<img src="' + esc(photo) + '" alt="" loading="lazy" />' : W.ICONS.photo) + "</span>" +
+      '<span class="strip-name">' + esc(it.name) + "</span>" + (it.byline ? '<span class="strip-by">' + esc(it.byline) + "</span>" : "") + "</a></li>";
+  }
+  /** Spotlight / New / Featured strips (only while browsing everything: no search scope, no filters). */
+  function stripsHtml() {
+    if (scopeIds() || activeFilterCount()) return "";
+    var strips = [], sp = spotlight();
+    if (sp) strips.push(sp);
+    var fresh = items.filter(function (it) { return !isAddon(it) && isNew(it); });
+    if (fresh.length) strips.push({ title: "New releases", items: fresh, key: "new" });
+    var feat = items.filter(function (it) { return !isAddon(it) && it.featured; });
+    if (feat.length) strips.push({ title: "Featured", items: feat, key: "featured" });
+    return strips.map(function (s) {
+      return '<section class="strip strip-' + s.key + '" aria-label="' + esc(s.title) + '"><h3 class="strip-title">' + esc(s.title) +
+        ' <span class="strip-n">' + s.items.length + "</span></h3>" +
+        '<ul class="strip-list">' + s.items.map(stripCard).join("") + "</ul></section>";
+    }).join("");
+  }
+  function flashRow(id) {
+    var row = document.getElementById("row-" + id);
+    if (!row) return;
+    row.scrollIntoView({ block: "center", behavior: "auto" });
+    row.classList.add("flash");
+    setTimeout(function () { row.classList.remove("flash"); }, 2400);
+  }
   function itemVals(it, name) { return (it.attributes && it.attributes[name]) || []; }
   function sizeDef() { return attrDefs().filter(function (d) { return /size/i.test(d.name); })[0] || null; }
   /** Filters worth showing: only values that some (non add-on) item actually has, in the gemach's order. */
   function usableDefs() {
-    return attrDefs().map(function (d) {
+    var gd = groupDef(); // shown as sections (with a jump bar), not as a filter
+    return attrDefs().filter(function (d) { return !gd || d.name !== gd.name; }).map(function (d) {
       var used = {};
       pool().forEach(function (it) { if (!isAddon(it)) itemVals(it, d.name).forEach(function (v) { used[v] = 1; }); });
       return { name: d.name, values: d.values.filter(function (v) { return used[v]; }) };
@@ -492,7 +600,7 @@
       ? '<button type="button" class="item-thumb" data-photo="' + id + '" aria-label="View ' + (photoList(it).length > 1 ? photoList(it).length + " photos" : "photo") + " of " + esc(it.name) + '"><img src="' + esc(photo) + '" alt="" loading="lazy" width="92" height="72" />' +
         (photoList(it).length > 1 ? '<span class="thumb-count" aria-hidden="true">' + W.ICONS.photo + photoList(it).length + "</span>" : "") + "</button>"
       : '<div class="item-thumb" aria-hidden="true">' + W.ICONS.photo + "</div>";
-    var attrs = attrDefs().map(function (d) {
+    var attrs = shownDefs().map(function (d) {
       var v = itemVals(it, d.name);
       return v.length ? '<span class="ia"><span class="ia-k">' + esc(d.name) + "</span> " + esc(v.join(", ")) + "</span>" : "";
     }).filter(Boolean).join("");
@@ -512,7 +620,7 @@
       ' aria-label="Select ' + esc(it.name) + '" /></label>';
     return '<li class="item-row' + (dir ? "" : " selectable") + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
       thumb +
-      '<div class="item-content"><div class="item-top"><div><div class="item-name">' + esc(it.name) + "</div>" + attrs + units + "</div>" +
+      '<div class="item-content"><div class="item-top"><div><div class="item-name">' + esc(it.name) + newTag(it) + "</div>" + bylineHtml(it, "item-byline") + attrs + units + "</div>" +
       availBadge(it) + "</div>" + desc + "</div>" + check + "</li>";
   }
 
@@ -541,7 +649,7 @@
     }).join("") + "</div>";
   }
   function attrsLine(it) {
-    var v = attrDefs().map(function (d) { var x = itemVals(it, d.name); return x.length ? d.name + " " + x.join(", ") : ""; }).filter(Boolean);
+    var v = shownDefs().map(function (d) { var x = itemVals(it, d.name); return x.length ? d.name + " " + x.join(", ") : ""; }).filter(Boolean);
     return v.length ? '<div class="tile-attrs">' + esc(v.join(" · ")) + "</div>" : "";
   }
   function checkBox(it, cls) {
@@ -556,7 +664,7 @@
       : '<div class="tile-photo tile-nophoto" aria-hidden="true">' + W.ICONS.photo + "</div>";
     return '<li class="item-tile' + (dir ? "" : " selectable") + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
       '<div class="tile-media">' + media + (dir ? "" : checkBox(it, "tile-check")) + "</div>" +
-      '<div class="tile-name">' + esc(it.name) + "</div>" + attrsLine(it) +
+      '<div class="tile-name">' + esc(it.name) + newTag(it) + "</div>" + bylineHtml(it, "tile-byline") + attrsLine(it) +
       '<div class="tile-meta">' + availBadge(it) + "</div></li>";
   }
   function itemPost(it) {
@@ -582,8 +690,8 @@
       '<span class="pa-off" aria-hidden="true">+ Add to request</span><span class="pa-on" aria-hidden="true">✓ Added to your request</span></label>';
     return '<li class="item-post' + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
       '<div class="post-media">' + media + "</div>" + dots +
-      '<div class="post-body"><div class="item-top"><div class="item-name">' + esc(it.name) + "</div>" + availBadge(it) + "</div>" +
-      attrsLine(it) + units + desc + add + "</div></li>";
+      '<div class="post-body"><div class="item-top"><div class="item-name">' + esc(it.name) + newTag(it) + "</div>" + availBadge(it) + "</div>" +
+      bylineHtml(it, "item-byline") + attrsLine(it) + units + desc + add + "</div></li>";
   }
   function updateTrack(tr) {
     var post = tr.closest(".item-post");
@@ -603,6 +711,7 @@
     var html = "";
     if (!items.length) {
       if (formUrl()) return formNotice();
+      if (borrowNote()) return borrowNoteHtml();
       html = '<div class="notice notice-info">' + (dir
         ? "Please contact this gemach directly to borrow — use the call, WhatsApp or email buttons above."
         : "This gemach hasn’t listed its items online yet. Please contact them directly using the buttons above.") + "</div>";
@@ -627,14 +736,27 @@
         .sort(function (a, b) { return a.r - b.r || a.i - b.i; }).map(function (x) { return x.it; });
     }
     var counted = scoped.filter(function (it) { return !isAddon(it); });
-    listed.forEach(function (it) {
-      var b = isAddon(it) ? addons : it.categoryId && byCat[it.categoryId] ? byCat[it.categoryId] : other;
-      b.items.push(it);
-    });
-    Object.keys(byCat).forEach(function (k) { if (byCat[k].items.length) order.push(byCat[k]); });
+    var gd = groupDef();
+    if (gd) { // sections by the gemach's chosen filter, in its order (an item with several values goes under the first)
+      var shelves = gd.values.map(function (v, i) { return { c: { name: v }, items: [], i: i, shelf: true }; });
+      other = { c: { name: "More" }, items: [], i: 9999, shelf: true };
+      listed.forEach(function (it) {
+        if (isAddon(it)) { addons.items.push(it); return; }
+        var best = -1;
+        itemVals(it, gd.name).forEach(function (v) { var j = gd.values.indexOf(v); if (j !== -1 && (best === -1 || j < best)) best = j; });
+        (best === -1 ? other : shelves[best]).items.push(it);
+      });
+      shelves.forEach(function (s) { if (s.items.length) order.push(s); });
+    } else {
+      listed.forEach(function (it) {
+        var b = isAddon(it) ? addons : it.categoryId && byCat[it.categoryId] ? byCat[it.categoryId] : other;
+        b.items.push(it);
+      });
+      Object.keys(byCat).forEach(function (k) { if (byCat[k].items.length) order.push(byCat[k]); });
+    }
     if (other.items.length) order.push(other);
     if (addons.items.length) order.push(addons);
-    var showHeads = order.length > 1 || order[0] !== other;
+    var showHeads = order.length > 1 || order[0] !== other || !!gd;
 
     var st = style(), view = currentView();
     html += '<div class="inv-head"><div class="inv-title"><h2 class="section-title" id="inv-title" tabindex="-1">Gemach Inventory</h2>' +
@@ -648,15 +770,29 @@
       ? '<p class="inv-help">A preview of what this gemach will lend. It isn’t taking requests online yet — contact them using the buttons above.</p>'
       : formUrl()
       ? formNotice()
+      : borrowNote()
+      ? borrowNoteHtml()
       : dir
       ? '<div class="notice">This gemach is listed in our directory. To borrow, contact them directly using the buttons above.</div>'
       : '<p class="inv-help">' + help[st] + "</p>";
     html += scopeNote(counted.length);
+    html += stripsHtml();
     html += filterBar(defs, listed.filter(function (it) { return !isAddon(it); }).length, counted.length);
+    if (gd && order.length > 1) {
+      html += '<nav class="shelf-nav" aria-label="Jump to a section">' + order.map(function (b, k) {
+        return '<a class="shelf-link" href="#sec-' + k + '" data-sec="' + k + '">' + esc(b.c.name) + ' <span class="shelf-n">' + b.items.length + "</span></a>";
+      }).join("") + "</nav>";
+    }
     if (activeFilterCount() && !listed.some(function (it) { return !isAddon(it); })) {
       html += '<div class="notice notice-info af-none">Nothing matches these filters. <button type="button" class="af-clear" id="af-clear-2">Clear filters</button></div>';
     }
-    html += order.map(function (b) {
+    html += order.map(function (b, k) {
+      if (b.shelf) {
+        return '<section class="cat-block shelf-block" id="sec-' + k + '" aria-labelledby="sec-h-' + k + '"><h3 id="sec-h-' + k + '">' + esc(b.c.name) +
+          ' <span class="shelf-n">' + b.items.length + "</span></h3>" +
+          '<ul class="item-list' + (view === "List" ? "" : " item-" + view.toLowerCase()) + '">' +
+          b.items.map(view === "Grid" ? itemTile : view === "Photos" ? itemPost : itemRow).join("") + "</ul></section>";
+      }
       return '<section class="cat-block" aria-label="' + esc(b.c.name) + '">' +
         (showHeads ? '<h3><span class="ci" aria-hidden="true">' + esc(b.c.icon || "•") + "</span>" + esc(b.c.name) + "</h3>" : "") +
         '<ul class="item-list' + (view === "List" ? "" : " item-" + view.toLowerCase()) + '">' +
@@ -675,7 +811,8 @@
       updateCTA();
       return;
     }
-    $("g-body").innerHTML = comingSoonBanner() + infoPanel() + gemachInfoSection() + '<div id="inv-wrap">' + renderInventory() + "</div>";
+    $("g-body").innerHTML = comingSoonBanner() + infoPanel() + gemachInfoSection() +
+      '<div id="inv-wrap"' + (gemach && gemach.photoShape === "Portrait" ? ' class="photos-portrait"' : "") + ">" + renderInventory() + "</div>";
     updateCTA();
     handleType();
   }
@@ -686,14 +823,7 @@
     if (!it) { typeHandled = loadedFresh; return; }
     typeHandled = true;
     if (W.acceptsRequests(gemach)) { selected.add(it.id); syncRow(it.id); updateCTA(); }
-    var row = document.getElementById("row-" + it.id);
-    if (row) {
-      requestAnimationFrame(function () {
-        row.scrollIntoView({ block: "center", behavior: "auto" });
-        row.classList.add("flash");
-        setTimeout(function () { row.classList.remove("flash"); }, 2400);
-      });
-    }
+    requestAnimationFrame(function () { flashRow(it.id); });
   }
 
   function renderNotFound() {
@@ -806,6 +936,8 @@
     }
     if (t.closest(".af-clear")) { attrFilter = {}; rerenderInventory("#af-bar .af-chip"); return; }
     if (t.closest("#scope-clear")) { clearScope(); rerenderInventory("#inv-title"); return; }
+    var jump = t.closest("[data-jump]");
+    if (jump) { e.preventDefault(); flashRow(jump.getAttribute("data-jump")); return; }
     var vb = t.closest(".view-btn");
     if (vb) {
       var v = vb.getAttribute("data-view");

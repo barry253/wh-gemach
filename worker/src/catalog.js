@@ -1,6 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { AirtableError, Q, firstLink, getOwned, linkedId } from "./airtable.js";
 import { parseItemAttrs, validateItemAttrs } from "./attributes.js";
+import { typeExtraFields, typeExtras } from "./extras.js";
 import { gemachFromRecord, getGemachRecord } from "./gemachs.js";
 import { allowedPhotoUrl, parseMorePhotos, validateMorePhotos } from "./photos.js";
 import { sniffImageType } from "./settings.js";
@@ -36,6 +37,7 @@ async function handleGetItemTypes({ db, g }) {
       attributes: parseItemAttrs(r.fields["Attributes"]),
       packageSize: packageSize(r),
       packageUnit: packageUnit(r),
+      ...typeExtras(r),
     };
     if (isQtyType(r)) {
       // Counts for the inventory card: out now, reserved ahead, free today.
@@ -160,6 +162,9 @@ async function handleCreateItemType(c) {
   const pk = packageFields(body);
   if (pk.error) return json({ error: pk.error }, 400);
   for (const [k, v] of Object.entries(pk.fields)) if (v != null) fields[k] = v;
+  const x = typeExtraFields(body);
+  if (x.error) return json({ error: x.error }, 400);
+  for (const [k, v] of Object.entries(x.fields)) if (v != null && v !== false) fields[k] = v;
   return airtableResult(c.db.create(T.ITEM_TYPES, fields));
 }
 
@@ -171,7 +176,9 @@ async function handleUpdateItemType(c, id) {
   if (q.error) return json({ error: q.error }, 400);
   const pk = packageFields(body);
   if (pk.error) return json({ error: pk.error }, 400);
-  const fields = { ...q.fields, ...pk.fields };
+  const x = typeExtraFields(body);
+  if (x.error) return json({ error: x.error }, 400);
+  const fields = { ...q.fields, ...pk.fields, ...x.fields };
   if (body.name !== undefined)         fields["Name"] = body.name;
   if (body.description !== undefined)  fields["Description"] = body.description;
   if (body.displayOrder !== undefined) fields["Display Order"] = body.displayOrder;

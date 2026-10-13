@@ -1,6 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { AirtableError, fetchByIds } from "./airtable.js";
-import { validateAttrDefs } from "./attributes.js";
+import { parseAttrDefs, validateAttrDefs } from "./attributes.js";
+import { filterNameIn } from "./extras.js";
 import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
 import { CONTACT_METHODS, HEX_RE, ITEM_VIEWS, REQUEST_STYLES, gemachFromRecord, gemachMemo, getGemachRecord } from "./gemachs.js";
 import { json, readJson } from "./http.js";
@@ -111,6 +112,10 @@ const GEMACH_EDITABLE = {
   reminderRepeatDays: ["Reminder Repeat Days", "repeat"],
   logoUrl:            ["Logo URL", "logo"],
   itemAttributes:     ["Item Attributes", "attrs"],
+  groupBy:            ["Group By", "filter"],         // extras.js: must name one of the gemach's item filters
+  spotlightFilter:    ["Spotlight Filter", "filter"],
+  borrowNote:         ["Borrow Note", "long"],
+  photoShape:         ["Photo Shape", "shape"],
   browseCategoryIds:  ["Browse Categories", "cats"],
 };
 const GEMACH_LABELS = {
@@ -122,6 +127,7 @@ const GEMACH_LABELS = {
   depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
+  groupBy: "Sections", spotlightFilter: "Holiday spotlight", borrowNote: "How to borrow", photoShape: "Photo shape",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
 const MAX_LINE = 200, MAX_LONG = 2000, MAX_FORM_URL = 600; // pre-filled Google Form links run long
@@ -153,6 +159,12 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
       const r = validateAttrDefs(v);
       if (r.error) return { error: r.error };
       fields[field] = r.value;
+      continue;
+    }
+    if (kind === "filter") { // checked against the filters (after this patch) below
+      if (v === null) v = "";
+      if (typeof v !== "string" || v.length > 60) return { error: `${label} must be the name of one of your item filters.` };
+      fields[field] = v.replace(/\s+/g, " ").trim() || null;
       continue;
     }
     if (kind === "repeat") {
@@ -192,6 +204,11 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
     if (kind === "view") {
       if (!ITEM_VIEWS.includes(v)) return { error: `Item view must be one of ${ITEM_VIEWS.join(", ")}.` };
       fields[field] = v;
+      continue;
+    }
+    if (kind === "shape") {
+      if (!["Landscape", "Portrait"].includes(v)) return { error: "Photo shape must be Landscape or Portrait." };
+      fields[field] = v === "Portrait" ? v : null;
       continue;
     }
     if (kind === "charge") {
@@ -250,6 +267,15 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
     fields[field] = v === "" ? null : v;
   }
   if (!Object.keys(fields).length) return { error: "Nothing to update." };
+
+  // Sections / holiday spotlight name one of the item filters (as they'll be after this patch); stored in its spelling.
+  for (const [key, [field, kind]] of Object.entries(GEMACH_EDITABLE)) {
+    if (kind !== "filter" || !fields[field]) continue;
+    const defs = "Item Attributes" in fields ? parseAttrDefs(fields["Item Attributes"]) : (current?.itemAttributes || []);
+    const name = filterNameIn(defs, fields[field]);
+    if (!name) return { error: `${GEMACH_LABELS[key]}: “${fields[field]}” isn't one of your item filters.` };
+    fields[field] = name;
+  }
 
   // Cross-field: contact methods must have the details they need (after applying the patch).
   const after = (key, field, cur) => (field in fields ? fields[field] : cur);

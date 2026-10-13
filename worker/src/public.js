@@ -6,6 +6,7 @@ import { nyToday } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs, loadGemachBySlug, nonBlank } from "./gemachs.js";
 import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
+import { publicTypeExtras } from "./extras.js";
 import { parseMorePhotos } from "./photos.js";
 import { inTestMode } from "./testmode.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, LOAN_WINDOW_FIELDS, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
@@ -52,6 +53,7 @@ function publicItemType(type, units, { withCategory = false, bookings = null, wi
     const a = itemAttrsFor(type.fields["Attributes"], attrDefs);
     if (Object.keys(a).length) out.attributes = a;
   }
+  Object.assign(out, publicTypeExtras(type, nyToday())); // byline, search words, featured, new (only when set)
   if (withCategory) out.categoryId = linkedId(firstLink(type.fields["Product Category"])) || null;
   return out;
 }
@@ -102,6 +104,7 @@ function publicGemach(g, communityName) {
     requestStyle: g.requestStyle || "Dates", eventLabel: g.eventLabel || DEFAULT_EVENT_LABEL,
     pickupDaysBefore: g.pickupDaysBefore ?? 1, returnDaysAfter: g.returnDaysAfter ?? 1, shabbosAdjust: !!g.shabbosAdjust,
     itemAttributes: g.itemAttributes || [],
+    photoShape: g.photoShape || "Landscape", groupBy: g.groupBy ?? null, spotlightFilter: g.spotlightFilter ?? null, borrowNote: g.borrowNote ?? null,
     comingSoon: !!g.comingSoon,
     browseCategoryIds: g.browseCategoryIds || [],
   };

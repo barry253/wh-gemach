@@ -57,8 +57,9 @@ const qtyLabel = (name, n) => (n ? `${name} × ${n}` : name);
 // Item Types rows link to every Loan and Request ever made for them; reads name their fields to skip those.
 const TYPE_COUNT_FIELDS = ["Tracking", "Quantity Owned", "Out of Service", "Package Size", "Package Unit", "Price"]; // quantity / add-on helpers
 const TYPE_PHOTO_FIELDS = ["R2 Photo URL", "More Photos"];
-const TYPE_PUBLIC_FIELDS = ["Name", "Description", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category", "Gemach"];
-const TYPE_ADMIN_FIELDS = ["Name", "Description", "Display Order", "Active", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category"];
+const TYPE_EXTRA_FIELDS = ["Byline", "Search Words", "Featured", "New Until"]; // catalog extras (catalog.js)
+const TYPE_PUBLIC_FIELDS = ["Name", "Description", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", ...TYPE_EXTRA_FIELDS, "Product Category", "Gemach"];
+const TYPE_ADMIN_FIELDS = ["Name", "Description", "Display Order", "Active", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", ...TYPE_EXTRA_FIELDS, "Product Category"];
 const LOAN_WINDOW_FIELDS = ["Item to Reserve", "Status", "Quantity", "Reservation Start", "Reservation End", "Date Borrowed", "Expected Return", "Gemach"];
 
 /** Requests."Item Quantities" JSON -> { typeId: n } (bad JSON / values ignored). */

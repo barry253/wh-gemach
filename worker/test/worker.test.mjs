@@ -4174,6 +4174,88 @@ if (D1_MODE) {
   });
 }
 
+// ── Catalog extras (Sefer Shelf): byline, search words, Featured / New, sections, holiday spotlight, borrow note ──
+{
+  const G = { id: "recCATGEMACH00001", slug: "cat-gemach" };
+  const ATTRS = JSON.stringify([{ name: "Shelf", values: ["Middos", "Yom Tov"] }, { name: "Holiday", values: ["Chanukah", "Pesach"] }]);
+  DB.Gemachs.push(rec(G.id, { Name: "Catalog Gemach", Slug: G.slug, Active: true, Mode: "Directory", Email: "cg@example.com", "Item Attributes": ATTRS }));
+  const past = "2020-01-01", future = "2099-12-31";
+  DB["Item Types"].push(rec("recCATTYPE0000001", { Name: "Yossi and Laibel", Active: true, Byline: "Dina Rosenfeld · Hachai", "Search Words": "series twins", Featured: true, "New Until": future, Attributes: JSON.stringify({ Shelf: ["Middos"] }), Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  DB["Item Types"].push(rec("recCATTYPE0000002", { Name: "Old Book", Active: true, "New Until": past, Gemach: [G.id], "Gemach Slug": [G.slug] }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const patchType = (id, b) => call(`/admin/catalog/item-types/${id}`, { method: "PATCH", headers: H, body: JSON.stringify(b) });
+  const patchG = b => call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify(b) });
+  const fieldsOf = id => DB["Item Types"].find(x => x.id === id).fields;
+
+  await t("extras: public items carry byline / search words / featured / new (past New Until left out)", async () => {
+    __WHG_TEST__.clearMemo();
+    const d = await (await call(`/public/gemach/${G.slug}?x=1`)).json();
+    const a = d.items.find(x => x.id === "recCATTYPE0000001"), b = d.items.find(x => x.id === "recCATTYPE0000002");
+    assert.equal(a.byline, "Dina Rosenfeld · Hachai"); assert.equal(a.searchWords, "series twins");
+    assert.equal(a.featured, true); assert.equal(a.newUntil, future);
+    assert.equal(b.byline, undefined); assert.equal(b.featured, undefined); assert.equal(b.newUntil, undefined);
+    assert.equal(d.gemach.groupBy, null); assert.equal(d.gemach.spotlightFilter, null); assert.equal(d.gemach.borrowNote, null);
+  });
+
+  await t("extras: admin list shows them; PATCH sets, trims and clears; bad values refused", async () => {
+    const types = await (await call("/admin/catalog/item-types", { headers: H })).json();
+    const b = types.find(x => x.id === "recCATTYPE0000002");
+    assert.equal(b.newUntil, past); assert.equal(b.featured, false); assert.equal(b.byline, null);
+    let r = await patchType("recCATTYPE0000002", { byline: "  Yaffa   Ganz ", searchWords: "classic", featured: true, newUntil: "2099-01-31" });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(fieldsOf("recCATTYPE0000002").Byline, "Yaffa Ganz"); assert.equal(fieldsOf("recCATTYPE0000002").Featured, true);
+    assert.equal(fieldsOf("recCATTYPE0000002")["New Until"], "2099-01-31");
+    for (const bad of [{ byline: "x".repeat(121) }, { searchWords: "x".repeat(301) }, { featured: "yes" }, { newUntil: "2099-02-30" }, { newUntil: "soon" }, { byline: 5 }]) {
+      assert.equal((await patchType("recCATTYPE0000002", bad)).status, 400, JSON.stringify(bad));
+    }
+    r = await patchType("recCATTYPE0000002", { byline: "", searchWords: null, featured: false, newUntil: "" });
+    assert.equal(r.status, 200);
+    const f = fieldsOf("recCATTYPE0000002");
+    assert.ok(!f.Byline && !f["Search Words"] && !f.Featured && !f["New Until"]);
+  });
+
+  await t("extras: create an item type with byline + featured + new until", async () => {
+    const r = await call("/admin/catalog/item-types", { method: "POST", headers: H, body: JSON.stringify({ name: "Bina Benny", byline: "Yaffa Ganz", featured: true, newUntil: "2099-03-01" }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    const f = DB["Item Types"].find(x => x.fields.Name === "Bina Benny").fields;
+    assert.equal(f.Byline, "Yaffa Ganz"); assert.equal(f.Featured, true); assert.equal(f["New Until"], "2099-03-01");
+  });
+
+  await t("extras: Settings sections / spotlight must name an item filter (stored in its spelling); borrow note", async () => {
+    let r = await patchG({ groupBy: "shelf", spotlightFilter: "HOLIDAY", borrowNote: "Come visit during open hours.\nBorrow at the desk." });
+    assert.equal(r.status, 200, await r.clone().text());
+    const d = await r.json();
+    assert.equal(d.groupBy, "Shelf"); assert.equal(d.spotlightFilter, "Holiday"); assert.equal(d.borrowNote, "Come visit during open hours.\nBorrow at the desk.");
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Group By"], "Shelf");
+    assert.equal((await patchG({ groupBy: "Color" })).status, 400);
+    // a filter added in the same save can be used right away
+    r = await patchG({ itemAttributes: [{ name: "Shelf", values: ["Middos"] }, { name: "Holiday", values: ["Purim"] }, { name: "Ages", values: ["3–6"] }], groupBy: "Ages" });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).groupBy, "Ages");
+    __WHG_TEST__.clearMemo();
+    const p = await (await call(`/public/gemach/${G.slug}?x=2`)).json();
+    assert.equal(p.gemach.groupBy, "Ages"); assert.equal(p.gemach.spotlightFilter, "Holiday"); assert.match(p.gemach.borrowNote, /open hours/);
+    // removing the filter switches sections off (not an error)
+    r = await patchG({ itemAttributes: [{ name: "Holiday", values: ["Purim"] }] });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).groupBy, null);
+    r = await patchG({ groupBy: "", spotlightFilter: "", borrowNote: "" });
+    assert.equal(r.status, 200);
+    const e = await r.json();
+    assert.equal(e.groupBy, null); assert.equal(e.spotlightFilter, null); assert.equal(e.borrowNote, null);
+  });
+
+  await t("extras: photo shape Landscape by default; Portrait saved; bad value refused", async () => {
+    let r = await patchG({ photoShape: "Portrait" });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).photoShape, "Portrait");
+    assert.equal((await patchG({ photoShape: "Round" })).status, 400);
+    r = await patchG({ photoShape: "Landscape" });
+    assert.equal((await r.json()).photoShape, "Landscape");
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Photo Shape"], null);
+  });
+}
+
 if (D1_MODE) {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);

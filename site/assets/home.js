@@ -56,7 +56,7 @@
         index.push({
           g: g, item: it, cat: c, order: ii,
           nameHay: makeHay([it.name]),
-          hay: makeHay([it.name, it.description, c && c.name, c && (c.keywords || []).join(" "), g.name, attrText(it)])
+          hay: makeHay([it.name, it.byline, it.searchWords, it.description, c && c.name, c && (c.keywords || []).join(" "), g.name, attrText(it)])
         });
       });
     });

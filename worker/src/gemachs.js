@@ -3,6 +3,7 @@ import { Q, fetchByIds, linkedId } from "./airtable.js";
 import { CACHE_TTL_MS, LEGACY_SLUG, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
 import { isLiveNetworkAdmin } from "./network.js";
 import { parseAttrDefs } from "./attributes.js";
+import { filterNameIn } from "./extras.js";
 
 // ─── Gemach lookup ────────────────────────────────────────────────────────────
 
@@ -30,7 +31,8 @@ const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", 
   "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Form URL", "Request Style", "Event Label", "Pickup Days Before", "Return Days After", "Default Loan Days",
   "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
-  "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories"];
+  "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories",
+  "Group By", "Spotlight Filter", "Borrow Note", "Photo Shape"];
 
 /** One gemach's record by id, with just GEMACH_FIELDS (null if it doesn't exist). */
 async function getGemachRecord(db, id) {
@@ -92,6 +94,11 @@ function gemachFromRecord(r) {
     logoDarkUrl: /^https:\/\//i.test(nonBlank(f["Logo On Dark URL"]) || "") ? nonBlank(f["Logo On Dark URL"]) : null,
     communityIds: (f.Community || []).map(linkedId),
     itemAttributes: parseAttrDefs(f["Item Attributes"]),
+    // extras.js: section the page by one item filter / holiday spotlight from another (only if that filter exists)
+    groupBy: filterNameIn(parseAttrDefs(f["Item Attributes"]), f["Group By"]),
+    spotlightFilter: filterNameIn(parseAttrDefs(f["Item Attributes"]), f["Spotlight Filter"]),
+    photoShape: selName(f["Photo Shape"]) === "Portrait" ? "Portrait" : "Landscape", // Portrait: tall thumbnails (book covers)
+    borrowNote: nonBlank(f["Borrow Note"]),                    // Listing only: how to borrow, instead of "contact to check"
     comingSoon: !!f["Coming Soon"],                              // listed, not searchable, no requests (only meaningful when active)
     browseCategoryIds: (f["Browse Categories"] || []).map(linkedId).filter(Boolean),
   };

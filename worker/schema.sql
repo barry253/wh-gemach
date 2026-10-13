@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS gemachs (
   reminder_repeat_days REAL,  -- Reminder Repeat Days
   item_attributes TEXT,  -- Item Attributes
   item_view TEXT,  -- Item View
+  group_by TEXT,  -- Group By
+  spotlight_filter TEXT,  -- Spotlight Filter
+  borrow_note TEXT,  -- Borrow Note
+  photo_shape TEXT,  -- Photo Shape
   onboarding TEXT  -- Onboarding
 );
 
@@ -102,7 +106,11 @@ CREATE TABLE IF NOT EXISTS item_types (
   price REAL,  -- Price
   attributes TEXT,  -- Attributes
   package_size REAL,  -- Package Size
-  package_unit TEXT  -- Package Unit
+  package_unit TEXT,  -- Package Unit
+  byline TEXT,  -- Byline
+  search_words TEXT,  -- Search Words
+  featured INTEGER NOT NULL DEFAULT 0,  -- Featured
+  new_until TEXT  -- New Until
 );
 
 CREATE TABLE IF NOT EXISTS items (

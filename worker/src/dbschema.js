@@ -74,6 +74,10 @@ const TABLES = {
       "Auto Reminders": b("auto_reminders"), "Reminder Days Before": n("reminder_days_before"), "Reminder Repeat Days": n("reminder_repeat_days"),
       "Item Attributes": t("item_attributes"),
       "Item View": t("item_view"),
+      // Catalog extras (e.g. the Sefer Shelf library): group the page into sections by one item filter, a holiday
+      // spotlight from another, and a Listing-only "how to borrow" note shown instead of "contact to check".
+      "Group By": t("group_by"), "Spotlight Filter": t("spotlight_filter"), "Borrow Note": t("borrow_note"),
+      "Photo Shape": t("photo_shape"), // "Portrait" = tall photos (book covers); blank = the usual landscape/square
       "Browse Categories": links("gemach_browse_categories", "Product Categories"),
       "Onboarding": t("onboarding"),
       "Items": calc("item_ids", "(SELECT json_group_array(i.id) FROM (SELECT id FROM items WHERE gemach_id = r.id ORDER BY rowid) i)", { json: true }),
@@ -99,6 +103,8 @@ const TABLES = {
       "Tracking": t("tracking"), "Quantity Owned": n("quantity_owned"), "Out of Service": n("out_of_service"),
       "Price": n("price"), "Attributes": t("attributes"),
       "Package Size": n("package_size"), "Package Unit": t("package_unit"),
+      // Optional line under the name (e.g. a book's author), extra search words, and the Featured / New strips.
+      "Byline": t("byline"), "Search Words": t("search_words"), "Featured": b("featured"), "New Until": d("new_until"),
       "Gemach Slug": gemachSlug(),
       "Items": calc("item_ids", "(SELECT json_group_array(i.id) FROM (SELECT id FROM items WHERE item_type_id = r.id ORDER BY rowid) i)", { json: true }),
     },
