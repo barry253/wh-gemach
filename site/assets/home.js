@@ -556,7 +556,12 @@
     resultsEl.innerHTML = '<div class="sk sk-row"></div>';
   }
 
-  function show(d) { data = d; buildIndex(); renderAll(); }
+  function byName(a, b) { return String(a.name || "").localeCompare(String(b.name || ""), "en", { sensitivity: "base", numeric: true }); }
+  function show(d) {
+    data = d;
+    if (Array.isArray(data.gemachs)) data.gemachs = data.gemachs.slice().sort(byName); // home page lists gemachs A–Z
+    buildIndex(); renderAll();
+  }
   var cached = W.readDirCache();
   if (cached) { try { show(cached); } catch (e) { data = null; } }
 

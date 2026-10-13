@@ -83,6 +83,8 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
 
       // ── Home ──
       await go('/');
+      const cardNames = await page.$$eval('#gemach-list .gemach-card h3', els => els.map(e => e.textContent.trim()));
+      assert(cardNames.length > 2 && cardNames.join('|') === cardNames.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join('|'), `${label} home lists gemachs A–Z: ${cardNames.join(', ')}`);
       const home = await page.evaluate(() => {
         const cs = getComputedStyle(document.documentElement), q = s => document.querySelector(s), g = s => getComputedStyle(q(s));
         return {
