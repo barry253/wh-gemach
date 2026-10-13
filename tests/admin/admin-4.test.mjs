@@ -286,6 +286,7 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.click("#net-gemach-sheet .sheet-close");
 
   // admins
+  await page.click("#net-tab-admins");
   ok(!(await page.textContent("#net-admins")).includes("Rivka O'Neil"), "managers hidden by default (owners + network admins only)");
   await page.selectOption("#net-admin-role", "");
   ok((await page.textContent("#net-admins")).includes("Rivka O'Neil"), "admins listed");
@@ -317,16 +318,18 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   ok(reqs.some(r => r.method === "PATCH" && r.path === "/admin/network/admins/recADM2" && r.body.active === false), "edit admin PATCH");
 
   // categories
+  await page.click("#net-tab-categories");
   await page.click("text=+ Add category");
   await page.fill("#nc-icon", "🛏️"); await page.fill("#nc-name", "Cribs"); await page.fill("#nc-keywords", "crib, bassinet");
   await page.click("#nc-submit-btn");
   await page.waitForFunction(() => document.body.textContent.includes("Category added"));
   const cb = reqs.find(r => r.method === "POST" && r.path === "/admin/network/categories").body;
   ok(cb.name === "Cribs" && cb.icon === "🛏️" && cb.keywords === "crib, bassinet" && cb.displayOrder === 30 && cb.active === true, "add category body: " + JSON.stringify(cb));
-  await page.evaluate(() => { const e = document.getElementById("net-sec-admins"); window.scrollTo(0, e.getBoundingClientRect().top + scrollY - 70); });
+  await page.click("#net-tab-admins");
   await page.screenshot({ path: "shot-r4-network-admins.png" });
-  await page.evaluate(() => { const e = document.getElementById("net-sec-categories"); window.scrollTo(0, e.getBoundingClientRect().top + scrollY - 70); });
+  await page.click("#net-tab-categories");
   await page.screenshot({ path: "shot-r4-network-categories.png" });
+  await page.click("#net-tab-gemachs");
 
   // Open switches gemach
   await page.click("#ng-row-recH >> text=Open");

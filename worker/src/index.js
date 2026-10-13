@@ -30,6 +30,7 @@
  * ── Routes ──────────────────────────────────────────────────────────────────
  *   Search:  POST /public/search-log {q, outcome:"none"|"all-on-loan", category?} — home-page searches that came up
  *            empty; always 204. GET /admin/network/searches?days=N (Network Admin) lists them.
+ *   GET /admin/network/analytics?days=30|90|365[&fresh=1] (Network Admin): network-wide numbers (analytics.js).
  *   Stats:   GET /admin/stats?days=30|90|365 — per-gemach request/loan/inventory stats for the Dashboard.
  *   Health:  GET /health — checks Airtable is reachable; 200 {ok:true} or 503 (for uptime monitors).
  *   Public:  GET /inventory (legacy, wh-medical only), GET /public/directory,

@@ -1975,6 +1975,62 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     const hb = d.searches.find(x => x.query === "hospital bed");
     assert.ok(hb); assert.equal(hb.count, 2); assert.equal(hb.nothingFound, 1); assert.equal(hb.allOnLoan, 1);
   });
+  await t("network analytics: Network Admin only; per-gemach numbers leave out test requests and add-ons; reused for 5 minutes", async () => {
+    assert.equal((await call("/admin/network/analytics", { headers: auth(tokenA) })).status, 403);
+    const N = { id: "recANALYTICSGEM01", slug: "analytics-gemach" };
+    DB.Gemachs.push(rec(N.id, { Name: "Analytics Gemach", Slug: N.slug, Active: true, "Coming Soon": true }));
+    const sc = { Gemach: [N.id], "Gemach Slug": [N.slug] };
+    const ago = h => new Date(Date.now() - h * 3600e3).toISOString();
+    const day = n => __WHG_TEST__.nyToday(Date.now() + n * 864e5);
+    const R = (id, f, h) => ({ ...rec(id, { ...f, "Received At": ago(h), ...sc }), createdTime: ago(h) });
+    DB["Item Types"].push(rec("recANTYPE00000001", { Name: "Analytics Crib", Active: true, ...sc }),
+                          rec("recANTYPE00000002", { Name: "Sweatshirt", Active: true, Tracking: "Add-on", ...sc }),
+                          rec("recANTYPE00000003", { Name: "Old thing", Active: false, ...sc }));
+    DB.Items.push(rec("recANITEM00000001", { "Item ID": "AN-001", "Item Type": ["recANTYPE00000001"], Active: true, ...sc }),
+                  rec("recANITEM00000002", { "Item ID": "AN-002", "Item Type": ["recANTYPE00000001"], Active: true, ...sc }));
+    DB.Requests.push(
+      R("recANREQ000000001", { "Request ID": "AN-1", Status: "Converted", "Items Requested": ["recANTYPE00000001"] }, 10),
+      R("recANREQ000000002", { "Request ID": "AN-2", Status: "Declined", "Items Requested": ["recANTYPE00000001"] }, 30),
+      R("recANREQ000000003", { "Request ID": "AN-3", Status: "New", Name: "Waiter" }, 60),
+      R("recANREQ000000004", { "Request ID": "AN-4", Status: "New", Test: true }, 1),
+      R("recANREQ000000005", { "Request ID": "AN-5", Status: "Converted", Source: "Admin" }, 2),
+      R("recANREQ000000006", { "Request ID": "AN-6", Status: "Converted" }, 24 * 200));
+    DB.tblC3PY7f5sXQDMJK.push(
+      rec("recANLOG000000001", { Timestamp: ago(8), "Event Type": "Request Confirmed", "Loan ID": "AN-1", ...sc }),
+      rec("recANLOG000000002", { Timestamp: ago(26), "Event Type": "Request Declined", "Loan ID": "AN-2", ...sc }));
+    DB.Borrowers.push(rec("recANBOR000000001", { Name: "One", ...sc }), rec("recANBOR000000002", { Name: "Two", ...sc }));
+    DB.Loans.push(
+      rec("recANLOAN00000001", { "Loan ID": "AL-1", Status: "Active", Item: ["recANITEM00000001"], "Item to Reserve": ["recANTYPE00000001"], "Date Borrowed": day(-3), "Expected Return": day(-1), "Source Request": ["recANREQ000000001"], ...sc }),
+      rec("recANLOAN00000002", { "Loan ID": "AL-2", Status: "Reserved", "Item to Reserve": ["recANTYPE00000001"], "Reservation Start": day(5), ...sc }),
+      rec("recANLOAN00000003", { "Loan ID": "AL-3", Status: "Returned", Item: ["recANITEM00000002"], "Date Borrowed": day(-10), "Date Returned": day(-5), ...sc }),
+      rec("recANLOAN00000004", { "Loan ID": "AL-4", Status: "Reserved", "Item to Reserve": ["recANTYPE00000001"], "Source Request": ["recANREQ000000004"], ...sc }),
+      rec("recANLOAN00000005", { "Loan ID": "AL-5", Status: "Reserved", "Item to Reserve": ["recANTYPE00000002"], Quantity: 3, ...sc }));
+    const r = await call("/admin/network/analytics?days=90&fresh=1", { headers: auth(tokNet) });
+    assert.equal(r.status, 200, await r.clone().text());
+    const d = await r.json();
+    assert.equal(d.days, 90); assert.equal(d.trend.by, "week"); assert.equal(d.trend.buckets.length, 13);
+    assert.equal(d.trend.buckets.at(-1).start, day(-6));
+    const g = d.byGemach.find(x => x.id === N.id);
+    assert.deepEqual({ ...g, lastActivity: !!g.lastActivity }, {
+      id: N.id, name: "Analytics Gemach", slug: N.slug, status: "Coming soon", mode: "Full",
+      requests: 3, confirmed: 1, declined: 1, adminBookings: 1, waiting: 1, waitingOver48h: 1,
+      reserved: 1, out: 1, overdue: 1, loansStarted: 2, loansReturned: 1, borrowers: 2, itemTypes: 1,
+      medianReplyHours: 3, lastActivity: true,
+    });
+    assert.ok(d.byGemach.every(x => x.name), "every gemach listed");
+    assert.ok(d.topRequested.some(x => x.name === "Analytics Crib" && x.gemach === "Analytics Gemach" && x.requests === 2));
+    for (const k of ["waiting", "reserved", "out", "overdue"]) assert.equal(d.now[k], d.byGemach.reduce((n, x) => n + x[k], 0), k);
+    assert.ok(d.period.requests >= 3 && d.period.loansStarted >= 2 && d.gemachs.comingSoon >= 1);
+    assert.ok(d.trend.buckets.reduce((n, b) => n + b.requests, 0) === d.period.requests, "trend adds up to the period total");
+    const y = await (await call("/admin/network/analytics?days=365&fresh=1", { headers: auth(tokNet) })).json();
+    assert.equal(y.trend.by, "month"); assert.equal(y.byGemach.find(x => x.id === N.id).requests, 4, "the 200-day-old request counts in 12 months");
+    const again = await (await call("/admin/network/analytics?days=90", { headers: auth(tokNet) })).json();
+    assert.ok(again.cachedAt, "second load within 5 minutes reuses the first");
+    // Leave the shared data as it was for later tests.
+    for (const [t, pre] of [["Gemachs", "recANALYTICS"], ["Item Types", "recANTYPE"], ["Items", "recANITEM"], ["Requests", "recANREQ"], ["tblC3PY7f5sXQDMJK", "recANLOG"], ["Borrowers", "recANBOR"], ["Loans", "recANLOAN"]]) {
+      for (let i = DB[t].length - 1; i >= 0; i--) if (DB[t][i].id.startsWith(pre)) DB[t].splice(i, 1);
+    }
+  });
   await t("stats: request outcomes, reply time, waiting >48h, most requested, loan length, never lent", async () => {
     const G = { id: "recSTATSGEMACH001", slug: "stats-gemach" };
     DB.Gemachs.push(rec(G.id, { Name: "Stats Gemach", Slug: G.slug, Active: true, Email: "s@example.com" }));

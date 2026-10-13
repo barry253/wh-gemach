@@ -1,0 +1,153 @@
+// Network tab split into sub-tabs (Gemachs / Admins / Categories / Analytics); Analytics loads only when opened,
+// shows network numbers, a by-gemach table (sortable), most requested and the no-result searches.
+import { chromium } from "playwright";
+import fs from "node:fs";
+const html = fs.readFileSync(new URL("../../admin.html", import.meta.url), "utf8");
+process.chdir(new URL("../test-output/", import.meta.url).pathname);
+const exe = process.env.CHROMIUM_PATH || "";
+const browser = await chromium.launch({ executablePath: fs.existsSync(exe) ? exe : undefined });
+const ok = (c, m) => { console.log(c ? "PASS" : "FAIL", m); if (!c) process.exitCode = 1; };
+
+const nyToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+const TODAY = nyToday();
+const plus = n => { const [y, m, d] = TODAY.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const hoursAgo = h => new Date(Date.now() - h * 3600e3).toISOString();
+
+const G = { id: "recA", slug: "wh-medical", name: "WH Medical", canEdit: true, rawTemplates: {}, templates: {}, placeholders: [] };
+const OVERVIEW = {
+  gemachs: [
+    { id: "recA", slug: "wh-medical", name: "WH Medical", active: true, comingSoon: false, mode: "Full", category: "Medical", itemCount: 12, adminCount: 2 },
+    { id: "recS", slug: "simcha-dress", name: "Simcha Dress", active: true, comingSoon: false, mode: "Full", category: "Clothing", itemCount: 451, adminCount: 1 },
+  ],
+  admins: [{ id: "recADM1", name: "Barry", email: "b@x", role: "Network Admin", active: true, gemachs: [] }],
+  categories: [{ id: "recCAT1", name: "Walkers", icon: "🚶", keywords: "", displayOrder: 10, active: true, itemCount: 0 }],
+};
+const row = (o) => ({ mode: "Full", status: "Live", requests: 0, confirmed: 0, declined: 0, adminBookings: 0, waiting: 0, waitingOver48h: 0, reserved: 0, out: 0,
+  overdue: 0, loansStarted: 0, loansReturned: 0, borrowers: 0, itemTypes: 0, medianReplyHours: null, lastActivity: null, ...o });
+const ANALYTICS = days => ({
+  days, since: plus(-days), today: TODAY,
+  gemachs: { live: 2, comingSoon: 1, hidden: 0 },
+  now: { waiting: 5, waitingOver48h: 2, reserved: 7, out: 23, overdue: 3, borrowers: 140, itemTypes: 860 },
+  period: { requests: 48, confirmed: 39, declined: 4, cancelled: 2, stillWaiting: 3, adminBookings: 6, loansStarted: 41, loansReturned: 30, answered: 43, medianReplyHours: 5.5, within24hPct: 88 },
+  trend: { by: days === 365 ? "month" : "week", buckets: Array.from({ length: days === 365 ? 13 : Math.ceil(days / 7) }, (_, i) => ({ start: plus(-7 * (12 - i) - 6), requests: i % 5, loans: (i * 2) % 4 })) },
+  topRequested: [{ name: "Wheelchair", gemach: "WH Medical", requests: 14 }, { name: "Navy <b>gown</b> – size 8", gemach: "Simcha Dress", requests: 6 }],
+  byGemach: [
+    row({ id: "recA", slug: "wh-medical", name: "WH Medical", requests: 30, confirmed: 26, waiting: 1, reserved: 4, out: 15, overdue: 3, loansStarted: 28, medianReplyHours: 3, lastActivity: hoursAgo(2), adminBookings: 4 }),
+    row({ id: "recS", slug: "simcha-dress", name: "Simcha Dress", requests: 18, waiting: 4, waitingOver48h: 2, reserved: 3, out: 8, loansStarted: 13, medianReplyHours: 30, lastActivity: hoursAgo(24 * 9) }),
+    row({ id: "recC", slug: "coming", name: "Aardvark Coming", status: "Coming soon" }),
+  ],
+});
+const SEARCHES = { days: 90, total: 1, searches: [{ id: "recS1", query: "hospital bed", count: 4, nothingFound: 4, allOnLoan: 0, lastSearched: hoursAgo(5) }] };
+
+const reqs = [];
+const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const errors = [];
+page.on("pageerror", e => errors.push(String(e)));
+await page.route("https://accounts.google.com/**", r => r.fulfill({ contentType: "text/javascript", body: "" }));
+await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ body: "" }));
+await page.route("http://admin.test/**", r => r.fulfill({ contentType: "text/html", body: html }));
+await page.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
+  const u = new URL(r.request().url()), p = u.pathname;
+  reqs.push({ path: p, search: u.search });
+  const J = d => r.fulfill({ contentType: "application/json", body: JSON.stringify(d) });
+  if (p === "/admin/me") return J({ email: "b@x", name: "Barry", role: "Network Admin", gemachs: [{ id: "recA", slug: G.slug, name: G.name, active: true }, { id: "recS", slug: "simcha-dress", name: "Simcha Dress", active: true }] });
+  if (p === "/admin/gemach") return J(G);
+  if (p === "/admin/dashboard") return J({ newRequests: 0, activeLoans: 0, overdueLoans: 0, upcomingReservations: 0 });
+  if (p === "/admin/stats") return J({ requests: {} });
+  if (p === "/admin/network/overview") return J(OVERVIEW);
+  if (p === "/admin/network/analytics") return J(ANALYTICS(Number(u.searchParams.get("days"))));
+  if (p === "/admin/network/searches") return J({ ...SEARCHES, days: Number(u.searchParams.get("days")) });
+  return J([]);
+});
+await page.addInitScript(() => { localStorage.setItem("gemach_token", "fake.token.x"); if (!sessionStorage.getItem("t_init")) { localStorage.setItem("gemach_slug", "wh-medical"); sessionStorage.setItem("t_init", "1"); } });
+await page.goto("http://admin.test/admin.html");
+await page.waitForTimeout(500);
+
+await page.click(".nav-tab:has-text('Network')");
+await page.waitForSelector("#ng-row-recA");
+const tabs = (await page.$$eval(".net-tabs .set-tab", b => b.map(x => x.innerText.trim()))).join("|");
+ok(tabs === "Gemachs|Admins|Categories|Analytics", "four sub-tabs: " + tabs);
+ok(await page.isVisible("#net-area-gemachs") && !(await page.isVisible("#net-area-admins")) && !(await page.isVisible("#net-area-analytics")), "Gemachs shown first, others hidden");
+ok(!reqs.some(r => r.path === "/admin/network/analytics" || r.path === "/admin/network/searches"), "analytics and searches not loaded until opened");
+await page.screenshot({ path: "shot-net-tabs-gemachs.png" });
+
+await page.click("#net-tab-admins");
+ok(await page.isVisible("#net-admins") && !(await page.isVisible("#net-gemachs")), "Admins tab shows the admin list");
+ok(await page.getAttribute("#net-tab-admins", "aria-selected") === "true" && await page.getAttribute("#net-tab-gemachs", "aria-selected") === "false", "aria-selected follows");
+await page.click("#net-tab-categories");
+ok(await page.isVisible("#net-categories") && /Walkers/.test(await page.textContent("#net-categories")), "Categories tab");
+
+await page.click("#net-tab-analytics");
+await page.waitForSelector("#net-analytics .kpi-grid");
+await page.waitForSelector("#net-searches table");
+ok(reqs.some(r => r.path === "/admin/network/analytics" && r.search === "?days=90"), "analytics loaded for 90 days");
+const t = await page.$eval("#net-analytics", e => e.innerText);
+ok(/5\s*Waiting for a reply\s*2 over 2 days/.test(t), "waiting KPI: " + t.slice(0, 200));
+ok(/23\s*Out on loan\s*3 overdue/.test(t) && /7\s*Reserved/.test(t), "out / reserved KPIs");
+ok(/3\s*Gemachs\s*2 live · 1 coming soon · 0 hidden/.test(t), "gemach count KPI");
+ok(/48\s*Requests received\s*39 confirmed · 4 declined · 2 cancelled · 3 waiting/.test(t), "requests KPI");
+ok(/6 hours\s*Typical time to reply\s*88% within a day/.test(t), "reply KPI");
+ok(/41\s*Loans went out\s*30 returned · 6 booked in admin/.test(t), "loans KPI");
+ok(await page.$$eval(".net-an-col", c => c.length) === 13, "13 weekly columns");
+ok(/Requests and loans by week/.test(t) && /Requests/.test(await page.textContent(".net-an-legend")), "chart title + legend");
+await page.hover(".net-an-col >> nth=1");
+ok(/Week of .*: 1 request, 2 loans went out/.test(await page.textContent(".net-an-tip")), "hover shows the week's numbers: " + await page.textContent(".net-an-tip"));
+ok(await page.$$eval(".net-an-table tbody tr", r => r.length) === 13, "table view of the chart");
+const order = async () => (await page.$$eval(".net-an-gemachs tbody tr td:first-child a", a => a.map(x => x.textContent))).join("|");
+ok(await order() === "WH Medical|Simcha Dress|Aardvark Coming", "busiest first by default: " + await order());
+const sd = await page.$eval(".net-an-gemachs tbody tr:nth-child(2)", e => e.innerText);
+ok(/2 > 2 days/.test(sd) && /2 days/.test(sd) && /9 days ago/.test(sd), "Simcha row: waiting flag, reply, last activity: " + sd);
+ok(/Coming soon/.test(await page.textContent(".net-an-gemachs tbody tr:nth-child(3)")), "status tag on non-live gemach");
+await page.click(".net-an-gemachs th >> text=Waiting");
+ok(await order() === "Simcha Dress|WH Medical|Aardvark Coming", "sort by waiting: " + await order());
+await page.click(".net-an-gemachs th >> text=Waiting");
+ok(await order() === "Aardvark Coming|WH Medical|Simcha Dress", "tap again: smallest first: " + await order());
+await page.click(".net-an-gemachs th >> text=Gemach");
+ok(await order() === "Aardvark Coming|Simcha Dress|WH Medical", "sort by name");
+ok(/Navy <b>gown<\/b>/.test(t) && await page.$("#net-analytics b") === null, "names escaped");
+ok(/hospital bed/.test(await page.textContent("#net-searches")), "no-result searches on the Analytics tab");
+ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "no horizontal page scroll");
+await page.locator("#net-area-analytics").screenshot({ path: "shot-net-analytics.png" });
+
+await page.selectOption("#net-an-days", "365");
+await page.waitForFunction(() => /by month/.test(document.getElementById("net-analytics").innerText));
+ok(reqs.some(r => r.path === "/admin/network/analytics" && r.search === "?days=365") && reqs.some(r => r.path === "/admin/network/searches" && r.search === "?days=365"), "period changes both");
+
+// The chosen sub-tab is remembered for the session.
+await page.reload();
+await page.waitForTimeout(500);
+await page.click(".nav-tab:has-text('Network')");
+await page.waitForSelector("#net-analytics .kpi-grid");
+ok(await page.isVisible("#net-area-analytics") && !(await page.isVisible("#net-area-gemachs")), "Analytics reopens after reload");
+
+// Tapping a gemach opens it.
+const n0 = reqs.length;
+await page.click(".net-an-gemachs tbody a >> text=Simcha Dress");
+await page.waitForTimeout(1200);
+ok(await page.evaluate(() => localStorage.getItem("gemach_slug")) === "simcha-dress" && reqs.length > n0, "gemach link switches into that gemach");
+
+const p2 = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+await p2.route("https://accounts.google.com/**", r => r.fulfill({ contentType: "text/javascript", body: "" }));
+await p2.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ body: "" }));
+await p2.route("http://admin.test/**", r => r.fulfill({ contentType: "text/html", body: html }));
+await p2.route("https://wh-gemach.barry253-0f5.workers.dev/**", async r => {
+  const u = new URL(r.request().url()), p = u.pathname;
+  const J = d => r.fulfill({ contentType: "application/json", body: JSON.stringify(d) });
+  if (p === "/admin/me") return J({ email: "b@x", name: "Barry", role: "Network Admin", gemachs: [{ id: "recA", slug: G.slug, name: G.name, active: true }] });
+  if (p === "/admin/gemach") return J(G);
+  if (p === "/admin/network/overview") return J(OVERVIEW);
+  if (p === "/admin/network/analytics") return J(ANALYTICS(90));
+  if (p === "/admin/network/searches") return J(SEARCHES);
+  return J([]);
+});
+await p2.addInitScript(() => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", "wh-medical"); sessionStorage.setItem("whg_network_area", "analytics"); });
+await p2.goto("http://admin.test/admin.html");
+await p2.waitForTimeout(500);
+await p2.click(".nav-tab:has-text('Network')");
+await p2.waitForSelector("#net-analytics .kpi-grid");
+await p2.locator("#net-area-analytics").screenshot({ path: "shot-net-analytics-desktop.png" });
+await p2.close();
+
+ok(!errors.length, "no page errors: " + errors.join(" | "));
+await page.close();
+await browser.close();

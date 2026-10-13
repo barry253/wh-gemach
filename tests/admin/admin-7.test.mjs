@@ -115,6 +115,7 @@ for (const [w, h, tag] of [[390, 844, "m"], [1100, 900, "d"]]) {
   const t30 = await page.$eval("#stats-body", e => e.innerText);
   ok(!/waiting more than/.test(t30) && !/never lent/.test(t30) && t30.includes("no replies yet") && t30.includes("—"), tag + " empty period");
   await page.evaluate(() => switchTab("network"));
+  await page.click("#net-tab-analytics");
   await page.waitForSelector("#net-searches table");
   const ns = await page.$eval("#net-searches", e => e.innerText);
   ok(ns.includes("hospital bed") && /Nothing found/i.test(ns) && /All on loan/i.test(ns) && ns.includes("in Knee Scooters"), tag + " network searches");

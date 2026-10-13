@@ -7,6 +7,7 @@ import { buildEmailHtml, sendEmail } from "./email.js";
 import { DEFAULT_THEME, GEMACH_MODES, byOrderThenName, gemachFromRecord, gemachMemo, gemachRef, isLiveNetworkAdminMemo, liveNetMemo, selName, forgetLiveAdmin } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { netListSearches } from "./search.js";
+import { handleNetworkAnalytics } from "./analytics.js";
 import { EMAIL_RE } from "./settings.js";
 import { handleRemindersPreview } from "./reminders.js";
 
@@ -40,6 +41,7 @@ async function networkDispatch(c, path, method) {
   if (method === "PATCH" && (m = path.match(/^\/admin\/network\/admins\/([^/]+)$/)))     return netUpdateAdmin(c, m[1]);
   if (method === "GET"   && path === "/admin/network/categories") return netListCategories(c);
   if (method === "GET"   && path === "/admin/network/searches")   return netListSearches(c);
+  if (method === "GET"   && path === "/admin/network/analytics")  return handleNetworkAnalytics(c);
   if (method === "GET"   && path === "/admin/network/reminders")  return handleRemindersPreview(c); // dry run: sends nothing
   if (method === "POST"  && path === "/admin/network/categories") return netCreateCategory(c);
   if (method === "PATCH" && (m = path.match(/^\/admin\/network\/categories\/([^/]+)$/))) return netUpdateCategory(c, m[1]);

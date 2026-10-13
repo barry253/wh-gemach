@@ -117,9 +117,9 @@ ok(sp && sp.body.returnReminderMessage === "Hi {first_name}, please return the {
 ok(sp && sp.body.autoReminders === true && sp.body.reminderDaysBefore === 3 && sp.body.reminderRepeatDays === 5, "auto reminder settings saved: " + JSON.stringify(sp && sp.body));
 
 // Settings areas: four tabs, one save bar for all, dots on areas with changes, discard, leave warning
-await page.waitForFunction(() => [...document.querySelectorAll(".set-tab")].map(x => x.innerText.trim()).join("|") === "Profile|Page|Requests|Messages", null, { timeout: 3000 }).catch(() => {});
-ok((await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages", "four areas (short names on a phone): " + (await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|"));
-ok(await page.$eval(".set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all four tabs fit on a phone " + await page.$eval(".set-tabs", el => el.scrollWidth + "/" + el.clientWidth + " " + [...el.children].map(c => Math.round(c.getBoundingClientRect().width)).join(",")));
+await page.waitForFunction(() => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === "Profile|Page|Requests|Messages", null, { timeout: 3000 }).catch(() => {});
+ok((await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages", "four areas (short names on a phone): " + (await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|"));
+ok(await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all four tabs fit on a phone " + await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth + "/" + el.clientWidth + " " + [...el.children].map(c => Math.round(c.getBoundingClientRect().width)).join(",")));
 await page.waitForSelector("#settings-savebar", { state: "hidden", timeout: 5000 }).catch(() => {});
 ok(await page.isHidden("#settings-savebar"), "no save bar after saving");
 await page.click("#set-tab-profile");
@@ -147,7 +147,7 @@ const ap = calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach")
 ok(ap && JSON.stringify(ap.body) === JSON.stringify({ pickupAddress: "9 Elm Street" }), "Save from the bar sends only the change: " + JSON.stringify(ap && ap.body));
 await page.reload(); await page.waitForTimeout(500);
 await page.click(".nav-tab:has-text('Settings')");
-await page.waitForSelector(".set-tab");
+await page.waitForSelector("#screen-settings .set-tab");
 ok(await page.isVisible("#set-pickupAddress"), "comes back to the last area");
 
 ok(!errors.length, "no page errors " + errors.join(" | "));

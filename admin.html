@@ -1265,6 +1265,30 @@
     .stat-list li:last-child { border-bottom:0; }
     @media (max-width: 480px) { .kpi-grid { grid-template-columns:1fr 1fr; } .kpi-grid .kpi:last-child { grid-column:1 / -1; } .kpi-num { font-size:1.2rem; } }
     .stat-table .tag { white-space:nowrap; }
+    /* ── Network → Analytics ── */
+    .net-an-label { margin:.25rem 0 .5rem; padding:0; border:0; }
+    @media (max-width: 480px) { .kpi-grid.net-kpis-6 .kpi:last-child { grid-column:auto; } }
+    .net-an-warn { color:#B45309; font-weight:600; font-size:.72rem; }
+    .net-an-legend { display:flex; gap:.9rem; align-items:center; font-size:.75rem; color:var(--text); margin-bottom:.4rem; flex-wrap:wrap; }
+    .net-an-legend .card-id { margin-left:auto; }
+    .net-an-legend .sw { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:.35rem; vertical-align:-1px; }
+    .sw-req, .bar-req { background:#2E7AA6; }
+    .sw-loan, .bar-loan { background:#D08A1C; }
+    .net-an-chart { display:flex; align-items:stretch; gap:2px; height:140px; border-bottom:1px solid var(--border); padding-top:4px; }
+    .net-an-col { flex:1 1 0; min-width:0; display:flex; flex-direction:column; cursor:default; border-radius:4px; outline:none; }
+    .net-an-col:hover, .net-an-col.on, .net-an-col:focus-visible { background:rgba(27,58,75,.06); }
+    .net-an-bars { flex:1; display:flex; align-items:flex-end; justify-content:center; gap:2px; padding:0 1px; }
+    .net-an-bars .bar { display:block; flex:1 1 0; max-width:14px; min-height:0; border-radius:4px 4px 0 0; }
+    .net-an-x { height:0; overflow:visible; white-space:nowrap; font-size:.65rem; color:var(--muted); text-align:left; transform:translateY(4px); }
+    .net-an-chart { margin-bottom:1.1rem; }
+    .net-an-tip { min-height:1.1rem; font-size:.75rem; color:var(--text); }
+    .net-an-table summary { cursor:pointer; font-size:.75rem; color:var(--muted); margin-top:.35rem; }
+    .net-an-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -.25rem; }
+    .net-an-gemachs { min-width:560px; }
+    .net-an-gemachs th:first-child, .net-an-gemachs td:first-child { position:sticky; left:0; background:var(--white); max-width:11rem; }
+    .net-an-gemachs td:first-child a { color:var(--navy); font-weight:600; text-decoration:none; }
+    .th-sort { background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; white-space:nowrap; }
+    .th-sort.on { color:var(--text); font-weight:600; }
     /* ── Notifications (bell) ── */
     .btn-bell { background: rgba(255,255,255,0.12); border: none; color: white; font-size: 0.85rem; line-height: 1; padding: 0.3rem 0.45rem; border-radius: 4px; cursor: pointer; }
     .btn-bell:hover { background: rgba(255,255,255,0.2); }
@@ -1460,47 +1484,67 @@
       </div>
     </div>
 
-    <!-- Network (Network Admins only) -->
+    <!-- Network (Network Admins only): four areas as sub-tabs, like Settings -->
     <div class="screen" id="screen-network">
-      <div class="net-toolbar">
-        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-gemachs">Gemachs</div>
-        <button class="btn btn-primary btn-sm" onclick="openNewGemach()">+ New gemach</button>
+      <div class="set-tabs net-tabs" role="tablist" aria-label="Network areas">
+        <button type="button" role="tab" class="set-tab active" id="net-tab-gemachs" aria-selected="true" aria-controls="net-area-gemachs" onclick="showNetworkArea('gemachs')">Gemachs</button>
+        <button type="button" role="tab" class="set-tab" id="net-tab-admins" aria-selected="false" aria-controls="net-area-admins" onclick="showNetworkArea('admins')">Admins</button>
+        <button type="button" role="tab" class="set-tab" id="net-tab-categories" aria-selected="false" aria-controls="net-area-categories" onclick="showNetworkArea('categories')">Categories</button>
+        <button type="button" role="tab" class="set-tab" id="net-tab-analytics" aria-selected="false" aria-controls="net-area-analytics" onclick="showNetworkArea('analytics')">Analytics</button>
       </div>
-      <div class="card-list" id="net-gemachs" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
 
-      <div class="net-toolbar">
-        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-admins">Admins</div>
-        <button class="btn btn-primary btn-sm" onclick="openAdminSheet(null)">+ Add admin</button>
-        <div class="net-admin-filters">
-          <select id="net-admin-role" aria-label="Filter admins by role" onchange="renderNetAdmins()">
-            <option value="owners" selected>Owners &amp; network admins</option>
-            <option value="">Everyone</option>
-            <option value="Manager">Managers</option>
-            <option value="Volunteer">Volunteers</option>
-            <option value="inactive">Turned off</option>
-          </select>
-          <select id="net-admin-filter" aria-label="Filter admins by gemach" onchange="renderNetAdmins()"></select>
+      <div class="net-area" id="net-area-gemachs" role="tabpanel" aria-labelledby="net-tab-gemachs">
+        <div class="net-toolbar">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-gemachs">Gemachs</div>
+          <button class="btn btn-primary btn-sm" onclick="openNewGemach()">+ New gemach</button>
         </div>
+        <div class="card-list" id="net-gemachs" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
       </div>
-      <div class="muted-small" id="net-admin-count" style="margin:-0.35rem 0 0.6rem"></div>
-      <div class="card-list" id="net-admins" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
 
-      <div class="net-toolbar">
-        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-categories">Browse categories</div>
-        <button class="btn btn-primary btn-sm" onclick="openCategorySheet(null)">+ Add category</button>
+      <div class="net-area" id="net-area-admins" role="tabpanel" aria-labelledby="net-tab-admins" hidden>
+        <div class="net-toolbar">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-admins">Admins</div>
+          <button class="btn btn-primary btn-sm" onclick="openAdminSheet(null)">+ Add admin</button>
+          <div class="net-admin-filters">
+            <select id="net-admin-role" aria-label="Filter admins by role" onchange="renderNetAdmins()">
+              <option value="owners" selected>Owners &amp; network admins</option>
+              <option value="">Everyone</option>
+              <option value="Manager">Managers</option>
+              <option value="Volunteer">Volunteers</option>
+              <option value="inactive">Turned off</option>
+            </select>
+            <select id="net-admin-filter" aria-label="Filter admins by gemach" onchange="renderNetAdmins()"></select>
+          </div>
+        </div>
+        <div class="muted-small" id="net-admin-count" style="margin:-0.35rem 0 0.6rem"></div>
+        <div class="card-list" id="net-admins" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
       </div>
-      <div class="card-list" id="net-categories" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
 
-      <div class="net-toolbar">
-        <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-searches">Searches with no results</div>
-        <select class="days" id="net-search-days" aria-label="Searches period" onchange="loadNetSearches()">
-          <option value="30">Last 30 days</option>
-          <option value="90" selected>Last 90 days</option>
-          <option value="365">Last 12 months</option>
-        </select>
+      <div class="net-area" id="net-area-categories" role="tabpanel" aria-labelledby="net-tab-categories" hidden>
+        <div class="net-toolbar">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-categories">Browse categories</div>
+          <button class="btn btn-primary btn-sm" onclick="openCategorySheet(null)">+ Add category</button>
+        </div>
+        <div class="card-list" id="net-categories" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
       </div>
-      <p class="stat-note" style="margin:0 0 .6rem">What people looked for on the home page that no gemach had, or that was all on loan. Useful for deciding what to add, or which gemach to invite next.</p>
-      <div class="card" id="net-searches" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+
+      <div class="net-area" id="net-area-analytics" role="tabpanel" aria-labelledby="net-tab-analytics" hidden>
+        <div class="net-toolbar">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-analytics">Across all gemachs</div>
+          <select class="days" id="net-an-days" aria-label="Analytics period" onchange="loadNetAnalytics(); loadNetSearches()">
+            <option value="30">Last 30 days</option>
+            <option value="90" selected>Last 90 days</option>
+            <option value="365">Last 12 months</option>
+          </select>
+        </div>
+        <div id="net-analytics"><div class="loading">Loading…</div></div>
+
+        <div class="net-toolbar" style="margin-top:.5rem">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-searches">Searches with no results</div>
+        </div>
+        <p class="stat-note" style="margin:0 0 .6rem">What people looked for on the home page that no gemach had, or that was all on loan. Useful for deciding what to add, or which gemach to invite next.</p>
+        <div class="card" id="net-searches" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+      </div>
     </div>
 
   </div>
@@ -6231,6 +6275,7 @@
 
   async function loadNetwork() {
     if (!isNetworkAdmin()) return;
+    showNetworkArea(NET_AREA, true);
     // Coming back to the tab: show what we have right away, then refresh underneath.
     if (!NET.loadedAt) { // first visit this session: the saved copy from last time, if any
       const snap = snapGet("/admin/network/overview");
@@ -6260,16 +6305,159 @@
     if (Array.isArray(g)) renderNetGemachs();
     if (Array.isArray(a)) { fillAdminFilter(); renderNetAdmins(); }
     if (Array.isArray(c)) renderNetCategories();
-    loadNetSearches();
+    if (NET_AREA === "analytics") { loadNetAnalytics(); loadNetSearches(); }
+  }
+
+  // ── Network sub-tabs (Gemachs / Admins / Categories / Analytics), same look as the Settings areas ──
+  var NETWORK_AREAS = ["gemachs", "admins", "categories", "analytics"];
+  var NET_AREA = (() => { try { const a = sessionStorage.getItem("whg_network_area"); return NETWORK_AREAS.includes(a) ? a : "gemachs"; } catch (e) { return "gemachs"; } })();
+  function showNetworkArea(id, quiet) {
+    if (!NETWORK_AREAS.includes(id)) id = "gemachs";
+    const changed = id !== NET_AREA;
+    NET_AREA = id;
+    try { sessionStorage.setItem("whg_network_area", id); } catch (e) { /* ignore */ }
+    for (const a of NETWORK_AREAS) {
+      const tab = document.getElementById(`net-tab-${a}`), panel = document.getElementById(`net-area-${a}`);
+      if (tab) { tab.classList.toggle("active", a === id); tab.setAttribute("aria-selected", a === id ? "true" : "false"); }
+      if (panel) panel.hidden = a !== id;
+    }
+    if (!quiet) { const tabs = document.querySelector(".net-tabs"); if (tabs && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: "start" }); }
+    // Analytics loads only when someone looks at it (it reads every gemach's requests and loans).
+    if (id === "analytics" && (changed || !NET_AN.at || Date.now() - NET_AN.at > 60000)) { loadNetAnalytics(); loadNetSearches(); }
+  }
+
+  // ── Network → Analytics ──
+  var NET_AN = { key: "", at: 0, sort: "requests", data: null };
+  async function loadNetAnalytics() {
+    const el = document.getElementById("net-analytics");
+    const days = document.getElementById("net-an-days").value;
+    const key = days;
+    NET_AN.key = key; NET_AN.at = Date.now();
+    const path = `/admin/network/analytics?days=${encodeURIComponent(days)}`;
+    const old = snapGet(path);
+    if (old) { NET_AN.data = old; renderNetAnalytics(); el.classList.add("is-stale"); }
+    else el.innerHTML = '<div class="loading">Loading…</div>';
+    let d;
+    try { d = await api(path); } catch (e) { d = { error: "Couldn't load analytics right now." }; }
+    if (key !== NET_AN.key) return; // a newer load started
+    el.classList.remove("is-stale");
+    if (!d || d.error || !Array.isArray(d.byGemach)) {
+      NET_AN.at = 0;
+      if (old) { showToast("Couldn't refresh analytics — showing the last saved copy"); return; }
+      el.innerHTML = `<div class="empty-state">${esc(/not found/i.test(d?.error || "") ? "Analytics isn't available yet — try again in a few minutes." : d?.error || "Could not load")}</div>`;
+      return;
+    }
+    snapPut(path, d);
+    if (old && JSON.stringify(old) === JSON.stringify(d)) return;
+    NET_AN.data = d; renderNetAnalytics();
+  }
+  const NET_AN_COLS = [
+    { key: "name",            label: "Gemach" },
+    { key: "requests",        label: "Requests", num: true, title: "Online requests received in the period" },
+    { key: "medianReplyHours", label: "Reply", num: true, title: "Typical time to answer a request" },
+    { key: "waiting",         label: "Waiting", num: true, title: "Requests waiting for an answer now" },
+    { key: "reserved",        label: "Reserved", num: true, title: "Reserved now, not picked up yet" },
+    { key: "out",             label: "Out", num: true, title: "Out on loan now" },
+    { key: "loansStarted",    label: "Lent", num: true, title: "Loans that went out in the period" },
+    { key: "lastActivity",    label: "Last activity", num: true, title: "Last thing logged in History (in the period)" },
+  ];
+  function sortNetAnalytics(key) {
+    NET_AN.sort = NET_AN.sort === key && key !== "name" ? `-${key}` : key; // tap again: smallest first
+    renderNetAnalytics();
+  }
+  function renderNetAnalytics() {
+    const d = NET_AN.data, el = document.getElementById("net-analytics");
+    if (!d) return;
+    const period = d.days === 365 ? "the last 12 months" : `the last ${d.days} days`;
+    const n = d.now || {}, p = d.period || {}, gc = d.gemachs || {};
+    let html = `<div class="section-label net-an-label">Right now</div>
+      <div class="kpi-grid net-kpis-6">
+        <div class="kpi"><div class="kpi-num">${esc(n.waiting ?? 0)}</div><div class="kpi-label">Waiting for a reply</div>
+          <div class="kpi-sub">${n.waitingOver48h ? `<span class="net-an-warn">${esc(n.waitingOver48h)} over 2 days</span>` : "none over 2 days"}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(n.reserved ?? 0)}</div><div class="kpi-label">Reserved</div>
+          <div class="kpi-sub">not picked up yet</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(n.out ?? 0)}</div><div class="kpi-label">Out on loan</div>
+          <div class="kpi-sub">${n.overdue ? `<span class="net-an-warn">${esc(n.overdue)} overdue</span>` : "none overdue"}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc((gc.live ?? 0) + (gc.comingSoon ?? 0) + (gc.hidden ?? 0))}</div><div class="kpi-label">Gemachs</div>
+          <div class="kpi-sub">${esc(gc.live ?? 0)} live · ${esc(gc.comingSoon ?? 0)} coming soon · ${esc(gc.hidden ?? 0)} hidden</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(n.itemTypes ?? 0)}</div><div class="kpi-label">Items listed</div>
+          <div class="kpi-sub">active item types</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(n.borrowers ?? 0)}</div><div class="kpi-label">Borrowers</div>
+          <div class="kpi-sub">people lent to</div></div>
+      </div>
+      <div class="section-label net-an-label">In ${esc(period)}</div>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-num">${esc(p.requests ?? 0)}</div><div class="kpi-label">Requests received</div>
+          <div class="kpi-sub">${esc(p.confirmed ?? 0)} confirmed · ${esc(p.declined ?? 0)} declined${p.cancelled ? ` · ${esc(p.cancelled)} cancelled` : ""}${p.stillWaiting ? ` · ${esc(p.stillWaiting)} waiting` : ""}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(fmtHours(p.medianReplyHours))}</div><div class="kpi-label">Typical time to reply</div>
+          <div class="kpi-sub">${p.within24hPct == null ? "no replies yet" : `${esc(p.within24hPct)}% within a day`}</div></div>
+        <div class="kpi"><div class="kpi-num">${esc(p.loansStarted ?? 0)}</div><div class="kpi-label">Loans went out</div>
+          <div class="kpi-sub">${esc(p.loansReturned ?? 0)} returned${p.adminBookings ? ` · ${esc(p.adminBookings)} booked in admin` : ""}</div></div>
+      </div>`;
+
+    // Trend: requests and loans per week (or month), grouped bars on one count axis.
+    const bk = d.trend?.buckets || [];
+    const max = Math.max(1, ...bk.map(b => Math.max(b.requests, b.loans)));
+    const by = d.trend?.by === "month" ? "month" : "week";
+    const label = b => by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "short" }) : fmt(b.start);
+    const tip = b => `${by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "Week of " + fmt(b.start)}: ${plural(b.requests, "request")}, ${plural(b.loans, "loan")} went out`;
+    const every = Math.ceil(bk.length / 6); // a few x labels, not one per bar
+    html += `<div class="card stat-block"><h4>Requests and loans by ${by}</h4>
+      <div class="net-an-legend"><span><i class="sw sw-req"></i>Requests</span><span><i class="sw sw-loan"></i>Loans went out</span><span class="card-id">max ${esc(max)}</span></div>
+      <div class="net-an-chart" role="img" aria-label="${esc(`Requests and loans by ${by}, ${period}`)}">${bk.map((b, i) => `
+        <div class="net-an-col" tabindex="0" title="${esc(tip(b))}" data-tip="${esc(tip(b))}">
+          <div class="net-an-bars"><i class="bar bar-req" style="height:${(100 * b.requests / max).toFixed(1)}%"></i><i class="bar bar-loan" style="height:${(100 * b.loans / max).toFixed(1)}%"></i></div>
+          <div class="net-an-x">${i % every === 0 || i === bk.length - 1 ? esc(label(b)) : ""}</div>
+        </div>`).join("")}</div>
+      <div class="net-an-tip" aria-live="polite"></div>
+      <details class="net-an-table"><summary>Show as a table</summary>
+        <table class="stat-table"><thead><tr><th>${by === "month" ? "Month" : "Week of"}</th><th class="num">Requests</th><th class="num">Loans</th></tr></thead><tbody>${
+          bk.map(b => `<tr><td>${esc(by === "month" ? label(b) + " " + b.start.slice(0, 4) : fmt(b.start))}</td><td class="num">${esc(b.requests)}</td><td class="num">${esc(b.loans)}</td></tr>`).join("")}</tbody></table>
+      </details></div>`;
+
+    // By gemach: tap a column to sort; busiest first by default.
+    const rows = [...(d.byGemach || [])];
+    const sk = NET_AN.sort.replace(/^-/, ""), asc = NET_AN.sort.startsWith("-") || sk === "name";
+    const val = r => sk === "lastActivity" ? (r.lastActivity ? Date.parse(r.lastActivity) : -1) : sk === "name" ? r.name.toLowerCase() : (r[sk] ?? -1);
+    rows.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1) || a.name.localeCompare(b.name); });
+    const ago = iso => { if (!iso) return "—"; const dd = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return dd <= 0 ? "Today" : dd === 1 ? "Yesterday" : `${dd} days ago`; };
+    html += `<div class="card stat-block"><h4>By gemach</h4>
+      <div class="net-an-scroll"><table class="stat-table net-an-gemachs"><thead><tr>${NET_AN_COLS.map(c => {
+        const on = sk === c.key;
+        return `<th class="${c.num ? "num" : ""}"${c.title ? ` title="${esc(c.title)}"` : ""} aria-sort="${on ? (asc ? "ascending" : "descending") : "none"}"><button type="button" class="th-sort${on ? " on" : ""}" onclick="sortNetAnalytics('${c.key}')">${esc(c.label)}${on ? (asc ? " ▲" : " ▼") : ""}</button></th>`;
+      }).join("")}</tr></thead><tbody>${rows.map(r => `<tr>
+        <td><a href="#" onclick="${r.slug ? `switchGemach(${esc(JSON.stringify(r.slug))}, 'dashboard')` : ""};return false">${esc(r.name)}</a>${r.status !== "Live" ? ` <span class="tag tag-amber">${esc(r.status)}</span>` : ""}${r.mode === "Directory" ? ' <span class="tag">Listing</span>' : r.mode === "Info" ? ' <span class="tag">Info</span>' : ""}</td>
+        <td class="num">${esc(r.requests)}${r.adminBookings ? `<div class="card-id">+${esc(r.adminBookings)} admin</div>` : ""}</td>
+        <td class="num">${esc(fmtHours(r.medianReplyHours))}</td>
+        <td class="num">${esc(r.waiting)}${r.waitingOver48h ? `<div class="net-an-warn">${esc(r.waitingOver48h)} &gt; 2 days</div>` : ""}</td>
+        <td class="num">${esc(r.reserved)}</td>
+        <td class="num">${esc(r.out)}${r.overdue ? `<div class="net-an-warn">${esc(r.overdue)} overdue</div>` : ""}</td>
+        <td class="num">${esc(r.loansStarted)}</td>
+        <td class="num card-id">${esc(ago(r.lastActivity))}</td>
+      </tr>`).join("")}</tbody></table></div>
+      <p class="stat-note">Requests, reply time, lent and last activity cover ${esc(period)}; waiting, reserved and out are right now. Test requests and add-on sales aren't counted. Tap a gemach to open it.</p></div>`;
+
+    const top = d.topRequested || [];
+    html += `<div class="card stat-block"><h4>Most requested across the network</h4>` + (top.length
+      ? `<table class="stat-table"><thead><tr><th>Item</th><th>Gemach</th><th class="num">Requests</th></tr></thead><tbody>` +
+        top.map(t => `<tr><td>${esc(t.name)}${t.addon ? ' <span class="tag tag-addon">Add-on</span>' : ""}</td><td class="card-id">${esc(t.gemach || "")}</td><td class="num">${esc(t.requests)}</td></tr>`).join("") + `</tbody></table>`
+      : `<p class="stat-note">No requests in ${esc(period)}.</p>`) + `</div>`;
+    if (d.cachedAt) html += `<p class="stat-note" style="margin:-.25rem 0 1rem">Numbers from ${esc(ago(d.cachedAt) === "Today" ? new Date(d.cachedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ago(d.cachedAt))} (refreshed every 5 minutes).</p>`;
+    el.innerHTML = html;
+    const tipEl = el.querySelector(".net-an-tip");
+    el.querySelectorAll(".net-an-col").forEach(c => {
+      const show = () => { el.querySelectorAll(".net-an-col.on").forEach(x => x.classList.remove("on")); c.classList.add("on"); tipEl.textContent = c.dataset.tip; };
+      c.addEventListener("mouseenter", show); c.addEventListener("focus", show); c.addEventListener("click", show);
+    });
   }
 
   async function loadNetSearches() {
     const el = document.getElementById("net-searches");
-    const days = document.getElementById("net-search-days").value;
+    const days = document.getElementById("net-an-days").value;
     el.innerHTML = '<div class="loading">Loading…</div>';
     let d;
     try { d = await api(`/admin/network/searches?days=${encodeURIComponent(days)}`); } catch (e) { d = { error: "Couldn't load searches right now." }; }
-    if (document.getElementById("net-search-days").value !== days) return;
+    if (document.getElementById("net-an-days").value !== days) return;
     if (!d || d.error || !Array.isArray(d.searches)) { el.innerHTML = `<div class="empty-state">${esc(d?.error || "Could not load")}</div>`; return; }
     if (!d.searches.length) { el.innerHTML = '<div class="empty-state" style="padding:1rem">No unmatched searches in this period</div>'; return; }
     el.innerHTML = `<table class="stat-table"><thead><tr><th>Searched for</th><th class="num">Times</th><th>Result</th><th class="num">Last</th></tr></thead><tbody>` +

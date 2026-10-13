@@ -70,9 +70,9 @@ async function open(role, gemach) {
 {
   const { page, errors, calls } = await open("Owner", G);
   await page.click(".nav-tab:has-text('Settings')");
-  await page.waitForFunction(want => [...document.querySelectorAll(".set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages|Team", { timeout: 5000 }).catch(() => {});
-  ok((await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages|Team", "owner sees a Team area");
-  ok(await page.$eval(".set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all five tabs fit on a phone " + await page.$eval(".set-tabs", el => el.scrollWidth + "/" + el.clientWidth));
+  await page.waitForFunction(want => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages|Team", { timeout: 5000 }).catch(() => {});
+  ok((await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages|Team", "owner sees a Team area");
+  ok(await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all five tabs fit on a phone " + await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth + "/" + el.clientWidth));
   await page.click("#set-tab-team");
   await page.waitForSelector("#team-list .team-row");
   ok((await page.$$eval("#team-list .team-row .card-title", e => e.map(x => x.textContent.trim()))).join("|") === "Barry You|Nate Net|Moe Manager|Sam Shared", "team listed, you marked, linked network admin after owners");
@@ -136,8 +136,8 @@ async function open(role, gemach) {
 {
   const { page, errors } = await open("Manager", { ...G, canManageTeam: false });
   await page.click(".nav-tab:has-text('Settings')");
-  await page.waitForFunction(want => [...document.querySelectorAll(".set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages", { timeout: 5000 }).catch(() => {});
-  const mgrTabs = (await page.$$eval(".set-tab", b => b.map(x => x.innerText.trim()))).join("|");
+  await page.waitForFunction(want => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages", { timeout: 5000 }).catch(() => {});
+  const mgrTabs = (await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|");
   ok(mgrTabs === "Profile|Page|Requests|Messages", "manager: no Team area: " + mgrTabs);
   ok(!(await page.$("#set-area-team")), "no team panel in the page");
   ok(!errors.length, "no page errors: " + errors.join(" | "));
@@ -148,6 +148,7 @@ async function open(role, gemach) {
 {
   const { page, errors, calls } = await open("Network Admin", G);
   await page.click(".nav-tab:has-text('Network')");
+  await page.click("#net-tab-admins");
   await page.waitForSelector("#net-admins .net-row");
   const names = async () => (await page.$$eval("#net-admins .net-row .card-title", e => e.map(x => x.textContent.trim()))).join("|");
   ok(await names() === "Nina Net|Olivia Owner", "default: owners + network admins (active): " + await names());
@@ -161,6 +162,7 @@ async function open(role, gemach) {
   await page.selectOption("#net-admin-role", "inactive");
   ok(/Otto Off/.test(await names()), "turned-off admins");
   // Edit a gemach from the Network tab
+  await page.click("#net-tab-gemachs");
   await page.click("#ng-row-recA button:has-text('Edit')");
   ok(await page.inputValue("#eg-name") === G.name && await page.isDisabled("#eg-slug") && await page.inputValue("#eg-email") === "whm@x", "edit sheet filled; web address locked while live");
   await page.fill("#eg-name", "WH Medical Gemach");
