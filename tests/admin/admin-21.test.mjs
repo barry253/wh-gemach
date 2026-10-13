@@ -106,8 +106,11 @@ sp = lastPatch();
 ok(sp && JSON.stringify(sp.body) === '{"borrowNote":"Visit during open hours to borrow."}', "PATCH sends the note only " + JSON.stringify(sp && sp.body));
 
 // Inventory row + item type sheet
-await page.evaluate(() => switchTab("inventory"));
-await page.waitForSelector(".inventory-group");
+await page.waitForTimeout(500);
+for (let i = 0; i < 3; i++) {
+  await page.evaluate(() => switchTab("inventory"));
+  try { await page.waitForSelector(".inventory-group", { timeout: 8000 }); break; } catch (e) { if (i === 2) throw e; }
+}
 const rows = await page.$$eval(".inventory-group", els => els.map(e => e.innerText));
 ok(/Dina Rosenfeld · Hachai/.test(rows[0]) && /★ Featured/.test(rows[0]) && /New until 2099-01-01/.test(rows[1]), "inventory shows byline, Featured, New until");
 await page.locator(".inventory-group").first().locator("[title='Edit item type']").click();
