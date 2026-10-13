@@ -14,7 +14,7 @@ import { handleRemindersPreview } from "./reminders.js";
 
 // ─── Network admin (role "Network Admin", re-checked live) ────────────────────
 
-const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Food", "Wedding & Events", "Other"]; // Gemachs.Category choices
+const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"]; // Gemachs.Category choices
 const ADMIN_ROLES = ["Owner", "Manager", "Volunteer", NETWORK_ADMIN_ROLE];             // Admins.Role choices
 
 /** Live role check: the JWT may be up to 12h old, so read the Admins row now. */
