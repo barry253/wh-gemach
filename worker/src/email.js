@@ -25,6 +25,7 @@ async function sendEmail(env, g, { to, subject, text, html, attachments }) {
       method: "POST",
       headers: { "Authorization": `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000), // a stuck email service never holds a request (or the daily run) forever
     });
     const out = await res.text();
     if (!res.ok) { console.error("Resend failed:", res.status, out); return false; }

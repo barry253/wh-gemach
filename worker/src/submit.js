@@ -217,28 +217,32 @@ async function handleSubmitRequest(request, db, env, ctx) {
     return json({ error: "Failed to save request. Please contact the gemach directly." }, 500);
   }
 
-  const notified = await sendNotificationEmail(env, g, {
-    requestId, name, phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes,
+  // Tell the gemach (email, then lock-screen push) AFTER answering the borrower: the request is already saved,
+  // so a slow email service must never make the form say "couldn't send" (people would send it again).
+  const notifyArgs = {
+    requestId, name: fields["Name"], phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes: fields["Notes"] || null,
     requestType: isAppt ? "Appointment" : "Loan", eventDate, preferredTimes, partySize,
     depositAck: fields["Deposit Acknowledged"],
     items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null,
       addon: isAddonType(typeMap[id]), price: isAddonType(typeMap[id]) ? addonPrice(typeMap[id]) : null })),
     availability, test,
-  });
-  if (notified !== true) {
-    ctx.waitUntil(sendAlert(env, {
-      always: true,
-      subject: `${test ? "[TEST] " : ""}New request ${requestId} for ${g.name || g.slug} — gemach was NOT notified`,
-      text: `Request ${requestId} for ${g.name || g.slug} was saved, but the email telling the gemach about it ` +
-        (notified === null ? "had no address to go to (the gemach has no Email set)." : "failed to send.") +
-        `\n\nIt's waiting in admin under Requests. Please make sure someone at the gemach sees it.`,
-    }).catch(e => console.error("alert failed:", e.message)));
-  }
-
-  // Lock-screen notification for the gemach's admins (no borrower details in it).
-  ctx.waitUntil(notifyAdmins(env, requestMessage(g, {
-    requestId, recId: created?.id, itemCount: itemIds.length, isAppt, style, eventDate, from, emailed: notified === true, test,
-  }), { db }));
+  };
+  ctx.waitUntil((async () => {
+    const notified = await sendNotificationEmail(env, g, notifyArgs).catch(e => { console.error("gemach notification failed:", e.message); return false; });
+    if (notified !== true) {
+      await sendAlert(env, {
+        always: true,
+        subject: `${test ? "[TEST] " : ""}New request ${requestId} for ${g.name || g.slug} — gemach was NOT notified`,
+        text: `Request ${requestId} for ${g.name || g.slug} was saved, but the email telling the gemach about it ` +
+          (notified === null ? "had no address to go to (the gemach has no Email set)." : "failed to send.") +
+          `\n\nIt's waiting in admin under Requests. Please make sure someone at the gemach sees it.`,
+      }).catch(e => console.error("alert failed:", e.message));
+    }
+    // Lock-screen notification for the gemach's admins (no borrower details in it).
+    await notifyAdmins(env, requestMessage(g, {
+      requestId, recId: created?.id, itemCount: itemIds.length, isAppt, style, eventDate, from, emailed: notified === true, test,
+    }), { db });
+  })().catch(e => console.error("request notifications failed:", e.message)));
 
   logEvent(ctx, db, g, {
     eventType: "Request Received",

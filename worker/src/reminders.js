@@ -1,6 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { logEvent } from "./activity.js";
-import { Q, firstLink, linkedId } from "./airtable.js";
+import { logEvents } from "./activity.js";
+import { Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
 import { makeDb } from "./db.js";
 import { sendAlert } from "./alerts.js";
 import { T } from "./config.js";
@@ -111,55 +111,99 @@ function reminderMessage(g, { firstName, items, borrowed, expected, today, link 
 
 const VALID_EMAIL = /^[^\s@<>()"',;:\\]+@[^\s@<>()"',;:\\]+\.[^\s@<>()"',;:\\]+$/;
 
+// Workers Free allows 50 requests to outside services (Resend) per run: send at most this many reminders a
+// day; the rest stay due and go out tomorrow (and the Network Admin is told).
+const MAX_EMAILS_PER_RUN = 40;
+
 /**
  * Run the day's reminders. dryRun: work out who would get one, send nothing, change nothing.
- * Returns { today, sent: [...], failed: [...], noEmail } (dry run: "sent" = would send).
+ * Returns { today, sent: [...], failed: [...], noEmail, skippedTest, deferred, errors } (dry run: "sent" = would send).
+ * Reads everything in a few queries for the whole network (gemachs, due loans, their requests / borrowers /
+ * items / types) and writes the "sent" stamps and History in one go, so the run stays far below the 50
+ * database queries per invocation however many gemachs use reminders. One loan's problem doesn't stop the rest.
  */
 async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = makeDb(env) } = {}) {
   const today = nyToday(now);
-  const recs = await db.listAll(T.GEMACHS, { where: [Q.isTrue("Active"), Q.isTrue("Auto Reminders"), Q.nonEmpty("Slug")], fields: GEMACH_FIELDS });
-  const out = { today, dryRun, sent: [], failed: [], noEmail: 0 };
-  for (const g of recs.map(gemachFromRecord)) {
-    const loans = await db.listAll(T.LOANS, { scope: g, where: [Q.eq("Status", "Active"), Q.notBlank("Expected Return")], fields: LOAN_LIST_FIELDS });
-    if (!loans.length) continue;
-    const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
+  const out = { today, dryRun, sent: [], failed: [], noEmail: 0, skippedTest: 0, deferred: 0, errors: [] };
+  const gemachs = (await db.listAll(T.GEMACHS, { where: [Q.isTrue("Active"), Q.isTrue("Auto Reminders"), Q.nonEmpty("Slug")], fields: GEMACH_FIELDS }))
+    .map(gemachFromRecord);
+  const byId = new Map(gemachs.map(g => [g.id, g]));
+  const due = [];
+  if (gemachs.length) {
+    const loans = await db.listAll(T.LOANS, { where: [Q.eq("Status", "Active"), Q.notBlank("Expected Return")], fields: [...LOAN_LIST_FIELDS, "Gemach"] });
     for (const l of loans) {
+      const links = (l.fields["Gemach"] || []).map(linkedId);
+      const g = links.length === 1 ? byId.get(links[0]) : null;
+      if (!g) continue;
       const f = l.fields;
-      const q = loanQtyInfo(f, typeInfo);
-      if (q.isAddon) continue; // add-ons are bought, not returned
-      const expected = f["Expected Return"];
       const lastSent = f["Reminder Sent At"] ? nyToday(Date.parse(f["Reminder Sent At"])) : null;
-      const kind = reminderDue({ expected, today, lastSent, before: g.reminderDaysBefore, repeat: g.reminderRepeatDays });
-      if (!kind) continue;
-      const b = borrowerMap[linkedId(firstLink(f["Borrower"]))] || {};
-      const email = String(b.email || "").trim();
-      if (!VALID_EMAIL.test(email)) { out.noEmail++; continue; }
-      const item = itemMap[linkedId(firstLink(f["Item"]))] || {};
-      const typeName = item.itemTypeName || itemTypeMap[linkedId(firstLink(f["Item to Reserve"]))] || "item";
-      const items = q.isQuantity && q.quantity ? `${typeName} × ${q.quantity}` : typeName;
-      const src = linkedId(firstLink(f["Source Request"]));
-      const link = src ? await manageUrl(env, src) : null;
-      const message = reminderMessage(g, { firstName: String(b.name || "").trim().split(/\s+/)[0], items, borrowed: f["Date Borrowed"], expected, today, link });
-      const entry = { gemach: g.slug, loanId: f["Loan ID"] || l.id, borrower: b.name || null, email, kind, due: expected };
-      if (dryRun) { out.sent.push({ ...entry, message }); continue; }
-      const subject = kind === "overdue" ? `Reminder: please return the ${items} — ${g.name}` : `Reminder: ${items} due back ${dayLabel(expected)} — ${g.name}`;
-      const ok = await sendEmail(env, g, { to: email, subject, text: message + emailSignature(g), html: buildEmailHtml(g, message) });
-      if (!ok) { out.failed.push(entry); continue; }
-      await db.update(T.LOANS, l.id, { "Reminder Sent At": new Date(now).toISOString(), "Reminder Sent Via": "Email (automatic)" });
-      logEvent(ctx, db, g, {
-        eventType: "Return Reminder Sent", borrower: b.name || null, itemType: typeName, itemCode: item.itemId || null,
-        loanId: f["Loan ID"] || null, admin: "Automatic", notes: `Emailed to ${email}${kind === "overdue" ? " (overdue)" : ""}`,
-      });
-      out.sent.push(entry);
+      const kind = reminderDue({ expected: f["Expected Return"], today, lastSent, before: g.reminderDaysBefore, repeat: g.reminderRepeatDays });
+      if (kind) due.push({ l, g, kind });
     }
   }
-  console.log(`reminders ${today}${dryRun ? " (dry run)" : ""}: ${out.sent.length} sent, ${out.failed.length} failed, ${out.noEmail} without email`);
-  if (out.failed.length && !dryRun) {
+  const stamps = [], events = new Map(); // gemach id -> History rows
+  if (due.length) {
+    // Loans from requests sent through a gemach's test link never get real reminders.
+    const srcIds = due.map(d => linkedId(firstLink(d.l.fields["Source Request"]))).filter(Boolean);
+    const testIds = new Set((await fetchByIds(db, T.REQUESTS, srcIds, { fields: ["Test"] })).filter(r => r.fields.Test).map(r => r.id));
+    const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, null, due.map(d => d.l), { includeItemToReserve: true });
+    let emails = 0;
+    for (const { l, g, kind } of due) {
+      const f = l.fields;
+      try {
+        const q = loanQtyInfo(f, typeInfo);
+        if (q.isAddon) continue; // add-ons are bought, not returned
+        const src = linkedId(firstLink(f["Source Request"]));
+        if (src && testIds.has(src)) { out.skippedTest++; continue; }
+        const expected = f["Expected Return"];
+        const b = borrowerMap[linkedId(firstLink(f["Borrower"]))] || {};
+        const email = String(b.email || "").trim();
+        if (!VALID_EMAIL.test(email)) { out.noEmail++; continue; }
+        const item = itemMap[linkedId(firstLink(f["Item"]))] || {};
+        const typeName = item.itemTypeName || itemTypeMap[linkedId(firstLink(f["Item to Reserve"]))] || "item";
+        const items = q.isQuantity && q.quantity ? `${typeName} × ${q.quantity}` : typeName;
+        const link = src ? await manageUrl(env, src) : null;
+        const message = reminderMessage(g, { firstName: String(b.name || "").trim().split(/\s+/)[0], items, borrowed: f["Date Borrowed"], expected, today, link });
+        const entry = { gemach: g.slug, loanId: f["Loan ID"] || l.id, borrower: b.name || null, email, kind, due: expected };
+        if (dryRun) { out.sent.push({ ...entry, message }); continue; }
+        if (emails >= MAX_EMAILS_PER_RUN) { out.deferred++; continue; }
+        emails++;
+        const subject = kind === "overdue" ? `Reminder: please return the ${items} — ${g.name}` : `Reminder: ${items} due back ${dayLabel(expected)} — ${g.name}`;
+        const ok = await sendEmail(env, g, { to: email, subject, text: message + emailSignature(g), html: buildEmailHtml(g, message) });
+        if (!ok) { out.failed.push(entry); continue; }
+        stamps.push(l.id);
+        if (!events.has(g.id)) events.set(g.id, []);
+        events.get(g.id).push({
+          eventType: "Return Reminder Sent", borrower: b.name || null, itemType: typeName, itemCode: item.itemId || null,
+          loanId: f["Loan ID"] || null, admin: "Automatic", notes: `Emailed to ${email}${kind === "overdue" ? " (overdue)" : ""}`,
+        });
+        out.sent.push(entry);
+      } catch (e) {
+        out.errors.push(`${g.slug} · ${f["Loan ID"] || l.id}: ${e.message}`);
+      }
+    }
+  }
+  if (!dryRun && stamps.length) {
+    try {
+      await db.updateMany(T.LOANS, stamps, { "Reminder Sent At": new Date(now).toISOString(), "Reminder Sent Via": "Email (automatic)" });
+    } catch (e) {
+      out.errors.push(`Couldn't mark ${stamps.length} reminder(s) as sent (they may go out again tomorrow): ${e.message}`);
+    }
+    for (const [gid, evs] of events) logEvents(ctx, db, byId.get(gid), evs);
+  }
+  console.log(`reminders ${today}${dryRun ? " (dry run)" : ""}: ${out.sent.length} sent, ${out.failed.length} failed, ${out.noEmail} without email` +
+    `${out.skippedTest ? `, ${out.skippedTest} test` : ""}${out.deferred ? `, ${out.deferred} left for tomorrow` : ""}${out.errors.length ? `, ${out.errors.length} errors` : ""}`);
+  if (!dryRun && (out.failed.length || out.deferred || out.errors.length)) {
+    const parts = [];
+    if (out.failed.length) parts.push(`These automatic return reminders could not be emailed today (${today}):\n\n` +
+      out.failed.map(x => `${x.gemach} · ${x.loanId} · ${x.borrower || "?"} <${x.email}> · due ${x.due}`).join("\n") +
+      "\n\nThey'll be tried again tomorrow. You can also send them from admin → Loans → Return reminder.");
+    if (out.deferred) parts.push(`${out.deferred} more reminder(s) were due than can be sent in one day's run (${MAX_EMAILS_PER_RUN}); they'll go out tomorrow.`);
+    if (out.errors.length) parts.push(`Problems:\n${out.errors.join("\n")}`);
     await sendAlert(env, {
-      key: "reminders", subject: `${out.failed.length} return reminder email(s) failed`,
-      text: `These automatic return reminders could not be emailed today (${today}):\n\n` +
-        out.failed.map(x => `${x.gemach} · ${x.loanId} · ${x.borrower || "?"} <${x.email}> · due ${x.due}`).join("\n") +
-        "\n\nThey'll be tried again tomorrow. You can also send them from admin → Loans → Return reminder.",
+      key: "reminders",
+      subject: out.failed.length ? `${out.failed.length} return reminder email(s) failed` : out.errors.length ? "Return reminders: some couldn't be processed" : "Return reminders: some left for tomorrow",
+      text: parts.join("\n\n"),
     }).catch(() => {});
   }
   return out;
@@ -171,4 +215,4 @@ async function handleRemindersPreview(c) {
   return json(r);
 }
 
-export { reminderDue, fillTemplate, dueBackText, reminderMessage, runReminders, handleRemindersPreview, dayLabel };
+export { MAX_EMAILS_PER_RUN, reminderDue, fillTemplate, dueBackText, reminderMessage, runReminders, handleRemindersPreview, dayLabel };

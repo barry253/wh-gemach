@@ -83,7 +83,7 @@
 
 import { handleGetHistory } from "./activity.js";
 import { makeDb } from "./db.js";
-import { alertServerError, handleHealth } from "./alerts.js";
+import { alertServerError, handleHealth, sendAlert } from "./alerts.js";
 import { handleLogin, handleMe, lookupAdminSession, signJWT, verifyJWT } from "./auth.js";
 import { purgePublicCache, refreshCache } from "./cache.js";
 import { handleCreateItem, handleCreateItemType, handleDeleteItem, handleGetCatalogItems, handleGetItemTypes, handleUpdateItem, handleUpdateItemType, handleUploadPhoto } from "./catalog.js";
@@ -149,7 +149,12 @@ export default {
   },
   // Daily cron (wrangler.toml [triggers]): automatic return reminder emails.
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runReminders(env, ctx).catch(e => console.error("reminders failed:", e && (e.stack || e.message))));
+    ctx.waitUntil(runReminders(env, ctx).catch(e => {
+      console.error("reminders failed:", e && (e.stack || e.message));
+      return sendAlert(env, { key: "reminders-crash", subject: "Daily return reminders didn't run",
+        text: `Today's automatic return reminders stopped with an error:\n\n${e && e.message}\n\nReminders that didn't go out stay due and will be tried again tomorrow. Details are in Workers Logs (wh-gemach).` })
+        .catch(() => {});
+    }));
   },
 };
 

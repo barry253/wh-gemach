@@ -1,19 +1,20 @@
-name: D1 copy / compare
-# Run by hand (Actions → "D1 copy / compare" → Run workflow). Moves data from Airtable into the
-# Cloudflare D1 database and checks that the worker gives the same answers on both.
-#   compare        – read-only: compares data and every page/admin tab on Airtable vs D1
-#   copy           – replaces ALL D1 data with a fresh copy of Airtable, then compares
-#   schema         – (re)applies schema.sql (tables, views, indexes; keeps data)
-# Needs repository secrets AIRTABLE_TOKEN (read access to the base) and CLOUDFLARE_API_TOKEN
-# (D1 edit). The log never shows borrowers' details; the copied data never leaves the runner.
+name: D1 schema
+# Run by hand (Actions → "D1 schema" → Run workflow) after changing worker/src/dbschema.js and running
+# `npm run schema`: (re)applies worker/schema.sql to the live D1 database — new tables, views and indexes;
+# existing data is kept. (CREATE TABLE IF NOT EXISTS never adds columns to an existing table: new columns
+# need an ALTER TABLE on the live database.)
+#
+# The Airtable "copy" and "compare" tasks were removed on Oct 13, 2026: D1 has been the live database since
+# Oct 7 and Airtable is no longer updated, so a copy would have replaced live data with an old snapshot.
+# Needs repository secret CLOUDFLARE_API_TOKEN (D1 edit).
 on:
   workflow_dispatch:
     inputs:
       task:
         description: What to do
         type: choice
-        options: [compare, copy, schema]
-        default: compare
+        options: [schema]
+        default: schema
 
 permissions:
   contents: read
@@ -29,10 +30,8 @@ jobs:
       run:
         working-directory: worker
     env:
-      AIRTABLE_BASE_ID: appo390Vl4QKVTdu2
       D1_DATABASE_ID: 974be829-ed62-4e9a-9965-77784d5d74a5
       CLOUDFLARE_ACCOUNT_ID: 30f51b1774b3c34eac1847d23240b759
-      AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -44,17 +43,7 @@ jobs:
       - run: scripts/step.sh "npm ci" npm ci
       - name: Check secrets are set
         run: |
-          [ -n "$AIRTABLE_TOKEN" ] || { echo "::error::Add the AIRTABLE_TOKEN repository secret"; exit 1; }
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Add the CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
       - name: Apply schema
-        if: inputs.task == 'schema' || inputs.task == 'copy'
+        if: inputs.task == 'schema'
         run: scripts/step.sh "Apply schema" npx wrangler d1 execute wh-gemach --remote --file=schema.sql --yes
-      - name: Copy Airtable into D1
-        if: inputs.task == 'copy'
-        run: |
-          scripts/step.sh "Read Airtable" node --no-warnings scripts/d1-copy.mjs "$RUNNER_TEMP/airtable-copy.sql"
-          scripts/step.sh "Load into D1" npx wrangler d1 execute wh-gemach --remote --file="$RUNNER_TEMP/airtable-copy.sql" --yes
-          rm -f "$RUNNER_TEMP/airtable-copy.sql"
-      - name: Compare D1 with Airtable
-        if: inputs.task == 'compare' || inputs.task == 'copy'
-        run: scripts/step.sh "Compare" node --no-warnings scripts/d1-compare.mjs

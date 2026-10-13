@@ -1239,6 +1239,24 @@ await t("guards: server 'today' is the New York date, not UTC", async () => {
     SL.splice(slBefore);
   });
 
+  await t("submit: a slow email service doesn't hold up the answer; the gemach is still emailed afterwards", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.startsWith("https://api.resend.com")) await new Promise(r => setTimeout(r, 1500));
+      return realFetch(input, init);
+    };
+    try {
+      const mark = resendCalls().length;
+      const t0 = Date.now();
+      const r = await send({ name: "Slow Mail" });
+      assert.equal(r.status, 200);
+      assert.ok(Date.now() - t0 < 1200, `answered in ${Date.now() - t0} ms`);
+      await Promise.allSettled(waits);
+      assert.ok(resendCalls().slice(mark).some(m => /Slow Mail/.test(m.subject + m.text)), "gemach notification still sent");
+    } finally { globalThis.fetch = realFetch; }
+  });
+
   await t("abuse: 'We got your request' goes to one address at most 3 times a day", async () => {
     const receipts = () => resendCalls().filter(m => String(m.to?.[0]).toLowerCase() === "flood@example.com" && /We got your request/.test(m.subject)).length;
     for (let i = 0; i < 5; i++) {
@@ -2449,6 +2467,37 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
   });
 }
 
+{
+  await t("photos: only real JPEG / PNG / WebP files are stored (by their bytes); no importing from a web address; covers must be our uploads", async () => {
+    const HA = { ...auth(tokenA), "X-Gemach": A.slug };
+    const up = (bytes, type, name) => { const fd = new FormData(); fd.append("photo", new Blob([new Uint8Array(bytes)], { type }), name); return call("/admin/catalog/upload-photo", { method: "POST", headers: HA, body: fd }); };
+    const before = R2.length;
+    const svg = [...new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')];
+    assert.equal((await up(svg, "image/svg+xml", "x.svg")).status, 400, "SVG refused");
+    assert.equal((await up(svg, "image/jpeg", "x.jpg")).status, 400, "an SVG renamed to .jpg refused");
+    assert.equal(R2.length, before, "nothing stored");
+    const png = await up([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0], "image/jpeg", "Holiday Pic.jpeg");
+    assert.equal(png.status, 200);
+    const stored = R2.at(-1);
+    assert.equal(stored.opts.httpMetadata.contentType, "image/png", "type from the bytes, not the label");
+    assert.match(stored.key, new RegExp(`^${A.slug}/photos/\\d+-holiday-pic\\.png$`));
+    assert.equal((await png.json()).url, `https://assets/${stored.key}`);
+    const viaUrl = await call("/admin/catalog/upload-photo", { method: "POST", headers: { ...HA, "Content-Type": "application/json" }, body: JSON.stringify({ url: "https://example.com/a.jpg" }) });
+    assert.equal(viaUrl.status, 400, "no import from a web address");
+    // cover photo address
+    const H = { ...HA, "Content-Type": "application/json" };
+    assert.equal((await call("/admin/catalog/item-types", { method: "POST", headers: H, body: JSON.stringify({ name: "Cover Check", r2PhotoUrl: "https://evil.example/x.jpg" }) })).status, 400);
+    const ok = await call("/admin/catalog/item-types", { method: "POST", headers: H, body: JSON.stringify({ name: "Cover Check", r2PhotoUrl: "https://assets/x/photos/1.jpg" }) });
+    assert.equal(ok.status, 200, await ok.clone().text());
+    const id = (await ok.json()).id || DB["Item Types"].find(r => r.fields.Name === "Cover Check").id;
+    assert.equal((await call(`/admin/catalog/item-types/${id}`, { method: "PATCH", headers: H, body: JSON.stringify({ r2PhotoUrl: "http://tracker.example/p.gif" }) })).status, 400);
+    // an older cover from somewhere else is kept when it isn't being changed
+    DB["Item Types"].find(r => r.id === id).fields["R2 Photo URL"] = "https://old.example/legacy.jpg";
+    assert.equal((await call(`/admin/catalog/item-types/${id}`, { method: "PATCH", headers: H, body: JSON.stringify({ r2PhotoUrl: "https://old.example/legacy.jpg", description: "x" }) })).status, 200);
+  });
+
+}
+
 // ── Public cache resilience (fake Cache API) ──
 {
   const store = new Map();
@@ -3357,6 +3406,45 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
     assert.equal(v && v.reminderSentVia, "Email (automatic)", "admin sees how it was sent");
     DB.Loans = DB.Loans.filter(l => !/^recREMLOAN/.test(l.id));
   });
+  await t("reminders: many gemachs in one run stay under the query limit; test loans skipped; over 40 left for tomorrow with an alert", async () => {
+    const now = Date.parse("2026-10-05T14:00:00Z");
+    const mark = resendCalls().length;
+    for (let gi = 0; gi < 12; gi++) {
+      const gid = `recREMMANYG${String(gi).padStart(6, "0")}`, slug = `rem-many-${gi}`;
+      const sc = { Gemach: [gid], "Gemach Slug": [slug] };
+      DB.Gemachs.push(rec(gid, { Name: `Many ${gi}`, Slug: slug, Active: true, Mode: "Full", Email: `m${gi}@example.com`, "Auto Reminders": true, "Reminder Days Before": 2, "Reminder Repeat Days": 7 }));
+      DB["Item Types"].push(rec(`recREMMANYT${String(gi).padStart(6, "0")}`, { Name: "Crutches", Active: true, ...sc }));
+      for (let li = 0; li < 4; li++) {
+        const n = `${String(gi).padStart(2, "0")}${li}`;
+        DB.Borrowers.push(rec(`recREMMANYB${n.padStart(6, "0")}`, { Name: `Person ${n}`, Email: `p${n}@example.com`, ...sc }));
+        DB.Loans.push(rec(`recREMMANYL${n.padStart(6, "0")}`, { "Loan ID": `L-M${n}`, Status: "Active", Borrower: [`recREMMANYB${n.padStart(6, "0")}`],
+          "Item to Reserve": [`recREMMANYT${String(gi).padStart(6, "0")}`], "Date Borrowed": "2026-09-25", "Expected Return": "2026-10-06", ...sc }));
+      }
+    }
+    // a loan from a request sent through the test link
+    DB.Requests.push(rec("recREMMANYTESTREQ", { "Request ID": "R-T99", Name: "Tester", Status: "Converted", Test: true, Gemach: ["recREMMANYG000000"], "Gemach Slug": ["rem-many-0"] }));
+    DB.Borrowers.push(rec("recREMMANYBTEST01", { Name: "Tester", Email: "tester@example.com", Gemach: ["recREMMANYG000000"], "Gemach Slug": ["rem-many-0"] }));
+    DB.Loans.push(rec("recREMMANYLTEST01", { "Loan ID": "L-MT", Status: "Active", Borrower: ["recREMMANYBTEST01"], "Item to Reserve": ["recREMMANYT000000"],
+      "Source Request": ["recREMMANYTESTREQ"], "Date Borrowed": "2026-09-25", "Expected Return": "2026-10-06", Gemach: ["recREMMANYG000000"], "Gemach Slug": ["rem-many-0"] }));
+    d1Queries = 0;
+    const run = await R.runReminders(env, ctx, { now });
+    await Promise.allSettled(waits);
+    if (D1_MODE) assert.ok(d1Queries <= 30, `reminder run used ${d1Queries} queries`);
+    const mine = run.sent.filter(x => x.gemach.startsWith("rem-many-"));
+    assert.equal(run.sent.length, R.MAX_EMAILS_PER_RUN, "capped at one day's sends");
+    assert.ok(mine.length <= R.MAX_EMAILS_PER_RUN && run.deferred >= 48 - mine.length, `deferred ${run.deferred}`);
+    assert.equal(run.skippedTest, 1, "test-link loan skipped");
+    assert.ok(!resendCalls().slice(mark).some(m => m.to?.[0] === "tester@example.com"), "no reminder to the tester");
+    const stamped = DB.Loans.filter(l => l.id.startsWith("recREMMANYL") && l.fields["Reminder Sent At"]).length;
+    assert.equal(stamped, mine.length, "every sent one stamped (one write)");
+    const alert = resendCalls().slice(mark).find(m => /left for tomorrow/.test(m.subject || ""));
+    assert.ok(alert && /go out tomorrow/.test(alert.text), "Network Admin told some wait for tomorrow");
+    // tomorrow: the rest go out
+    const next = await R.runReminders(env, ctx, { now: now + 86400e3 });
+    await Promise.allSettled(waits);
+    assert.ok(next.sent.filter(x => x.gemach.startsWith("rem-many-")).length >= 48 - mine.length, "the rest sent the next day");
+  });
+
   await t("reminders: settings — on/off, days before, repeat; validated", async () => {
     const tokNet2 = await sign({ email: "n@x", name: "N", role: "Network Admin", gemachs: [] });
     const H = { ...auth(tokNet2), "X-Gemach": "rem-gemach", "Content-Type": "application/json" };

@@ -2,7 +2,8 @@
 import { AirtableError, Q, firstLink, getOwned, linkedId } from "./airtable.js";
 import { parseItemAttrs, validateItemAttrs } from "./attributes.js";
 import { gemachFromRecord, getGemachRecord } from "./gemachs.js";
-import { parseMorePhotos, validateMorePhotos } from "./photos.js";
+import { allowedPhotoUrl, parseMorePhotos, validateMorePhotos } from "./photos.js";
+import { sniffImageType } from "./settings.js";
 import { REC_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { json, readJson } from "./http.js";
@@ -140,7 +141,10 @@ async function handleCreateItemType(c) {
     "Active": body.active !== false,
     "Gemach": [c.g.id],
   };
-  if (body.r2PhotoUrl) fields["R2 Photo URL"] = body.r2PhotoUrl;
+  if (body.r2PhotoUrl) {
+    if (!allowedPhotoUrl(c.env, body.r2PhotoUrl)) return json({ error: "The photo must be one uploaded here." }, 400);
+    fields["R2 Photo URL"] = body.r2PhotoUrl;
+  }
   const more = validateMorePhotos(c.env, body.morePhotos, body.r2PhotoUrl || null);
   if (more.error) return json({ error: more.error }, 400);
   if (!more.skip && more.value) fields["More Photos"] = more.value;
@@ -172,7 +176,11 @@ async function handleUpdateItemType(c, id) {
   if (body.description !== undefined)  fields["Description"] = body.description;
   if (body.displayOrder !== undefined) fields["Display Order"] = body.displayOrder;
   if (body.active !== undefined)       fields["Active"] = body.active;
-  if (body.r2PhotoUrl !== undefined)   fields["R2 Photo URL"] = body.r2PhotoUrl;
+  if (body.r2PhotoUrl !== undefined) {
+    // A new cover must be one of our own uploads (an unchanged older one is kept as is).
+    if (body.r2PhotoUrl && body.r2PhotoUrl !== current.fields["R2 Photo URL"] && !allowedPhotoUrl(c.env, body.r2PhotoUrl)) return json({ error: "The photo must be one uploaded here." }, 400);
+    fields["R2 Photo URL"] = body.r2PhotoUrl || null;
+  }
   const more = validateMorePhotos(c.env, body.morePhotos, body.r2PhotoUrl !== undefined ? body.r2PhotoUrl : current.fields["R2 Photo URL"] || null);
   if (more.error) return json({ error: more.error }, 400);
   if (!more.skip) fields["More Photos"] = more.value;
@@ -279,35 +287,29 @@ async function handleDeleteItem(c, id) {
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
+const PHOTO_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+
+/**
+ * Item photo upload (multipart, field "photo"): JPEG, PNG or WebP only, checked by the file's first bytes
+ * (not the name or the browser's label), stored with that type. Anything else — SVG, HTML, a renamed file —
+ * is refused, so nothing that could run as a page ever lands in the public photo bucket. (Importing from a
+ * web address was removed: admin never used it and it let the worker fetch any URL.)
+ */
 async function handleUploadPhoto(c) {
   const { request, env, g } = c;
   const contentType = request.headers.get("Content-Type") || "";
-  let fileBuffer, fileName, mimeType;
-  const extFor = mt => (mt.split("/")[1] || "jpg").split(";")[0].replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "").slice(0, 8) || "jpg";
-
-  if (contentType.includes("application/json")) {
-    const { url } = await readJson(request);
-    if (!url || !/^https?:\/\//i.test(url)) return json({ error: "No URL provided" }, 400);
-    const fetchRes = await fetch(url);
-    if (!fetchRes.ok) return json({ error: "Could not fetch image from URL" }, 400);
-    mimeType = fetchRes.headers.get("Content-Type") || "image/jpeg";
-    if (!mimeType.startsWith("image/")) return json({ error: "URL does not point to an image" }, 400);
-    fileBuffer = await fetchRes.arrayBuffer();
-    fileName = `${g.slug}/photos/${Date.now()}-imported.${extFor(mimeType)}`;
-  } else if (contentType.includes("multipart/form-data")) {
-    const formData = await request.formData();
-    const file = formData.get("photo");
-    if (!file || typeof file === "string") return json({ error: "No file provided" }, 400);
-    mimeType = file.type || "image/jpeg";
-    if (!mimeType.startsWith("image/")) return json({ error: "File must be an image" }, 400);
-    fileBuffer = await file.arrayBuffer();
-    const safeName = String(file.name || `photo.${extFor(mimeType)}`).replace(/[^a-zA-Z0-9.-]/g, "-").toLowerCase().slice(0, 100);
-    fileName = `${g.slug}/photos/${Date.now()}-${safeName}`;
-  } else {
-    return json({ error: "Unsupported content type" }, 400);
-  }
+  if (!contentType.includes("multipart/form-data")) return json({ error: "Upload the photo as a file." }, 400);
+  if (Number(request.headers.get("Content-Length") || 0) > MAX_PHOTO_BYTES + 64 * 1024) return json({ error: "Image too large (max 10MB)" }, 413);
+  let file;
+  try { file = (await request.formData()).get("photo"); } catch { return json({ error: "Could not read the upload." }, 400); }
+  if (!file || typeof file === "string") return json({ error: "No file provided" }, 400);
+  if (file.size > MAX_PHOTO_BYTES) return json({ error: "Image too large (max 10MB)" }, 413);
+  const fileBuffer = await file.arrayBuffer();
   if (fileBuffer.byteLength > MAX_PHOTO_BYTES) return json({ error: "Image too large (max 10MB)" }, 413);
-
+  const mimeType = sniffImageType(fileBuffer);
+  if (!mimeType) return json({ error: "Please upload a JPG, PNG or WebP photo." }, 400);
+  const base = String(file.name || "photo").replace(/\.[^.]*$/, "").replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase().slice(0, 80) || "photo";
+  const fileName = `${g.slug}/photos/${Date.now()}-${base}.${PHOTO_EXT[mimeType]}`;
   await env.ASSETS_BUCKET.put(fileName, fileBuffer, { httpMetadata: { contentType: mimeType } });
   return json({ success: true, url: `${env.ASSETS_URL}/${fileName}` });
 }
