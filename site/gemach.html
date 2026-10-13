@@ -16,9 +16,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap" />
-  <link rel="stylesheet" href="/assets/site.css?v=24" />
+  <link rel="stylesheet" href="/assets/site.css?v=25" />
   <script src="/assets/site.js?v=11" defer></script>
-  <script src="/assets/gemach.js?v=26" defer></script>
+  <script src="/assets/gemach.js?v=27" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -174,6 +174,8 @@
       <label class="check-line remember-line"><input type="checkbox" id="f-remember" /> <span>Remember my details on this device
         <small>Your name, phone and email, and a link to this request, are saved in this browser for next time.</small></span></label>
 
+      <div class="hp-field" aria-hidden="true"><label for="f-hp">Leave this empty</label><input type="text" id="f-hp" name="hp" tabindex="-1" autocomplete="off" /></div>
+      <div class="ts-box" id="ts-box"></div>
       <button type="submit" class="btn btn-primary btn-submit" id="btn-submit">Send request</button>
       <p class="error-msg" id="error-msg" role="alert" hidden></p>
       <p class="form-note">By sending a request you agree to the <a href="/disclaimer" target="_blank" rel="noopener">Disclaimer</a>.

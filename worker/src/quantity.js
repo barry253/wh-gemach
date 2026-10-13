@@ -57,7 +57,7 @@ const qtyLabel = (name, n) => (n ? `${name} × ${n}` : name);
 // Item Types rows link to every Loan and Request ever made for them; reads name their fields to skip those.
 const TYPE_COUNT_FIELDS = ["Tracking", "Quantity Owned", "Out of Service", "Package Size", "Package Unit", "Price"]; // quantity / add-on helpers
 const TYPE_PHOTO_FIELDS = ["R2 Photo URL", "More Photos"];
-const TYPE_PUBLIC_FIELDS = ["Name", "Description", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category", "Gemach"];
+const TYPE_PUBLIC_FIELDS = ["Name", "Description", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category", "Gemach"];
 const TYPE_ADMIN_FIELDS = ["Name", "Description", "Display Order", "Active", "Items", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", "Product Category"];
 const LOAN_WINDOW_FIELDS = ["Item to Reserve", "Status", "Quantity", "Reservation Start", "Reservation End", "Date Borrowed", "Expected Return", "Gemach"];
 
@@ -100,10 +100,18 @@ async function loadQtyBookings(db, g, typeIds, { exceptLoanId = null } = {}) {
     scope: g || null, where: [Q.in("Status", ["Active", "Reserved"])],
     fields: LOAN_WINDOW_FIELDS,
   });
+  return qtyBookingsFromLoans(loans, typeIds, g, { exceptLoanId });
+}
+
+/** The same, from open loans already read (Status Active / Reserved, with LOAN_WINDOW_FIELDS). */
+function qtyBookingsFromLoans(loans, typeIds, g, { exceptLoanId = null } = {}) {
+  const want = new Set(typeIds || []);
+  if (!want.size) return {};
   const t = nyToday();
   const out = {};
   for (const l of loans) {
     if (l.id === exceptLoanId || (g && !belongs(l, g))) continue;
+    if (!["Active", "Reserved"].includes(l.fields["Status"])) continue;
     const typeId = linkedId(firstLink(l.fields["Item to Reserve"]));
     if (!want.has(typeId)) continue;
     const w = loanWindow(l.fields, t);
@@ -213,4 +221,4 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
   return out;
 }
 
-export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto, typePhotos, TYPE_PUBLIC_FIELDS, TYPE_ADMIN_FIELDS, TYPE_PHOTO_FIELDS, TYPE_COUNT_FIELDS };
+export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyBookingsFromLoans, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto, typePhotos, TYPE_PUBLIC_FIELDS, TYPE_ADMIN_FIELDS, TYPE_PHOTO_FIELDS, TYPE_COUNT_FIELDS };

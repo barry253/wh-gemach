@@ -13,10 +13,16 @@ import { EMAIL_RE, emailSignature } from "./settings.js";
 import { manageUrl } from "./manage.js";
 import { notifyAdmins, requestMessage } from "./push.js";
 import { inTestMode, isLive } from "./testmode.js";
+import { Q } from "./query.js";
+import { clientIp, overLimit, verifyTurnstile } from "./abuse.js";
 
 // ─── Public form submission ───────────────────────────────────────────────────
 
 const clip = (s, n) => (s == null ? s : String(s).slice(0, n));
+
+const MAX_BODY = 64 * 1024;        // a real request is a few KB
+const MAX_NAME = 200, MAX_NOTES = 5000;
+const RECEIPTS_PER_DAY = 3;         // "We got your request" emails to one address per 24 h (the rest still get the link on screen)
 
 /** Preferred Contact values the public form offers (all exist as Requests."Preferred Contact" choices). */
 const REQUEST_CONTACTS = ["WhatsApp", "Phone", "SMS", "Email"];
@@ -32,10 +38,20 @@ function formatPhone(raw) {
 }
 
 async function handleSubmitRequest(request, db, env, ctx) {
+  const ip = clientIp(request);
+  // One device: a handful of sends a minute (a real person sends one; a script sends hundreds).
+  if (await overLimit(env.SUBMIT_LIMITER, ip || "no-ip")) {
+    return json({ error: "Too many requests from this device in a short time. Please wait a minute and try again." }, 429);
+  }
+  if (Number(request.headers.get("Content-Length") || 0) > MAX_BODY) return json({ error: "Request too large." }, 413);
+  const rawBody = await request.text().catch(() => "");
+  if (rawBody.length > MAX_BODY) return json({ error: "Request too large." }, 413);
   let body;
-  try { body = await request.json(); }
+  try { body = JSON.parse(rawBody); }
   catch { return json({ error: "Invalid JSON" }, 400); }
   body = body && typeof body === "object" ? body : {};
+  // Hidden "website" field on the form: people never see it, form-filling bots do.
+  if (typeof body.website === "string" && body.website.trim()) return json({ error: "Couldn't send the request." }, 400);
 
   const str = v => (typeof v === "string" ? v.trim() : v == null ? "" : typeof v === "number" ? String(v) : null);
   const name = str(body.name), rawPhone = str(body.phone), email = str(body.email), notes = str(body.notes);
@@ -45,7 +61,13 @@ async function handleSubmitRequest(request, db, env, ctx) {
   const itemsRequested = body.itemsRequested == null ? [] : body.itemsRequested;
   if (!Array.isArray(itemsRequested)) return json({ error: "Invalid items." }, 400);
   if (!name || !rawPhone) return json({ error: "Name and phone are required." }, 400);
+  if (name.length > MAX_NAME) return json({ error: `Please keep the name under ${MAX_NAME} characters.` }, 400);
+  if (notes && notes.length > MAX_NOTES) return json({ error: `Please keep the note under ${MAX_NOTES} characters.` }, 400);
   if (itemsRequested.length > 50) return json({ error: "Too many items." }, 400);
+
+  // Cloudflare Turnstile (abuse.js): on once its keys are set; checked before anything touches the database.
+  const human = await verifyTurnstile(env, body.turnstileToken, ip);
+  if (!human.ok) return json({ error: human.error, turnstile: true }, 403);
 
   const slug = String(body.gemach || LEGACY_SLUG).trim().toLowerCase();
   const g = await loadGemachBySlug(db, slug);
@@ -227,9 +249,21 @@ async function handleSubmitRequest(request, db, env, ctx) {
   });
 
   const link = created?.id ? await manageUrl(env, created.id) : null;
-  if (link && email) ctx.waitUntil(sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test })
+  if (link && email) ctx.waitUntil(receiptAllowed(db, email, created.id)
+    .then(ok => ok ? sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test }) : console.warn(`receipt skipped: over ${RECEIPTS_PER_DAY} a day to one address`))
     .catch(e => console.error("receipt email failed:", e.message)));
   return json({ success: true, requestId, ...(test ? { test: true } : {}), ...(link ? { manageUrl: link } : {}) });
+}
+
+/**
+ * At most RECEIPTS_PER_DAY receipts to one address a day, so the form can't be used to flood someone's inbox
+ * (the request itself is still saved and the manage link shown on screen). Counts requests with that email in
+ * the last 24 hours, network-wide, including the one just saved.
+ */
+async function receiptAllowed(db, email, justSavedId) {
+  const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+  const recent = await db.listAll(T.REQUESTS, { where: [Q.ieq("Email", String(email).toLowerCase()), Q.after("Received At", since)], fields: ["Request ID"], maxRecords: RECEIPTS_PER_DAY + 2 });
+  return recent.filter(r => r.id !== justSavedId).length < RECEIPTS_PER_DAY;
 }
 
 /** "We got your request" to the borrower (only when they gave an email), with their manage link. */

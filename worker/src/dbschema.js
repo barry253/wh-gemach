@@ -217,6 +217,12 @@ const TABLES = {
       "Last At": dt("last_at"),
     },
   },
+  // Small settings the worker keeps for itself (cache.js): "data_version" changes on every admin change so each
+  // Cloudflare location knows when its cached public pages are out of date. Read/written with plain SQL. D1 only.
+  "Site Meta": {
+    sql: "site_meta",
+    fields: { "Key": t("key"), "Value": t("value") },
+  },
   "Search Log": {
     sql: "search_log",
     airtableIds: ["tblpy91cyNSkKx1NL"],
@@ -249,6 +255,7 @@ const INDEXES = [
   "CREATE INDEX IF NOT EXISTS activity_gemach_time ON activity_log(gemach_id, timestamp)",
   "CREATE UNIQUE INDEX IF NOT EXISTS search_log_query ON search_log(query)",
   "CREATE INDEX IF NOT EXISTS search_log_last ON search_log(last_searched)",
+  "CREATE INDEX IF NOT EXISTS search_log_first ON search_log(first_searched)",
   "CREATE INDEX IF NOT EXISTS site_events_day ON site_events(date, kind, key)",
   "CREATE UNIQUE INDEX IF NOT EXISTS push_endpoint ON push_subscriptions(endpoint)",
   "CREATE INDEX IF NOT EXISTS push_admin ON push_subscriptions(admin_id)",

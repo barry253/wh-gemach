@@ -49,6 +49,7 @@ async function setup(ctx) {
       await new Promise(res => setTimeout(res, 200));
       return r.fulfill({ status: postStatus, json: postReply, headers: cors });
     }
+    if (u.pathname === '/public/config') return r.fulfill({ json: { turnstileSiteKey: null }, headers: cors });
     r.fulfill({ status: 404, json: { error: 'nope' }, headers: cors });
   });
 }

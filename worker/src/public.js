@@ -8,7 +8,7 @@ import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
 import { parseMorePhotos } from "./photos.js";
 import { inTestMode } from "./testmode.js";
-import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageSize, packageUnit, qtyAvailable, TYPE_PUBLIC_FIELDS } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, LOAN_WINDOW_FIELDS, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
 
@@ -17,15 +17,14 @@ import { addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packa
  * and, with withBookings, the open loans' date windows and counts (no names) so the page can work out
  * what's free for the dates a person picks.
  */
-function publicItemType(type, availableIds, { withCategory = false, bookings = null, withBookings = false, attrDefs = null } = {}) {
-  const itemIds = (type.fields["Items"] || []).map(linkedId);
+function publicItemType(type, units, { withCategory = false, bookings = null, withBookings = false, attrDefs = null } = {}) {
   const photoUrl = type.fields["R2 Photo URL"] || null;
   const out = {
     id: type.id,
     name: type.fields["Name"],
     description: type.fields["Description"] || "",
-    totalUnits: itemIds.length,
-    availableCount: itemIds.filter(id => availableIds.has(id)).length,
+    totalUnits: units?.total[type.id] || 0,
+    availableCount: units?.free[type.id] || 0,
     hasPhoto: !!photoUrl,
     photoUrl,
   };
@@ -57,15 +56,35 @@ function publicItemType(type, availableIds, { withCategory = false, bookings = n
   return out;
 }
 
+/**
+ * Numbered units per item type, from the active units and the open loans (read once, also used for quantity
+ * bookings): { total: { typeId: n }, free: { typeId: n } }. A unit is free when no Active or Reserved loan has it
+ * (the same rule as Items.Status) and it isn't marked Needs Repair. Reading plain columns, not the computed
+ * Items.Status / Item Types.Items, keeps a page rebuild to a few hundred row reads.
+ */
+function unitStats(units, openLoans) {
+  const busy = new Set(openLoans.filter(l => ["Active", "Reserved"].includes(l.fields["Status"])).map(l => linkedId(firstLink(l.fields["Item"]))).filter(Boolean));
+  const total = {}, free = {};
+  for (const u of units) {
+    const typeId = linkedId(firstLink(u.fields["Item Type"]));
+    if (!typeId) continue;
+    total[typeId] = (total[typeId] || 0) + 1;
+    if (!busy.has(u.id) && u.fields["Condition"] !== "Needs Repair") free[typeId] = (free[typeId] || 0) + 1;
+  }
+  return { total, free };
+}
+const PUBLIC_UNIT_FIELDS = ["Item Type", "Condition", "Gemach"];
+const publicLoanFields = () => [...LOAN_WINDOW_FIELDS, "Item"]; // a function: quantity.js may load after this module
+
 async function loadInventory(db, g, opts = {}) {
-  const [types, avail] = await Promise.all([
+  const [types, units, openLoans] = await Promise.all([
     db.listAll(T.ITEM_TYPES, { scope: g, where: [Q.isTrue("Active")], sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
-    db.listAll(T.ITEMS, { scope: g, where: [Q.isTrue("Active"), Q.eq("Status", "Available")], fields: ["Item ID"] }),
+    db.listAll(T.ITEMS, { scope: g, where: [Q.isTrue("Active")], fields: PUBLIC_UNIT_FIELDS }),
+    db.listAll(T.LOANS, { scope: g, where: [Q.in("Status", ["Active", "Reserved"])], fields: publicLoanFields() }),
   ]);
-  const availableIds = new Set(avail.map(r => r.id));
-  const qtyIds = types.filter(isQtyType).map(t => t.id);
-  const bookings = qtyIds.length ? await loadQtyBookings(db, g, qtyIds) : {};
-  return types.map(t => publicItemType(t, availableIds, { ...opts, bookings, attrDefs: g.itemAttributes }));
+  const stats = unitStats(units, openLoans);
+  const bookings = qtyBookingsFromLoans(openLoans, types.filter(isQtyType).map(t => t.id), g);
+  return types.map(t => publicItemType(t, stats, { ...opts, bookings, attrDefs: g.itemAttributes }));
 }
 
 // Public profile fields only — NEVER pickupAddress / pickupInstructions / templates.
@@ -119,23 +138,23 @@ async function handleLegacyInventory(db) {
 }
 
 async function buildDirectory(db) {
-  const [gemachs, types, avail, categories] = await Promise.all([
+  const [gemachs, types, units, openLoans, categories] = await Promise.all([
     listActiveGemachs(db),
     db.listAll(T.ITEM_TYPES, { where: [Q.isTrue("Active")], sort: [{ field: "Display Order", direction: "asc" }], fields: TYPE_PUBLIC_FIELDS }),
-    db.listAll(T.ITEMS, { where: [Q.isTrue("Active"), Q.eq("Status", "Available")], fields: ["Item ID"] }),
+    db.listAll(T.ITEMS, { where: [Q.isTrue("Active")], fields: PUBLIC_UNIT_FIELDS }),
+    db.listAll(T.LOANS, { where: [Q.in("Status", ["Active", "Reserved"])], fields: publicLoanFields() }),
     loadCategories(db),
   ]);
   const communities = await fetchByIds(db, T.COMMUNITIES, gemachs.flatMap(g => g.communityIds), { fields: ["Name"] });
   const communityName = Object.fromEntries(communities.map(r => [r.id, r.fields.Name || null]));
-  const availableIds = new Set(avail.map(r => r.id));
-  const qtyIds = types.filter(isQtyType).map(t => t.id);
-  const bookings = qtyIds.length ? await loadQtyBookings(db, null, qtyIds) : {};
+  const stats = unitStats(units, openLoans);
+  const bookings = qtyBookingsFromLoans(openLoans, types.filter(isQtyType).map(t => t.id), null);
   const typesByGemach = {};
   const defsById = Object.fromEntries(gemachs.map(g => [g.id, g.itemAttributes]));
   for (const t of types) {
     const links = (t.fields["Gemach"] || []).map(linkedId);
     if (links.length !== 1) continue; // item types must belong to exactly one gemach
-    (typesByGemach[links[0]] ||= []).push(publicItemType(t, availableIds, { withCategory: true, bookings, attrDefs: defsById[links[0]] }));
+    (typesByGemach[links[0]] ||= []).push(publicItemType(t, stats, { withCategory: true, bookings, attrDefs: defsById[links[0]] }));
   }
   return {
     categories,

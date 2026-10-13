@@ -92,6 +92,11 @@ function evalFilter(table, f, r) {
   return true;
 }
 
+// Turnstile siteverify (tests replace this): token "good" passes, anything else fails.
+let turnstileAnswer = init => {
+  const p = new URLSearchParams(init.body);
+  return new Response(JSON.stringify(p.get("response") === "good" ? { success: true, hostname: "whgemachs.org", action: "request" } : { success: false, "error-codes": ["invalid-input-response"] }));
+};
 globalThis.fetch = async (input, init = {}) => {
   const url = typeof input === "string" ? input : input.url;
   const method = init.method || "GET";
@@ -109,6 +114,7 @@ globalThis.fetch = async (input, init = {}) => {
     const status = pushStatusFor(url);
     return new Response(status >= 300 ? "nope" : "", { status });
   }
+  if (url === "https://challenges.cloudflare.com/turnstile/v0/siteverify") return turnstileAnswer(init); // abuse.js
   if (url.startsWith("https://api.cloudflare.com/")) return cfAnswer(url, init);
   if (url === "https://api.airtable.com/v0/meta/whoami") return new Response('{"id":"usrTEST"}');
   if (D1_MODE && url.startsWith("https://api.airtable.com/")) throw new Error("Airtable called in D1 mode: " + method + " " + url);
@@ -1125,6 +1131,125 @@ await t("guards: server 'today' is the New York date, not UTC", async () => {
     assert.equal(today(), "2026-10-20");
   } finally { globalThis.Date = RealDate; }
 });
+
+// ─── Abuse protection (Oct 13, 2026): Turnstile, rate limits, honeypot, size caps, receipt cap ─────────
+{
+  const goodBody = extra => ({ gemach: A.slug, name: "Abuse Check", phone: "5165550777", preferredContact: "Phone",
+    itemsRequested: ["recTYPEA000000002"], neededFrom: plusDays(30), ...extra });
+  const send = (extra, headers = {}) => call("/submit-request", { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "9.9.9.9", ...headers }, body: JSON.stringify(goodBody(extra)) });
+
+  await t("abuse: honeypot, name / note length, body size", async () => {
+    const before = DB.Requests.length;
+    assert.equal((await send({ website: "http://spam.example" })).status, 400, "honeypot filled");
+    assert.equal((await send({ name: "x".repeat(201) })).status, 400, "name too long");
+    assert.equal((await send({ notes: "y".repeat(5001) })).status, 400, "note too long");
+    const big = await call("/submit-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(goodBody({ junk: "z".repeat(70000) })) });
+    assert.equal(big.status, 413);
+    assert.equal(DB.Requests.length, before, "nothing saved");
+    assert.equal((await send({ website: "" })).status, 200, "empty honeypot is fine");
+  });
+
+  await t("abuse: Turnstile is off until both keys are set; then a good token is needed (outage lets requests through)", async () => {
+    let cfg = await (await call("/public/config")).json();
+    assert.equal(cfg.turnstileSiteKey, null);
+    env.TURNSTILE_SITE_KEY = "0x4AAA-site";
+    assert.equal((await (await call("/public/config")).json()).turnstileSiteKey, null, "site key alone isn't enough");
+    env.TURNSTILE_SECRET = "0x4AAA-secret";
+    try {
+      const r = await call("/public/config");
+      assert.equal((await r.json()).turnstileSiteKey, "0x4AAA-site");
+      assert.match(r.headers.get("Cache-Control"), /max-age=300/);
+      const before = DB.Requests.length;
+      let s = await send({});
+      assert.equal(s.status, 403, "no token"); assert.equal((await s.json()).turnstile, true);
+      assert.equal((await send({ turnstileToken: "bad" })).status, 403);
+      assert.equal(DB.Requests.length, before);
+      const mark = calls.length;
+      assert.equal((await send({ turnstileToken: "good" })).status, 200);
+      const sv = calls.slice(mark).find(c => c.url.includes("siteverify"));
+      const p = new URLSearchParams(sv.body);
+      assert.equal(p.get("secret"), "0x4AAA-secret"); assert.equal(p.get("remoteip"), "9.9.9.9");
+      // solved on someone else's site, or for another action → refused
+      const keep = turnstileAnswer;
+      turnstileAnswer = () => new Response(JSON.stringify({ success: true, hostname: "evil.example", action: "request" }));
+      assert.equal((await send({ turnstileToken: "good" })).status, 403, "wrong hostname");
+      turnstileAnswer = () => new Response(JSON.stringify({ success: true, hostname: "preview-1.whgemachs.pages.dev", action: "request" }));
+      assert.equal((await send({ turnstileToken: "good" })).status, 200, "Pages preview ok");
+      turnstileAnswer = () => { throw new Error("network down"); };
+      assert.equal((await send({ turnstileToken: "anything" })).status, 200, "Cloudflare's check unreachable → let through");
+      turnstileAnswer = keep;
+    } finally { delete env.TURNSTILE_SITE_KEY; delete env.TURNSTILE_SECRET; }
+  });
+
+  await t("abuse: rate limit binding answers 429 for the request form and quietly skips counting events", async () => {
+    const keys = [];
+    env.SUBMIT_LIMITER = { limit: async ({ key }) => { keys.push(key); return { success: false }; } };
+    env.PUBLIC_LOG_LIMITER = { limit: async () => ({ success: false }) };
+    try {
+      const before = DB.Requests.length;
+      const r = await send({});
+      assert.equal(r.status, 429); assert.match((await r.json()).error, /wait a minute/);
+      assert.deepEqual(keys, ["9.9.9.9"]);
+      assert.equal(DB.Requests.length, before);
+      const e = await call("/public/event", { method: "POST", headers: { "CF-Connecting-IP": "9.9.9.9" }, body: JSON.stringify({ kind: "load-fail", what: "directory", page: "/" }) });
+      assert.equal(e.status, 204);
+      // a limiter that errors never blocks anyone
+      env.SUBMIT_LIMITER = { limit: async () => { throw new Error("limiter down"); } };
+      assert.equal((await send({})).status, 200);
+    } finally { delete env.SUBMIT_LIMITER; delete env.PUBLIC_LOG_LIMITER; }
+  });
+
+  await t("public page: unit counts skip inactive units; Needs Repair and reserved units aren't 'available'", async () => {
+    const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+    DB["Item Types"].push(rec("recPUBCOUNTTYPE01", { Name: "Count Check", Active: true, ...Bf }));
+    DB.Items.push(
+      rec("recPUBCOUNTUNIT01", { "Item ID": "CC-1", "Item Type": ["recPUBCOUNTTYPE01"], Active: true, Status: "Available", ...Bf }),
+      rec("recPUBCOUNTUNIT02", { "Item ID": "CC-2", "Item Type": ["recPUBCOUNTTYPE01"], Active: true, Status: "Available", Condition: "Needs Repair", ...Bf }),
+      rec("recPUBCOUNTUNIT03", { "Item ID": "CC-3", "Item Type": ["recPUBCOUNTTYPE01"], Active: false, Status: "Available", ...Bf }),
+      rec("recPUBCOUNTUNIT04", { "Item ID": "CC-4", "Item Type": ["recPUBCOUNTTYPE01"], Active: true, Status: "Reserved", ...Bf }));
+    DB.Loans.push(rec("recPUBCOUNTLOAN01", { "Loan ID": "L-970", Status: "Reserved", Item: ["recPUBCOUNTUNIT04"], "Item to Reserve": ["recPUBCOUNTTYPE01"], ...Bf }));
+    const d = await (await call("/public/gemach/" + B.slug)).json();
+    const it = d.items.find(x => x.id === "recPUBCOUNTTYPE01");
+    assert.equal(it.totalUnits, 3, "inactive unit not counted");
+    assert.equal(it.availableCount, 1, "only CC-1 is free");
+    const dir = await (await call("/public/directory")).json();
+    const it2 = dir.gemachs.find(g => g.slug === B.slug).items.find(x => x.id === "recPUBCOUNTTYPE01");
+    assert.deepEqual([it2.totalUnits, it2.availableCount], [3, 1]);
+  });
+
+  if (D1_MODE) await t("abuse: anonymous counting can add only so many new rows a day (events and searches)", async () => {
+    const X2 = await import("../src/events.js"), S2 = await import("../src/search.js");
+    const db = __WHG_TEST__.makeDbForTest(env);
+    const date = __WHG_TEST__.nyToday();
+    const SE = DB["Site Events"], SL = DB["tblpy91cyNSkKx1NL"] || DB["Search Log"];
+    const seBefore = SE.length;
+    for (let i = 0; i < X2.NEW_ROWS_PER_KIND_PER_DAY; i++) SE.push(rec(`recCAPEVENT${String(i).padStart(6, "0")}`, { Date: date, Kind: "js-error", Key: `cap-${i}`, Count: 1 }));
+    await X2.recordSiteEvent(db, { kind: "js-error", key: "one-more", slug: null, label: "x", detail: null });
+    assert.equal(SE.filter(r => r.fields.Key === "one-more").length, 0, "no new row past the cap");
+    await X2.recordSiteEvent(db, { kind: "js-error", key: "cap-5", slug: null, label: "x", detail: null });
+    assert.equal(SE.find(r => r.fields.Key === "cap-5").fields.Count, 2, "known rows still count up");
+    await X2.recordSiteEvent(db, { kind: "load-fail", key: "directory|/", slug: null, label: "directory", detail: null });
+    assert.ok(SE.some(r => r.fields.Kind === "load-fail" && r.fields.Key === "directory|/"), "the cap is per kind");
+    SE.splice(seBefore);
+    const now = new Date().toISOString();
+    const slBefore = SL.length;
+    for (let i = 0; i < S2.NEW_SEARCHES_PER_DAY; i++) SL.push(rec(`recCAPSEARCH${String(i).padStart(5, "0")}`, { Query: `capq ${i}`, Count: 1, "First Searched": now, "Last Searched": now }));
+    await S2.recordSearch(db, "brand new query", "Nothing found", "");
+    assert.ok(!SL.some(r => r.fields.Query === "brand new query"), "no new search row past the cap");
+    SL.splice(slBefore);
+  });
+
+  await t("abuse: 'We got your request' goes to one address at most 3 times a day", async () => {
+    const receipts = () => resendCalls().filter(m => String(m.to?.[0]).toLowerCase() === "flood@example.com" && /We got your request/.test(m.subject)).length;
+    for (let i = 0; i < 5; i++) {
+      const r = await send({ email: "Flood@Example.com", name: `Flood ${i}` });
+      assert.equal(r.status, 200);
+      assert.ok((await r.json()).manageUrl, "link still shown on screen");
+      await Promise.allSettled(waits);
+    }
+    assert.equal(receipts(), 3);
+  });
+}
 
 await t("settings: usual loan length is optional (1–365 days, blank clears)", async () => {
   const patch = v => call(`/admin/gemach`, { method: "PATCH", headers: jsonB, body: JSON.stringify({ defaultLoanDays: v }) });
@@ -2383,6 +2508,41 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.ok(builds <= 6, `50 changes caused ${builds} rebuilds`);
     assert.equal(seen[seen.length - 1], 49, "the last rebuild saw the last change");
     assert.equal(JSON.parse(await (await store.get(key).clone()).text()).v, 49);
+  });
+  if (D1_MODE) await t("cache: a stale copy is kept while the data version is unchanged; another location's change makes it rebuild", async () => {
+    await call("/public/directory"); await settle();
+    const builtWith = store.get(dirKey).headers.get("X-Data-Version");
+    assert.ok(builtWith, "copy remembers the data version it was built from");
+    await setAge(dirKey, 2 * 60e3);
+    await new Promise(r => setTimeout(r, 5100)); // past the 5 s version memo
+    let r = await call("/public/directory");
+    assert.equal(r.headers.get("X-Cache"), "CURRENT");
+    assert.ok(d1Queries <= 1, `checking the version is one small read (used ${d1Queries})`);
+    await settle();
+    r = await call("/public/directory"); assert.equal(r.headers.get("X-Cache"), "HIT", "re-stamped for another minute");
+    // An admin change handled somewhere else: only the version row changes here.
+    await env.DB.prepare("UPDATE site_meta SET value = 'elsewhere' WHERE id = 'recSITEMETADATAV1'").run();
+    await setAge(dirKey, 2 * 60e3);
+    await new Promise(r => setTimeout(r, 5100));
+    r = await call("/public/directory"); assert.equal(r.headers.get("X-Cache"), "STALE", "out of date → served once while it rebuilds");
+    await settle();
+    assert.equal(store.get(dirKey).headers.get("X-Data-Version"), "elsewhere");
+  });
+  if (D1_MODE) await t("cache: a hidden gemach's page stops being served once its rebuild says it's gone", async () => {
+    const gk = "https://whgemachs.org/__cache/v1/gemach/" + B.slug;
+    await call("/public/gemach/" + B.slug); await settle();
+    assert.ok(store.has(gk));
+    const gm = DB.Gemachs.find(x => x.id === B.id);
+    gm.fields.Active = false;
+    X.clearMemo(); // the 60 s gemach memo has expired
+    try {
+      await env.DB.prepare("UPDATE site_meta SET value = 'hidden-b' WHERE id = 'recSITEMETADATAV1'").run();
+      await setAge(gk, 2 * 60e3);
+      await new Promise(r => setTimeout(r, 5100));
+      await call("/public/gemach/" + B.slug); await settle();
+      assert.ok(!store.has(gk), "old copy dropped");
+      assert.equal((await call("/public/gemach/" + B.slug)).status, 404);
+    } finally { gm.fields.Active = true; X.clearMemo(); }
   });
   await t("cache: photo upload does not purge the public cache", async () => {
     await call("/public/directory"); await settle();

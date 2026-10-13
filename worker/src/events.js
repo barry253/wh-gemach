@@ -10,6 +10,7 @@ import { Q } from "./query.js";
 import { REC_RE, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 
+const NEW_ROWS_PER_KIND_PER_DAY = 300; // new (kind, key) rows a day; counts on existing rows keep going up
 const EVENT_KINDS = new Set(["item-photos", "item-pick", "js-error", "load-fail"]);
 const LOAD_WHAT = new Set(["directory", "gemach", "manage"]);
 const eventSeen = new Map(); // per-isolate: "ip|kind|key" -> ms, so one person's repeats aren't counted twice
@@ -90,9 +91,12 @@ async function recordSiteEvent(db, ev, now = Date.now()) {
   if (records[0]) {
     return db.update(T.SITE_EVENTS, records[0].id, { "Count": (records[0].fields.Count || 0) + 1, "Last At": at, ...(ev.detail ? { "Detail": ev.detail } : {}) });
   }
+  // Keys come from anonymous visitors, so cap how many NEW rows a day each kind can add (D1 writes are limited).
+  const today = await db.listAll(T.SITE_EVENTS, { where: [Q.eq("Date", date), Q.eq("Kind", ev.kind)], fields: ["Kind"], maxRecords: NEW_ROWS_PER_KIND_PER_DAY });
+  if (today.length >= NEW_ROWS_PER_KIND_PER_DAY) return null;
   return db.create(T.SITE_EVENTS, {
     "Date": date, "Kind": ev.kind, "Key": ev.key, "Count": 1, "Slug": ev.slug, "Label": ev.label, "Detail": ev.detail, "Last At": at,
   });
 }
 
-export { EVENT_KINDS, eventSeen, cleanPage, cleanMessage, cleanSource, browserOf, handleSiteEvent, recordSiteEvent };
+export { NEW_ROWS_PER_KIND_PER_DAY, EVENT_KINDS, eventSeen, cleanPage, cleanMessage, cleanSource, browserOf, handleSiteEvent, recordSiteEvent };

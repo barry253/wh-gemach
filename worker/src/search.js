@@ -8,6 +8,7 @@ import { clip } from "./submit.js";
 
 // ─── Search log (home-page searches that found nothing) ───────────────────────
 
+const NEW_SEARCHES_PER_DAY = 200; // new distinct searches a day (repeats of known ones are always counted)
 const SEARCH_OUTCOMES = { "none": "Nothing found", "all-on-loan": "All on loan" };
 const searchSeen = new Map(); // per-isolate: "q|outcome" -> ms, so one person's retyping isn't counted twice
 let searchHour = { start: 0, count: 0 };
@@ -60,6 +61,10 @@ async function recordSearch(db, q, outcome, category) {
       "Last Searched": nowIso,
     });
   }
+  // Searches come from anonymous visitors: cap how many NEW rows a day can be added (D1 writes are limited).
+  const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+  const fresh = await db.listAll(T.SEARCH_LOG, { where: [Q.after("First Searched", since)], fields: ["Query"], maxRecords: NEW_SEARCHES_PER_DAY });
+  if (fresh.length >= NEW_SEARCHES_PER_DAY) return null;
   return db.create(T.SEARCH_LOG, {
     "Query": q, "Count": 1, "Last Outcome": outcome,
     "Nothing Found Count": isNone ? 1 : 0, "All On Loan Count": isNone ? 0 : 1,
@@ -92,4 +97,4 @@ async function netListSearches({ db, url }) {
   });
 }
 
-export { SEARCH_OUTCOMES, searchSeen, searchHour, normalizeSearch, handleSearchLog, recordSearch, netListSearches };
+export { NEW_SEARCHES_PER_DAY, SEARCH_OUTCOMES, searchSeen, searchHour, normalizeSearch, handleSearchLog, recordSearch, netListSearches };

@@ -1019,6 +1019,7 @@
     $("form-view").hidden = false;
     $("success-view").hidden = true;
     hideError();
+    tsLoad().then(tsMount); // spam check starts while they fill in the form
     var btn = $("btn-submit"); btn.disabled = false; btn.textContent = submitLabel();
     modal.hidden = false; modal.classList.add("open"); lockScroll(true);
     setTimeout(function () { if (!modal.contains(document.activeElement) || document.activeElement === modal) $("f-name").focus(); }, 30);
@@ -1340,6 +1341,7 @@
       return null;
     }
     if (email) body.email = email;
+    var hp = $("f-hp"); if (hp && hp.value) body.website = hp.value; // hidden field only bots fill in
     if (inTestMode()) body.testToken = testToken;
     body.preferredContact = preferredContact;
     if (notes) body.notes = notes;
@@ -1356,7 +1358,16 @@
     var btn = $("btn-submit");
     btn.disabled = true; btn.textContent = "Sending…";
 
-    W.fetchJSON("/submit-request", { method: "POST", body: body, retry: false, timeout: 20000 }).then(function (data) {
+    tsToken().then(function (tok) {
+      if (ts.key && !tok) {
+        var te = new Error(ts.failed
+          ? "The security check couldn’t load (an ad blocker can cause this). Please allow challenges.cloudflare.com, or try another browser."
+          : "The security check under the form hasn’t finished yet — please wait a moment and send again.");
+        te.status = 400; throw te;
+      }
+      if (tok) body.turnstileToken = tok;
+      return W.fetchJSON("/submit-request", { method: "POST", body: body, retry: false, timeout: 20000 });
+    }).then(function (data) {
       if (!data || !data.success) throw new Error((data && data.error) || "failed");
       var link = typeof data.manageUrl === "string" && /^https:\/\//.test(data.manageUrl) ? data.manageUrl : null;
       if ($("f-remember").checked) {
@@ -1392,8 +1403,60 @@
       btn.disabled = false; btn.textContent = submitLabel();
       if (err && err.status >= 400 && err.status < 500 && err.message) showError(err.message + gemachContactLine());
       else showError("We couldn’t send your request." + gemachContactLine());
-    });
+    }).then(tsReset); // a token works once: get a fresh one for the next send
   });
+
+  // ── Spam protection: Cloudflare Turnstile ──
+  // Only once the worker has its keys (GET /public/config gives the site key). The widget is invisible unless
+  // Cloudflare wants the visitor to tick a box; the form waits up to 15 s for its token when they press Send.
+  var ts = { key: null, id: null, token: null, waiters: [], loading: false, failed: false, config: null };
+  function tsLoad() { // asked once, when the form is first opened (most visitors never open it)
+    return ts.config || (ts.config = W.fetchJSON("/public/config").then(function (c) {
+      ts.key = c && typeof c.turnstileSiteKey === "string" && c.turnstileSiteKey ? c.turnstileSiteKey : null;
+    }).catch(function () { ts.config = null; /* try again next time; meanwhile send without a token (the worker decides) */ }));
+  }
+  function tsMount() {
+    if (!ts.key || ts.id !== null || ts.loading) return;
+    var box = $("ts-box");
+    if (!box) return;
+    ts.loading = true;
+    var render = function () {
+      ts.loading = false;
+      try {
+        ts.id = window.turnstile.render(box, {
+          sitekey: ts.key, action: "request", appearance: "interaction-only", theme: "light",
+          callback: function (t) { ts.token = t; var w = ts.waiters; ts.waiters = []; w.forEach(function (f) { f(t); }); },
+          "expired-callback": function () { ts.token = null; },
+          "error-callback": function () { ts.token = null; },
+        });
+      } catch (e) { ts.failed = true; }
+    };
+    if (window.turnstile) { render(); return; }
+    var sc = document.createElement("script");
+    sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    sc.async = true;
+    sc.onload = render;
+    sc.onerror = function () { ts.loading = false; ts.failed = true; var w = ts.waiters; ts.waiters = []; w.forEach(function (f) { f(null); }); };
+    document.head.appendChild(sc);
+  }
+  function tsToken() {
+    return tsLoad().then(tsTokenNow);
+  }
+  function tsTokenNow() {
+    if (!ts.key) return Promise.resolve(null);
+    tsMount();
+    if (ts.token) return Promise.resolve(ts.token);
+    if (ts.failed) return Promise.resolve(null);
+    return new Promise(function (resolve) {
+      var done = false;
+      var timer = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 15000);
+      ts.waiters.push(function (t) { if (!done) { done = true; clearTimeout(timer); resolve(t); } });
+    });
+  }
+  function tsReset() {
+    ts.token = null;
+    if (ts.id !== null && window.turnstile) { try { window.turnstile.reset(ts.id); } catch (e) { /* ignore */ } }
+  }
 
   // ── Data ──
   function fromDirectory() {

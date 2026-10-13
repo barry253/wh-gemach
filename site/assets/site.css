@@ -1054,3 +1054,9 @@ fieldset { border: 0; }
 /* Contact / website buttons in the gemach info card */
 .info-ctas { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
 .info-ctas .btn { overflow-wrap: normal; }
+
+/* Request form spam protection: a field only bots fill in (kept off-screen, not display:none), and the
+   Cloudflare Turnstile box (empty unless Cloudflare asks the visitor to tick it) */
+.hp-field { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.ts-box { margin: .25rem 0 .75rem; }
+.ts-box:empty { margin: 0; }

@@ -45,6 +45,7 @@ async function setup(ctx) {
     const m = u.pathname.match(/^\/public\/gemach\/([^/]+)$/);
     if (m) { const p = payload(decodeURIComponent(m[1])); return p ? r.fulfill({ json: p, headers: cors }) : r.fulfill({ status: 404, json: { error: 'Not found' }, headers: cors }); }
     if (u.pathname === '/public/search-log') return r.fulfill({ status: 204, headers: cors });
+    if (u.pathname === '/public/config') return r.fulfill({ json: { turnstileSiteKey: null }, headers: cors });
     r.fulfill({ status: 404, json: { error: 'nope' }, headers: cors });
   });
 }

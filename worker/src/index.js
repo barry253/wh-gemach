@@ -37,6 +37,9 @@
  *   Health:  GET /health — checks Airtable is reachable; 200 {ok:true} or 503 (for uptime monitors).
  *   Public:  GET /inventory (legacy, wh-medical only), GET /public/directory,
  *            GET /public/gemach/:slug, POST /submit-request (rejected for Directory, Info-only and Coming-soon gemachs)
+ *   Abuse protection (abuse.js): GET /public/config → { turnstileSiteKey } (null until TURNSTILE_SITE_KEY + secret
+ *            TURNSTILE_SECRET are set); /submit-request then needs turnstileToken. Rate limits: SUBMIT_LIMITER,
+ *            PUBLIC_LOG_LIMITER bindings (wrangler.toml). Hidden "website" honeypot; name ≤ 200, notes ≤ 5000, body ≤ 64 KB.
  *   Test link: GET /public/gemach/:slug?test=<sig> and POST /submit-request {testToken} — a Hidden or Coming-soon
  *            gemach opens and takes requests (tagged Test) through its signed test link (testmode.js).
  *            Admin: GET /admin/test-data, POST /admin/test-data/clear (Owner/Manager/Network Admin).
@@ -106,6 +109,7 @@ import { handleSiteEvent } from "./events.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
 import { handleDashboard, handleStats } from "./stats.js";
 import { handleSubmitRequest } from "./submit.js";
+import { clientIp, handlePublicConfig, overLimit } from "./abuse.js";
 import { runReminders } from "./reminders.js";
 import { pushDispatch } from "./push.js";
 
@@ -188,8 +192,12 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
   if (method === "GET"  && path === "/public/directory") return handleDirectory(db, env, ctx);
   if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)), url.searchParams.get("test"));
   if (method === "POST" && path === "/submit-request")   return handleSubmitRequest(request, db, env, ctx);
-  if (method === "POST" && path === "/public/search-log") return handleSearchLog(request, db, ctx);
-  if (method === "POST" && path === "/public/event") return handleSiteEvent(request, db, ctx);
+  if (method === "GET"  && path === "/public/config")    return handlePublicConfig(env);
+  if (method === "POST" && (path === "/public/search-log" || path === "/public/event")) {
+    // Counting only: over the per-visitor limit, the visit just isn't counted (always 204).
+    if (await overLimit(env.PUBLIC_LOG_LIMITER, clientIp(request) || "no-ip")) return new Response(null, { status: 204 });
+    return path === "/public/event" ? handleSiteEvent(request, db, ctx) : handleSearchLog(request, db, ctx);
+  }
   if (path.startsWith("/public/manage/")) { // borrower manage link (signed; no login)
     const rest = path.slice("/public/manage/".length).split("/");
     const token = safeDecode(rest[0] || "");
