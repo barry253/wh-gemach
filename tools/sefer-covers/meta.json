@@ -123,9 +123,10 @@
  },
  "yael-s-great-big-family": {
   "title": "Yael's Great Big Family",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781607632320",
+  "year": null,
+  "file": "yael-s-great-big-family.jpg"
  },
  "princess-of-hashem": {
   "title": "Princess of Hashem",
@@ -148,9 +149,10 @@
  },
  "here-comes-the-mitzvah-team": {
   "title": "Here Comes the Mitzvah Team",
-  "source": null,
-  "matched": null,
-  "year": 2019
+  "source": "amazon-isbn",
+  "matched": "9781945560194",
+  "year": 2019,
+  "file": "here-comes-the-mitzvah-team.jpg"
  },
  "i-can-help": {
   "title": "I Can Help",
@@ -167,9 +169,10 @@
  },
  "yes-i-can": {
   "title": "Yes, I Can",
-  "source": null,
-  "matched": null,
-  "year": 2018
+  "source": "amazon-isbn",
+  "matched": "9781945560057",
+  "year": 2018,
+  "file": "yes-i-can.jpg"
  },
  "let-s-stay-safe": {
   "title": "Let's Stay Safe!",
@@ -180,9 +183,10 @@
  },
  "i-can-choose": {
   "title": "I Can Choose",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781945560880",
+  "year": null,
+  "file": "i-can-choose.jpg"
  },
  "tell-me-the-story-of-the-parsha": {
   "title": "Tell Me the Story of the Parsha",
@@ -192,33 +196,38 @@
  },
  "yael-worries-no-more": {
   "title": "Yael Worries No More",
-  "source": null,
-  "matched": null,
-  "year": 2014
+  "source": "amazon-isbn",
+  "matched": "9780983523130",
+  "year": 2014,
+  "file": "yael-worries-no-more.jpg"
  },
  "i-can-be-a-gibor": {
   "title": "I Can Be a Gibor",
-  "source": null,
-  "matched": null,
-  "year": 2013
+  "source": "amazon-isbn",
+  "matched": "9781607631279",
+  "year": 2013,
+  "file": "i-can-be-a-gibor.jpg"
  },
  "listen-with-your-heart": {
   "title": "Listen With Your Heart",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781607633730",
+  "year": null,
+  "file": "listen-with-your-heart.jpg"
  },
  "tannaim-series-rabbi-akiva-part-1": {
   "title": "Tannaim Series: Rabbi Akiva, Part 1",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680255881",
+  "year": null,
+  "file": "tannaim-series-rabbi-akiva-part-1.jpg"
  },
  "tannaim-series-rabbi-akiva-part-2": {
   "title": "Tannaim Series: Rabbi Akiva, Part 2",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680255898",
+  "year": null,
+  "file": "tannaim-series-rabbi-akiva-part-2.jpg"
  },
  "the-adventures-of-the-gimmel-gang": {
   "title": "The Adventures of the Gimmel Gang",
@@ -229,15 +238,17 @@
  },
  "tannaim-series-rabbi-shimon-bar-yochai": {
   "title": "Tannaim Series: Rabbi Shimon Bar Yochai",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680255270",
+  "year": null,
+  "file": "tannaim-series-rabbi-shimon-bar-yochai.jpg"
  },
  "sara-the-bucket-filler": {
   "title": "Sara The Bucket Filler",
-  "source": null,
-  "matched": null,
-  "year": 2017
+  "source": "amazon-isbn",
+  "matched": "9781946351166",
+  "year": 2017,
+  "file": "sara-the-bucket-filler.jpg"
  },
  "miracles-of-chanukah": {
   "title": "Miracles of Chanukah",
@@ -248,9 +259,10 @@
  },
  "amazing-stories-of-eliyahu-hanavi-1-the-slave-and-the-palace": {
   "title": "Amazing Stories of Eliyahu HaNavi 1: The Slave and the Palace",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680256192",
+  "year": null,
+  "file": "amazing-stories-of-eliyahu-hanavi-1-the-slave-and-the-palace.jpg"
  },
  "the-story-of-chanukah": {
   "title": "The Story of Chanukah",
@@ -314,9 +326,10 @@
  },
  "i-lost-someone-special": {
   "title": "I Lost Someone Special",
-  "source": null,
-  "matched": null,
-  "year": 2015
+  "source": "amazon-isbn",
+  "matched": "9781944143008",
+  "year": 2015,
+  "file": "i-lost-someone-special.jpg"
  },
  "forever-my-jerusalem": {
   "title": "Forever My Jerusalem",
@@ -341,9 +354,10 @@
  },
  "rav-avigdor-miller-and-the-rainy-day": {
   "title": "Rav Avigdor Miller and the Rainy Day",
-  "source": null,
-  "matched": null,
-  "year": 2019
+  "source": "amazon-isbn",
+  "matched": "9781607633044",
+  "year": 2019,
+  "file": "rav-avigdor-miller-and-the-rainy-day.jpg"
  },
  "uh-oh-hanukkah": {
   "title": "Uh! Oh! Hanukkah",
@@ -436,9 +450,10 @@
  },
  "living-emunah-for-children": {
   "title": "Living Emunah for Children",
-  "source": null,
-  "matched": null,
-  "year": 2017
+  "source": "amazon-isbn",
+  "matched": "9781422619469",
+  "year": 2017,
+  "file": "living-emunah-for-children.jpg"
  },
  "the-alef-bet-word-book": {
   "title": "The Alef Bet Word Book",
@@ -479,15 +494,17 @@
  },
  "my-little-world": {
   "title": "My Little World",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680254273",
+  "year": null,
+  "file": "my-little-world.jpg"
  },
  "the-hidden-artist": {
   "title": "The Hidden Artist",
-  "source": null,
-  "matched": null,
-  "year": 2014
+  "source": "amazon-isbn",
+  "matched": "9781929628742",
+  "year": 2014,
+  "file": "the-hidden-artist.jpg"
  },
  "when-the-world-was-quiet": {
   "title": "When the World Was Quiet",
@@ -498,9 +515,10 @@
  },
  "big-like-me": {
   "title": "Big Like Me!",
-  "source": null,
-  "matched": null,
-  "year": 2001
+  "source": "amazon-isbn",
+  "matched": "9781929628049",
+  "year": 2001,
+  "file": "big-like-me.jpg"
  },
  "a-very-special-gift": {
   "title": "A Very Special Gift",
@@ -539,9 +557,10 @@
  },
  "shabbos-shabbos-i-love-you": {
   "title": "Shabbos, Shabbos, I Love You",
-  "source": null,
-  "matched": null,
-  "year": 2013
+  "source": "amazon-isbn",
+  "matched": "9781929628704",
+  "year": 2013,
+  "file": "shabbos-shabbos-i-love-you.jpg"
  },
  "the-story-of-danny-three-times": {
   "title": "The Story of Danny Three Times",
@@ -559,9 +578,10 @@
  },
  "the-king-in-the-field": {
   "title": "The King in the Field",
-  "source": null,
-  "matched": null,
-  "year": 2008
+  "source": "amazon-isbn",
+  "matched": "9781929628421",
+  "year": 2008,
+  "file": "the-king-in-the-field.jpg"
  },
  "as-big-as-an-egg": {
   "title": "As Big As an Egg",
@@ -600,21 +620,24 @@
  },
  "bat-em-in-benjy": {
   "title": "Bat'Em in Benjy",
-  "source": null,
-  "matched": null,
-  "year": 1997
+  "source": "amazon-isbn",
+  "matched": "9780899065113",
+  "year": 1997,
+  "file": "bat-em-in-benjy.jpg"
  },
  "the-little-old-lady-who-couldn-t-fall-asleep": {
   "title": "The Little Old Lady Who Couldn't Fall Asleep",
-  "source": null,
-  "matched": null,
-  "year": 1989
+  "source": "amazon-isbn",
+  "matched": "9780899065014",
+  "year": 1989,
+  "file": "the-little-old-lady-who-couldn-t-fall-asleep.jpg"
  },
  "tali-s-slippers-tova-s-shoes": {
   "title": "Tali's Slippers, Tova's Shoes",
-  "source": null,
-  "matched": null,
-  "year": 1997
+  "source": "amazon-isbn",
+  "matched": "9780899065021",
+  "year": 1997,
+  "file": "tali-s-slippers-tova-s-shoes.jpg"
  },
  "arrogant-ari-learns-a-lesson": {
   "title": "Arrogant Ari Learns a Lesson",
@@ -625,27 +648,31 @@
  },
  "the-very-good-fisherman": {
   "title": "The Very Good Fisherman",
-  "source": null,
-  "matched": null,
-  "year": 1991
+  "source": "amazon-isbn",
+  "matched": "9780899065106",
+  "year": 1991,
+  "file": "the-very-good-fisherman.jpg"
  },
  "eli-and-his-little-white-lie": {
   "title": "Eli and His Little White Lie",
-  "source": null,
-  "matched": null,
-  "year": 1997
+  "source": "amazon-isbn",
+  "matched": "9780899065038",
+  "year": 1997,
+  "file": "eli-and-his-little-white-lie.jpg"
  },
  "dovy-and-the-surprise-guests": {
   "title": "Dovy and the Surprise Guests",
-  "source": null,
-  "matched": null,
-  "year": 1993
+  "source": "amazon-isbn",
+  "matched": "9780899065120",
+  "year": 1993,
+  "file": "dovy-and-the-surprise-guests.jpg"
  },
  "donny-and-deeny-k-teeny-help-the-king": {
   "title": "Donny and Deeny K'teeny Help the King",
-  "source": null,
-  "matched": null,
-  "year": 1990
+  "source": "amazon-isbn",
+  "matched": "9780899065052",
+  "year": 1990,
+  "file": "donny-and-deeny-k-teeny-help-the-king.jpg"
  },
  "the-great-potato-plan": {
   "title": "The Great Potato Plan",
@@ -695,9 +722,10 @@
  },
  "penina-s-doll-factory": {
   "title": "Penina's Doll Factory",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781607630159",
+  "year": null,
+  "file": "penina-s-doll-factory.jpg"
  },
  "we-love-shabbos": {
   "title": "We Love Shabbos",
@@ -707,9 +735,10 @@
  },
  "tova-bloom-to-the-rescue": {
   "title": "Tova Bloom to the Rescue",
-  "source": null,
-  "matched": null,
-  "year": 2011
+  "source": "amazon-isbn",
+  "matched": "9781607630524",
+  "year": 2011,
+  "file": "tova-bloom-to-the-rescue.jpg"
  },
  "torah-heroes": {
   "title": "Torah Heroes",
@@ -757,15 +786,17 @@
  },
  "yael-and-the-shining-menorah-lights": {
   "title": "Yael and the Shining Menorah Lights",
-  "source": null,
-  "matched": null,
-  "year": 2015
+  "source": "amazon-isbn",
+  "matched": "9781607632016",
+  "year": 2015,
+  "file": "yael-and-the-shining-menorah-lights.jpg"
  },
  "the-yarmulke-kippah-coppel-book": {
   "title": "The Yarmulke, Kippah, Coppel Book",
-  "source": null,
-  "matched": null,
-  "year": 1998
+  "source": "amazon-isbn",
+  "matched": "9780922613878",
+  "year": 1998,
+  "file": "the-yarmulke-kippah-coppel-book.jpg"
  },
  "sharing-a-sunshine-umbrella": {
   "title": "Sharing a Sunshine Umbrella",
@@ -790,9 +821,10 @@
  },
  "shuki-s-upside-down-dream": {
   "title": "Shuki's Upside Down Dream",
-  "source": null,
-  "matched": null,
-  "year": 2014
+  "source": "amazon-isbn",
+  "matched": "9781598261301",
+  "year": 2014,
+  "file": "shuki-s-upside-down-dream.jpg"
  },
  "the-mentchkins-make-friends": {
   "title": "The Mentchkins Make Friends",
@@ -848,9 +880,10 @@
  },
  "quarters-and-dimes-and-nickels-and-pennies": {
   "title": "Quarters and Dimes and Nickels and Pennies",
-  "source": null,
-  "matched": null,
-  "year": 1993
+  "source": "amazon-isbn",
+  "matched": "9780826603586",
+  "year": 1993,
+  "file": "quarters-and-dimes-and-nickels-and-pennies.jpg"
  },
  "the-secret-files-of-lisa-weiss": {
   "title": "The Secret Files of Lisa Weiss",
@@ -888,9 +921,10 @@
  },
  "the-burksfield-bike-club-book-4": {
   "title": "The Burksfield Bike Club: Book 4",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781607630852",
+  "year": null,
+  "file": "the-burksfield-bike-club-book-4.jpg"
  },
  "sefer-alef-bais": {
   "title": "Sefer Alef Bais",
@@ -939,9 +973,10 @@
  },
  "the-count-of-coucy-and-portrait-of-two-families": {
   "title": "The Count of Coucy and Portrait of Two Families",
-  "source": null,
-  "matched": null,
-  "year": 2011
+  "source": "amazon-isbn",
+  "matched": "9781598266641",
+  "year": 2011,
+  "file": "the-count-of-coucy-and-portrait-of-two-families.jpg"
  },
  "alef-bet-picture-dictionary": {
   "title": "Alef Bet Picture Dictionary",
@@ -1016,9 +1051,10 @@
  },
  "let-my-children-cook": {
   "title": "Let My Children Cook!",
-  "source": null,
-  "matched": null,
-  "year": 2014
+  "source": "amazon-isbn",
+  "matched": "9781607631422",
+  "year": 2014,
+  "file": "let-my-children-cook.jpg"
  },
  "the-artscroll-youth-megillah": {
   "title": "The ArtScroll Youth Megillah",
@@ -1062,9 +1098,10 @@
  },
  "rooted-in-torah": {
   "title": "Rooted in Torah",
-  "source": null,
-  "matched": null,
-  "year": 2021
+  "source": "amazon-isbn",
+  "matched": "9789657023174",
+  "year": 2021,
+  "file": "rooted-in-torah.jpg"
  },
  "in-forest-fields": {
   "title": "In Forest Fields",
@@ -1075,9 +1112,10 @@
  },
  "living-emunah-volume-2": {
   "title": "Living Emunah, Volume 2",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422616604",
+  "year": null,
+  "file": "living-emunah-volume-2.jpg"
  },
  "love-and-respect": {
   "title": "Love and Respect",
@@ -1140,9 +1178,10 @@
  },
  "the-family-lesson-a-day": {
   "title": "The Family Lesson a Day",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422609606",
+  "year": null,
+  "file": "the-family-lesson-a-day.jpg"
  },
  "the-garden-of-healing": {
   "title": "The Garden of Healing",
@@ -1159,9 +1198,10 @@
  },
  "ask-the-rabbi-volume-3": {
   "title": "Ask the Rabbi, Volume 3",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422646212",
+  "year": null,
+  "file": "ask-the-rabbi-volume-3.jpg"
  },
  "my-story": {
   "title": "My Story",
@@ -1178,9 +1218,10 @@
  },
  "she-shall-be-praised": {
   "title": "She Shall Be Praised",
-  "source": null,
-  "matched": null,
-  "year": 1999
+  "source": "amazon-isbn",
+  "matched": "9781578194506",
+  "year": 1999,
+  "file": "she-shall-be-praised.jpg"
  },
  "eli-learns-to-deal-with-feelings": {
   "title": "Eli Learns to Deal with Feelings",
@@ -1190,9 +1231,10 @@
  },
  "living-with-bitachon-for-children": {
   "title": "Living With Bitachon for Children",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422639450",
+  "year": null,
+  "file": "living-with-bitachon-for-children.jpg"
  },
  "23-under-1-roof": {
   "title": "23 Under 1 Roof",
@@ -1223,33 +1265,38 @@
  },
  "living-shabbos-for-children": {
   "title": "Living Shabbos for Children",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422625828",
+  "year": null,
+  "file": "living-shabbos-for-children.jpg"
  },
  "tefillah-treasures": {
   "title": "Tefillah Treasures",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680254051",
+  "year": null,
+  "file": "tefillah-treasures.jpg"
  },
  "shabbos-treats": {
   "title": "Shabbos Treats",
-  "source": null,
-  "matched": null,
-  "year": 2017
+  "source": "amazon-isbn",
+  "matched": "9781680253221",
+  "year": 2017,
+  "file": "shabbos-treats.jpg"
  },
  "the-maggid-shows-the-way": {
   "title": "The Maggid Shows The Way",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422628157",
+  "year": null,
+  "file": "the-maggid-shows-the-way.jpg"
  },
  "tannaim-series-rabbi-yochanan-ben-zakkai": {
   "title": "Tannaim Series: Rabbi Yochanan Ben Zakkai",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680255386",
+  "year": null,
+  "file": "tannaim-series-rabbi-yochanan-ben-zakkai.jpg"
  },
  "the-story-of-the-baal-shem-tov": {
   "title": "The Story of the Baal Shem Tov",
@@ -1266,15 +1313,17 @@
  },
  "tannaim-series-rabbi-meir-baal-hanes": {
   "title": "Tannaim Series: Rabbi Meir Baal HaNes",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680255294",
+  "year": null,
+  "file": "tannaim-series-rabbi-meir-baal-hanes.jpg"
  },
  "tannaim-series-hillel-hazaken": {
   "title": "Tannaim Series: Hillel HaZaken",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680255263",
+  "year": null,
+  "file": "tannaim-series-hillel-hazaken.jpg"
  },
  "a-day-full-of-mitzvos": {
   "title": "A Day Full of Mitzvos",
@@ -1284,9 +1333,10 @@
  },
  "it-s-not-my-fault": {
   "title": "It's Not My Fault",
-  "source": null,
-  "matched": null,
-  "year": 2021
+  "source": "amazon-isbn",
+  "matched": "9781680254822",
+  "year": 2021,
+  "file": "it-s-not-my-fault.jpg"
  },
  "101-first-stories": {
   "title": "101 First Stories",
@@ -1296,21 +1346,24 @@
  },
  "rav-avigdor-miller-and-the-apple-seed": {
   "title": "Rav Avigdor Miller and the Apple Seed",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781607631750",
+  "year": null,
+  "file": "rav-avigdor-miller-and-the-apple-seed.jpg"
  },
  "mommy-i-m-bored": {
   "title": "Mommy, I'm Bored!",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781600912511",
+  "year": null,
+  "file": "mommy-i-m-bored.jpg"
  },
  "dollars-and-sense": {
   "title": "Dollars and Sense",
-  "source": null,
-  "matched": null,
-  "year": 2012
+  "source": "amazon-isbn",
+  "matched": "9781929628650",
+  "year": 2012,
+  "file": "dollars-and-sense.jpg"
  },
  "baruch-and-his-disappearing-yarmulke": {
   "title": "Baruch and His Disappearing Yarmulke",
@@ -1321,9 +1374,10 @@
  },
  "613-torah-avenue": {
   "title": "613 Torah Avenue",
-  "source": null,
-  "matched": null,
-  "year": 2017
+  "source": "amazon-isbn",
+  "matched": "9781607632429",
+  "year": 2017,
+  "file": "613-torah-avenue.jpg"
  },
  "who-can-fix-my-cuckoo-clock-other-stories": {
   "title": "Who Can Fix My Cuckoo Clock & Other Stories",
@@ -1334,9 +1388,10 @@
  },
  "yossi-and-nussi-s-trip-to-the-zoo": {
   "title": "Yossi and Nussi's Trip to the Zoo",
-  "source": null,
-  "matched": null,
-  "year": 2019
+  "source": "amazon-isbn",
+  "matched": "9781680254112",
+  "year": 2019,
+  "file": "yossi-and-nussi-s-trip-to-the-zoo.jpg"
  },
  "tell-me-a-tale": {
   "title": "Tell Me a Tale",
@@ -1386,9 +1441,10 @@
  },
  "tishrei-tales": {
   "title": "Tishrei Tales",
-  "source": null,
-  "matched": null,
-  "year": 2016
+  "source": "amazon-isbn",
+  "matched": "9781680252521",
+  "year": 2016,
+  "file": "tishrei-tales.jpg"
  },
  "the-fearless-four-rescue-operation": {
   "title": "The Fearless Four Rescue Operation",
@@ -1405,9 +1461,10 @@
  },
  "more-3-minute-middos-stories-for-children": {
   "title": "More! 3-Minute Middos Stories for Children",
-  "source": null,
-  "matched": null,
-  "year": 2012
+  "source": "amazon-isbn",
+  "matched": "9781607631156",
+  "year": 2012,
+  "file": "more-3-minute-middos-stories-for-children.jpg"
  },
  "every-story-has-a-soul": {
   "title": "Every Story Has a Soul",
@@ -1425,9 +1482,10 @@
  },
  "just-love-them-for-children": {
   "title": "Just Love Them for Children",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422628492",
+  "year": null,
+  "file": "just-love-them-for-children.jpg"
  },
  "avigdor-s-amazing-adventure": {
   "title": "Avigdor's Amazing Adventure",
@@ -1450,15 +1508,17 @@
  },
  "3-minute-middos-stories-for-children": {
   "title": "3-Minute Middos Stories for Children",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781932443998",
+  "year": null,
+  "file": "3-minute-middos-stories-for-children.jpg"
  },
  "a-house-full-of-love": {
   "title": "A House Full of Love",
-  "source": null,
-  "matched": null,
-  "year": 2019
+  "source": "amazon-isbn",
+  "matched": "9781422623343",
+  "year": 2019,
+  "file": "a-house-full-of-love.jpg"
  },
  "a-kosher-fish-tale": {
   "title": "A Kosher Fish Tale",
@@ -1475,9 +1535,10 @@
  },
  "yael-and-her-new-white-dress": {
   "title": "Yael and Her New White Dress",
-  "source": null,
-  "matched": null,
-  "year": 2016
+  "source": "amazon-isbn",
+  "matched": "9781607632269",
+  "year": 2016,
+  "file": "yael-and-her-new-white-dress.jpg"
  },
  "the-silly-world-of-chelm": {
   "title": "The Silly World of Chelm",
@@ -1522,9 +1583,10 @@
  },
  "living-emunah-volume-7": {
   "title": "Living Emunah, Volume 7",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781422639207",
+  "year": null,
+  "file": "living-emunah-volume-7.jpg"
  },
  "final-judgment": {
   "title": "Final Judgment",
@@ -1580,15 +1642,17 @@
  },
  "hearts-of-gold": {
   "title": "Hearts of Gold",
-  "source": null,
-  "matched": null,
-  "year": 2006
+  "source": "amazon-isbn",
+  "matched": "9781931681926",
+  "year": 2006,
+  "file": "hearts-of-gold.jpg"
  },
  "torah-comics": {
   "title": "Torah Comics",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9789657801062",
+  "year": null,
+  "file": "torah-comics.jpg"
  },
  "happy-birthday-to-me": {
   "title": "Happy Birthday to Me!",
@@ -1619,9 +1683,10 @@
  },
  "the-great-matzoh-hunt": {
   "title": "The Great Matzoh Hunt",
-  "source": null,
-  "matched": null,
-  "year": 2010
+  "source": "amazon-isbn",
+  "matched": "9780843189698",
+  "year": 2010,
+  "file": "the-great-matzoh-hunt.jpg"
  },
  "middosman-volume-v": {
   "title": "MiddosMan, Volume V",
@@ -1663,9 +1728,10 @@
  },
  "abi-gezunt-volume-2": {
   "title": "Abi Gezunt!, Volume 2",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781891293030",
+  "year": null,
+  "file": "abi-gezunt-volume-2.jpg"
  },
  "why-the-moon-only-glows": {
   "title": "Why the Moon Only Glows",
@@ -1683,9 +1749,10 @@
  },
  "especially-for-you": {
   "title": "Especially for You",
-  "source": null,
-  "matched": null,
-  "year": null
+  "source": "amazon-isbn",
+  "matched": "9781680256338",
+  "year": null,
+  "file": "especially-for-you.jpg"
  },
  "middosman-volume-vi": {
   "title": "MiddosMan, Volume VI",
@@ -1702,15 +1769,17 @@
  },
  "loving-kindness": {
   "title": "Loving Kindness",
-  "source": null,
-  "matched": null,
-  "year": 2008
+  "source": "amazon-isbn",
+  "matched": "9781598262674",
+  "year": 2008,
+  "file": "loving-kindness.jpg"
  },
  "aliza-in-mitzvahland": {
   "title": "Aliza in MitzvahLand",
-  "source": null,
-  "matched": null,
-  "year": 2010
+  "source": "amazon-isbn",
+  "matched": "9781607630081",
+  "year": 2010,
+  "file": "aliza-in-mitzvahland.jpg"
  },
  "rose-a-judge-in-kindsville": {
   "title": "Rose, A Judge in Kindsville",
@@ -1720,8 +1789,9 @@
  },
  "when-i-daven": {
   "title": "When I Daven",
-  "source": null,
-  "matched": null,
-  "year": 2012
+  "source": "amazon-isbn",
+  "matched": "9781598268317",
+  "year": 2012,
+  "file": "when-i-daven.jpg"
  }
 }
