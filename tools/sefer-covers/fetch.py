@@ -136,6 +136,31 @@ def one(b):
         m["file"] = f"{key}.{ext}"
     return key, m
 
+RETRY = set(json.load(open(os.path.join(HERE, "retry.json")))) if os.path.exists(os.path.join(HERE, "retry.json")) else set()
+
+def alt(b):
+    """Second opinion for low-res / wrong covers: Amazon by ISBN, then the store catalogs. Saved as <key>-alt."""
+    got = None
+    for isbn in b["isbns"]:
+        if isbn10(isbn):
+            img = image(f"https://images-na.ssl-images-amazon.com/images/P/{isbn10(isbn)}.01.LZZZZZZZ.jpg")
+            if img: got = (img, "amazon " + isbn); break
+    if not got:
+        r = store_cover(b)
+        if r: got = r
+    if not got: return b["key"], None
+    (data, ext), where = got
+    open(os.path.join(RAW, f'{b["key"]}-alt.{ext}'), "wb").write(data)
+    return b["key"], {"file": f'{b["key"]}-alt.{ext}', "from": where}
+
+if RETRY and not os.environ.get("SKIP_ALT"):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+        for key, a in ex.map(alt, [b for b in books if b["key"] in RETRY]):
+            if key in meta: meta[key]["alt"] = a
+            print("alt", key, a, flush=True)
+    json.dump(meta, open(mp, "w"), indent=1, ensure_ascii=False)
+    sys.exit(0)
+
 START = time.time()
 todo = [b for b in books if not (b["key"] in meta and meta[b["key"]].get("source"))]
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:

@@ -4,7 +4,7 @@ name: Sefer Shelf covers
 on:
   push:
     branches: [sefer-covers]
-    paths: [tools/sefer-covers/books.json, tools/sefer-covers/fetch.py, .github/workflows/sefer-covers.yml]
+    paths: [tools/sefer-covers/books.json, tools/sefer-covers/retry.json, tools/sefer-covers/fetch.py, .github/workflows/sefer-covers.yml]
 permissions:
   contents: write
 jobs:
