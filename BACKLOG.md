@@ -2,6 +2,29 @@
 
 Work we've agreed is worth doing but haven't started. Newest decisions first within each section.
 
+## Owners can pause their gemach (status control) — added Oct 14, 2026
+
+Today only the Network Admin sets status (Live / Coming soon / Hidden) in the Network tab.
+
+- **First Live stays with the Network Admin.** A gemach that has never been Live can't be switched to Live by its owner. Owner Settings shows "Ready to go live?" with a **Request to go live** button → email + push to Network Admins.
+- **After it has been Live once:** Owner / Manager can switch between **Live** and **Paused** in Settings. Volunteers see it read-only.
+- **Paused** = Coming soon with friendlier wording: page stays up, "Not taking requests right now", contact buttons and items shown; the worker refuses requests (as for Coming soon today).
+- Optional later: a pause message and a "back on" date ("Back after Sukkos") that returns the gemach to Live automatically (daily cron).
+- **Hidden stays Network Admin only**, and so does Type (Online requests / Listing only / Info only).
+- Every owner status change: alert email + push to Network Admins, and a History row naming who changed it.
+- Needs a record of "has been Live before" (e.g. Gemachs.`Went Live At`, set the first time Live is chosen; backfill for gemachs Live today).
+- Size: about an afternoon with tests.
+
+## Delete an item type / a browse category — added Oct 14, 2026
+
+Today admin can delete a single unit (`DELETE /admin/catalog/items/:id`) but not an item type, and Network → Categories can't delete a category. Active off is the only option.
+
+- **Delete item type:** only when it has never been on a loan or a request (no Loans pointing at it or its units; not in any request's Items Requested / Item Quantities). Its units are deleted with it. Otherwise the button says "Has history — hide it instead (Active off)". Photos in R2 are left in place.
+- **Delete browse category:** only when no item type and no gemach's Home page categories link to it.
+- Why the guard: loans, requests and History point at the item type; a hard delete would leave blank names in history and drop it from stats.
+- Item types: Owner / Manager / Network Admin. Categories: Network Admin. Confirm step before deleting; public cache purged after.
+- Size: about an hour with tests.
+
 ## Worker performance (CPU limit) — added Oct 6, 2026
 
 **Background.** The worker is on Cloudflare's free plan: **10 ms of CPU per request**, and background work (`ctx.waitUntil`, e.g. public-cache rebuilds) counts against the request that started it. On Oct 6 the bulk photo update on the Simcha Dress Gemach (451 item types) produced "Worker exceeded CPU time limit" on most saves, and `GET /admin/catalog/item-types` for that gemach failed intermittently for a few minutes (a CPU-limit kill has no CORS headers, so the browser shows "Failed to fetch"). Commit 251d1fe merges bursts of forced cache rebuilds and stops photo uploads from purging the cache; it prevents pile-ups but doesn't make a single big read or rebuild cheaper.
