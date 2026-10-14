@@ -764,6 +764,10 @@ button.item-thumb:hover img { opacity: .88; }
   display: inline-flex; align-items: center; gap: .35rem; min-height: 40px; padding: 0 .8rem; border-radius: 999px;
   background: var(--white); color: #11703A; font-weight: 600; text-decoration: none;
 }
+.share-toast .share-more {
+  min-height: 40px; padding: 0 .8rem; border-radius: 999px; border: 1px solid rgba(255,255,255,.5); background: transparent; color: var(--on-primary); font-weight: 600;
+}
+.share-toast .share-more:hover { background: rgba(255,255,255,.14); }
 .share-toast .share-close { width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--on-primary); font-size: 1.3rem; }
 .share-toast .share-close:hover { background: rgba(255,255,255,.14); }
 .item-gone { margin-bottom: .9rem; }

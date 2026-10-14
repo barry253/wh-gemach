@@ -97,6 +97,19 @@ gw.items = [
     shared = await page.evaluate(() => window.__shared);
     assert(shared.length === 2 && shared[1].url.endsWith('/g/gowns?item=recVw3AAAAAAAAAAA'), 'Large view Share uses that item');
     assert(await page.locator('.item-post.selected, .item-tile.selected').count() === 0, 'sharing doesn\'t add anything to the request');
+    // Android Chrome sometimes refuses the next share sheet: copy + bar with "More…" to try again
+    await page.evaluate(() => { window.__refuse = 1; const ok = navigator.share; navigator.share = d => { if (window.__refuse-- > 0) { const e = new Error('An earlier share has not yet completed.'); e.name = 'InvalidStateError'; return Promise.reject(e); } return ok(d); }; });
+    await page.click('#row-recVw1AAAAAAAAAAA .share-btn');
+    await page.waitForSelector('#share-toast.show');
+    assert(await page.isVisible('#share-toast .share-more') && await page.isVisible('#share-toast .share-wa'), 'refused share sheet: bar with WhatsApp and More…');
+    await page.screenshot({ path: path.join(SHOTS, 'share-m-refused.png') });
+    await page.click('#share-toast .share-more');
+    shared = await page.evaluate(() => window.__shared);
+    assert(shared.length === 3 && shared[2].url.endsWith('?item=recVw1AAAAAAAAAAA') && await page.isHidden('#share-toast'), 'More… opens the share sheet again');
+    await page.evaluate(() => { window.__shared.push({ cancel: 1 }); const ok = navigator.share; navigator.share = d => { const e = new Error('cancelled'); e.name = 'AbortError'; return Promise.reject(e); }; });
+    await page.click('#row-recVw1AAAAAAAAAAA .share-btn');
+    await page.waitForTimeout(300);
+    assert(await page.isHidden('#share-toast'), 'closing the share sheet shows nothing else');
 
     // ── Opening a shared link ──
     await page.goto(BASE + '/g/gowns?item=recVw2AAAAAAAAAAA', { waitUntil: 'networkidle' });

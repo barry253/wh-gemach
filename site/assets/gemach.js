@@ -956,27 +956,37 @@
     if (!it || !canShare()) return;
     var url = shareUrl(it), title = it.name, text = it.name + " — " + gemach.name;
     trackItem("item-share", it.id);
-    if (navigator.share) {
-      navigator.share({ title: title, text: text, url: url }).catch(function (e) {
-        if (!e || e.name !== "AbortError") shareFallback(url, text); // cancelled = nothing to do
-      });
-      return;
-    }
+    if (navigator.share) { openShareSheet({ title: title, text: text, url: url }); return; }
     shareFallback(url, text);
   }
+  /** The phone's share sheet. Android Chrome sometimes refuses a second one (e.g. "an earlier share has not
+   *  yet completed" after coming back from WhatsApp): then copy the link and show the bar, which has a
+   *  "More…" button to try the share sheet again with a fresh tap. Refusals are counted in Site health. */
+  function openShareSheet(data) {
+    var p;
+    try { p = navigator.share(data); } catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p).catch(function (e) {
+      if (e && e.name === "AbortError") return; // the person closed the sheet
+      if (W.track && !testToken) W.track({ kind: "js-error", msg: "Share sheet refused: " + ((e && e.name) || "Error") + (e && e.message ? ": " + e.message : ""), src: "share", line: 0, page: location.pathname });
+      shareFallback(data.url, data.text, data);
+    });
+  }
   /** No share sheet (most computers): copy the link and offer WhatsApp. */
-  function shareFallback(url, text) {
-    var done = function (copied) { shareToast(url, text, copied); };
+  function shareFallback(url, text, retry) {
+    var done = function (copied) { shareToast(url, text, copied, retry); };
     try {
       navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); });
     } catch (e) { done(false); }
   }
   var toastTimer = 0;
-  function shareToast(url, text, copied) {
+  var toastRetry = null;
+  function shareToast(url, text, copied, retry) {
+    toastRetry = retry || null;
     var t = $("share-toast");
     if (!t) { t = document.createElement("div"); t.id = "share-toast"; t.className = "share-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
     t.innerHTML = (copied ? "<strong>Link copied</strong>" : '<label>Copy this link <input type="text" readonly value="' + esc(url) + '" /></label>') +
       '<a class="share-wa" href="https://wa.me/?text=' + encodeURIComponent(text + " " + url) + '" target="_blank" rel="noopener">' + W.ICONS.whatsapp + "WhatsApp</a>" +
+      (retry ? '<button type="button" class="share-more">More…</button>' : "") +
       '<button type="button" class="share-close" aria-label="Close">×</button>';
     t.hidden = false; t.classList.add("show");
     var inp = t.querySelector("input"); if (inp) { inp.focus(); inp.select(); }
@@ -984,8 +994,10 @@
     toastTimer = setTimeout(function () { t.classList.remove("show"); t.hidden = true; }, copied ? 6000 : 15000);
   }
   document.addEventListener("click", function (e) {
-    var b = e.target.closest && e.target.closest(".share-close");
-    if (b) { var t = $("share-toast"); if (t) { t.classList.remove("show"); t.hidden = true; } }
+    var b = e.target.closest && e.target.closest(".share-close, .share-more");
+    if (!b) return;
+    var t = $("share-toast"); if (t) { t.classList.remove("show"); t.hidden = true; }
+    if (b.classList.contains("share-more") && toastRetry) openShareSheet(toastRetry);
   });
 
   function renderNotFound() {
