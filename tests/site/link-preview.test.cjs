@@ -31,6 +31,13 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
   for (const u of ['https://pub.example/logo.webp', 'https://pub.example/logo.svg', 'https://pub.example/png'])
     assert(fn.tagsFor('x', { name: 'N', logoUrl: u }).image === fn.DEFAULT_IMAGE, 'not PNG/JPEG (' + u + '): network card');
   assert(fn.tagsFor('x', { name: 'N', logoUrl: 'https://pub.example/a/logo.JPG?v=2' }).logo, 'JPEG with a query string is fine');
+  const cp = fn.tagsFor('wh-medical', { name: 'N', logoUrl: 'https://pub.example/logo.webp' }, 'https://whgemachs.org/assets/gemachs/wh-medical/logo.png');
+  assert(cp.image === 'https://whgemachs.org/assets/gemachs/wh-medical/logo.png' && cp.card === 'summary', 'WebP logo with a PNG copy: the copy is used');
+  assert(fn.tagsFor('x', { name: 'N', logoUrl: null }, 'https://whgemachs.org/x.png').image === fn.DEFAULT_IMAGE, 'no logo at all: copy ignored (logo was removed)');
+  for (const f of fs.readdirSync(path.join(ROOT, 'site/assets/gemachs'))) {
+    const p = path.join(ROOT, 'site/assets/gemachs', f, 'logo.png');
+    if (fs.existsSync(p)) assert(fs.readFileSync(p).subarray(1, 4).toString() === 'PNG' && fs.statSync(p).size < 400000, 'PNG copy ' + f + ' is a real PNG under 400 KB');
+  }
   const n = fn.tagsFor('x', { name: 'No Logo Gemach', tagline: null, description: null, logoUrl: 'http://insecure/x.png' });
   assert(n.image === fn.DEFAULT_IMAGE && n.card === 'summary_large_image', 'no (https) logo: network share card');
   assert(/No Logo Gemach/.test(n.description), 'no text: a sentence with the name');
@@ -52,10 +59,18 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     on(sel, h) { this.h.push([sel, h]); return this; }
     transform(res) { this.res = res; this.res.__handlers = this.h.map(x => x[0]); return res; }
   };
-  const env = { ASSETS: { fetch: async (req) => { calls.push('asset ' + new URL(req.url).pathname); return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } }); } } };
+  const env = { ASSETS: { fetch: async (req) => {
+    const p = new URL(req.url).pathname; calls.push('asset ' + req.method + ' ' + p);
+    if (p.startsWith('/assets/gemachs/')) return p.includes('/abc/') ? new Response(null, { status: 200, headers: { 'content-type': 'image/png' } }) : new Response('nf', { status: 404, headers: { 'content-type': 'text/html' } });
+    return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } }); } } };
   const res = await fn.onRequestGet({ request: new Request('https://whgemachs.org/g/abc'), env, params: { slug: 'abc' } });
-  assert(calls.includes('asset /gemach') && calls.includes('https://api.whgemachs.org/public/meta/abc'), 'serves gemach.html and reads /public/meta/abc');
+  assert(calls.includes('asset GET /gemach') && calls.includes('https://api.whgemachs.org/public/meta/abc'), 'serves gemach.html and reads /public/meta/abc');
   assert(res.headers.get('Content-Security-Policy') === want['Content-Security-Policy'] && res.headers.get('X-Frame-Options') === 'DENY', 'response carries the security headers');
+  assert(!calls.some(c => c.includes('/assets/gemachs/')), 'no logo: no PNG copy lookup');
+  calls.length = 0;
+  globalThis.fetch = async (u) => { calls.push(String(u)); return new Response(JSON.stringify({ name: 'Webp Gemach', description: 'Hi', logoUrl: 'https://pub.example/abc/logo/1.webp' }), { status: 200 }); };
+  await fn.onRequestGet({ request: new Request('https://whgemachs.org/g/abc'), env, params: { slug: 'abc' } });
+  assert(calls.includes('asset HEAD /assets/gemachs/abc/logo.png'), 'WebP logo: looks for the PNG copy');
   calls.length = 0;
   const bad = await fn.onRequestGet({ request: new Request('https://whgemachs.org/g/..'), env, params: { slug: '..' } });
   assert(!calls.some(c => c.includes('/public/meta')) && bad.headers.get('X-Content-Type-Options') === 'nosniff', 'bad slug: no API call, page still has headers');
