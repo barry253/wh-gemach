@@ -1,7 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
+import { Q, fetchByIds, firstLink, getOwned, linkedId } from "./airtable.js";
 import { cacheKey, cachedJson } from "./cache.js";
-import { LEGACY_SLUG, SLUG_RE, T } from "./config.js";
+import { LEGACY_SLUG, REC_RE, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs, loadGemachBySlug, nonBlank } from "./gemachs.js";
 import { json } from "./http.js";
@@ -170,13 +170,33 @@ function publicMeta(g) {
     comingSoon: !!g.comingSoon,
   };
 }
-async function handlePublicMeta(db, env, ctx, slug) {
+/** One listed item for a shared item link: { id, name, description (short), photoUrl } or null. */
+function publicMetaItem(type) {
+  const text = String(type.fields["Description"] || "").replace(/\s+/g, " ").trim();
+  const photo = nonBlank(type.fields["R2 Photo URL"]);
+  return {
+    id: type.id, name: type.fields["Name"] || "Item",
+    description: text.length > 200 ? text.slice(0, 197).replace(/\s+\S*$/, "") + "…" : text || null,
+    photoUrl: photo && /^https:\/\//.test(photo) ? photo : null,
+  };
+}
+/**
+ * GET /public/meta/:slug[?item=<item type id>] — with ?item=, also { item } when that item is listed on the
+ * gemach's public page (active, this gemach, not an Info-only gemach); item: null otherwise.
+ */
+async function handlePublicMeta(db, env, ctx, slug, itemId = null) {
   slug = String(slug || "").toLowerCase();
   if (!SLUG_RE.test(slug)) return json({ error: "Not found" }, 404);
-  return cachedJson(env, ctx, cacheKey(env, `meta/${slug}`), async () => {
+  const withItem = typeof itemId === "string" && REC_RE.test(itemId);
+  return cachedJson(env, ctx, cacheKey(env, withItem ? `meta/${slug}/item/${itemId}` : `meta/${slug}`), async () => {
     const g = await loadGemachBySlug(db, slug);
     if (!g || !g.active) return { status: 404, data: { error: "Not found" } };
-    return { status: 200, data: publicMeta(g) };
+    const data = publicMeta(g);
+    if (withItem) {
+      const t = g.mode === "Info" ? null : await getOwned(db, T.ITEM_TYPES, itemId, g);
+      data.item = t && t.fields["Active"] ? publicMetaItem(t) : null;
+    }
+    return { status: 200, data };
   });
 }
 

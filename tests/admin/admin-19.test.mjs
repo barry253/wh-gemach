@@ -33,7 +33,7 @@ const ANALYTICS = days => ({
     repeat: 41, multiGemach: 9, requesters: 44, requestersNeverBorrowed: 18, loansPerPerson: 1.8 },
   trend: { by: days === 365 ? "month" : "week", buckets: Array.from({ length: days === 365 ? 13 : Math.ceil(days / 7) }, (_, i) => ({ start: plus(-7 * (12 - i) - 6), requests: i % 5, loans: (i * 2) % 4 })) },
   topRequested: [{ name: "Wheelchair", gemach: "WH Medical", requests: 14 }, { name: "Navy <b>gown</b> – size 8", gemach: "Simcha Dress", requests: 6 }],
-  topLooked: [{ name: "Navy gown – size 8", gemach: "Simcha Dress", photos: 41, picks: 9, requests: 6 }, { name: "Gold gown – size 12", gemach: "Simcha Dress", photos: 25, picks: 3, requests: 0 }],
+  topLooked: [{ name: "Navy gown – size 8", gemach: "Simcha Dress", photos: 41, picks: 9, shares: 4, linkOpens: 7, requests: 6 }, { name: "Gold gown – size 12", gemach: "Simcha Dress", photos: 25, picks: 3, requests: 0 }],
   siteHealth: { jsErrors: 4, loadFails: 3, top: [
     { kind: "js-error", label: "TypeError: <img src=x> is undefined", count: 4, days: 2, lastAt: hoursAgo(3), page: "/g/simcha-dress", src: "/assets/gemach.js", line: 412, browser: "iPhone/iPad Safari" },
     { kind: "load-fail", label: "gemach", count: 3, days: 3, lastAt: hoursAgo(30), page: "/g/wh-medical", src: null, line: null, browser: "Android Chrome" },
@@ -132,7 +132,7 @@ const heads = (await page.$$eval(".net-an-gemachs th", h => h.map(x => x.innerTe
 ok(heads === "Gemach|Views|Requests|Req / 100 views|Reply|Waiting|Reserved|Out|Lent|People|Last activity", "views columns: " + heads);
 ok(/Simcha Dress\s*700\s*18\s*2.6/.test(await page.$eval(".net-an-gemachs", e => e.innerText)), "simcha views + per 100");
 // Most looked at + site health
-ok(/Most looked at[\s\S]*Navy gown – size 8\s*Simcha Dress\s*41\s*9\s*6/.test(t2) && /Gold gown – size 12[\s\S]*no requests/.test(t2), "most looked at: " + t2.match(/Most looked at[\s\S]{0,250}/)?.[0]);
+ok(/Most looked at[\s\S]*Navy gown – size 8\s*Simcha Dress\s*41\s*9\s*4\s*7\s*6/.test(t2) && /Shared\s*Link opened/.test(t2) && /Gold gown – size 12[\s\S]*no requests/.test(t2), "most looked at: " + t2.match(/Most looked at[\s\S]{0,250}/)?.[0]);
 ok(/9\s*Server errors \(30 days\)\s*7 over the CPU limit · 2 crashed/.test(t2), "server errors KPI (client disconnects left out)");
 ok(/65\s*Pages not found or failed \(30 days\)\s*1 failed · API 3 failed/.test(t2), "page errors KPI");
 ok(/7\s*Problems in visitors' browsers\s*3 couldn't load · 4 script errors/.test(t2), "browser problems KPI");

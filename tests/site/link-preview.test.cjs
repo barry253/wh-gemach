@@ -42,6 +42,19 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
   assert(n.image === fn.DEFAULT_IMAGE && n.card === 'summary_large_image', 'no (https) logo: network share card');
   assert(/No Logo Gemach/.test(n.description), 'no text: a sentence with the name');
   assert(fn.tagsFor('x', null) === null && fn.tagsFor('x', { name: '  ' }) === null && fn.tagsFor('x', { error: 'Not found' }) === null, 'missing / hidden gemach: page left as is');
+  // shared item links
+  const iMeta = { name: 'Adult Simcha Dress Gemach', description: 'Welcome.', logoUrl: 'https://pub.example/logo.webp',
+    item: { id: 'recITEMAAAAAAAAAA', name: 'Navy gown – size 8', description: 'Long, with sleeves.', photoUrl: 'https://pub.example/photos/1.jpg' } };
+  const it1 = fn.tagsFor('simcha-dress', iMeta, 'https://whgemachs.org/assets/gemachs/simcha-dress/logo.png');
+  assert(it1.ogTitle === 'Navy gown – size 8 · Adult Simcha Dress Gemach' && it1.title === 'Navy gown – size 8 · Adult Simcha Dress Gemach — West Hempstead Gemachs', 'item link: item name, then gemach');
+  assert(it1.image === 'https://pub.example/photos/1.jpg' && it1.card === 'summary_large_image' && !it1.logo, 'item link: the item photo, large');
+  assert(it1.url === 'https://whgemachs.org/g/simcha-dress?item=recITEMAAAAAAAAAA' && it1.canonical === 'https://whgemachs.org/g/simcha-dress', 'item link: og:url is the item link, canonical stays the gemach page');
+  assert(it1.description === 'Long, with sleeves. From Adult Simcha Dress Gemach on West Hempstead Gemachs.' && !/free/i.test(it1.description), 'item link: description (never says "free" — some gemachs charge)');
+  const it2 = fn.tagsFor('simcha-dress', { ...iMeta, item: { ...iMeta.item, photoUrl: 'https://pub.example/photos/1.webp' } }, 'https://whgemachs.org/assets/gemachs/simcha-dress/logo.png');
+  assert(it2.image === 'https://whgemachs.org/assets/gemachs/simcha-dress/logo.png' && it2.card === 'summary' && it2.logo, 'item photo not PNG/JPEG: the gemach logo (its PNG copy)');
+  const it3 = fn.tagsFor('simcha-dress', { ...iMeta, item: null });
+  assert(it3.ogTitle === 'Adult Simcha Dress Gemach' && it3.url === 'https://whgemachs.org/g/simcha-dress', 'item no longer listed: the gemach preview');
+  assert(fn.tagsFor('x', { name: 'N', item: { id: 'bad', name: 'X' } }).ogTitle === 'N', 'item with a bad id ignored');
   assert(fn.SLUG_RE.test('simcha-dress') && !fn.SLUG_RE.test('../x') && !fn.SLUG_RE.test('A B'), 'slug check');
 
   // 3. the function, with a fake ASSETS and a tiny HTMLRewriter stand-in
@@ -71,6 +84,12 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
   globalThis.fetch = async (u) => { calls.push(String(u)); return new Response(JSON.stringify({ name: 'Webp Gemach', description: 'Hi', logoUrl: 'https://pub.example/abc/logo/1.webp' }), { status: 200 }); };
   await fn.onRequestGet({ request: new Request('https://whgemachs.org/g/abc'), env, params: { slug: 'abc' } });
   assert(calls.includes('asset HEAD /assets/gemachs/abc/logo.png'), 'WebP logo: looks for the PNG copy');
+  calls.length = 0;
+  await fn.onRequestGet({ request: new Request('https://whgemachs.org/g/abc?item=recITEMAAAAAAAAAA'), env, params: { slug: 'abc' } });
+  assert(calls.includes('https://api.whgemachs.org/public/meta/abc?item=recITEMAAAAAAAAAA'), 'item link: asks for the item');
+  calls.length = 0;
+  await fn.onRequestGet({ request: new Request('https://whgemachs.org/g/abc?item=%3Cscript%3E'), env, params: { slug: 'abc' } });
+  assert(calls.includes('https://api.whgemachs.org/public/meta/abc'), 'bad item id: plain gemach lookup');
   calls.length = 0;
   const bad = await fn.onRequestGet({ request: new Request('https://whgemachs.org/g/..'), env, params: { slug: '..' } });
   assert(!calls.some(c => c.includes('/public/meta')) && bad.headers.get('X-Content-Type-Options') === 'nosniff', 'bad slug: no API call, page still has headers');

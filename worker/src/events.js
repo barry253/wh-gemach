@@ -2,6 +2,7 @@
 // Site events: small daily counts the public site reports, for Network → Analytics.
 //   POST /public/event (text/plain JSON, always 204):
 //     { kind: "item-photos" | "item-pick", gemach: <slug>, item: <item type id> }   someone opened an item's photos / ticked it
+//     { kind: "item-share" | "item-link", gemach, item }   someone shared an item's link / opened the site from a shared item link
 //     { kind: "js-error", msg, src, line, page }                                       a script error in a visitor's browser
 //     { kind: "load-fail", what: "directory" | "gemach" | "manage" | "contact", page }           "couldn't load" shown to a visitor
 // One row per (day, kind, key) with a Count. Nothing about the person is stored: no IP, no names, no query strings;
@@ -11,7 +12,8 @@ import { REC_RE, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 
 const NEW_ROWS_PER_KIND_PER_DAY = 300; // new (kind, key) rows a day; counts on existing rows keep going up
-const EVENT_KINDS = new Set(["item-photos", "item-pick", "js-error", "load-fail"]);
+const ITEM_KINDS = new Set(["item-photos", "item-pick", "item-share", "item-link"]);
+const EVENT_KINDS = new Set([...ITEM_KINDS, "js-error", "load-fail"]);
 const LOAD_WHAT = new Set(["directory", "gemach", "manage", "contact"]);
 const eventSeen = new Map(); // per-isolate: "ip|kind|key" -> ms, so one person's repeats aren't counted twice
 let eventHour = { start: 0, count: 0 };
@@ -53,7 +55,7 @@ async function handleSiteEvent(request, db, ctx) {
   if (!b || typeof b !== "object" || !EVENT_KINDS.has(b.kind)) return done;
 
   let ev;
-  if (b.kind === "item-photos" || b.kind === "item-pick") {
+  if (ITEM_KINDS.has(b.kind)) {
     if (!SLUG_RE.test(String(b.gemach || "")) || !REC_RE.test(String(b.item || ""))) return done;
     ev = { kind: b.kind, key: b.item, slug: b.gemach, label: null, detail: null };
   } else if (b.kind === "js-error") {
