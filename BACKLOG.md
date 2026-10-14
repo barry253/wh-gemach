@@ -2,6 +2,15 @@
 
 Work we've agreed is worth doing but haven't started. Newest decisions first within each section.
 
+## Dark mode for the public site — added Oct 14, 2026
+
+Phones in dark mode still get the bright cream page at night. The site CSS is already built on tokens (`site/assets/site.css` `:root`), so this is mostly a second set of values under `prefers-color-scheme: dark`.
+
+- Network tokens (cream / navy / gold) and the per-gemach theme tokens set by `site.js` (`--t-*`) both need dark values; gemach theme colors chosen for a light page need checking for contrast on dark.
+- Photos, logos on white tiles and the hero line drawings need a look on a dark background.
+- Admin is separate (own styles); leave it light unless asked.
+- Size: about half a day with screenshots of every page in both modes.
+
 ## Owners can pause their gemach (status control) — added Oct 14, 2026
 
 Today only the Network Admin sets status (Live / Coming soon / Hidden) in the Network tab.
