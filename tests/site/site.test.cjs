@@ -264,7 +264,6 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
         if (p === '/about') {
           assert(await page.$eval('.content a:not(.btn)', e => getComputedStyle(e).color === 'rgb(138, 93, 20)'), `${label} links use --accent-text`);
           await checkPair('.content a:not(.btn)', '.card', 4.5, 'content link on card');
-          await checkPair('.content .credit', '.card', 4.5, 'credit on card');
           await csp();
           await shot('about');
         }

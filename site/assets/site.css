@@ -810,7 +810,6 @@ fieldset { border: 0; }
 .content ul { padding-left: 1.2rem; margin-bottom: .9rem; }
 .content li { margin-bottom: .6rem; }
 .content li::marker { color: var(--accent-text); }
-.content .credit { font-style: italic; color: var(--muted); margin-top: 1.5rem; }
 .lead-in { font-size: 1.05rem; }
 
 /* ── Footer ── */
