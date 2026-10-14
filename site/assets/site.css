@@ -752,23 +752,30 @@ button.item-thumb:hover img { opacity: .88; }
 }
 .share-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
 .share-toast {
-  position: fixed; left: 50%; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 400;
-  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; max-width: calc(100vw - 2rem);
-  background: var(--primary-dark); color: var(--on-primary); padding: .6rem .6rem .6rem 1rem; border-radius: 14px;
+  position: fixed; left: 1rem; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 400;
+  margin: 0 auto; width: fit-content; max-width: min(34rem, calc(100vw - 2rem));
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+  background: var(--primary-dark); color: var(--on-primary); padding: .6rem 3rem .6rem 1rem; border-radius: 14px;
   box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: .9375rem;
 }
 .share-toast[hidden] { display: none; }
-.share-toast label { display: grid; gap: .25rem; flex: 1 1 14rem; min-width: 0; }
+.share-toast label { display: grid; gap: .25rem; flex: 1 0 100%; min-width: 0; }
+.share-toast strong { margin-right: .25rem; }
 .share-toast input { width: 100%; min-height: 40px; border-radius: 8px; border: 0; padding: 0 .6rem; color: var(--text); background: var(--white); font-size: .9375rem; }
 .share-toast .share-wa {
   display: inline-flex; align-items: center; gap: .35rem; min-height: 40px; padding: 0 .8rem; border-radius: 999px;
   background: var(--white); color: #11703A; font-weight: 600; text-decoration: none;
 }
+.share-toast .share-alt {
+  display: inline-flex; align-items: center; gap: .35rem; min-height: 40px; padding: 0 .8rem; border-radius: 999px;
+  background: rgba(255,255,255,.14); color: var(--on-primary); font-weight: 600; text-decoration: none;
+}
+.share-toast .share-alt:hover { background: rgba(255,255,255,.24); color: var(--on-primary); }
 .share-toast .share-more {
   min-height: 40px; padding: 0 .8rem; border-radius: 999px; border: 1px solid rgba(255,255,255,.5); background: transparent; color: var(--on-primary); font-weight: 600;
 }
 .share-toast .share-more:hover { background: rgba(255,255,255,.14); }
-.share-toast .share-close { width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--on-primary); font-size: 1.3rem; }
+.share-toast .share-close { position: absolute; top: .3rem; right: .3rem; width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--on-primary); font-size: 1.3rem; }
 .share-toast .share-close:hover { background: rgba(255,255,255,.14); }
 .item-gone { margin-bottom: .9rem; }
 .lightbox-caption {

@@ -959,16 +959,23 @@
     if (navigator.share) { openShareSheet({ title: title, text: text, url: url }); return; }
     shareFallback(url, text);
   }
-  /** The phone's share sheet. Android Chrome sometimes refuses a second one (e.g. "an earlier share has not
-   *  yet completed" after coming back from WhatsApp): then copy the link and show the bar, which has a
-   *  "More…" button to try the share sheet again with a fresh tap. Refusals are counted in Site health. */
+  /** The phone's share sheet. Firefox on Android (and sometimes Chrome) opens it once and then refuses every
+   *  later one on the page ("InvalidStateError": it never hears that the first share finished). So while a share
+   *  is still open, or after a refusal, the link is copied and our own bar offers WhatsApp / Text / Email.
+   *  "More…" (try the phone's menu again) is offered only when a fresh tap can help. Refusals go to Site health. */
+  var sharePending = false, shareStuck = false;
   function openShareSheet(data) {
+    if (sharePending || shareStuck) { shareFallback(data.url, data.text, null); return; }
     var p;
+    sharePending = true;
     try { p = navigator.share(data); } catch (e) { p = Promise.reject(e); }
-    Promise.resolve(p).catch(function (e) {
+    Promise.resolve(p).then(function () { sharePending = false; }, function (e) {
+      sharePending = false;
       if (e && e.name === "AbortError") return; // the person closed the sheet
+      var stuck = !!e && e.name === "InvalidStateError";
+      if (stuck) shareStuck = true;
       if (W.track && !testToken) W.track({ kind: "js-error", msg: "Share sheet refused: " + ((e && e.name) || "Error") + (e && e.message ? ": " + e.message : ""), src: "share", line: 0, page: location.pathname });
-      shareFallback(data.url, data.text, data);
+      shareFallback(data.url, data.text, stuck ? null : data);
     });
   }
   /** No share sheet (most computers): copy the link and offer WhatsApp. */
@@ -986,6 +993,8 @@
     if (!t) { t = document.createElement("div"); t.id = "share-toast"; t.className = "share-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
     t.innerHTML = (copied ? "<strong>Link copied</strong>" : '<label>Copy this link <input type="text" readonly value="' + esc(url) + '" /></label>') +
       '<a class="share-wa" href="https://wa.me/?text=' + encodeURIComponent(text + " " + url) + '" target="_blank" rel="noopener">' + W.ICONS.whatsapp + "WhatsApp</a>" +
+      (window.matchMedia && matchMedia("(pointer: coarse)").matches ? '<a class="share-alt" href="sms:?&body=' + encodeURIComponent(text + " " + url) + '">' + W.ICONS.sms + "Text</a>" : "") +
+      '<a class="share-alt" href="mailto:?subject=' + encodeURIComponent(text) + "&body=" + encodeURIComponent(url) + '">' + W.ICONS.mail + "Email</a>" +
       (retry ? '<button type="button" class="share-more">More…</button>' : "") +
       '<button type="button" class="share-close" aria-label="Close">×</button>';
     t.hidden = false; t.classList.add("show");

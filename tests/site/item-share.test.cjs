@@ -97,16 +97,27 @@ gw.items = [
     shared = await page.evaluate(() => window.__shared);
     assert(shared.length === 2 && shared[1].url.endsWith('/g/gowns?item=recVw3AAAAAAAAAAA'), 'Large view Share uses that item');
     assert(await page.locator('.item-post.selected, .item-tile.selected').count() === 0, 'sharing doesn\'t add anything to the request');
-    // Android Chrome sometimes refuses the next share sheet: copy + bar with "More…" to try again
-    await page.evaluate(() => { window.__refuse = 1; const ok = navigator.share; navigator.share = d => { if (window.__refuse-- > 0) { const e = new Error('An earlier share has not yet completed.'); e.name = 'InvalidStateError'; return Promise.reject(e); } return ok(d); }; });
+    // Firefox on Android refuses every share sheet after the first ("InvalidStateError"): copy + our own bar
+    await page.evaluate(() => { window.__calls = 0; const ok = navigator.share; navigator.share = d => { window.__calls++; const e = new Error('An attempt was made to use an object that is not, or is no longer, usable'); e.name = 'InvalidStateError'; return Promise.reject(e); }; });
     await page.click('#row-recVw1AAAAAAAAAAA .share-btn');
     await page.waitForSelector('#share-toast.show');
-    assert(await page.isVisible('#share-toast .share-more') && await page.isVisible('#share-toast .share-wa'), 'refused share sheet: bar with WhatsApp and More…');
+    const bar = await page.$$eval('#share-toast a, #share-toast button', els => els.map(e => e.textContent.trim()));
+    assert(JSON.stringify(bar) === '["WhatsApp","Text","Email","×"]', 'refused share sheet: our own bar with WhatsApp, Text, Email (no More… — it would be refused too) ' + JSON.stringify(bar));
+    assert(/^sms:\?&body=Ivory%20Lace/.test(await page.getAttribute('#share-toast a.share-alt', 'href')) && /mailto:\?subject=Ivory%20Lace/.test(await page.$$eval('#share-toast a.share-alt', a => a[1].getAttribute('href'))), 'Text and Email carry the link');
     await page.screenshot({ path: path.join(SHOTS, 'share-m-refused.png') });
+    await page.click('.share-close');
+    await page.click('#row-recVw3AAAAAAAAAAA .share-btn');
+    await page.waitForSelector('#share-toast.show');
+    assert(await page.evaluate(() => window.__calls) === 1, 'after a refusal the page doesn\'t ask the phone again (straight to the bar)');
+    await page.click('.share-close');
+    // A different refusal (a fresh tap may help): More… tries again
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.evaluate(() => { window.__shared = []; window.__refuse = 1; navigator.share = d => { if (window.__refuse-- > 0) { const e = new Error('Must be handling a user gesture'); e.name = 'NotAllowedError'; return Promise.reject(e); } window.__shared.push(d); return Promise.resolve(); }; });
+    await page.click('#row-recVw1AAAAAAAAAAA .share-btn');
+    await page.waitForSelector('#share-toast.show');
     await page.click('#share-toast .share-more');
-    shared = await page.evaluate(() => window.__shared);
-    assert(shared.length === 3 && shared[2].url.endsWith('?item=recVw1AAAAAAAAAAA') && await page.isHidden('#share-toast'), 'More… opens the share sheet again');
-    await page.evaluate(() => { window.__shared.push({ cancel: 1 }); const ok = navigator.share; navigator.share = d => { const e = new Error('cancelled'); e.name = 'AbortError'; return Promise.reject(e); }; });
+    assert((await page.evaluate(() => window.__shared)).length === 1, 'NotAllowedError: More… opens the share sheet again');
+    await page.evaluate(() => { navigator.share = d => { const e = new Error('cancelled'); e.name = 'AbortError'; return Promise.reject(e); }; });
     await page.click('#row-recVw1AAAAAAAAAAA .share-btn');
     await page.waitForTimeout(300);
     assert(await page.isHidden('#share-toast'), 'closing the share sheet shows nothing else');
