@@ -104,9 +104,9 @@ export async function onRequestGet({ request, env, params }) {
     .on('meta[property="og:description"]', setContent(t.description))
     .on('meta[property="og:image"]', setContent(t.image))
     .on('meta[property="og:image:alt"]', setContent(t.imageAlt))
-    // The 1200×630 size belongs to the network card; a logo has its own size, so leave it unstated.
-    .on('meta[property="og:image:width"]', { element(el) { if (t.logo) el.remove(); } })
-    .on('meta[property="og:image:height"]', { element(el) { if (t.logo) el.remove(); } })
+    // The 1200×630 size belongs to the network card; a logo or item photo has its own size, so leave it unstated.
+    .on('meta[property="og:image:width"]', { element(el) { if (t.image !== DEFAULT_IMAGE) el.remove(); } })
+    .on('meta[property="og:image:height"]', { element(el) { if (t.image !== DEFAULT_IMAGE) el.remove(); } })
     .on('meta[name="twitter:card"]', setContent(t.card))
     .on("head", { element(el) {
       el.append('<link rel="canonical" href="' + escAttr(t.canonical || t.url) + '" />\n<meta property="og:url" content="' + escAttr(t.url) + '" />\n', { html: true });

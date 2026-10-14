@@ -67,6 +67,9 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
 
   const calls = [];
   globalThis.fetch = async (u) => { calls.push(String(u)); return new Response(JSON.stringify({ name: 'A & "B" <Gemach>', tagline: 'Hi', description: 'Hi', logoUrl: null, comingSoon: false }), { status: 200 }); };
+  // Size tags: kept only for the network card
+  const src2 = fs.readFileSync(path.join(ROOT, 'functions/g/[slug].js'), 'utf8');
+  assert(/og:image:width"\]', \{ element\(el\) \{ if \(t\.image !== DEFAULT_IMAGE\) el\.remove/.test(src2) && /og:image:height"\]', \{ element\(el\) \{ if \(t\.image !== DEFAULT_IMAGE\) el\.remove/.test(src2), '1200×630 size removed for logos and item photos');
   globalThis.HTMLRewriter = class {
     constructor() { this.h = []; }
     on(sel, h) { this.h.push([sel, h]); return this; }
