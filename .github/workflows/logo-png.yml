@@ -33,7 +33,12 @@ jobs:
             "wh-medical": "wh-medical/logo/1791925950922.webp",
           }
           for slug, key in logos.items():
-            data = urllib.request.urlopen(R2 + key, timeout=30).read()
+            try:
+              req = urllib.request.Request(R2 + key, headers={"User-Agent": "Mozilla/5.0 (whgemachs logo copy)"})
+              data = urllib.request.urlopen(req, timeout=30).read()
+            except Exception as e:
+              print(f"::error title=download {slug}::{e}")
+              raise
             im = Image.open(io.BytesIO(data))
             im.load()
             # Previews want an opaque image: flatten any transparency onto white (the logo tile is white on the site).

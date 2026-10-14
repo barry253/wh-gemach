@@ -5987,7 +5987,8 @@
   }
   const canvasBlob = (canvas, type, q) => new Promise(res => canvas.toBlob(b => res(b), type, q));
 
-  /** Returns { blob } or { error } — square 512×512 WebP (PNG/JPEG fallback). */
+  /** Returns { blob } or { error } — square 512×512 PNG (JPEG if the PNG is over 2 MB).
+   *  Not WebP: the logo is also the gemach's link-preview picture, and WhatsApp doesn't reliably show WebP there. */
   async function prepareLogo(file) {
     if (!file) return { error: "No file chosen." };
     if (!LOGO_TYPES.includes(file.type)) return { error: "Logo must be a PNG, JPG or WebP image." };
@@ -6002,9 +6003,8 @@
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, LOGO_OUT_PX, LOGO_OUT_PX);
-    let blob = await canvasBlob(canvas, "image/webp", 0.9);
-    if (!blob || blob.type !== "image/webp") blob = await canvasBlob(canvas, "image/png");
-    if (blob && blob.size > 2 * 1024 * 1024) blob = await canvasBlob(canvas, "image/jpeg", 0.88);
+    let blob = await canvasBlob(canvas, "image/png");
+    if (!blob || blob.size > 2 * 1024 * 1024) blob = await canvasBlob(canvas, "image/jpeg", 0.88);
     if (!blob) return { error: "Couldn't process the image in this browser." };
     return { blob };
   }
