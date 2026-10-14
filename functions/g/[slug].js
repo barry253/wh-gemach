@@ -28,13 +28,16 @@ export function tagsFor(slug, meta) {
   const name = meta.name.trim().slice(0, 120);
   const text = String(meta.description || meta.tagline || "").trim() ||
     "See what " + name + " lends and send a request — free, from West Hempstead Gemachs.";
-  const logo = typeof meta.logoUrl === "string" && /^https:\/\//.test(meta.logoUrl) ? meta.logoUrl : null;
+  // Only PNG / JPEG logos: WhatsApp and some other apps don't show WebP or SVG previews, so those get the network card.
+  const logo = typeof meta.logoUrl === "string" && /^https:\/\/[^?#]+\.(png|jpe?g)([?#]|$)/i.test(meta.logoUrl) ? meta.logoUrl : null;
   return {
     title: name + " — West Hempstead Gemachs",
     ogTitle: name,
     description: text.slice(0, 300),
     url: SITE + "/g/" + slug,
     image: logo || DEFAULT_IMAGE,
+    logo: !!logo,
+    imageAlt: logo ? name + " logo" : "West Hempstead Gemachs — volunteer-run lending libraries",
     card: logo ? "summary" : "summary_large_image",
   };
 }
@@ -68,6 +71,10 @@ export async function onRequestGet({ request, env, params }) {
     .on('meta[property="og:title"]', setContent(t.ogTitle))
     .on('meta[property="og:description"]', setContent(t.description))
     .on('meta[property="og:image"]', setContent(t.image))
+    .on('meta[property="og:image:alt"]', setContent(t.imageAlt))
+    // The 1200×630 size belongs to the network card; a logo has its own size, so leave it unstated.
+    .on('meta[property="og:image:width"]', { element(el) { if (t.logo) el.remove(); } })
+    .on('meta[property="og:image:height"]', { element(el) { if (t.logo) el.remove(); } })
     .on('meta[name="twitter:card"]', setContent(t.card))
     .on("head", { element(el) {
       el.append('<link rel="canonical" href="' + escAttr(t.url) + '" />\n<meta property="og:url" content="' + escAttr(t.url) + '" />\n', { html: true });

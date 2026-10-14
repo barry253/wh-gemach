@@ -24,10 +24,13 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
   assert(JSON.stringify(fn.SECURITY_HEADERS) === JSON.stringify(want), 'function security headers match site/_headers "/*" exactly');
 
   // 2. tags
-  const t = fn.tagsFor('wh-medical', { name: 'West Hempstead Medical Gemach', tagline: 'Wheelchairs and more', description: 'Wheelchairs and more', logoUrl: 'https://pub.example/logo.webp' });
+  const t = fn.tagsFor('wh-medical', { name: 'West Hempstead Medical Gemach', tagline: 'Wheelchairs and more', description: 'Wheelchairs and more', logoUrl: 'https://pub.example/logo.png' });
   assert(t.title === 'West Hempstead Medical Gemach — West Hempstead Gemachs' && t.ogTitle === 'West Hempstead Medical Gemach', 'title and og:title from the gemach name');
   assert(t.description === 'Wheelchairs and more' && t.url === 'https://whgemachs.org/g/wh-medical', 'description and url');
-  assert(t.image === 'https://pub.example/logo.webp' && t.card === 'summary', 'gemach logo as a square preview');
+  assert(t.image === 'https://pub.example/logo.png' && t.card === 'summary' && t.logo && t.imageAlt === 'West Hempstead Medical Gemach logo', 'PNG gemach logo as a square preview');
+  for (const u of ['https://pub.example/logo.webp', 'https://pub.example/logo.svg', 'https://pub.example/png'])
+    assert(fn.tagsFor('x', { name: 'N', logoUrl: u }).image === fn.DEFAULT_IMAGE, 'not PNG/JPEG (' + u + '): network card');
+  assert(fn.tagsFor('x', { name: 'N', logoUrl: 'https://pub.example/a/logo.JPG?v=2' }).logo, 'JPEG with a query string is fine');
   const n = fn.tagsFor('x', { name: 'No Logo Gemach', tagline: null, description: null, logoUrl: 'http://insecure/x.png' });
   assert(n.image === fn.DEFAULT_IMAGE && n.card === 'summary_large_image', 'no (https) logo: network share card');
   assert(/No Logo Gemach/.test(n.description), 'no text: a sentence with the name');
