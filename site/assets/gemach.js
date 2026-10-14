@@ -74,7 +74,7 @@
   function miniBar(g) {
     var links = contactLinks(g);
     return '<div class="wrap">' + logoHtml(g, "g-mini-logo") +
-      '<a class="g-mini-name" href="#main" tabindex="-1">' + esc(g.name) + "</a>" +
+      '<a class="g-mini-name' + (String(g.name || "").length > 22 ? " long" : "") + '" href="#main" tabindex="-1"><span>' + esc(g.name) + "</span></a>" +
       links.map(function (a) {
         return '<a class="g-mini-btn" href="' + esc(a.href) + '"' + (a.ext ? ' target="_blank" rel="noopener"' : "") +
           ' data-contact="' + esc(a.type) + '" aria-label="' + esc(a.label + " " + g.name) + '" tabindex="-1">' + W.ICONS[a.icon] + "</a>";
@@ -158,31 +158,50 @@
     if (ogt) ogt.setAttribute("content", g.name);
   }
 
+  /** "About" card: the gemach's description and Gemach Info together, cut to a few lines with "Read more";
+   *  hours and the deposit note stay in full; website and Donate share one row at the bottom. */
   function infoPanel() {
     var g = gemach;
-    var desc = W.formatText(g.description);
-    var side = [];
     var v3 = isV3(g);
-    if (g.hours && !v3) side.push('<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div>");
+    var text = [W.formatText(g.description)];
+    if (v3 && !shortInfo(g)) text.push(W.formatText(g.gemachInfo));
+    text = text.filter(Boolean);
+    var facts = [];
+    if (g.hours && !(v3 && shortInfo(g))) facts.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");
+    if (v3 && g.depositRequired) facts.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
+    var acts = [];
     // Numbers, addresses and links aren't printed on the page; the website is a button.
     // Contact buttons live in the header (and the slim bar), so they aren't repeated here.
     var web = W.safeUrl(g.website);
-    if (web) side.push('<div><div class="info-label">Website</div><div class="info-ctas"><a class="btn btn-sm" href="' + esc(web) + '" target="_blank" rel="noopener" data-contact="Website">' + W.ICONS.globe + "Visit website</a></div></div>");
+    if (web) acts.push('<div class="info-ctas"><a class="btn btn-sm" href="' + esc(web) + '" target="_blank" rel="noopener" data-contact="Website">' + W.ICONS.globe + "Visit website</a></div>");
     // Donations: link only -> the Donate button opens it in a new tab.
     // Donation text (with or without a link) -> the Donate button opens it in a pop-up (see openDonate).
     var don = W.safeUrl(g.donationUrl);
     var hasInfo = !!String(g.donationInfo || "").trim();
     if (don || hasInfo) {
-      side.push('<div class="support"><div class="info-label">Support this gemach</div>' +
+      acts.push('<div class="support"><span class="sr-only">Support this gemach: </span>' +
         (hasInfo
           ? '<button type="button" class="btn btn-sm btn-pill" id="btn-donate" aria-haspopup="dialog">' + W.ICONS.heart + "Donate</button>"
           : '<a class="btn btn-sm btn-pill" href="' + esc(don) + '" target="_blank" rel="noopener">' + W.ICONS.heart + "Donate</a>") + "</div>");
     }
-    if (!desc && !side.length) return "";
-    return '<section class="info-panel' + (desc && side.length ? " has-side" : "") + '" aria-label="About this gemach">' +
-      (desc ? '<div class="prose">' + desc + "</div>" : "") +
-      (side.length ? '<div class="info-side">' + side.join("") + "</div>" : "") + "</section>";
+    if (!text.length && !facts.length && !acts.length) return "";
+    return '<section class="info-panel about" aria-labelledby="about-title"><h2 class="sr-only" id="about-title">About this gemach</h2>' +
+      (text.length ? '<div class="about-text prose clamp" id="about-text">' + text.join("") + "</div>" +
+        '<button type="button" class="about-more" id="about-more" aria-expanded="false" aria-controls="about-text" hidden>Read more</button>' : "") +
+      (facts.length ? '<div class="about-facts">' + facts.join("") + "</div>" : "") +
+      (acts.length ? '<div class="info-side about-actions">' + acts.join("") + "</div>" : "") + "</section>";
   }
+  /** Show "Read more" only when the about text is actually cut off. */
+  function fitAbout() {
+    var t = document.getElementById("about-text"), b = document.getElementById("about-more");
+    if (!t || !b || !t.classList.contains("clamp")) return;
+    var cut = t.scrollHeight > t.clientHeight + 4;
+    t.classList.toggle("clipped", cut);
+    b.hidden = !cut;
+  }
+  var fitTimer = 0;
+  window.addEventListener("resize", function () { clearTimeout(fitTimer); fitTimer = setTimeout(fitAbout, 150); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fitAbout(); });
 
   /** Contact buttons: the gemach's chosen methods (v3), or Call / WhatsApp / Email from whatever is set (older payloads). */
   function contactLinks(g) {
@@ -317,18 +336,6 @@
     if (lines.length > 4 || lines.some(function (l) { return l.length > 70; })) return "";
     return W.formatText(lines.join("\n"));
   }
-  function gemachInfoSection() {
-    var g = gemach;
-    if (!isV3(g) || shortInfo(g)) return "";
-    var parts = [];
-    if (g.depositRequired) parts.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
-    if (g.hours) parts.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");
-    var info = W.formatText(g.gemachInfo);
-    if (info) parts.push('<div class="prose">' + info + "</div>");
-    if (!parts.length) return "";
-    return '<section class="ginfo" aria-labelledby="ginfo-title"><h2 id="ginfo-title">Gemach Info</h2>' + parts.join("") + "</section>";
-  }
-
   function testModeBanner() {
     if (!inTestMode()) return "";
     return '<div class="test-banner" role="note"><strong>Test mode</strong> ' +
@@ -638,7 +645,7 @@
     }).join("");
     var n = activeFilterCount();
     var sort = sd && defs.some(function (d) { return d.name === sd.name; })
-      ? '<label class="af-sort">Sort <select id="af-sort"><option value="">As listed</option><option value="size"' + (sortBySize ? " selected" : "") + ">By " + esc(sd.name.toLowerCase()) + ", smallest first</option></select></label>" : "";
+      ? '<label class="af-sort">Sort <select id="af-sort"><option value="">Gemach’s order</option><option value="size"' + (sortBySize ? " selected" : "") + ">By " + esc(sd.name.toLowerCase()) + ", smallest first</option></select></label>" : "";
     var allOpen = defs.every(function (d) { return opened.indexOf(d.name) !== -1; });
     var head = '<div class="af-head"><span class="af-title">Filters</span>' +
       '<button type="button" class="af-all" id="af-all" data-open="' + (allOpen ? "0" : "1") + '">' + (allOpen ? "Collapse all" : "Expand all") + "</button></div>";
@@ -654,12 +661,8 @@
     var thumb = photo
       ? '<button type="button" class="item-thumb" data-photo="' + id + '" aria-label="View ' + (photoList(it).length > 1 ? photoList(it).length + " photos" : "photo") + " of " + esc(it.name) + '"><img src="' + esc(photo) + '" alt="" loading="lazy" width="92" height="72" />' +
         (photoList(it).length > 1 ? '<span class="thumb-count" aria-hidden="true">' + W.ICONS.photo + photoList(it).length + "</span>" : "") + "</button>"
-      : '<div class="item-thumb" aria-hidden="true">' + W.ICONS.photo + "</div>";
-    var attrs = shownDefs().map(function (d) {
-      var v = itemVals(it, d.name);
-      return v.length ? '<span class="ia"><span class="ia-k">' + esc(d.name) + "</span> " + esc(v.join(", ")) + "</span>" : "";
-    }).filter(Boolean).join("");
-    attrs = attrs ? '<div class="item-attrs">' + attrs + "</div>" : "";
+      : '<div class="item-thumb no-photo" aria-hidden="true"></div>';
+    var attrs = attrChipsHtml(it, "item-attrs");
     var units = isAddon(it) ? '<div class="item-units">Made to order · paid separately' + (dir ? "" : " · choose how many when you request") + "</div>"
       : typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
       ? '<div class="item-units">' + (isQty(it) ? it.totalUnits : W.plural(it.totalUnits, "unit")) + " in the gemach" +
@@ -670,9 +673,7 @@
         '<div class="item-desc" id="desc-' + id + '" hidden>' + esc(it.description).replace(/\r?\n/g, "<br>") + "</div>"
       : "";
     var sel = selected.has(it.id);
-    var check = dir ? "" :
-      '<label class="item-check"><input type="checkbox" data-id="' + id + '"' + (sel ? " checked" : "") +
-      ' aria-label="Select ' + esc(it.name) + '" /></label>';
+    var check = dir ? "" : checkBox(it);
     return '<li class="item-row' + (dir ? "" : " selectable") + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
       thumb +
       '<div class="item-content"><div class="item-top"><div><div class="item-name">' + esc(it.name) + newTag(it) + "</div>" + bylineHtml(it, "item-byline") + attrs + units + "</div>" +
@@ -687,6 +688,7 @@
     Photos: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="3" width="16" height="14" rx="1.5"/><path d="M8 21h8"/></svg>'
   };
   var VIEW_NAMES = { List: "List", Grid: "Grid", Photos: "Large photos" };
+  var VIEW_SHORT = { List: "List", Grid: "Grid", Photos: "Large" };
   function anyPhotos() { return items.some(function (it) { return photoList(it).length > 0; }); }
   function viewKey() { return "whg_view:" + (gemach && gemach.slug || ""); }
   /** The visitor's own choice (remembered per gemach on this device), else the gemach's default. No photos at all: List. */
@@ -700,23 +702,57 @@
   function viewSwitcher(v) {
     if (!anyPhotos()) return "";
     return '<div class="view-seg" role="group" aria-label="Show items as">' + VIEWS.map(function (x) {
-      return '<button type="button" class="view-btn" data-view="' + x + '" aria-pressed="' + (x === v) + '" aria-label="' + VIEW_NAMES[x] + '" title="' + VIEW_NAMES[x] + '">' + VIEW_ICONS[x] + "</button>";
+      return '<button type="button" class="view-btn" data-view="' + x + '" aria-pressed="' + (x === v) + '" aria-label="' + VIEW_NAMES[x] + '" title="' + VIEW_NAMES[x] + '">' + VIEW_ICONS[x] + '<span class="view-txt" aria-hidden="true">' + VIEW_SHORT[x] + "</span></button>";
     }).join("") + "</div>";
   }
-  function attrsLine(it) {
-    var v = shownDefs().map(function (d) { var x = itemVals(it, d.name); return x.length ? d.name + " " + x.join(", ") : ""; }).filter(Boolean);
-    return v.length ? '<div class="tile-attrs">' + esc(v.join(" · ")) + "</div>" : "";
+  function attrsLine(it) { return attrChipsHtml(it, "tile-attrs"); }
+  /** Filter values worth showing on an item: not already in its name ("Navy gown – size 8" doesn't need
+   *  "Size 8 · Color Navy · Type Gown") and not the same on every item. Numbers keep their label ("Size 8"). */
+  var sameForAll = null;
+  function sharedFilters() {
+    if (sameForAll) return sameForAll;
+    sameForAll = {};
+    attrDefs().forEach(function (d) {
+      var first = null, same = true;
+      items.forEach(function (it) {
+        if (!same || isAddon(it)) return;
+        var k = itemVals(it, d.name).slice().sort().join("|");
+        if (first === null) first = k; else if (k !== first) same = false;
+      });
+      if (same && first !== null) sameForAll[d.name] = true;
+    });
+    return sameForAll;
+  }
+  function inName(name, v) {
+    var w = String(v).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp("(^|[^a-z0-9])" + w + "($|[^a-z0-9])", "i").test(name);
+  }
+  function attrChips(it) {
+    var name = String(it.name || "") + " " + String(it.byline || ""), shared = sharedFilters(), out = [];
+    shownDefs().forEach(function (d) {
+      if (shared[d.name]) return;
+      var vals = itemVals(it, d.name).filter(function (v) { return !inName(name, v); });
+      if (!vals.length) return;
+      var numeric = /^\d/.test(vals[0]);
+      out.push((numeric ? d.name + " " : "") + vals.join(", "));
+    });
+    return out;
+  }
+  function attrChipsHtml(it, cls) {
+    var c = attrChips(it);
+    return c.length ? '<div class="' + cls + ' attr-chips">' + c.map(function (x) { return '<span class="ia">' + esc(x) + "</span>"; }).join("") + "</div>" : "";
   }
   function checkBox(it, cls) {
-    return '<label class="item-check' + (cls ? " " + cls : "") + '"><input type="checkbox" data-id="' + esc(it.id) + '"' + (selected.has(it.id) ? " checked" : "") +
-      ' aria-label="Select ' + esc(it.name) + '" /></label>';
+    // A labelled "+ Add" / "✓ Added" pill (a real checkbox underneath), so it's clear what tapping does.
+    return '<label class="item-check add-pill' + (cls ? " " + cls : "") + '"><input type="checkbox" data-id="' + esc(it.id) + '"' + (selected.has(it.id) ? " checked" : "") +
+      ' aria-label="Add ' + esc(it.name) + ' to your request" /><span class="ap-off" aria-hidden="true">+ Add</span><span class="ap-on" aria-hidden="true">✓ Added</span></label>';
   }
   function itemTile(it) {
     var dir = !W.acceptsRequests(gemach), id = esc(it.id), list = photoList(it), n = list.length, sel = selected.has(it.id);
     var media = n
       ? '<button type="button" class="tile-photo" data-photo="' + id + '" aria-label="View ' + (n > 1 ? n + " photos" : "photo") + " of " + esc(it.name) + '"><img src="' + esc(list[0]) + '" alt="" loading="lazy" /></button>' +
         (n > 1 ? '<span class="tile-count" aria-hidden="true">' + W.ICONS.photo + n + "</span>" : "")
-      : '<div class="tile-photo tile-nophoto" aria-hidden="true">' + W.ICONS.photo + "</div>";
+      : '<div class="tile-photo tile-nophoto no-photo"><span>No photo yet</span></div>';
     return '<li class="item-tile' + (dir ? "" : " selectable") + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
       '<div class="tile-media">' + media + (dir ? "" : checkBox(it, "tile-check")) + "</div>" +
       '<div class="tile-name">' + esc(it.name) + newTag(it) + "</div>" + bylineHtml(it, "tile-byline") + attrsLine(it) +
@@ -732,7 +768,7 @@
         (n > 1 ? '<span class="post-num" aria-hidden="true">1/' + n + "</span>" +
           '<button type="button" class="post-nav prev" data-step="-1" aria-label="Previous photo" hidden>‹</button>' +
           '<button type="button" class="post-nav next" data-step="1" aria-label="Next photo">›</button>' : "")
-      : '<div class="post-nophoto" aria-hidden="true">' + W.ICONS.photo + "</div>";
+      : '<div class="post-nophoto no-photo"><span>No photo yet</span></div>';
     var dots = n > 1 ? '<div class="post-dots" aria-hidden="true">' + list.map(function (_, k) { return "<span" + (k ? "" : ' class="on"') + "></span>"; }).join("") + "</div>" : "";
     var units = isAddon(it) ? '<div class="item-units">Made to order · paid separately</div>'
       : typeof it.totalUnits === "number" && it.totalUnits > 0 && !dir
@@ -863,11 +899,13 @@
     selected.forEach(function (id) { if (!ids.has(id) || !W.acceptsRequests(gemach)) selected.delete(id); });
     if (W.isInfoOnly(gemach)) { // Info only: a large info box with contact details; no items, no requests
       $("g-body").innerHTML = comingSoonBanner() + infoOnlyBox() + infoPanel();
+      fitAbout();
       updateCTA();
       return;
     }
-    $("g-body").innerHTML = comingSoonBanner() + infoPanel() + gemachInfoSection() +
+    $("g-body").innerHTML = comingSoonBanner() + infoPanel() +
       '<div id="inv-wrap"' + (gemach && gemach.photoShape === "Portrait" ? ' class="photos-portrait"' : "") + ">" + renderInventory() + "</div>";
+    fitAbout();
     updateCTA();
     handleType();
   }
@@ -1004,6 +1042,16 @@
     if (nav) {
       var tr = nav.parentNode.querySelector(".post-track");
       if (tr) tr.scrollBy({ left: Number(nav.getAttribute("data-step")) * tr.clientWidth, behavior: "smooth" });
+      return;
+    }
+    var am = t.closest("#about-more");
+    if (am) {
+      var at = document.getElementById("about-text");
+      var opening = am.getAttribute("aria-expanded") !== "true";
+      if (at) at.classList.toggle("clamp", !opening);
+      if (at) at.classList.toggle("clipped", !opening);
+      am.setAttribute("aria-expanded", opening ? "true" : "false");
+      am.textContent = opening ? "Show less" : "Read more";
       return;
     }
     var more = t.closest(".post-more");
@@ -1652,7 +1700,7 @@
     if (!d) return false;
     var g = (d.gemachs || []).filter(function (x) { return String(x.slug).toLowerCase() === slug; })[0];
     if (!g) return false;
-    gemach = g; items = g.items || []; categories = d.categories || [];
+    gemach = g; items = g.items || []; categories = d.categories || []; sameForAll = null;
     render();
     return true;
   }
@@ -1662,7 +1710,7 @@
       if (d.gemach.testMode && !document.querySelector('meta[name="robots"]')) {
         var m = document.createElement("meta"); m.name = "robots"; m.content = "noindex"; document.head.appendChild(m);
       }
-      gemach = d.gemach; items = Array.isArray(d.items) ? d.items : []; categories = Array.isArray(d.categories) ? d.categories : [];
+      gemach = d.gemach; items = Array.isArray(d.items) ? d.items : []; categories = Array.isArray(d.categories) ? d.categories : []; sameForAll = null;
       loadedFresh = true;
       render();
     });

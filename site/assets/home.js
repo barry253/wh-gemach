@@ -228,15 +228,15 @@
       var phoneLine = "";
       var logo = W.safeUrl(g.logoUrl);
       var avatar = logo
-        ? '<img class="g-avatar" src="' + esc(logo) + '" alt="' + esc(g.name) + '" width="48" height="48" loading="lazy" decoding="async" />'
+        ? '<img class="g-avatar" src="' + esc(logo) + '" alt="' + esc(g.name) + '" width="44" height="44" loading="lazy" decoding="async" />'
         : '<span class="g-avatar g-initials" aria-hidden="true">' + esc(W.initials(g)) + "</span>";
-      return '<li><article class="gemach-card" data-slug="' + esc(g.slug) + '">' +
-        '<div class="gemach-head">' + avatar + '<h3><a href="' + W.gemachUrl(g.slug) + '">' + esc(g.name) + "</a></h3></div>" +
+      return '<li><article class="gemach-card" data-slug="' + esc(g.slug) + '">' + avatar +
+        '<div class="gemach-body"><h3><a href="' + W.gemachUrl(g.slug) + '">' + esc(g.name) + "</a></h3>" +
         (g.tagline ? '<p class="gemach-tagline">' + esc(g.tagline) + "</p>" : "") +
-        '<div class="gemach-meta">' + meta.join("") + phoneLine + "</div>" +
+        '<div class="gemach-meta">' + meta.join("") + phoneLine + "</div></div>" +
         // No contact buttons on the home page (contact details are only on the gemach's own page, against scraping);
-        // the whole card opens the gemach. This is just the visual cue.
-        '<div class="gemach-actions"><span class="gemach-go" aria-hidden="true">View gemach' + W.ICONS.chevron + "</span></div>" +
+        // the whole card opens the gemach. The chevron is just the visual cue.
+        '<span class="gemach-go" aria-hidden="true">' + W.ICONS.chevron + "</span>" +
         "</article></li>";
     }).join("");
     // Per-card theme colors via CSSOM (CSP forbids inline style attributes)

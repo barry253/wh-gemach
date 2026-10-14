@@ -692,6 +692,25 @@ await t("contact: /public/contact/:slug returns the encoded contact; no plain em
   assert.deepEqual(decodeC(X.encodeContact ? X.encodeContact({ n: "Bárry ✡" }) : (await import("../src/public.js")).encodeContact({ n: "Bárry ✡" })), { n: "Bárry ✡" });
 });
 
+await t("meta: /public/meta/:slug gives name, short text and logo for link previews; no contact details", async () => {
+  setG(A.id, { "Tagline": "", "Description": "Line one.\n\n" + "word ".repeat(80) });
+  const r = await call(`/public/meta/${A.slug}`);
+  assert.equal(r.status, 200);
+  const txt = await r.text(), m = JSON.parse(txt);
+  assert.deepEqual(Object.keys(m).sort(), ["comingSoon", "description", "logoUrl", "name", "tagline"]);
+  assert.equal(m.name, DB.Gemachs.find(x => x.id === A.id).fields.Name);
+  assert.ok(m.description.startsWith("Line one. word") && m.description.length <= 200 && m.description.endsWith("…"), "description squashed to one line and shortened: " + m.description);
+  assert.ok(!/@|986|7345/.test(txt), "no contact details");
+  setG(A.id, { "Tagline": "Wheelchairs and more" });
+  assert.equal((await (await call(`/public/meta/${C.slug}`)).json()).name, DB.Gemachs.find(x => x.id === C.id).fields.Name, "listing-only gemachs too");
+  assert.equal((await call(`/public/meta/hidden-one`)).status, 404, "hidden gemach");
+  assert.equal((await call(`/public/meta/nope`)).status, 404);
+  assert.equal((await call(`/public/meta/..%2Fx`)).status, 404, "bad slug");
+  const P = await import("../src/public.js");
+  assert.equal(P.publicMeta({ name: "N", tagline: "T", logoUrl: "http://x/y.png" }).logoUrl, null, "only https logos");
+  assert.equal(P.publicMeta({ name: "N", tagline: " T ", logoUrl: "https://x/y.png" }).description, "T");
+});
+
 await t("v3 public profile: new fields with defaults; Logo URL preferred", async () => {
   const d = await (await call(`/public/directory`)).json();
   const b = d.gemachs.find(g => g.slug === B.slug);

@@ -156,6 +156,30 @@ async function handlePublicContact(db, env, ctx, slug, testToken = null) {
   });
 }
 
+/**
+ * GET /public/meta/:slug → { name, tagline, description, logoUrl, comingSoon } for link previews
+ * (the site's /g/:slug page function puts these in <title> and the og: tags). Live and Coming-soon only.
+ */
+function publicMeta(g) {
+  const text = String(nonBlank(g.tagline) || nonBlank(g.description) || "").replace(/\s+/g, " ").trim();
+  const logo = nonBlank(g.logoUrl);
+  return {
+    name: g.name, tagline: nonBlank(g.tagline),
+    description: text.length > 200 ? text.slice(0, 197).replace(/\s+\S*$/, "") + "…" : text || null,
+    logoUrl: logo && /^https:\/\//.test(logo) ? logo : null,
+    comingSoon: !!g.comingSoon,
+  };
+}
+async function handlePublicMeta(db, env, ctx, slug) {
+  slug = String(slug || "").toLowerCase();
+  if (!SLUG_RE.test(slug)) return json({ error: "Not found" }, 404);
+  return cachedJson(env, ctx, cacheKey(env, `meta/${slug}`), async () => {
+    const g = await loadGemachBySlug(db, slug);
+    if (!g || !g.active) return { status: 404, data: { error: "Not found" } };
+    return { status: 200, data: publicMeta(g) };
+  });
+}
+
 /** Active Product Categories, sorted by Display Order (blank last) then name. */
 async function loadCategories(db) {
   const recs = await db.listAll(T.PRODUCT_CATEGORIES, { where: [Q.isTrue("Active")], fields: ["Name", "Icon", "Keywords", "Display Order", "Active"] });
@@ -253,4 +277,4 @@ async function gemachPageData(db, g) {
   return { gemach: publicGemach(g, communities[0]?.fields?.Name, { withContact: false }), items, categories };
 }
 
-export { publicItemType, loadInventory, publicGemach, publicContact, encodeContact, decodeContact, handlePublicContact, loadCategories, handleLegacyInventory, buildDirectory, directoryBuilder, handleDirectory, handlePublicGemach, gemachBuilder };
+export { publicItemType, loadInventory, publicGemach, publicContact, encodeContact, decodeContact, handlePublicContact, handlePublicMeta, publicMeta, loadCategories, handleLegacyInventory, buildDirectory, directoryBuilder, handleDirectory, handlePublicGemach, gemachBuilder };

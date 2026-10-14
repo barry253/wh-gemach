@@ -148,15 +148,15 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
       console.log('   medical:', JSON.stringify(med));
       assert(!med.topbar && med.pillNet.startsWith('/ | ') && med.pillNet.includes(label === 'm' ? 'All gemachs' : 'West Hempstead Gemachs'), `${label} network link is a pill on the band (no separate top bar)`);
       assert(med.band === 'rgb(27, 58, 75) | 3px solid rgb(224, 166, 58)', `${label} band + 3px accent rule`);
-      const logoW = label === 'm' ? 112 : 128;
+      const logoW = label === 'm' ? 80 : 128; // smaller on phones so the items come up sooner (Oct 14)
       assert(med.logo.startsWith('IMG | g-logo | ') && med.logo.includes('/logo-light/') && med.logo.includes('| West Hempstead Medical Gemach | ' + logoW + ' | rgb(255, 255, 255)'), `${label} logoUrl shown on a white ${logoW}px tile (it sits on the cream page now)`);
       const darkOnly = await page.evaluate(() => { const d = document.createElement('div'); d.className = 'g-store'; d.innerHTML = '<div id="g-head"><img class="g-logo g-logo-bare" alt=""></div>'; document.body.appendChild(d);
         const c = getComputedStyle(d.querySelector('.g-logo')); const out = [c.backgroundColor, c.objectFit].join(' | '); d.remove(); return out; });
       assert(darkOnly === 'rgb(27, 58, 75) | contain', `${label} a logo made for dark backgrounds (no regular logo) sits on a band-colored tile (${darkOnly})`);
       assert(med.overlap && med.centered, `${label} logo straddles the band edge; logo and name centered`);
-      const h1Size = label === 'm' ? '28px' : '33.6px';
-      assert(med.h1 === `West Hempstead Medical Gemach | "Source Serif 4", Georgia, "Times New Roman", serif | 600 | ${h1Size} | rgb(27, 58, 75)`, `${label} name: full text for AT, serif 600 ${h1Size}, theme color on cream`);
-      assert(med.eyebrow === 'block | 11px | uppercase', `${label} community name as a small eyebrow`);
+      const h1Size = label === 'm' ? '24px' : '33.6px';
+      assert(med.h1 === `West Hempstead Medical Gemach | "Source Serif 4", "Source Serif Fallback", Georgia, "Times New Roman", serif | 600 | ${h1Size} | rgb(27, 58, 75)`, `${label} name: full text for AT, serif 600 ${h1Size}, theme color on cream`);
+      assert(med.eyebrow === 'block | 12px | uppercase', `${label} community name as a small eyebrow`);
       assert(med.ctas.join() === 'Call:btn g-cta g-cta-solid,WhatsApp:btn g-cta', `${label} contact pills: first solid (${med.ctas})`);
       assert(!med.dupContact && !med.chip, `${label} contact buttons not repeated in the info panel; no category chip`);
       assert(med.pill === 'Donate | rgb(224, 166, 58) | rgb(27, 58, 75) | 999px | 44', `${label} Donate pill: gold bg, navy text`);
@@ -263,7 +263,7 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
         const cp = await page.evaluate(() => ({ top: getComputedStyle(document.querySelector('.topbar')).backgroundColor, hero: getComputedStyle(document.querySelector('.hero')).borderBottom, h1: getComputedStyle(document.querySelector('h1')).fontFamily }));
         assert(cp.top === 'rgb(27, 58, 75)' && cp.hero === '3px solid rgb(224, 166, 58)' && /Source Serif 4/.test(cp.h1), `${label} ${p}: navy header w/ gold rule, serif title`);
         if (p === '/about') {
-          assert(await page.$eval('.content a:not(.btn)', e => getComputedStyle(e).color === 'rgb(138, 93, 20)'), `${label} links use --accent-text`);
+          assert(await page.$eval('.content a:not(.btn)', e => getComputedStyle(e).color === 'rgb(27, 58, 75)'), `${label} links are navy (gold is kept for the header rule and Donate)`);
           await checkPair('.content a:not(.btn)', '.card', 4.5, 'content link on card');
           await csp();
           await shot('about');

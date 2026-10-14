@@ -1,7 +1,7 @@
-# Gemach pages: /g/<slug> is served by gemach.html (rewrite; URL stays /g/<slug>)
+# Gemach pages: /g/<slug> is served by gemach.html through the Pages Function functions/g/[slug].js
+# (it adds the gemach's name and logo for link previews). /g/<slug>/ is still a plain rewrite.
 /g          /   302
 /g/         /   302
-/g/:slug    /gemach   200
 /g/:slug/   /gemach   200
 
 # Borrower manage links: /r/<token> is served by manage.html (URL stays /r/<token>)
