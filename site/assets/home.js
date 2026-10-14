@@ -17,7 +17,7 @@
   var searchPushed = false; // whether the current typing session already has a history entry
 
   // ── Text matching (shared with the gemach page, in site.js) ──
-  var tokens = W.searchTokens, makeHay = W.makeHay, tokMatch = W.tokMatch, attrText = W.attrText;
+  var tokens = W.searchTokens, makeHay = W.makeHay, tokMatch = W.tokMatch, attrText = W.attrText, normText = W.normText;
 
   // ── Data helpers ──
   function catById(id) {
@@ -56,10 +56,111 @@
         index.push({
           g: g, item: it, cat: c, order: ii,
           nameHay: makeHay([it.name]),
+          ownHay: makeHay([it.name, it.searchWords, attrText(it)]),
           hay: makeHay([it.name, it.byline, it.searchWords, it.description, c && c.name, c && (c.keywords || []).join(" "), g.name, attrText(it)])
         });
       });
     });
+  }
+
+  // ── "Try:" chips under the search box: 4 random search terms that find something ──
+  // Candidates per gemach (searchable gemachs only — Coming soon ones aren't in the index):
+  //  • short item names that share a word with their category ("Rollator", "Navy gown",
+  //    "Bride sweatshirt"); not book titles (items with a byline), names with digits or
+  //    slashes, or long ones;
+  //  • its items' filter values for things like Color, Type, Shape, Shelf, Yom Tov ("Velvet",
+  //    "Chanukah") — not size/length/fit/age/sleeve/genre values, nor "For …" ones;
+  //  • its browse categories' keywords that appear in an item's own name, search words or
+  //    filter values ("crutches", "books"), so each chip really finds that kind of item.
+  // One term from each of 4 random gemachs (fewer gemachs → filled from the rest).
+  // Picked again on every page load; kept when fresher data arrives if still valid.
+  var hintTerms = null;
+  var HINT_SKIP_FILTER = /size|length|fit|age|sleeve|genre/i;
+  function hintShort(t) {
+    t = String(t || "").replace(/\s+/g, " ").trim();
+    return t && t.length <= 24 && t.split(" ").length <= 3 && !/[\d\/]/.test(t) ? t : "";
+  }
+  var catHays = {};
+  function catHay(c) { return catHays[c.id] || (catHays[c.id] = makeHay([c.name, (c.keywords || []).join(" ")])); }
+  function hintCandidates() {
+    catHays = {};
+    var byGemach = {}, seen = {};
+    function add(gid, term) {
+      term = hintShort(term);
+      // "wheel chair" = "wheelchair", "ramps" = "ramp": item names are added first, so they win
+      var key = normText(term).replace(/ /g, "").replace(/s$/, "");
+      if (!key || key.length < 3 || seen[gid + "|" + key]) return;
+      seen[gid + "|" + key] = 1;
+      // Sentence case, keeping acronyms ("LED sticks", "Navy gown")
+      term = term.split(" ").map(function (w) { return /^[A-Z0-9]{2,}$/.test(w) ? w : w.toLowerCase(); }).join(" ");
+      (byGemach[gid] = byGemach[gid] || []).push(term);
+    }
+    var entriesByGemach = {};
+    index.forEach(function (e) {
+      var gid = e.g.id || e.g.slug;
+      (entriesByGemach[gid] = entriesByGemach[gid] || []).push(e);
+    });
+    Object.keys(entriesByGemach).forEach(function (gid) {
+      var entries = entriesByGemach[gid], cats = {};
+      entries.forEach(function (e) {
+        var it = e.item;
+        if (e.cat) cats[e.cat.id] = e.cat;
+        if (!it.byline) {
+          // Names only when they say what the thing is: a word shared with the item's category
+          // ("Navy gown", "Calypso jacquard"), so pattern names like "Lynn" or "Poppy" are left out.
+          var head = String(it.name || "").split(/\s[–—·-]\s|[,(]/)[0];
+          if (!e.cat || tokens(head).some(function (t) { return tokMatch(t, catHay(e.cat)) === 2; })) add(gid, head);
+        }
+        var a = it.attributes;
+        if (a && typeof a === "object") Object.keys(a).forEach(function (k) {
+          if (HINT_SKIP_FILTER.test(k) || !Array.isArray(a[k])) return;
+          a[k].forEach(function (v) { if (!/^for /i.test(v)) add(gid, v); });
+        });
+      });
+      Object.keys(cats).forEach(function (id) {
+        (cats[id].keywords || []).forEach(function (k) {
+          var toks = tokens(hintShort(k));
+          if (toks.length && entries.some(function (e) {
+            return e.cat && e.cat.id === id && toks.every(function (t) { return tokMatch(t, e.ownHay) === 2; });
+          })) add(gid, k);
+        });
+      });
+    });
+    return byGemach;
+  }
+  function pickRandom(list) { return list[Math.floor(Math.random() * list.length)]; }
+  function shuffle(list) {
+    for (var i = list.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = list[i]; list[i] = list[j]; list[j] = t; }
+    return list;
+  }
+  function renderHints() {
+    var hint = $("search-hint");
+    var byCat = hintCandidates(); // keyed by gemach
+    var all = {};
+    Object.keys(byCat).forEach(function (id) { byCat[id].forEach(function (t) { all[normText(t)] = 1; }); });
+    // Keep the terms already shown when fresh data arrives, as long as they still find something.
+    var keep = hintTerms && hintTerms.length && hintTerms.every(function (t) { return all[normText(t)]; });
+    if (!keep) {
+      var picked = [], cats = shuffle(Object.keys(byCat));
+      cats.forEach(function (id) {
+        if (picked.length >= 4) return;
+        var t = pickRandom(byCat[id]);
+        if (!picked.some(function (p) { return normText(p) === normText(t); })) picked.push(t);
+      });
+      if (picked.length < 4) {
+        var rest = [];
+        cats.forEach(function (id) { byCat[id].forEach(function (t) { if (!picked.some(function (p) { return normText(p) === normText(t); })) rest.push(t); }); });
+        shuffle(rest).slice(0, 4 - picked.length).forEach(function (t) { picked.push(t); });
+      }
+      hintTerms = picked;
+    }
+    if (!hintTerms.length) { hint.classList.add("no-terms"); hint.classList.remove("picking"); return; }
+    hint.classList.remove("no-terms");
+    hint.innerHTML = "Try: " + hintTerms.map(function (t) {
+      var label = t.charAt(0).toUpperCase() + t.slice(1);
+      return '<button type="button" data-q="' + esc(t) + '">' + esc(label) + "</button>";
+    }).join(" ");
+    hint.classList.remove("picking");
   }
 
   // ── Rendering: tiles ──
@@ -378,6 +479,7 @@
   renderMine();
 
   function renderAll() {
+    renderHints();
     renderTiles();
     renderGemachs();
     renderResults();
