@@ -711,6 +711,23 @@ await t("meta: /public/meta/:slug gives name, short text and logo for link previ
   assert.equal(P.publicMeta({ name: "N", tagline: " T ", logoUrl: "https://x/y.png" }).description, "T");
 });
 
+await t("meta: ?item= adds a shared item listed on that gemach's page; anything else gives item: null", async () => {
+  const ty = id => DB["Item Types"].find(x => x.id === id);
+  ty("recTYPEA000000001").fields["R2 Photo URL"] = "https://pub.example/wh-medical/photos/1.jpg";
+  ty("recTYPEA000000001").fields.Description = "Standard 18\" folding wheelchair.\n\nRemovable footrests.";
+  ty("recTYPEA000000003").fields.Active = false;
+  const m = await (await call(`/public/meta/${A.slug}?item=recTYPEA000000001`)).json();
+  assert.equal(m.name, DB.Gemachs.find(x => x.id === A.id).fields.Name, "gemach details still there");
+  assert.deepEqual(m.item, { id: "recTYPEA000000001", name: "Wheelchair", description: 'Standard 18" folding wheelchair. Removable footrests.', photoUrl: "https://pub.example/wh-medical/photos/1.jpg" });
+  assert.equal((await (await call(`/public/meta/${A.slug}?item=recTYPEA000000002`)).json()).item.photoUrl, null, "no photo: null");
+  assert.equal((await (await call(`/public/meta/${A.slug}?item=recTYPEA000000003`)).json()).item, null, "inactive item");
+  assert.equal((await (await call(`/public/meta/${A.slug}?item=recTYPEB000000001`)).json()).item, null, "another gemach's item");
+  assert.equal((await (await call(`/public/meta/${A.slug}?item=recNOSUCHITEM0001`)).json()).item, null, "missing item");
+  assert.ok(!("item" in await (await call(`/public/meta/${A.slug}?item=bad`)).json()), "not an id: plain gemach answer");
+  assert.equal((await call(`/public/meta/hidden-one?item=recTYPEA000000001`)).status, 404, "hidden gemach");
+  ty("recTYPEA000000003").fields.Active = true;
+});
+
 await t("v3 public profile: new fields with defaults; Logo URL preferred", async () => {
   const d = await (await call(`/public/directory`)).json();
   const b = d.gemachs.find(g => g.slug === B.slug);
@@ -2368,10 +2385,12 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.equal(SE.length, 1); assert.equal(SE[0].fields.Count, 2, "another visitor adds to the same row");
     await send({ kind: "item-pick", gemach: A.slug, item: "recTYPEA000000001" }); await settle();
     assert.equal(SE.length, 2, "a tick is its own row");
+    await send({ kind: "item-share", gemach: A.slug, item: "recTYPEA000000001" }); await send({ kind: "item-link", gemach: A.slug, item: "recTYPEA000000001" }); await settle();
+    assert.deepEqual(SE.filter(x => /item-(share|link)/.test(x.fields.Kind)).map(x => x.fields.Kind).sort(), ["item-link", "item-share"], "shares and shared-link opens counted");
     for (const b of ["nope", "null", { kind: "item-photos", gemach: "Bad Slug!", item: "recTYPEA000000001" }, { kind: "item-photos", gemach: A.slug, item: "x" },
                      { kind: "hack" }, { kind: "js-error", msg: "" }, { kind: "load-fail", what: "everything" }]) assert.equal((await send(b)).status, 204);
     await settle();
-    assert.equal(SE.length, 2, "junk ignored");
+    assert.equal(SE.length, 4, "junk ignored");
     await send({ kind: "js-error", msg: "TypeError: x is undefined for me@example.com at https://whgemachs.org/r/recREQA0000000002.sigsig?x=1 phone 5165551234 recTYPEA000000001",
       src: "https://whgemachs.org/assets/gemach.js?v=25", line: 412, page: "https://whgemachs.org/r/recREQA0000000002.sig?test=abc" }); await settle();
     const je = SE.find(x => x.fields.Kind === "js-error");
@@ -2386,7 +2405,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     // In Network → Analytics
     const d = await (await call("/admin/network/analytics?days=30&fresh=1", { headers: auth(tokNet) })).json();
     const wc = d.topLooked.find(x => x.name === "Wheelchair");
-    assert.ok(wc && wc.photos === 2 && wc.picks === 1 && wc.gemach, "most looked at: " + JSON.stringify(d.topLooked));
+    assert.ok(wc && wc.photos === 2 && wc.picks === 1 && wc.shares === 1 && wc.linkOpens === 1 && wc.gemach, "most looked at: " + JSON.stringify(d.topLooked));
     assert.equal(d.siteHealth.jsErrors, 1); assert.equal(d.siteHealth.loadFails, 1);
     const top = d.siteHealth.top.find(x => x.kind === "js-error");
     assert.ok(top.label.startsWith("TypeError") && top.src === "/assets/gemach.js" && top.line === 412 && top.browser === "iPhone/iPad Safari" && top.page === "/r/…");

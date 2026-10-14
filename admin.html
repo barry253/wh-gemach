@@ -6593,8 +6593,8 @@
     // What visitors look at on gemach pages (counted by the site itself, since this feature went live).
     const lk = d.topLooked || [];
     html += `<div class="card stat-block"><h4>Most looked at</h4>` + (lk.length
-      ? `<div class="net-an-scroll"><table class="stat-table net-an-looked"><thead><tr><th>Item</th><th>Gemach</th><th class="num" title="Times someone opened its photos">Photos opened</th><th class="num" title="Times someone ticked it to request">Ticked</th><th class="num">Requested</th></tr></thead><tbody>` +
-        lk.map(t => `<tr><td>${esc(t.name)}</td><td class="card-id">${esc(t.gemach || "")}</td><td class="num">${esc(t.photos)}</td><td class="num">${esc(t.picks)}</td><td class="num">${esc(t.requests)}${t.photos + t.picks >= 10 && !t.requests ? '<div class="net-an-warn">no requests</div>' : ""}</td></tr>`).join("") +
+      ? `<div class="net-an-scroll"><table class="stat-table net-an-looked"><thead><tr><th>Item</th><th>Gemach</th><th class="num" title="Times someone opened its photos">Photos opened</th><th class="num" title="Times someone ticked it to request">Ticked</th><th class="num" title="Times someone shared a link to it">Shared</th><th class="num" title="Visits that came from a shared link to it">Link opened</th><th class="num">Requested</th></tr></thead><tbody>` +
+        lk.map(t => `<tr><td>${esc(t.name)}</td><td class="card-id">${esc(t.gemach || "")}</td><td class="num">${esc(t.photos)}</td><td class="num">${esc(t.picks)}</td><td class="num">${esc(t.shares || 0)}</td><td class="num">${esc(t.linkOpens || 0)}</td><td class="num">${esc(t.requests)}${t.photos + t.picks >= 10 && !t.requests ? '<div class="net-an-warn">no requests</div>' : ""}</td></tr>`).join("") +
         `</tbody></table></div><p class="stat-note">Items people look at a lot but rarely request may need a better photo, description or price.</p>`
       : `<p class="stat-note">Nothing counted yet in ${esc(period)}. Counting started when this feature went live.</p>`) + `</div>`;
 

@@ -226,16 +226,17 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
   };
 
   // ── What visitors look at (photos opened, items ticked) and problems they hit (site events) ──
-  const looked = new Map(); // item type id -> { photos, picks }
+  const LOOK_FIELD = { "item-photos": "photos", "item-pick": "picks", "item-share": "shares", "item-link": "linkOpens" };
+  const looked = new Map(); // item type id -> { photos, picks, shares, linkOpens }
   const problems = new Map(); // kind|key -> { kind, label, count, lastAt, detail }
   let jsErrors = 0, loadFails = 0;
   for (const e of events) {
     const f = e.fields, c = Number(f.Count) || 0;
     if (!isValidDate(f.Date) || f.Date < sinceDate || c <= 0) continue;
-    if (f.Kind === "item-photos" || f.Kind === "item-pick") {
+    if (LOOK_FIELD[f.Kind]) {
       if (!typeById.has(f.Key)) continue; // deleted item
-      const x = looked.get(f.Key) || looked.set(f.Key, { photos: 0, picks: 0 }).get(f.Key);
-      x[f.Kind === "item-photos" ? "photos" : "picks"] += c;
+      const x = looked.get(f.Key) || looked.set(f.Key, { photos: 0, picks: 0, shares: 0, linkOpens: 0 }).get(f.Key);
+      x[LOOK_FIELD[f.Kind]] += c;
     } else if (f.Kind === "js-error" || f.Kind === "load-fail") {
       if (f.Kind === "js-error") jsErrors += c; else loadFails += c;
       const k = `${f.Kind}|${f.Key}`;
@@ -249,8 +250,8 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
   }
   const topLooked = [...looked]
     .map(([id, x]) => ({ id, name: typeById.get(id)?.fields?.Name || "Item", gemach: row(gOf(typeById.get(id)))?.name || null,
-      photos: x.photos, picks: x.picks, requests: asked.get(id) || 0 }))
-    .sort((a, b) => (b.photos + b.picks) - (a.photos + a.picks) || b.requests - a.requests || a.name.localeCompare(b.name))
+      photos: x.photos, picks: x.picks, shares: x.shares, linkOpens: x.linkOpens, requests: asked.get(id) || 0 }))
+    .sort((a, b) => (b.photos + b.picks + b.shares) - (a.photos + a.picks + a.shares) || b.requests - a.requests || a.name.localeCompare(b.name))
     .slice(0, 15).map(({ id, ...x }) => x);
   const siteHealth = {
     jsErrors, loadFails,

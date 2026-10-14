@@ -15,6 +15,8 @@
   var slug = readSlug();
   var params = new URLSearchParams(location.search);
   var wantType = params.get("type") || "";
+  // Shared item link (?item=<item type id>): scroll to it and open its photos (not added to the request).
+  var wantItem = /^rec[A-Za-z0-9]{14}$/.test(params.get("item") || "") ? params.get("item") : "";
   // Test link (?test=<signature>): a gemach that isn't live yet opens and takes test requests.
   // Kept for this tab so the page still works if the address loses the ?test= part.
   var TEST_RE = /^[A-Za-z0-9_-]{22}$/;
@@ -27,7 +29,7 @@
     return TEST_RE.test(t) ? t : "";
   })();
   function inTestMode() { return !!(gemach && gemach.testMode && testToken); }
-  var typeHandled = false;
+  var typeHandled = false, itemHandled = false;
 
   var gemach = null, items = [], categories = [];
   // Contact details come from their own request (GET /public/contact/:slug), not the page data.
@@ -782,7 +784,7 @@
     return '<li class="item-post' + (sel ? " selected" : "") + '" id="row-' + id + '" data-id="' + id + '">' +
       '<div class="post-media">' + media + "</div>" + dots +
       '<div class="post-body"><div class="item-top"><div class="item-name">' + esc(it.name) + newTag(it) + "</div>" + availBadge(it) + "</div>" +
-      bylineHtml(it, "item-byline") + attrsLine(it) + units + desc + add + "</div></li>";
+      bylineHtml(it, "item-byline") + attrsLine(it) + units + desc + add + shareButton(it, "post-share") + "</div></li>";
   }
   function updateTrack(tr) {
     var post = tr.closest(".item-post");
@@ -908,6 +910,7 @@
     fitAbout();
     updateCTA();
     handleType();
+    handleItemLink();
   }
 
   function handleType() {
@@ -918,6 +921,72 @@
     if (W.acceptsRequests(gemach)) { selected.add(it.id); syncRow(it.id); updateCTA(); }
     requestAnimationFrame(function () { flashRow(it.id); });
   }
+
+  /** Opened from a shared item link: point at the item and open its photos; say so if it's no longer listed. */
+  function handleItemLink() {
+    if (itemHandled || !wantItem || !gemach || W.isInfoOnly(gemach) || !$("inv-wrap")) return;
+    var it = items.filter(function (i) { return i.id === wantItem; })[0];
+    if (!it) {
+      if (!loadedFresh) return; // a saved copy may be older than the link; wait for the fresh list
+      itemHandled = true;
+      var wrap = $("inv-wrap");
+      wrap.insertAdjacentHTML("afterbegin", '<div class="notice notice-info item-gone" id="item-gone" role="status">That item isn’t listed here any more. Here’s everything this gemach has.</div>');
+      requestAnimationFrame(function () { var n = $("item-gone"); if (n) n.scrollIntoView({ block: "center" }); });
+      return;
+    }
+    itemHandled = true;
+    trackItem("item-link", it.id);
+    requestAnimationFrame(function () {
+      flashRow(it.id);
+      if (photoList(it).length) { lbItem = it; openLightbox(photoList(it), it.name, null, 0, it.description); }
+    });
+  }
+
+  // ── Sharing one item: /g/<slug>?item=<id> (the link preview shows the item's photo and name) ──
+  function canShare() { return !!gemach && !inTestMode(); } // a test link would only work for people who have it
+  function shareUrl(it) {
+    var origin = /(^|\.)whgemachs\.org$/.test(location.hostname) ? "https://whgemachs.org" : location.origin;
+    return origin + "/g/" + encodeURIComponent(gemach.slug || slug) + "?item=" + encodeURIComponent(it.id);
+  }
+  function shareButton(it, cls) {
+    return canShare() ? '<button type="button" class="share-btn' + (cls ? " " + cls : "") + '" data-share="' + esc(it.id) + '" aria-label="Share a link to ' + esc(it.name) + '">' +
+      W.ICONS.share + "<span>Share</span></button>" : "";
+  }
+  function shareItem(it) {
+    if (!it || !canShare()) return;
+    var url = shareUrl(it), title = it.name, text = it.name + " — " + gemach.name;
+    trackItem("item-share", it.id);
+    if (navigator.share) {
+      navigator.share({ title: title, text: text, url: url }).catch(function (e) {
+        if (!e || e.name !== "AbortError") shareFallback(url, text); // cancelled = nothing to do
+      });
+      return;
+    }
+    shareFallback(url, text);
+  }
+  /** No share sheet (most computers): copy the link and offer WhatsApp. */
+  function shareFallback(url, text) {
+    var done = function (copied) { shareToast(url, text, copied); };
+    try {
+      navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); });
+    } catch (e) { done(false); }
+  }
+  var toastTimer = 0;
+  function shareToast(url, text, copied) {
+    var t = $("share-toast");
+    if (!t) { t = document.createElement("div"); t.id = "share-toast"; t.className = "share-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+    t.innerHTML = (copied ? "<strong>Link copied</strong>" : '<label>Copy this link <input type="text" readonly value="' + esc(url) + '" /></label>') +
+      '<a class="share-wa" href="https://wa.me/?text=' + encodeURIComponent(text + " " + url) + '" target="_blank" rel="noopener">' + W.ICONS.whatsapp + "WhatsApp</a>" +
+      '<button type="button" class="share-close" aria-label="Close">×</button>';
+    t.hidden = false; t.classList.add("show");
+    var inp = t.querySelector("input"); if (inp) { inp.focus(); inp.select(); }
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("show"); t.hidden = true; }, copied ? 6000 : 15000);
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest(".share-close");
+    if (b) { var t = $("share-toast"); if (t) { t.classList.remove("show"); t.hidden = true; } }
+  });
 
   function renderNotFound() {
     document.title = "Gemach not found — West Hempstead Gemachs";
@@ -1063,10 +1132,16 @@
       more.textContent = open ? "less" : "more";
       return;
     }
+    var shareBtn = t.closest("[data-share]");
+    if (shareBtn) {
+      shareItem(items.filter(function (i) { return i.id === shareBtn.getAttribute("data-share"); })[0]);
+      return;
+    }
     var photoBtn = t.closest("[data-photo]");
     if (photoBtn) {
       var it = items.filter(function (i) { return i.id === photoBtn.getAttribute("data-photo"); })[0];
       if (it) {
+        lbItem = it;
         openLightbox(photoList(it), it.name, photoBtn, Number(photoBtn.getAttribute("data-pi")) || 0, it.description);
         trackItem("item-photos", it.id);
       }
@@ -1174,8 +1249,11 @@
     for (var k = 0; k < dots.length; k++) dots[k].classList.toggle("on", k === gal.i);
     if (n > 1) { var pre = new Image(); pre.src = gal.list[(gal.i + 1) % n]; } // next one ready
   }
+  var lbItem = null; // the item whose photos are open (for the Share button in the viewer)
   function openLightbox(list, name, opener, start, desc) {
     lastFocus = opener || document.activeElement;
+    var sb = $("lightbox-share");
+    if (sb) sb.hidden = !(lbItem && canShare());
     gal = { list: Array.isArray(list) ? list : [list], i: 0, name: name };
     var many = gal.list.length > 1;
     $("lightbox-caption").textContent = name;
@@ -1192,11 +1270,13 @@
     (many ? $("lightbox-next") : $("lightbox-close")).focus();
   }
   function closeLightbox() {
+    lbItem = null;
     lb.classList.remove("open"); lb.hidden = true; lockScroll(false);
     document.body.classList.remove("lb-open");
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
   $("lightbox-close").addEventListener("click", closeLightbox);
+  if ($("lightbox-share")) $("lightbox-share").addEventListener("click", function () { shareItem(lbItem); });
   $("lightbox-prev").addEventListener("click", function () { showPhoto(gal.i - 1); });
   $("lightbox-next").addEventListener("click", function () { showPhoto(gal.i + 1); });
   lb.addEventListener("click", function (e) {

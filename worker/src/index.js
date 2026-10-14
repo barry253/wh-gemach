@@ -36,7 +36,7 @@
  *   Stats:   GET /admin/stats?days=30|90|365 — per-gemach request/loan/inventory stats for the Dashboard.
  *   Health:  GET /health — checks Airtable is reachable; 200 {ok:true} or 503 (for uptime monitors).
  *   Public:  GET /inventory (legacy, wh-medical only), GET /public/directory,
- *            GET /public/gemach/:slug, GET /public/meta/:slug (name/tagline/logo for link previews), GET /public/contact/:slug (encoded phone/email/WhatsApp — kept out of the
+ *            GET /public/gemach/:slug, GET /public/meta/:slug[?item=] (name/tagline/logo, and a shared item, for link previews), GET /public/contact/:slug (encoded phone/email/WhatsApp — kept out of the
  *            directory and page payloads against scraping), POST /submit-request (rejected for Directory, Info-only and Coming-soon gemachs)
  *   Abuse protection (abuse.js): GET /public/config → { turnstileSiteKey } (null until TURNSTILE_SITE_KEY + secret
  *            TURNSTILE_SECRET are set); /submit-request then needs turnstileToken. Rate limits: SUBMIT_LIMITER,
@@ -196,7 +196,7 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
   if (method === "GET"  && path === "/health")           return handleHealth(db, env, request, url);
   if (method === "GET"  && path === "/inventory")        return handleLegacyInventory(db);
   if (method === "GET"  && path === "/public/directory") return handleDirectory(db, env, ctx);
-  if (method === "GET"  && path.startsWith("/public/meta/")) return handlePublicMeta(db, env, ctx, safeDecode(path.slice("/public/meta/".length)));
+  if (method === "GET"  && path.startsWith("/public/meta/")) return handlePublicMeta(db, env, ctx, safeDecode(path.slice("/public/meta/".length)), url.searchParams.get("item"));
   if (method === "GET"  && path.startsWith("/public/contact/")) return handlePublicContact(db, env, ctx, safeDecode(path.slice("/public/contact/".length)), url.searchParams.get("test"));
   if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)), url.searchParams.get("test"));
   if (method === "POST" && path === "/submit-request")   return handleSubmitRequest(request, db, env, ctx);

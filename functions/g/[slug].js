@@ -13,6 +13,7 @@ export const API = "https://api.whgemachs.org";
 export const SITE = "https://whgemachs.org";
 export const DEFAULT_IMAGE = SITE + "/assets/brand/og-card.png";
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
+export const REC = /^rec[A-Za-z0-9]{14}$/;
 
 export const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -32,15 +33,32 @@ export function tagsFor(slug, meta, copy = null) {
   if (!meta || typeof meta.name !== "string" || !meta.name.trim()) return null;
   const name = meta.name.trim().slice(0, 120);
   const text = String(meta.description || meta.tagline || "").trim() ||
-    "See what " + name + " lends and send a request — free, from West Hempstead Gemachs.";
+    "See what " + name + " has and send a request on West Hempstead Gemachs.";
   // Only PNG / JPEG logos: WhatsApp and some other apps don't show WebP or SVG previews, so those get the network card.
   const logo = typeof meta.logoUrl === "string" && LOGO_OK.test(meta.logoUrl) ? meta.logoUrl
     : meta.logoUrl && copy ? copy : null;
+  const it = meta.item && typeof meta.item.name === "string" && REC.test(meta.item.id || "") ? meta.item : null;
+  if (it) { // a shared item link: the item's photo and name, then the gemach
+    const photo = typeof it.photoUrl === "string" && LOGO_OK.test(it.photoUrl) ? it.photoUrl : null;
+    const itemName = it.name.trim().slice(0, 120);
+    return {
+      title: itemName + " · " + name + " — West Hempstead Gemachs",
+      ogTitle: itemName + " · " + name,
+      description: (String(it.description || "").trim() ? String(it.description).trim() + " " : "") + "From " + name + " on West Hempstead Gemachs.",
+      url: SITE + "/g/" + slug + "?item=" + it.id,
+      canonical: SITE + "/g/" + slug,
+      image: photo || logo || DEFAULT_IMAGE,
+      logo: !photo && !!logo,
+      imageAlt: photo ? itemName : logo ? name + " logo" : "West Hempstead Gemachs — volunteer-run lending libraries",
+      card: photo || !logo ? "summary_large_image" : "summary",
+    };
+  }
   return {
     title: name + " — West Hempstead Gemachs",
     ogTitle: name,
     description: text.slice(0, 300),
     url: SITE + "/g/" + slug,
+    canonical: SITE + "/g/" + slug,
     image: logo || DEFAULT_IMAGE,
     logo: !!logo,
     imageAlt: logo ? name + " logo" : "West Hempstead Gemachs — volunteer-run lending libraries",
@@ -48,9 +66,9 @@ export function tagsFor(slug, meta, copy = null) {
   };
 }
 
-async function fetchMeta(slug) {
+async function fetchMeta(slug, item) {
   const timeout = new Promise(res => setTimeout(() => res(null), 1500));
-  const req = fetch(API + "/public/meta/" + encodeURIComponent(slug), { cf: { cacheTtl: 300, cacheEverything: true } })
+  const req = fetch(API + "/public/meta/" + encodeURIComponent(slug) + (item ? "?item=" + item : ""), { cf: { cacheTtl: 300, cacheEverything: true } })
     .then(r => (r.ok ? r.json() : null))
     .catch(() => null);
   return Promise.race([req, timeout]);
@@ -68,9 +86,11 @@ export async function onRequestGet({ request, env, params }) {
   const page = await env.ASSETS.fetch(new Request(new URL("/gemach", request.url), { headers: request.headers }));
   const slug = String(params.slug || "").toLowerCase();
   if (!page.ok || !SLUG_RE.test(slug)) return withHeaders(page);
-  const meta = await fetchMeta(slug);
+  const itemParam = new URL(request.url).searchParams.get("item");
+  const meta = await fetchMeta(slug, REC.test(itemParam || "") ? itemParam : null);
   let copy = null;
-  if (meta && meta.logoUrl && !LOGO_OK.test(meta.logoUrl)) {
+  const itemPhotoOk = !!(meta && meta.item && LOGO_OK.test(meta.item.photoUrl || ""));
+  if (meta && meta.logoUrl && !LOGO_OK.test(meta.logoUrl) && !itemPhotoOk) {
     const c = await env.ASSETS.fetch(new Request(new URL(copyPath(slug), request.url), { method: "HEAD" })).catch(() => null);
     if (c && c.ok && /image\/png/.test(c.headers.get("content-type") || "")) copy = SITE + copyPath(slug);
   }
@@ -89,7 +109,7 @@ export async function onRequestGet({ request, env, params }) {
     .on('meta[property="og:image:height"]', { element(el) { if (t.logo) el.remove(); } })
     .on('meta[name="twitter:card"]', setContent(t.card))
     .on("head", { element(el) {
-      el.append('<link rel="canonical" href="' + escAttr(t.url) + '" />\n<meta property="og:url" content="' + escAttr(t.url) + '" />\n', { html: true });
+      el.append('<link rel="canonical" href="' + escAttr(t.canonical || t.url) + '" />\n<meta property="og:url" content="' + escAttr(t.url) + '" />\n', { html: true });
     } })
     .transform(page);
   return withHeaders(rewritten);
