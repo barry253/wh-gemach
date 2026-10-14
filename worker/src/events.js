@@ -3,7 +3,7 @@
 //   POST /public/event (text/plain JSON, always 204):
 //     { kind: "item-photos" | "item-pick", gemach: <slug>, item: <item type id> }   someone opened an item's photos / ticked it
 //     { kind: "js-error", msg, src, line, page }                                       a script error in a visitor's browser
-//     { kind: "load-fail", what: "directory" | "gemach" | "manage", page }             "couldn't load" shown to a visitor
+//     { kind: "load-fail", what: "directory" | "gemach" | "manage" | "contact", page }           "couldn't load" shown to a visitor
 // One row per (day, kind, key) with a Count. Nothing about the person is stored: no IP, no names, no query strings;
 // error text has emails, long numbers and links stripped. Network-wide table (no gemach scope), like the Search Log.
 import { Q } from "./query.js";
@@ -12,7 +12,7 @@ import { nyToday } from "./dates.js";
 
 const NEW_ROWS_PER_KIND_PER_DAY = 300; // new (kind, key) rows a day; counts on existing rows keep going up
 const EVENT_KINDS = new Set(["item-photos", "item-pick", "js-error", "load-fail"]);
-const LOAD_WHAT = new Set(["directory", "gemach", "manage"]);
+const LOAD_WHAT = new Set(["directory", "gemach", "manage", "contact"]);
 const eventSeen = new Map(); // per-isolate: "ip|kind|key" -> ms, so one person's repeats aren't counted twice
 let eventHour = { start: 0, count: 0 };
 

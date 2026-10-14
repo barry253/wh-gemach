@@ -202,22 +202,6 @@
     });
     return { total: total, avail: avail };
   }
-  function quickLinks(g) {
-    var acts = W.contactActions(g);
-    if (acts) {
-      return acts.map(function (a) {
-        return '<a class="btn btn-sm' + (a.primary ? " btn-primary" : (a.type === "WhatsApp" ? " btn-wa" : "")) + '" href="' + esc(a.href) + '"' +
-          (a.ext ? ' target="_blank" rel="noopener"' : "") + ' aria-label="' + esc(a.label + " " + g.name) + '" data-contact="' + a.type + '">' +
-          W.ICONS[a.icon] + a.label + "</a>";
-      }).join("");
-    }
-    var out = [];
-    var tel = W.telHref(g.phone), wa = W.waHref(g.whatsapp);
-    if (tel) out.push('<a class="btn btn-sm" href="' + tel + '" aria-label="Call ' + esc(g.name) + '">' + W.ICONS.phone + "Call</a>");
-    if (wa) out.push('<a class="btn btn-sm btn-wa" href="' + wa + '" target="_blank" rel="noopener" aria-label="WhatsApp ' + esc(g.name) + '">' + W.ICONS.whatsapp + "WhatsApp</a>");
-    if (g.email && (g._dir || out.length < 2)) out.push('<a class="btn btn-sm" href="mailto:' + esc(g.email) + '" aria-label="Email ' + esc(g.name) + '">' + W.ICONS.mail + "Email</a>");
-    return out.join("");
-  }
   function renderGemachs() {
     if (!data.gemachs.length) {
       gemachList.innerHTML = '<li class="empty-state"><p>No gemachs are listed yet. Want to list yours? Email <a href="mailto:' + W.CONTACT_EMAIL + '">' + W.CONTACT_EMAIL + "</a>.</p></li>";
@@ -250,7 +234,9 @@
         '<div class="gemach-head">' + avatar + '<h3><a href="' + W.gemachUrl(g.slug) + '">' + esc(g.name) + "</a></h3></div>" +
         (g.tagline ? '<p class="gemach-tagline">' + esc(g.tagline) + "</p>" : "") +
         '<div class="gemach-meta">' + meta.join("") + phoneLine + "</div>" +
-        '<div class="gemach-actions">' + quickLinks(g) + "</div>" +
+        // No contact buttons on the home page (contact details are only on the gemach's own page, against scraping);
+        // the whole card opens the gemach. This is just the visual cue.
+        '<div class="gemach-actions"><span class="gemach-go" aria-hidden="true">View gemach' + W.ICONS.chevron + "</span></div>" +
         "</article></li>";
     }).join("");
     // Per-card theme colors via CSSOM (CSP forbids inline style attributes)

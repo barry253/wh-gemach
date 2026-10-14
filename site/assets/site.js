@@ -538,6 +538,35 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initFooter);
   else initFooter();
 
+  // ── Gemach contact details: served apart from the page data, lightly encoded (worker public.js encodeContact) ──
+  var CONTACT_KEYS = ["phone", "email", "whatsapp", "primaryContact", "secondaryContact"];
+  /** Reversed base64 of UTF-8 JSON → { phone, email, whatsapp, primaryContact, secondaryContact }; null if unreadable. */
+  function decodeContact(c) {
+    try {
+      var bin = atob(String(c || "").split("").reverse().join(""));
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var o = JSON.parse(typeof TextDecoder !== "undefined" ? new TextDecoder().decode(bytes) : decodeURIComponent(escape(bin)));
+      if (!o || typeof o !== "object") return null;
+      var out = {};
+      CONTACT_KEYS.forEach(function (k) { out[k] = typeof o[k] === "string" && o[k] ? o[k] : null; });
+      return out;
+    } catch (e) { return null; }
+  }
+  /** GET /public/contact/:slug (test link: ?test=) → decoded contact. Rejects on failure (err.status 404 when not public). */
+  function loadContact(slug, testToken) {
+    return fetchJSON("/public/contact/" + encodeURIComponent(slug) + (testToken ? "?test=" + encodeURIComponent(testToken) : ""), { timeout: 15000 })
+      .then(function (d) {
+        var c = d && decodeContact(d.c);
+        if (!c) throw new Error("bad contact");
+        return c;
+      });
+  }
+  /** True when the payload already carries contact details (an older worker sent them inline). */
+  function hasInlineContact(g) {
+    return !!g && CONTACT_KEYS.some(function (k) { return k in g; });
+  }
+
   window.WHG = {
     API_BASE: API_BASE,
     track: track,
@@ -570,6 +599,9 @@
     attrText: attrText,
     catSlug: catSlug,
     contactActions: contactActions,
+    decodeContact: decodeContact,
+    loadContact: loadContact,
+    hasInlineContact: hasInlineContact,
     requestStyle: requestStyle,
     eventWindow: eventWindow,
     parseYMD: parseYMD,

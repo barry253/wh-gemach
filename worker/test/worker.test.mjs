@@ -453,7 +453,10 @@ await t("v2 directory: categories (active, sorted, keywords), gemach order, mode
   assert.deepEqual(d.gemachs.map(g => g.slug), [A.slug, C.slug, B.slug], "displayOrder then blank last");
   const a = d.gemachs[0];
   assert.equal(a.mode, "Full"); assert.equal(a.tagline, "Mobility equipment"); assert.equal(a.displayOrder, 10);
-  for (const k of ["website", "donationUrl", "hours", "logoUrl", "whatsapp"]) assert.ok(k in a && a[k] === null, k);
+  for (const k of ["website", "donationUrl", "hours", "logoUrl"]) assert.ok(k in a && a[k] === null, k);
+  // contact details live only behind /public/contact/:slug (anti-scraping)
+  for (const g of d.gemachs) for (const k of ["phone", "email", "whatsapp", "primaryContact", "secondaryContact"]) assert.ok(!(k in g), `${g.slug} ${k}`);
+  for (const s of ["wh@example.com", "986-7345", "516-555-0000"]) assert.ok(!txt.includes(s), s);
   assert.equal(d.gemachs[1].mode, "Directory");
   assert.equal(d.gemachs[2].mode, "Full", "blank mode defaults to Full");
   assert.ok(d.generatedAt);
@@ -667,20 +670,43 @@ await t("v3 unit: contrast-picked header text + HTML email escaping", async () =
   assert.ok(!X.buildEmailHtml({ name: "x", logoUrl: "javascript:alert(1)" }, "m").includes("<img"));
 });
 
+/** Same decoding as the site (site.js W.decodeContact): reversed base64 of UTF-8 JSON. */
+const decodeC = c => JSON.parse(Buffer.from(String(c).split("").reverse().join(""), "base64").toString("utf8"));
+
+await t("contact: /public/contact/:slug returns the encoded contact; no plain email/phone in the response", async () => {
+  const r = await call(`/public/contact/${A.slug}`);
+  assert.equal(r.status, 200);
+  const txt = await r.text();
+  assert.ok(!/@|986|7345|example/.test(txt), "nothing a harvester could match: " + txt);
+  const a = decodeC(JSON.parse(txt).c);
+  assert.deepEqual(Object.keys(a).sort(), ["email", "phone", "primaryContact", "secondaryContact", "whatsapp"]);
+  assert.equal(a.phone, "(718) 986-7345"); assert.match(a.email, /@example\.com$/);
+  assert.equal(a.email, DB.Gemachs.find(x => x.id === A.id).fields.Email);
+  assert.equal(decodeC((await (await call(`/public/contact/${C.slug}`)).json()).c).phone, "516-555-0000", "listing-only gemachs too");
+  assert.equal((await call(`/public/contact/hidden-one`)).status, 404, "hidden gemach");
+  assert.equal((await call(`/public/contact/nope`)).status, 404);
+  assert.equal((await call(`/public/contact/..%2Fx`)).status, 404, "bad slug");
+  const u = await call(`/public/contact/${B.slug}`, { headers: { Origin: "https://whgemachs.org" } });
+  assert.equal(u.headers.get("Access-Control-Allow-Origin"), "https://whgemachs.org", "CORS like the other public routes");
+  // non-ASCII survives the encoding
+  assert.deepEqual(decodeC(X.encodeContact ? X.encodeContact({ n: "Bárry ✡" }) : (await import("../src/public.js")).encodeContact({ n: "Bárry ✡" })), { n: "Bárry ✡" });
+});
+
 await t("v3 public profile: new fields with defaults; Logo URL preferred", async () => {
   const d = await (await call(`/public/directory`)).json();
   const b = d.gemachs.find(g => g.slug === B.slug);
-  assert.deepEqual({ primaryContact: b.primaryContact, secondaryContact: b.secondaryContact, themeColor: b.themeColor, accentColor: b.accentColor,
+  assert.deepEqual({ themeColor: b.themeColor, accentColor: b.accentColor,
     depositRequired: b.depositRequired, depositInfo: b.depositInfo, gemachInfo: b.gemachInfo, requestStyle: b.requestStyle, eventLabel: b.eventLabel,
     pickupDaysBefore: b.pickupDaysBefore, returnDaysAfter: b.returnDaysAfter, shabbosAdjust: b.shabbosAdjust, logoUrl: b.logoUrl },
-    { primaryContact: null, secondaryContact: null, themeColor: "#1B3A4B", accentColor: null, depositRequired: false, depositInfo: null, gemachInfo: null,
+    { themeColor: "#1B3A4B", accentColor: null, depositRequired: false, depositInfo: null, gemachInfo: null,
       requestStyle: "Dates", eventLabel: "Event date", pickupDaysBefore: 1, returnDaysAfter: 1, shabbosAdjust: false, logoUrl: null });
   setG(B.id, { "Theme Color": "#abcdef", "Accent Color": "bad", "Pickup Days Before": 40, "Return Days After": 0, "Request Style": "Event",
     "Primary Contact": "Email", Logo: [{ url: "https://att/1.png" }], "Logo URL": "https://assets/other-gemach/logo/1.png" });
   const g = (await (await call(`/public/gemach/${B.slug}`)).json()).gemach;
   assert.equal(g.themeColor, "#ABCDEF"); assert.equal(g.accentColor, null);
   assert.equal(g.pickupDaysBefore, 14); assert.equal(g.returnDaysAfter, 0);
-  assert.equal(g.requestStyle, "Event"); assert.equal(g.primaryContact, "Email");
+  assert.equal(g.requestStyle, "Event"); assert.ok(!("primaryContact" in g) && !("email" in g), "contact not in the page payload");
+  assert.equal(decodeC((await (await call(`/public/contact/${B.slug}`)).json()).c).primaryContact, "Email");
   assert.equal(g.logoUrl, "https://assets/other-gemach/logo/1.png");
   assert.ok(!("logoUrlField" in g) && !("rawTemplates" in g));
 });
@@ -4055,6 +4081,12 @@ if (D1_MODE) {
     assert.ok(!JSON.stringify(d).includes("pickupAddress"));
     const dir = await (await call("/public/directory?tl=1")).json();
     assert.ok(!dir.gemachs.some(g => g.slug === HG.slug), "still not in the directory");
+    assert.equal((await call(`/public/contact/${HG.slug}`)).status, 404, "contact hidden without the link");
+    assert.equal((await call(`/public/contact/${HG.slug}?test=${sigS}`)).status, 404, "contact: another gemach's signature");
+    const c = await call(`/public/contact/${HG.slug}?test=${sigH}`);
+    assert.equal(c.status, 200);
+    assert.equal(c.headers.get("Cache-Control"), "no-store");
+    assert.ok("phone" in decodeC((await c.json()).c));
   });
 
   await t("test link: coming-soon gemach becomes requestable only through the link", async () => {

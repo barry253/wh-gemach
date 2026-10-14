@@ -46,6 +46,7 @@ async function setup(ctx) {
     if (m) { const p = payload(decodeURIComponent(m[1])); return p ? r.fulfill({ json: p, headers: cors }) : r.fulfill({ status: 404, json: { error: 'Not found' }, headers: cors }); }
     if (u.pathname === '/public/search-log') return r.fulfill({ status: 204, headers: cors });
     if (u.pathname === '/public/config') return r.fulfill({ json: { turnstileSiteKey: null }, headers: cors });
+    if (u.pathname.startsWith('/public/contact/')) return r.fulfill({ json: { c: '=03e' }, headers: cors }); // payloads here still carry contact inline (older worker); see contact-endpoint.test.cjs
     r.fulfill({ status: 404, json: { error: 'nope' }, headers: cors });
   });
 }

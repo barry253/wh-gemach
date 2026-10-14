@@ -90,8 +90,12 @@ async function loadInventory(db, g, opts = {}) {
 }
 
 // Public profile fields only — NEVER pickupAddress / pickupInstructions / templates.
-function publicGemach(g, communityName) {
-  return {
+// The directory and the public gemach page leave out the contact details (withContact: false); the page
+// gets them from GET /public/contact/:slug (see handlePublicContact) so the whole network's phones and
+// emails aren't sitting in one easily scraped response. Manage page and admin keep them inline.
+const CONTACT_KEYS = ["phone", "email", "whatsapp", "primaryContact", "secondaryContact"];
+function publicGemach(g, communityName, { withContact = true } = {}) {
+  const out = {
     id: g.id, slug: g.slug, name: g.name, tagline: g.tagline, description: g.description, category: g.category,
     mode: g.mode || "Full",
     phone: g.phone, email: g.email, whatsapp: g.whatsapp,
@@ -108,6 +112,48 @@ function publicGemach(g, communityName) {
     comingSoon: !!g.comingSoon,
     browseCategoryIds: g.browseCategoryIds || [],
   };
+  if (!withContact) for (const k of CONTACT_KEYS) delete out[k];
+  return out;
+}
+
+/** Just the contact details: { phone, email, whatsapp, primaryContact, secondaryContact } (blank → null). */
+function publicContact(g) {
+  return {
+    phone: nonBlank(g.phone), email: nonBlank(g.email), whatsapp: nonBlank(g.whatsapp),
+    primaryContact: g.primaryContact ?? null, secondaryContact: g.secondaryContact ?? null,
+  };
+}
+
+/**
+ * Light encoding so plain-text harvesters (regexes for "@" and phone numbers) find nothing in the response:
+ * JSON → UTF-8 → base64 → reversed. Not secret — the site decodes it (site.js W.decodeContact).
+ */
+function encodeContact(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).split("").reverse().join("");
+}
+function decodeContact(c) {
+  const bin = atob(String(c).split("").reverse().join(""));
+  return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, ch => ch.charCodeAt(0))));
+}
+
+/** GET /public/contact/:slug[?test=] → { c } (encoded contact). Live and Coming-soon gemachs; Hidden only via a test link. */
+async function handlePublicContact(db, env, ctx, slug, testToken = null) {
+  slug = String(slug || "").toLowerCase();
+  if (!SLUG_RE.test(slug)) return json({ error: "Not found" }, 404);
+  if (testToken) {
+    const g = await loadGemachBySlug(db, slug);
+    if (await inTestMode(env, g, testToken)) {
+      return json({ c: encodeContact(publicContact(g)) }, 200, { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+    }
+  }
+  return cachedJson(env, ctx, cacheKey(env, `contact/${slug}`), async () => {
+    const g = await loadGemachBySlug(db, slug);
+    if (!g || !g.active) return { status: 404, data: { error: "Not found" } };
+    return { status: 200, data: { c: encodeContact(publicContact(g)) } };
+  });
 }
 
 /** Active Product Categories, sorted by Display Order (blank last) then name. */
@@ -162,7 +208,7 @@ async function buildDirectory(db) {
   return {
     categories,
     gemachs: gemachs.map(g => ({
-      ...publicGemach(g, communityName[g.communityIds[0]]),
+      ...publicGemach(g, communityName[g.communityIds[0]], { withContact: false }),
       items: g.mode === "Info" ? [] : typesByGemach[g.id] || [], // Info only: no online listings
     })),
     generatedAt: new Date().toISOString(),
@@ -204,7 +250,7 @@ async function gemachPageData(db, g) {
     fetchByIds(db, T.COMMUNITIES, g.communityIds.slice(0, 1), { fields: ["Name"] }),
     loadCategories(db),
   ]);
-  return { gemach: publicGemach(g, communities[0]?.fields?.Name), items, categories };
+  return { gemach: publicGemach(g, communities[0]?.fields?.Name, { withContact: false }), items, categories };
 }
 
-export { publicItemType, loadInventory, publicGemach, loadCategories, handleLegacyInventory, buildDirectory, directoryBuilder, handleDirectory, handlePublicGemach, gemachBuilder };
+export { publicItemType, loadInventory, publicGemach, publicContact, encodeContact, decodeContact, handlePublicContact, loadCategories, handleLegacyInventory, buildDirectory, directoryBuilder, handleDirectory, handlePublicGemach, gemachBuilder };

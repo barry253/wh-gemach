@@ -157,11 +157,11 @@ async function cachedJson(env, ctx, key, build) {
 /** After an admin change: drop the cached copies, then rebuild them right away so visitors don't hit a cold cache. */
 function purgePublicCache(env, ctx, slug) {
   const cache = globalThis.caches?.default;
-  const dirKey = cacheKey(env, "directory"), gKey = cacheKey(env, `gemach/${slug}`);
-  memCache.delete(dirKey); memCache.delete(gKey);
+  const dirKey = cacheKey(env, "directory"), gKey = cacheKey(env, `gemach/${slug}`), cKey = cacheKey(env, `contact/${slug}`);
+  memCache.delete(dirKey); memCache.delete(gKey); memCache.delete(cKey);
   // New data version first: every other location sees its copies are out of date at its next check.
   const p = bumpDataVersion(env)
-    .then(() => cache ? Promise.all([cache.delete(new Request(dirKey)), cache.delete(new Request(gKey))]) : null)
+    .then(() => cache ? Promise.all([cache.delete(new Request(dirKey)), cache.delete(new Request(gKey)), cache.delete(new Request(cKey))]) : null)
     .catch(e => console.error("cache purge failed:", e.message))
     .then(() => {
       if (!cache) return null;

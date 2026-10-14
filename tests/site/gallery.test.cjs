@@ -51,6 +51,7 @@ async function setup(ctx) {
       return r.fulfill({ status: postStatus, json: postReply, headers: cors });
     }
     if (u.pathname === '/public/config') return r.fulfill({ json: { turnstileSiteKey: null }, headers: cors });
+    if (u.pathname.startsWith('/public/contact/')) return r.fulfill({ json: { c: '=03e' }, headers: cors }); // payloads here still carry contact inline (older worker); see contact-endpoint.test.cjs
     r.fulfill({ status: 404, json: { error: 'nope' }, headers: cors });
   });
 }

@@ -6717,7 +6717,7 @@
         <div class="kpi-sub">${esc(sh.loadFails)} couldn't load · ${esc(sh.jsErrors)} script errors</div></div>
     </div>`;
     if (sh.top.length) html += `<div class="card stat-block"><h4>Problems visitors ran into</h4><div class="net-an-scroll"><table class="stat-table net-an-problems"><thead><tr><th>What happened</th><th>Where</th><th class="num">Times</th><th class="num">Last</th></tr></thead><tbody>${
-      sh.top.map(x => `<tr><td>${x.kind === "load-fail" ? `Couldn't load the ${esc(x.label === "directory" ? "home page" : x.label === "manage" ? "request link page" : "gemach page")}` : esc(x.label)}</td>
+      sh.top.map(x => `<tr><td>${x.kind === "load-fail" ? `Couldn't load the ${esc(x.label === "directory" ? "home page" : x.label === "manage" ? "request link page" : x.label === "contact" ? "contact buttons on a gemach page" : "gemach page")}` : esc(x.label)}</td>
         <td class="card-id">${esc([x.page && netPageName(x.page, d), x.src && x.src + (x.line ? ":" + x.line : ""), x.browser].filter(Boolean).join(" · "))}</td>
         <td class="num">${esc(x.count)}</td><td class="num card-id">${esc(x.lastAt ? fmt(x.lastAt.slice(0, 10)) : "")}</td></tr>`).join("")}</tbody></table></div>
       <p class="stat-note">"Couldn't load" usually means a slow or dropped connection; the same script error many times is worth a look.</p></div>`;

@@ -30,6 +30,25 @@
   var typeHandled = false;
 
   var gemach = null, items = [], categories = [];
+  // Contact details come from their own request (GET /public/contact/:slug), not the page data.
+  var contact = null, contactState = "loading"; // "loading" | "ok" | "failed"
+  /** The gemach with its contact details merged in (an older payload that still carries them is used as is). */
+  function withContact(g) {
+    if (!g || W.hasInlineContact(g) || !contact) return g;
+    var out = {};
+    Object.keys(g).forEach(function (k) { out[k] = g[k]; });
+    Object.keys(contact).forEach(function (k) { out[k] = contact[k]; });
+    return out;
+  }
+  function contactPending(g) { return !!g && !W.hasInlineContact(g) && !contact; }
+  /** Placeholder while the contact details load (keeps the space), or a retry button when they couldn't load. */
+  function contactStatusHtml(cls) {
+    if (contactState === "failed") {
+      return '<div class="' + cls + ' contact-failed" role="status"><span>Couldn’t load contact details.</span> ' +
+        '<button type="button" class="btn btn-sm contact-retry" data-contact-retry>Try again</button></div>';
+    }
+    return '<div class="' + cls + ' contact-pending" aria-hidden="true"><span class="contact-ghost"></span><span class="contact-ghost"></span></div>';
+  }
   var selected = new Set();
   var attrFilter = {};        // { "Size": ["8","10"] } — values picked in the filter bar
   var sortBySize = false;
@@ -43,6 +62,7 @@
   // ── Render ──
   /** Header contact buttons (pills on the cream area under the band). */
   function contactButtons(g) {
+    if (contactPending(g)) return contactStatusHtml("contact-row");
     var links = contactLinks(g);
     if (!links.length) return "";
     return '<div class="contact-row">' + links.map(function (a, i) {
@@ -166,6 +186,8 @@
 
   /** Contact buttons: the gemach's chosen methods (v3), or Call / WhatsApp / Email from whatever is set (older payloads). */
   function contactLinks(g) {
+    g = withContact(g);
+    if (contactPending(g)) return [];
     var acts = W.contactActions(g);
     if (acts) return acts;
     var out = [], tel = W.telHref(g.phone), wa = W.waHref(g.whatsapp);
@@ -322,7 +344,7 @@
   function infoOnlyBox() {
     var g = gemach;
     var info = W.formatText(g.gemachInfo);
-    var acts = W.contactActions(g) || [];
+    var acts = W.contactActions(withContact(g)) || [];
     var btns = acts.map(function (a) {
       return '<a class="btn' + (a.primary ? " btn-primary" : (a.type === "WhatsApp" ? " btn-wa" : "")) + '" href="' + esc(a.href) + '"' +
         (a.ext ? ' target="_blank" rel="noopener"' : "") + ">" + W.ICONS[a.icon] + esc(a.label) + "</a>";
@@ -332,7 +354,7 @@
     if (g.depositRequired) rows.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
     return '<section class="info-only" aria-labelledby="io-title"><h2 id="io-title">How this gemach works</h2>' +
       (info ? '<div class="prose io-prose">' + info + "</div>" : '<p class="io-prose">Contact the gemach using the buttons below.</p>') +
-      rows.join("") + (btns ? '<div class="io-actions">' + btns + "</div>" : "") + "</section>";
+      rows.join("") + (contactPending(g) ? contactStatusHtml("io-actions") : btns ? '<div class="io-actions">' + btns + "</div>" : "") + "</section>";
   }
 
   /** Listing-only gemachs can send borrowers to their own request form (e.g. a Google Form). https only. */
@@ -1405,9 +1427,10 @@
   }
 
   function gemachContactLine() {
+    var g = withContact(gemach) || {};
     var bits = [];
-    if (gemach.phone) bits.push(gemach.phone);
-    if (gemach.email) bits.push(gemach.email);
+    if (g.phone) bits.push(g.phone);
+    if (g.email) bits.push(g.email);
     return bits.length ? " You can also reach the gemach at " + bits.join(" or ") + "." : " Please email " + W.CONTACT_EMAIL + ".";
   }
 
@@ -1645,7 +1668,35 @@
     });
   }
 
+  /** Fetch the contact details (in parallel with the page data); re-render once they arrive. */
+  function loadContact() {
+    contactState = "loading";
+    renderContactSpots();
+    return W.loadContact(slug, testToken).then(function (c) {
+      contact = c; contactState = "ok";
+      renderContactSpots();
+    }, function (err) {
+      if (err && err.status === 404) { contact = {}; contactState = "ok"; } // not public: the page itself will say so
+      else { contactState = "failed"; if (W.loadFailed) W.loadFailed("contact"); }
+      renderContactSpots();
+    });
+  }
+  /** Redraw just the places with contact buttons (header, slim bar, Info-only box), not the whole inventory. */
+  function renderContactSpots() {
+    if (!gemach || !$("g-head").querySelector(".g-name")) return;
+    renderHeader();
+    if (W.isInfoOnly(gemach)) {
+      var io = document.querySelector(".info-only");
+      if (io) io.outerHTML = infoOnlyBox();
+    }
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest && e.target.closest("[data-contact-retry]");
+    if (b) { e.preventDefault(); loadContact(); }
+  });
+
   if (!slug) { renderNotFound(); return; }
+  loadContact();
   var hadCache = testToken ? false : fromDirectory(); // test link: wait for the test-mode page instead
   refresh().catch(function (err) {
     if (err && err.status === 404) { gemach = null; renderNotFound(); return; }
