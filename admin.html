@@ -5414,7 +5414,7 @@
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
     info: ["depositRequired", "chargeType", "depositInfo", "gemachInfo"],
-    requests: ["requestFormUrl", "borrowNote", "requestStyle", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
+    requests: ["requestFormUrl", "borrowNote", "requestStyle", "availabilityMode", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
     reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView", "photoShape"],
     attrs: ["itemAttributes", "groupBy", "spotlightFilter"], browsecats: ["browseCategoryIds"],
   };
@@ -5594,6 +5594,13 @@
             <label for="set-shabbosAdjust">Shabbos adjust (Saturday pickup → Friday, Saturday return → Sunday)</label>
           </div>
           <div class="example-line" id="event-example"></div>
+        </div>
+        <div id="availability-wrap" class="form-group" role="radiogroup" aria-label="How availability is shown" style="margin-top:0.9rem">
+          <label>Availability shown as</label>
+          <label class="radio-card"><input type="radio" name="set-availabilityMode" value="Now" onchange="onSettingsInput()" />
+            <span>Right now<small>Each item says Available or All on loan today. Best when people need something immediately, like medical equipment.</small></span></label>
+          <label class="radio-card"><input type="radio" name="set-availabilityMode" value="Date" onchange="onSettingsInput()" />
+            <span>For a date<small>Borrowers pick the date they need it and see what will be free then, counting reservations. Best for gowns, tablecloths and anything booked weeks ahead.</small></span></label>
         </div>
         <div class="form-group" style="margin-top:0.9rem">
           <label for="set-defaultLoanDays">Usual loan length (days) <span class="muted-small">— optional</span></label>
@@ -5779,6 +5786,9 @@
     const style = ["Dates", "Event", "Appointment"].includes(g.requestStyle) ? g.requestStyle : "Dates";
     document.querySelectorAll('input[name="set-requestStyle"]').forEach(r => { r.checked = r.value === style; r.disabled = ro; });
     remember("requestStyle", style);
+    const availMode = g.availabilityMode === "Date" ? "Date" : "Now";
+    document.querySelectorAll('input[name="set-availabilityMode"]').forEach(r => { r.checked = r.value === availMode; r.disabled = ro; });
+    remember("availabilityMode", availMode);
     setEl("pickupDaysBefore").value = g.pickupDaysBefore ?? 1;
     setEl("returnDaysAfter").value = g.returnDaysAfter ?? 1;
     setEl("shabbosAdjust").checked = !!g.shabbosAdjust;
@@ -5962,6 +5972,7 @@
     const style = document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates";
     document.querySelectorAll('.radio-card[id^="rs-card-"]').forEach(c => c.classList.toggle("selected", c.id === `rs-card-${style}`));
     document.getElementById("event-options").style.display = style === "Event" ? "" : "none";
+    document.getElementById("availability-wrap").style.display = style === "Appointment" ? "none" : ""; // appointments reserve nothing, so there's no availability to show
     // Live example: the next Sunday at least two weeks out, using the same rule as the server.
     const now = new Date();
     let ms = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) + 14 * DAY_MS;
@@ -6350,6 +6361,7 @@
     put("groupBy", setEl("groupBy").value);
     put("spotlightFilter", setEl("spotlightFilter").value);
     put("requestStyle", document.querySelector('input[name="set-requestStyle"]:checked')?.value || "Dates");
+    put("availabilityMode", document.querySelector('input[name="set-availabilityMode"]:checked')?.value || "Now");
     for (const k of ["pickupDaysBefore", "returnDaysAfter"]) {
       const raw = setEl(k).value.trim();
       const n = Number(raw);

@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS gemachs (
   spotlight_filter TEXT,  -- Spotlight Filter
   borrow_note TEXT,  -- Borrow Note
   photo_shape TEXT,  -- Photo Shape
+  availability_mode TEXT,  -- Availability Mode
   onboarding TEXT  -- Onboarding
 );
 

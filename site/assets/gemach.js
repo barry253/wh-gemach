@@ -54,6 +54,9 @@
   var selected = new Set();
   var attrFilter = {};        // { "Size": ["8","10"] } — values picked in the filter bar
   var sortBySize = false;
+  // Availability for a date (gemach Settings → Availability = "For a date"): the date a person is checking, and
+  // whether to list only what's free on it. Kept for the tab so it carries into the request form.
+  var availDate = "", availUntil = "", availOnly = false, availBad = "", availLoaded = false;
   var lastFocus = null;
   var loadedFresh = false;
   // Arriving from the home page's "See all N at …": ?cat=<category slug>&q=<search text> narrows the
@@ -229,7 +232,7 @@
 
   /** Fewest free at any point of [from, to] (to = null: open-ended). Same rule as the server. */
   function qtyFree(it, from, to) {
-    var total = Math.max(0, it.totalUnits || 0);
+    var total = Math.max(0, capOf(it));
     var list = (it.bookings || []).filter(function (b) { return (to == null || b.from <= to) && (b.to == null || b.to >= from); });
     var points = [from].concat(list.map(function (b) { return b.from; }).filter(function (d) { return d > from; }));
     var peak = 0;
@@ -314,6 +317,166 @@
   }
   function style() { return W.requestStyle(gemach); }
 
+  // ── Availability for a date ──
+  // Gemachs that lend weeks ahead (gowns, tablecloths…) can show what WILL be free on a date instead of what's free
+  // today. The page data carries each item's booking windows (no names); the same overlap rule as the request form
+  // and the server works out how many are free for the whole window. Soft: items that are taken can still be requested.
+  /** Pieces/units the gemach can lend (quantity types: totalUnits; numbered units: capacity, i.e. not Needs Repair). */
+  function capOf(it) { return isQty(it) || typeof it.capacity !== "number" ? (it.totalUnits || 0) : it.capacity; }
+  function dateMode() {
+    if (!gemach || gemach.availabilityMode !== "Date" || !W.acceptsRequests(gemach) || W.isComingSoon(gemach) || formUrl()) return false;
+    var st = style();
+    return st === "Dates" || st === "Event"; // appointments reserve nothing, so there's nothing to project
+  }
+  function availKey() { return "whg_avail:" + ((gemach && gemach.slug) || slug); }
+  function loadAvail() {
+    if (availLoaded) return;
+    availLoaded = true;
+    try {
+      var o = JSON.parse(sessionStorage.getItem(availKey()) || "null");
+      if (o && W.parseYMD(o.d) && o.d >= W.todayNY() && o.d <= W.maxEventDate()) {
+        availDate = o.d; availUntil = W.parseYMD(o.u) && o.u > o.d ? o.u : ""; availOnly = !!o.o;
+      }
+    } catch (e) { /* storage blocked: the date just isn't remembered */ }
+  }
+  function saveAvail() {
+    try { sessionStorage.setItem(availKey(), JSON.stringify({ d: availDate, u: availUntil, o: availOnly })); } catch (e) { /* ignore */ }
+  }
+  /** The dates the checked date stands for: Event gemachs use pickup → return around the event; Dates gemachs the chosen days. */
+  function availWindow() {
+    if (!dateMode() || !availDate || !W.parseYMD(availDate)) return null;
+    if (style() === "Event") { var w = W.eventWindow(availDate, gemach); return w ? { from: w.pickup, to: w.ret } : null; }
+    return { from: availDate, to: availUntil && availUntil > availDate ? availUntil : availDate };
+  }
+  function shortDay(s) {
+    var d = W.parseYMD(s);
+    return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : String(s || "");
+  }
+  /** "Oct 28" or, for a Dates gemach with an end date, "Oct 28 – Nov 2". */
+  function availLabel() { return style() === "Dates" && availUntil && availUntil > availDate ? shortDay(availDate) + " – " + shortDay(availUntil) : shortDay(availDate); }
+  /** { free, total, back } for the checked date, or null (no date, add-on, or the page data has no booking windows). */
+  function availFor(it) {
+    var w = availWindow();
+    if (!w || isAddon(it) || !Array.isArray(it.bookings)) return null;
+    var free = qtyFree(it, w.from, w.to), back = null;
+    if (free < 1) it.bookings.forEach(function (b) {
+      if (b.to != null && (w.to == null || b.from <= w.to) && b.to >= w.from && (back === null || b.to < back)) back = b.to;
+    });
+    return { free: free, total: capOf(it), back: back };
+  }
+  /** The badge for an item on the checked date, or null (use the usual "right now" one). */
+  function dateBadge(it) {
+    var a = availFor(it);
+    if (!a) return null;
+    var on = style() === "Dates" && availUntil && availUntil > availDate ? "" : "on ", d = availLabel();
+    if (a.total < 1) return '<span class="badge badge-out">Not available</span>';
+    var back = a.back ? ' <span class="avail-back">back ' + esc(shortDay(a.back)) + "</span>" : "";
+    if (a.total > 1) {
+      return a.free > 0 ? '<span class="badge badge-ok">' + a.free + " of " + a.total + " free " + on + esc(d) + "</span>"
+                        : '<span class="badge badge-out">None free ' + on + esc(d) + "</span>" + back;
+    }
+    return a.free > 0 ? '<span class="badge badge-ok">Free ' + on + esc(d) + "</span>"
+                      : '<span class="badge badge-out">Taken for ' + esc(d) + "</span>" + back;
+  }
+  /** With "only what's free" on, items with none free on the checked date are left out (add-ons always stay). */
+  function passesAvail(it) {
+    if (!availOnly || isAddon(it)) return true;
+    var a = availFor(it);
+    return !a || a.free > 0;
+  }
+  /** Line under "Gemach Inventory" on a date-mode page. */
+  function availSub() {
+    return availWindow() ? "Showing what’s free on " + esc(availLabel()) + ' · <button type="button" class="avail-change" id="av-change">Change date</button>'
+      : "Choose a date above to see what’s free";
+  }
+  function availBarHtml() {
+    if (!dateMode()) return "";
+    var ev = style() === "Event";
+    var today = W.todayNY(), max = W.maxEventDate();
+    return '<section class="avail-bar" id="avail-bar" aria-labelledby="av-title">' +
+      '<h2 class="avail-title" id="av-title">' + (ev ? "Check availability for your " + esc(eventLabel().toLowerCase()) : "Check availability for your dates") + "</h2>" +
+      '<div class="avail-fields">' +
+        '<div class="avail-field"><label for="av-date">' + (ev ? esc(eventLabel()) : "Needed from") + '</label>' +
+        '<input type="date" id="av-date" value="' + esc(availDate) + '" min="' + today + '" max="' + max + '" /></div>' +
+        (ev ? "" : '<div class="avail-field"><label for="av-until">Until <span class="opt">(optional)</span></label>' +
+        '<input type="date" id="av-until" value="' + esc(availUntil) + '" min="' + (availDate ? W.addDaysYMD(availDate, 1) : today) + '" max="' + max + '" /></div>') +
+      "</div>" +
+      '<p class="avail-note" id="av-note" role="status" aria-live="polite"></p>' +
+      '<label class="avail-only" id="av-only-row"><input type="checkbox" id="av-only"' + (availOnly ? " checked" : "") + " /> <span>Only show what’s free</span></label>" +
+      "</section>";
+  }
+  /** Refresh the sentence under the date fields (and hide the checkbox until there's a date). */
+  function updateAvailBar() {
+    var note = $("av-note");
+    if (!note) return;
+    var w = availWindow(), row = $("av-only-row");
+    if (row) row.hidden = !w;
+    var until = $("av-until");
+    if (until) until.min = availDate ? W.addDaysYMD(availDate, 1) : W.todayNY();
+    if (!w) { note.textContent = availBad || "Choose a date to see what will be free."; note.classList.toggle("warn", !!availBad); return; }
+    note.classList.remove("warn");
+    var all = items.filter(function (it) { return !isAddon(it) && Array.isArray(it.bookings); });
+    var free = all.filter(function (it) { return availFor(it).free > 0; }).length;
+    var ev = style() === "Event";
+    note.innerHTML = "<b>" + free + " of " + all.length + "</b> " + (all.length === 1 ? "item is" : "items are") + " free " + (ev ? "for your " + esc(eventLabel().toLowerCase()) + " on " + esc(W.fmtDay(availDate)) + " (pick up " + esc(shortDay(w.from)) + ", return " + esc(shortDay(w.to)) + ")" : "from " + esc(availLabel())) + ".";
+  }
+  function syncBarInputs() {
+    var d = $("av-date"), u = $("av-until");
+    if (d) d.value = availDate;
+    if (u) u.value = availUntil;
+  }
+  function setAvail(d, u, bad) {
+    availDate = d; availUntil = u; availBad = bad || "";
+    saveAvail(); syncBarInputs(); updateAvailBar(); rerenderInventory(); refreshModalAvail();
+  }
+  $("g-body").addEventListener("change", function (e) {
+    var id = e.target.id;
+    if (id !== "av-date" && id !== "av-until" && id !== "av-only") return;
+    if (id === "av-only") { availOnly = e.target.checked; saveAvail(); rerenderInventory(); return; }
+    var v = e.target.value, today = W.todayNY();
+    if (id === "av-date") {
+      if (!v) { setAvail("", ""); return; }
+      if (!W.parseYMD(v)) { setAvail("", "", "Please enter a valid date."); return; }
+      if (v < today) { setAvail("", "", "That date has passed — please choose today or later."); return; }
+      if (v > W.maxEventDate()) { setAvail("", "", "Please choose a date within the next 2 years."); return; }
+      setAvail(v, availUntil && availUntil > v ? availUntil : "");
+      return;
+    }
+    if (!availDate) return;
+    setAvail(availDate, W.parseYMD(v) && v > availDate && v <= W.maxEventDate() ? v : "");
+  });
+  $("g-body").addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest("#av-change")) return;
+    var d = $("av-date");
+    if (d) { d.scrollIntoView({ block: "center" }); d.focus(); }
+  });
+  /** The request form's own date fields change the checked date too, so the badges and the item list agree. */
+  function syncAvailFromForm() {
+    if (!dateMode()) return;
+    var today = W.todayNY(), ev = style() === "Event";
+    var v = $(ev ? "f-event" : "f-from").value;
+    if (!v || !W.parseYMD(v) || v < today || v > W.maxEventDate()) return;
+    var u = ev ? "" : $("f-until").value;
+    setAvail(v, !ev && W.parseYMD(u) && u > v ? u : "");
+  }
+  /** Date the form asks for starts as the one already checked on the page. */
+  function prefillFormDates() {
+    if (!dateMode() || !availDate) return;
+    if (style() === "Event") { if (!$("f-event").value) $("f-event").value = availDate; }
+    else if (!$("f-from").value) { $("f-from").value = availDate; if (availUntil && !$("f-until").value) $("f-until").value = availUntil; }
+    updateDateMins(); updateEventSummary(); updateQtyNotes();
+  }
+  /** "Taken for Oct 28" notes beside the items in the request form's list. */
+  function refreshModalAvail() {
+    Array.prototype.forEach.call(modal.querySelectorAll("[data-av]"), function (el) {
+      var it = items.filter(function (x) { return x.id === el.getAttribute("data-av"); })[0];
+      var a = it && availFor(it);
+      var taken = !!a && a.free < 1;
+      el.hidden = !taken;
+      el.textContent = taken ? (a.total < 1 ? "Not available" : "Taken for " + availLabel()) + (a.back ? " · back " + shortDay(a.back) : "") : "";
+    });
+  }
+
   // Quantity items lent in whole packages (it.packageSize > 1, e.g. bags of 6 tablecloths).
   // Counts are single pieces; borrowers choose 6, 12, … from a list.
   function pkgSize(it) { return isQty(it) && it.packageSize > 1 ? it.packageSize : 1; }
@@ -385,6 +548,11 @@
     if (W.isDirectory(gemach)) return borrowNote() ? "" : '<span class="badge badge-dir">Contact to check</span>';
     if (isAddon(it)) return '<span class="badge badge-addon">Add-on' + (it.price != null ? " · " + money(it.price) : "") + "</span>";
     if (style() === "Appointment") return "";
+    if (dateMode()) { // what's free on the date being checked; nothing until a date is chosen (today's count would mislead)
+      if (!availWindow()) return "";
+      var db = dateBadge(it);
+      if (db) return db;
+    }
     var n = Math.max(0, it.availableCount || 0);
     return n > 0 ? '<span class="badge badge-ok">' + n + " available</span>"
                  : '<span class="badge badge-out">All on loan</span>';
@@ -823,7 +991,7 @@
       if (!attrFilter[k].length) delete attrFilter[k];
     });
     var scoped = pool();
-    var listed = scoped.filter(passesFilter);
+    var listed = scoped.filter(passesFilter).filter(passesAvail);
     if (sortBySize && sizeDef()) {
       listed = listed.map(function (it, i) { return { it: it, i: i, r: sizeRank(it) }; })
         .sort(function (a, b) { return a.r - b.r || a.i - b.i; }).map(function (x) { return x.it; });
@@ -853,10 +1021,10 @@
 
     var st = style(), view = currentView();
     html += '<div class="inv-head"><div class="inv-title"><h2 class="section-title" id="inv-title" tabindex="-1">Gemach Inventory</h2>' +
-      (dir || st === "Appointment" ? "" : '<span class="section-sub">Availability updates in real time</span>') + "</div>" + viewSwitcher(view) + "</div>";
+      (dir || st === "Appointment" ? "" : '<span class="section-sub">' + (dateMode() ? availSub() : "Availability updates in real time") + "</span>") + "</div>" + viewSwitcher(view) + "</div>";
     var help = {
-      Dates: "Tap the items you need, then send one request. Items on loan can still be requested — the gemach will let you know.",
-      Event: "Tap the items you need, then send one request with your " + esc(eventLabel().toLowerCase()) + ". Items on loan can still be requested — the gemach will let you know.",
+      Dates: "Tap the items you need, then send one request. Items " + (dateMode() ? "taken for your dates" : "on loan") + " can still be requested — the gemach will let you know.",
+      Event: "Tap the items you need, then send one request with your " + esc(eventLabel().toLowerCase()) + ". Items " + (dateMode() ? "taken for your date" : "on loan") + " can still be requested — the gemach will let you know.",
       Appointment: "Browse the collection, then request an appointment to come see it in person. Selecting items you’d like to see is optional."
     };
     html += soon
@@ -875,6 +1043,9 @@
       html += '<nav class="shelf-nav" aria-label="Jump to a section">' + order.map(function (b, k) {
         return '<a class="shelf-link" href="#sec-' + k + '" data-sec="' + k + '">' + esc(b.c.name) + ' <span class="shelf-n">' + b.items.length + "</span></a>";
       }).join("") + "</nav>";
+    }
+    if (availOnly && availWindow() && !listed.some(function (it) { return !isAddon(it); }) && !activeFilterCount()) {
+      html += '<div class="notice notice-info af-none">Nothing is free on ' + esc(availLabel()) + '. Try another date, or untick “Only show what’s free” to see everything.</div>';
     }
     if (activeFilterCount() && !listed.some(function (it) { return !isAddon(it); })) {
       html += '<div class="notice notice-info af-none">Nothing matches these filters. <button type="button" class="af-clear" id="af-clear-2">Clear filters</button></div>';
@@ -905,9 +1076,11 @@
       updateCTA();
       return;
     }
-    $("g-body").innerHTML = comingSoonBanner() + infoPanel() +
+    if (dateMode()) loadAvail();
+    $("g-body").innerHTML = comingSoonBanner() + availBarHtml() + infoPanel() +
       '<div id="inv-wrap"' + (gemach && gemach.photoShape === "Portrait" ? ' class="photos-portrait"' : "") + ">" + renderInventory() + "</div>";
     fitAbout();
+    updateAvailBar();
     updateCTA();
     handleType();
     handleItemLink();
@@ -1337,10 +1510,11 @@
     configureForm(st);
     var label = function (it) {
       var on = selected.has(it.id);
-      var out = !appt && !isAddon(it) && !(it.availableCount > 0);
+      var dm = dateMode();
+      var out = !appt && !dm && !isAddon(it) && !(it.availableCount > 0);
       return '<label class="item-check-label' + (on ? " checked" : "") + '">' +
         '<input type="checkbox" name="modal-items" value="' + esc(it.id) + '"' + (on ? " checked" : "") + " />" +
-        "<span>" + esc(it.name) + (out ? "<small>Currently on loan</small>" : "") +
+        "<span>" + esc(it.name) + (out ? "<small>Currently on loan</small>" : "") + (dm && !isAddon(it) ? '<small data-av="' + esc(it.id) + '" hidden></small>' : "") +
         (isAddon(it) ? "<small>Add-on" + (it.price != null ? " · " + money(it.price) + " each" : "") + "</small>" : "") + "</span></label>";
     };
     var chosen = items.filter(function (it) { return selected.has(it.id); });
@@ -1351,6 +1525,8 @@
         ? '<details class="items-more"><summary>' + (chosen.length ? "Add more items" : "Choose items you’d like to see") + '</summary><div class="items-grid">' + rest.map(label).join("") + "</div></details>"
         : '<div class="items-grid">' + rest.map(label).join("") + "</div>") : "");
     renderQty();
+    prefillFormDates();
+    refreshModalAvail();
     prefillMe();
     $("form-view").hidden = false;
     $("success-view").hidden = true;
@@ -1419,6 +1595,7 @@
   ["f-from", "f-until", "f-event"].forEach(function (id) {
     $(id).addEventListener("input", updateQtyNotes);
     $(id).addEventListener("change", updateQtyNotes);
+    $(id).addEventListener("change", syncAvailFromForm);
   });
 
   function submitLabel() { return style() === "Appointment" ? "Send appointment request" : "Send request"; }

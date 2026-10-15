@@ -116,6 +116,7 @@ const GEMACH_EDITABLE = {
   spotlightFilter:    ["Spotlight Filter", "filter"],
   borrowNote:         ["Borrow Note", "long"],
   photoShape:         ["Photo Shape", "shape"],
+  availabilityMode:   ["Availability Mode", "availmode"],
   browseCategoryIds:  ["Browse Categories", "cats"],
 };
 const GEMACH_LABELS = {
@@ -127,7 +128,7 @@ const GEMACH_LABELS = {
   depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
-  groupBy: "Sections", spotlightFilter: "Holiday spotlight", borrowNote: "How to borrow", photoShape: "Photo shape",
+  groupBy: "Sections", spotlightFilter: "Holiday spotlight", borrowNote: "How to borrow", photoShape: "Photo shape", availabilityMode: "Availability",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
 const MAX_LINE = 200, MAX_LONG = 2000, MAX_FORM_URL = 600; // pre-filled Google Form links run long
@@ -209,6 +210,11 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
     if (kind === "shape") {
       if (!["Landscape", "Portrait"].includes(v)) return { error: "Photo shape must be Landscape or Portrait." };
       fields[field] = v === "Portrait" ? v : null;
+      continue;
+    }
+    if (kind === "availmode") { // "Now" (default, stored blank) or "Date" (what's free for a date the visitor picks)
+      if (!["Now", "Date"].includes(v)) return { error: "Availability must be Now or Date." };
+      fields[field] = v === "Date" ? v : null;
       continue;
     }
     if (kind === "charge") {

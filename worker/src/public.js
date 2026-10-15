@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { Q, fetchByIds, firstLink, getOwned, linkedId } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId } from "./airtable.js";
 import { cacheKey, cachedJson } from "./cache.js";
 import { LEGACY_SLUG, REC_RE, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
@@ -9,7 +9,7 @@ import { itemAttrsFor } from "./attributes.js";
 import { publicTypeExtras } from "./extras.js";
 import { parseMorePhotos } from "./photos.js";
 import { inTestMode } from "./testmode.js";
-import { addonPrice, isAddonType, isQtyType, lendableQty, LOAN_WINDOW_FIELDS, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, loanWindow, LOAN_WINDOW_FIELDS, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ import { addonPrice, isAddonType, isQtyType, lendableQty, LOAN_WINDOW_FIELDS, pa
  * and, with withBookings, the open loans' date windows and counts (no names) so the page can work out
  * what's free for the dates a person picks.
  */
-function publicItemType(type, units, { withCategory = false, bookings = null, withBookings = false, attrDefs = null } = {}) {
+function publicItemType(type, units, { withCategory = false, bookings = null, withBookings = false, attrDefs = null, unitBookings = null } = {}) {
   const photoUrl = type.fields["R2 Photo URL"] || null;
   const out = {
     id: type.id,
@@ -43,6 +43,13 @@ function publicItemType(type, units, { withCategory = false, bookings = null, wi
     const ps = packageSize(type); // lent in whole packages, e.g. bags of 6 tablecloths
     if (ps > 1) { out.packageSize = ps; out.packageUnit = packageUnit(type); }
   }
+  else if (unitBookings && !isAddonType(type)) {
+    // Numbered units on a gemach that shows availability for a date: how many units can be lent at all
+    // (not marked Needs Repair) and the dates the open loans tie them up (no names), so the page can work out
+    // what's free on the date a person picks. Same shape as a quantity type's bookings.
+    out.capacity = units?.bookable[type.id] || 0;
+    out.bookings = (unitBookings[type.id] || []).map(b => ({ from: b.from, to: b.to, qty: b.qty }));
+  }
   if (isAddonType(type)) { // made to order for purchase: no stock, never "on loan"
     out.tracking = "addon";
     out.price = addonPrice(type);
@@ -66,14 +73,40 @@ function publicItemType(type, units, { withCategory = false, bookings = null, wi
  */
 function unitStats(units, openLoans) {
   const busy = new Set(openLoans.filter(l => ["Active", "Reserved"].includes(l.fields["Status"])).map(l => linkedId(firstLink(l.fields["Item"]))).filter(Boolean));
-  const total = {}, free = {};
+  const total = {}, free = {}, bookable = {};
   for (const u of units) {
     const typeId = linkedId(firstLink(u.fields["Item Type"]));
     if (!typeId) continue;
     total[typeId] = (total[typeId] || 0) + 1;
+    if (u.fields["Condition"] !== "Needs Repair") bookable[typeId] = (bookable[typeId] || 0) + 1;
     if (!busy.has(u.id) && u.fields["Condition"] !== "Needs Repair") free[typeId] = (free[typeId] || 0) + 1;
   }
-  return { total, free };
+  return { total, free, bookable };
+}
+
+/**
+ * Open (Reserved / Active) loans of numbered-unit item types as date windows, from the loans already read:
+ * { typeId: [{ from, to, qty: 1, status }] } (to = null: open-ended). A loan belongs to the type it reserves
+ * ("Item to Reserve") or, when picked up with a unit, that unit's type. Loans that ended before today are skipped;
+ * an overdue one stays tied up through today (loanWindow, the rule quantity items use).
+ */
+function unitBookingsFromLoans(units, openLoans, typeIds, g) {
+  const want = new Set(typeIds);
+  if (!want.size) return {};
+  const unitType = new Map(units.map(u => [u.id, linkedId(firstLink(u.fields["Item Type"]))]));
+  const t = nyToday();
+  const out = {};
+  for (const l of openLoans) {
+    if (g && !belongs(l, g)) continue;
+    if (!["Active", "Reserved"].includes(l.fields["Status"])) continue;
+    const typeId = linkedId(firstLink(l.fields["Item to Reserve"])) || unitType.get(linkedId(firstLink(l.fields["Item"])));
+    if (!want.has(typeId)) continue;
+    const w = loanWindow(l.fields, t);
+    if (w.to != null && w.to < t) continue;
+    (out[typeId] ||= []).push({ ...w, qty: 1, status: l.fields["Status"] });
+  }
+  for (const k of Object.keys(out)) out[k].sort((a, b) => a.from.localeCompare(b.from));
+  return out;
 }
 const PUBLIC_UNIT_FIELDS = ["Item Type", "Condition", "Gemach"];
 const publicLoanFields = () => [...LOAN_WINDOW_FIELDS, "Item"]; // a function: quantity.js may load after this module
@@ -86,7 +119,11 @@ async function loadInventory(db, g, opts = {}) {
   ]);
   const stats = unitStats(units, openLoans);
   const bookings = qtyBookingsFromLoans(openLoans, types.filter(isQtyType).map(t => t.id), g);
-  return types.map(t => publicItemType(t, stats, { ...opts, bookings, attrDefs: g.itemAttributes }));
+  // Date-mode gemachs (Settings → Availability) also send the numbered units' booking windows (gemach page only).
+  const unitBookings = opts.withBookings && g.availabilityMode === "Date"
+    ? unitBookingsFromLoans(units, openLoans, types.filter(t => !isQtyType(t) && !isAddonType(t)).map(t => t.id), g)
+    : null;
+  return types.map(t => publicItemType(t, stats, { ...opts, bookings, unitBookings, attrDefs: g.itemAttributes }));
 }
 
 // Public profile fields only — NEVER pickupAddress / pickupInstructions / templates.
@@ -108,6 +145,7 @@ function publicGemach(g, communityName, { withContact = true } = {}) {
     requestStyle: g.requestStyle || "Dates", eventLabel: g.eventLabel || DEFAULT_EVENT_LABEL,
     pickupDaysBefore: g.pickupDaysBefore ?? 1, returnDaysAfter: g.returnDaysAfter ?? 1, shabbosAdjust: !!g.shabbosAdjust,
     itemAttributes: g.itemAttributes || [],
+    availabilityMode: g.availabilityMode === "Date" ? "Date" : "Now",
     photoShape: g.photoShape || "Landscape", groupBy: g.groupBy ?? null, spotlightFilter: g.spotlightFilter ?? null, borrowNote: g.borrowNote ?? null,
     comingSoon: !!g.comingSoon,
     browseCategoryIds: g.browseCategoryIds || [],

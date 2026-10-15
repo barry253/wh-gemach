@@ -4326,6 +4326,81 @@ if (D1_MODE) {
   });
 }
 
+// ── Availability for a date (Settings → Availability): the page gets numbered units' booking windows ──
+{
+  const G = { id: "recAVLGEMACH00001", slug: "avail-gemach" };
+  const Gf = { Gemach: [G.id], "Gemach Slug": [G.slug] };
+  DB.Gemachs.push(rec(G.id, { Name: "Availability Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "ag@example.com", "Request Style": "Event" }));
+  const day = n => { const d = new Date(__WHG_TEST__.nyToday() + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  DB["Item Types"].push(
+    rec("recAVLTYPE0000001", { Name: "Navy gown", Active: true, ...Gf }),
+    rec("recAVLTYPE0000002", { Name: "Gold gown (two sizes)", Active: true, ...Gf }),
+    rec("recAVLTYPE0000003", { Name: "Chairs", Active: true, Tracking: "Quantity", "Quantity Owned": 10, ...Gf }),
+    rec("recAVLTYPE0000004", { Name: "Sweatshirt", Active: true, Tracking: "Add-on", Price: 40, ...Gf }));
+  DB.Items.push(
+    rec("recAVLUNIT0000001", { "Item ID": "AV-1", "Item Type": ["recAVLTYPE0000001"], Active: true, Status: "Available", ...Gf }),
+    rec("recAVLUNIT0000002", { "Item ID": "AV-2", "Item Type": ["recAVLTYPE0000002"], Active: true, Status: "Available", ...Gf }),
+    rec("recAVLUNIT0000003", { "Item ID": "AV-3", "Item Type": ["recAVLTYPE0000002"], Active: true, Status: "Available", Condition: "Needs Repair", ...Gf }),
+    rec("recAVLUNIT0000004", { "Item ID": "AV-4", "Item Type": ["recAVLTYPE0000002"], Active: false, Status: "Available", ...Gf }));
+  DB.Loans.push(
+    // reserved for a future window, by type only
+    rec("recAVLLOAN0000001", { "Loan ID": "L-A1", Status: "Reserved", "Item to Reserve": ["recAVLTYPE0000001"], "Reservation Start": day(20), "Reservation End": day(23), Borrower: ["recSECRETBORROWER"], ...Gf }),
+    // out now with the unit, no due date: open-ended
+    rec("recAVLLOAN0000002", { "Loan ID": "L-A2", Status: "Active", Item: ["recAVLUNIT0000002"], "Date Borrowed": day(-3), ...Gf }),
+    // over before today: not sent
+    rec("recAVLLOAN0000003", { "Loan ID": "L-A3", Status: "Reserved", "Item to Reserve": ["recAVLTYPE0000001"], "Reservation Start": day(-9), "Reservation End": day(-6), ...Gf }),
+    // quantity booking (already sent before this feature)
+    rec("recAVLLOAN0000004", { "Loan ID": "L-A4", Status: "Reserved", "Item to Reserve": ["recAVLTYPE0000003"], Quantity: 4, "Reservation Start": day(20), "Reservation End": day(21), ...Gf }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const patchG = b => call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify(b) });
+  const page = async () => { __WHG_TEST__.clearMemo(); return (await call(`/public/gemach/${G.slug}?x=${Math.random()}`)).json(); };
+  const type = (d, id) => d.items.find(x => x.id === id);
+
+  await t("availability: Now by default, Date saved (blank in the database), bad value refused", async () => {
+    assert.equal((await page()).gemach.availabilityMode, "Now");
+    let r = await patchG({ availabilityMode: "Date" });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).availabilityMode, "Date");
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Availability Mode"], "Date");
+    assert.equal((await patchG({ availabilityMode: "Tomorrow" })).status, 400);
+    r = await patchG({ availabilityMode: "Now" });
+    assert.equal((await r.json()).availabilityMode, "Now");
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Availability Mode"], null);
+  });
+
+  await t("availability: in Now mode numbered units carry no booking windows", async () => {
+    const d = await page();
+    assert.equal(type(d, "recAVLTYPE0000001").bookings, undefined);
+    assert.equal(type(d, "recAVLTYPE0000001").capacity, undefined);
+    assert.ok(type(d, "recAVLTYPE0000003").bookings, "quantity items always had them");
+  });
+
+  await t("availability: in Date mode numbered units carry capacity and booking windows (no names)", async () => {
+    assert.equal((await patchG({ availabilityMode: "Date" })).status, 200);
+    const d = await page();
+    assert.equal(d.gemach.availabilityMode, "Date");
+    const navy = type(d, "recAVLTYPE0000001");
+    assert.equal(navy.capacity, 1);
+    assert.deepEqual(navy.bookings, [{ from: day(20), to: day(23), qty: 1 }], "reserved window kept, the one that ended is dropped");
+    const gold = type(d, "recAVLTYPE0000002");
+    assert.equal(gold.capacity, 1, "Needs Repair and inactive units aren't bookable");
+    assert.deepEqual(gold.bookings, [{ from: day(-3), to: null, qty: 1 }], "a loan picked up with a unit belongs to that unit's type; no due date = open-ended");
+    assert.equal(type(d, "recAVLTYPE0000003").capacity, undefined);
+    assert.deepEqual(type(d, "recAVLTYPE0000003").bookings, [{ from: day(20), to: day(21), qty: 4 }]);
+    assert.equal(type(d, "recAVLTYPE0000004").bookings, undefined, "add-ons are never counted");
+    const text = JSON.stringify(d);
+    assert.ok(!/recSECRETBORROWER|L-A1|Borrower/.test(text), "no borrower details in the public page");
+  });
+
+  await t("availability: the directory (home page) doesn't carry unit booking windows", async () => {
+    __WHG_TEST__.clearMemo();
+    const dir = await (await call("/public/directory?x=" + Math.random())).json();
+    const it = dir.gemachs.find(g => g.slug === G.slug).items.find(x => x.id === "recAVLTYPE0000001");
+    assert.equal(it.bookings, undefined);
+    assert.equal(dir.gemachs.find(g => g.slug === G.slug).availabilityMode, "Date");
+  });
+}
+
 if (D1_MODE) {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);

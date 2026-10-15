@@ -640,6 +640,25 @@ button.item-thumb:hover img { opacity: .88; }
   background: var(--bg-tint); border-radius: 999px; padding: .1rem .55rem;
 }
 
+/* Availability for a date (gemach Settings → Availability = "For a date") */
+.avail-bar { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: .85rem 1rem .8rem; margin: 1rem 0 .25rem; }
+.avail-title { font-size: 1rem; margin: 0 0 .6rem; }
+.avail-fields { display: flex; flex-wrap: wrap; gap: .6rem 1rem; }
+.avail-field { display: flex; flex-direction: column; gap: .25rem; flex: 1 1 10rem; max-width: 15rem; min-width: 0; }
+.avail-field label { font-size: .875rem; font-weight: 600; color: var(--text); }
+.avail-field .opt { font-weight: 400; color: var(--muted); }
+.avail-field input[type="date"] { font: inherit; font-size: 1rem; min-height: 44px; padding: .45rem .6rem; border: 1px solid var(--input-border); border-radius: 8px; background: var(--white); color: var(--text); width: 100%; box-sizing: border-box; }
+.avail-field input[type="date"]:focus-visible { outline: 2px solid var(--focus-c); outline-offset: 1px; }
+.avail-note { font-size: .875rem; color: var(--muted); margin: .6rem 0 0; }
+.avail-note b { color: var(--text); }
+.avail-note.warn { color: var(--red); }
+.avail-only { display: flex; align-items: center; gap: .5rem; margin: .55rem 0 0; font-size: .9375rem; cursor: pointer; min-height: 32px; }
+.avail-only[hidden] { display: none; }
+.avail-only input { width: 18px; height: 18px; margin: 0; }
+.avail-back { font-size: .8125rem; color: var(--muted); margin-left: .25rem; white-space: nowrap; }
+.avail-change { font: inherit; font-size: .875rem; background: none; border: 0; padding: .2rem 0; color: var(--primary); text-decoration: underline; cursor: pointer; }
+.avail-change:focus-visible { outline: 2px solid var(--focus-c); outline-offset: 2px; border-radius: 4px; }
+
 /* Item filters (gemach-defined, e.g. Size / Color) */
 .af-bar { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: .7rem .8rem .55rem; margin: 0 0 1rem; }
 .af-row { display: flex; gap: .6rem; align-items: flex-start; margin-bottom: .45rem; }

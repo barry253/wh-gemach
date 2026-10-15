@@ -32,7 +32,7 @@ const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", 
   "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
   "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories",
-  "Group By", "Spotlight Filter", "Borrow Note", "Photo Shape"];
+  "Group By", "Spotlight Filter", "Borrow Note", "Photo Shape", "Availability Mode"];
 
 /** One gemach's record by id, with just GEMACH_FIELDS (null if it doesn't exist). */
 async function getGemachRecord(db, id) {
@@ -98,6 +98,7 @@ function gemachFromRecord(r) {
     groupBy: filterNameIn(parseAttrDefs(f["Item Attributes"]), f["Group By"]),
     spotlightFilter: filterNameIn(parseAttrDefs(f["Item Attributes"]), f["Spotlight Filter"]),
     photoShape: selName(f["Photo Shape"]) === "Portrait" ? "Portrait" : "Landscape", // Portrait: tall thumbnails (book covers)
+    availabilityMode: selName(f["Availability Mode"]) === "Date" ? "Date" : "Now", // Date: page shows what's free for a date the visitor picks
     borrowNote: nonBlank(f["Borrow Note"]),                    // Listing only: how to borrow, instead of "contact to check"
     comingSoon: !!f["Coming Soon"],                              // listed, not searchable, no requests (only meaningful when active)
     browseCategoryIds: (f["Browse Categories"] || []).map(linkedId).filter(Boolean),
