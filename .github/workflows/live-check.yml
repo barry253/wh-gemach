@@ -1,0 +1,66 @@
+name: Live check
+# After every deploy (push to main) and once a day: open the REAL whgemachs.org like a borrower and check the
+# pages load without script errors and the request form opens (tests/live/live-check.cjs). It never sends a
+# request. A failed run makes GitHub email the repo owner (Actions notifications).
+# On a push to main it first waits until Cloudflare serves this commit (the page points at this build's
+# gemach.js fingerprint, and the worker's "Workers Builds" check has finished), so it tests what just shipped.
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "admin.html", "embed.html", "build.sh", "functions/**", "worker/src/**", "worker/wrangler.toml", "tests/live/**", ".github/workflows/live-check.yml"]
+  schedule:
+    - cron: "41 11 * * *"   # daily, ~7:41 am New York
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: live-check
+  cancel-in-progress: true
+
+jobs:
+  live:
+    name: Live site check
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install test tools
+        working-directory: tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Wait for this commit to be live
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sh build.sh >/dev/null
+          want=$(grep -o 'gemach\.js?v=[A-Za-z0-9]*' dist/gemach.html | cut -d= -f2)
+          echo "EXPECT_GEMACH_JS=$want" >> "$GITHUB_ENV"
+          echo "Waiting for whgemachs.org to serve gemach.js?v=$want"
+          ok=""
+          for i in $(seq 1 60); do
+            if curl -fsS "https://whgemachs.org/g/wh-medical?live-check=$GITHUB_SHA" | grep -q "gemach.js?v=$want"; then ok=1; echo "Site is live"; break; fi
+            sleep 15
+          done
+          [ -n "$ok" ] || { echo "::error title=Site not deployed::whgemachs.org still doesn't serve this build after 15 minutes — check Cloudflare Pages"; exit 1; }
+          echo "Waiting for the worker deploy (Workers Builds) to finish"
+          for i in $(seq 1 60); do
+            st=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" \
+              | jq -r '[.check_runs[] | select(.name | startswith("Workers Builds"))][0] | if . == null then "none" else (.status + ":" + (.conclusion // "")) end')
+            case "$st" in
+              completed:success) echo "Worker deployed"; break ;;
+              completed:*) echo "::error title=Worker build failed::Workers Builds finished as $st — the previous worker is still live"; exit 1 ;;
+              none) [ "$i" -ge 12 ] && { echo "No Workers Builds run for this commit; going on"; break; } ;;
+            esac
+            sleep 15
+          done
+      - name: Check the live site
+        working-directory: tests
+        run: node live/live-check.cjs

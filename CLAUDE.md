@@ -14,6 +14,8 @@ Rules:
   4. After the deploy, confirm: live worker code matches `npm run check` output, `/health` is ok, and the change works.
   Don't ask Barry to open or merge pull requests himself. Small docs-only changes to CLAUDE.md/README can go straight to `main`.
 - Add tests for new behavior.
+- Script / stylesheet links in site/*.html carry `?v=…`, but `build.sh` replaces it with a fingerprint of the file (Oct 15, 2026), so never bump those numbers by hand; changing the .js/.css is enough. `tests/site/asset-versions.test.cjs` checks it.
+- After every deploy and daily, `.github/workflows/live-check.yml` opens the real site (tests/live/live-check.cjs: pages load without script errors, the request form opens; nothing is sent). A red run means the live site is broken: look at it first.
 - Keep changes backwards compatible across the site and worker: Pages and the Worker deploy independently, so for a few minutes either can be newer than the other.
 - Other Claude sessions may work on this repo at the same time: always `git fetch` and rebase before pushing; never force-push `main`.
 - Never put secrets or personal data in the repo. Plain vars and secrets are managed in the Cloudflare dashboard (`keep_vars = true`).
