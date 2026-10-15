@@ -94,7 +94,7 @@ async function sendNotificationEmail(env, g, data) {
   if (test) lines.push(TEST_NOTE, "");
   if (fallback) lines.push(`ℹ ${fallbackNote}`, "");
   if (conflicts.length) lines.push(`⚠ ${conflicts.length} of ${items.length} item${items.length === 1 ? "" : "s"} may not be available for these dates — see below.`, "");
-  lines.push(`Name: ${name}`, `Phone: ${phone}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, "");
+  lines.push(`Name: ${name}`, `Phone: ${phone || "not provided"}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, "");
   if (isAppt) {
     lines.push(`Preferred times: ${preferredTimes || "not specified"}`);
     if (partySize != null) lines.push(`Party size: ${partySize}`);
@@ -124,7 +124,7 @@ async function sendNotificationEmail(env, g, data) {
   const tel = String(phone || "").replace(/[^\d+]/g, "");
   const details = [
     row("Name", `<strong>${e(name)}</strong>`),
-    row("Phone", tel ? `<a href="tel:${e(tel)}" style="color:#1B3A4B;">${e(phone)}</a>` : e(phone)),
+    row("Phone", tel ? `<a href="tel:${e(tel)}" style="color:#1B3A4B;">${e(phone)}</a>` : phone ? e(phone) : `<span style="color:#5e6b72;">not provided</span>`),
     row("Email", email ? `<a href="mailto:${e(email)}" style="color:#1B3A4B;">${e(email)}</a>` : `<span style="color:#5e6b72;">not provided</span>`),
     row("Prefers", e(preferredContact || "not specified")),
   ];

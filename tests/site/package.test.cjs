@@ -97,7 +97,7 @@ G('wh-medical').items.push(
       note = await page.textContent('#qn-recPkg0002');
       assert(/^Lent in packages of 4\. Only 7 free for your dates/.test(note) && await page.$eval('#qn-recPkg0002', e => e.classList.contains('warn')), `${label} short warning: ` + note);
       await page.locator('#qty-group').screenshot({ path: path.join(SHOTS, `${label}-package-form.png`) });
-      await page.fill('#f-name', 'Table Person'); await page.fill('#f-phone', '5165551234');
+      await page.fill('#f-name', 'Table Person'); await page.fill('#f-email', 'table@example.com'); await page.fill('#f-phone', '5165551234');
       await page.selectOption('#f-contact', { index: 1 });
       const before = posts.length;
       await page.click('#btn-submit');

@@ -49,7 +49,7 @@ await page.addInitScript(() => {
     if (a && /^(sms|mailto|tel):/.test(a.getAttribute("href") || "")) { e.preventDefault(); window.__opened.push(a.href); }
   }, true);
 });
-await page.goto("http://admin.test/admin.html");
+await page.goto("http://admin.test/admin.html?device=mobile"); // WhatsApp reminders are phone-only (Oct 2026)
 await page.waitForTimeout(500);
 
 await page.click(".nav-tab:has-text('Loans')");

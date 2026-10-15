@@ -187,7 +187,18 @@ if (D1_MODE) {
   d1 = setupD1({ DB, calls, getFail: () => airtableFail, onQuery: () => { d1Queries++; } });
   Object.assign(env, d1.env);
 }
+// Since Oct 15, 2026 the request form needs an email (the phone is optional). The many older tests
+// below were written when it was the other way round: a request body with no "email" key at all
+// gets a placeholder one here; tests about the email rule send "email" explicitly (even "").
+const SUBMIT_DEFAULT_EMAIL = "borrower@example.com";
+function withDefaultEmail(path, init) {
+  if (!/\/submit-request$/.test(path.split("?")[0]) || init.method !== "POST" || typeof init.body !== "string") return init;
+  let b; try { b = JSON.parse(init.body); } catch { return init; }
+  if (!b || typeof b !== "object" || Array.isArray(b) || "email" in b) return init;
+  return { ...init, body: JSON.stringify({ ...b, email: SUBMIT_DEFAULT_EMAIL }) };
+}
 const call = async (path, init = {}) => {
+  init = withDefaultEmail(path, init);
   d1Queries = 0;
   const res = await worker.fetch(new Request("https://wh-gemach.example.workers.dev" + path, init), env, ctx);
   if (d1Queries > d1Busiest.n) { d1Busiest.n = d1Queries; d1Busiest.path = `${init.method || "GET"} ${path.split("?")[0]}`; }
@@ -301,8 +312,9 @@ await t("submit-request ok stamps Gemach and numbers globally (R-008)", async ()
   assert.equal(d.requestId, "R-008");
   const created = DB.Requests.at(-1);
   assert.deepEqual(created.fields.Gemach, [A.id]);
-  const resend = calls.filter(c => c.url.startsWith("https://api.resend.com")).at(-1);
-  const p = JSON.parse(resend.body);
+  await Promise.allSettled(waits);
+  // The borrower's receipt goes out too now (every request has an email); pick the gemach's notice.
+  const p = calls.filter(c => c.url.startsWith("https://api.resend.com")).map(c => JSON.parse(c.body)).filter(m => /^New request/.test(m.text || "")).at(-1);
   assert.deepEqual(p.to, ["wh@example.com"]);
   assert.match(p.from, /West Hempstead Medical Gemach/);
 });
@@ -2172,19 +2184,26 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     if (re) assert.match(e, re, label);
     assert.equal(DB.Requests.length, before, label + ": nothing written");
   };
-  await t("r5 submit: preferredContact required and one of WhatsApp/Phone/SMS/Email (never '' to Airtable)", async () => {
-    for (const pc of [undefined, "", "  ", "Facebook", "Text", "whatsapp", 5]) await err({ ...base, preferredContact: pc }, /^Please choose the best way to reach you\.$/, `pc=${JSON.stringify(pc)}`);
-    for (const pc of ["WhatsApp", "Phone", "SMS"]) {
+  await t("r5 submit: preferredContact defaults to Email; otherwise one of WhatsApp/Phone/SMS/Email (never '' to Airtable)", async () => {
+    for (const pc of ["Facebook", "Text", "whatsapp", 5]) await err({ ...base, preferredContact: pc }, /^Please choose the best way to reach you\.$/, `pc=${JSON.stringify(pc)}`);
+    for (const pc of [undefined, "", "  "]) {
+      const r = await post(`/submit-request`, { ...base, preferredContact: pc });
+      assert.equal(r.status, 200, `pc=${JSON.stringify(pc)}`);
+      assert.equal(DB.Requests.at(-1).fields["Preferred Contact"], "Email", `pc=${JSON.stringify(pc)} -> Email`);
+    }
+    for (const pc of ["WhatsApp", "Phone", "SMS", "Email"]) {
       const r = await post(`/submit-request`, { ...base, preferredContact: pc });
       assert.equal(r.status, 200, pc);
       assert.equal(DB.Requests.at(-1).fields["Preferred Contact"], pc);
     }
   });
-  await t("r5 submit: Email preference requires a (valid) email", async () => {
-    await err({ ...base, preferredContact: "Email" }, /email/i, "missing email");
-    await err({ ...base, preferredContact: "Email", email: "   " }, /email/i, "blank email");
-    await err({ ...base, preferredContact: "Email", email: "not-an-email" }, /valid email/i, "bad email");
-    await err({ ...base, email: "nope@" }, /valid email/i, "bad optional email");
+  await t("r5 submit: email is required (and valid) whatever the preference", async () => {
+    for (const pc of ["Email", "WhatsApp", "Phone"]) {
+      await err({ ...base, preferredContact: pc, email: "" }, /^Name and email are required\.$/, `missing email (${pc})`);
+      await err({ ...base, preferredContact: pc, email: "   " }, /email/i, `blank email (${pc})`);
+    }
+    await err({ ...base, email: "not-an-email" }, /valid email/i, "bad email");
+    await err({ ...base, email: "nope@" }, /valid email/i, "bad email 2");
     const r = await post(`/submit-request`, { ...base, preferredContact: "Email", email: " r@example.com " });
     assert.equal(r.status, 200);
     const f = DB.Requests.at(-1).fields;
@@ -2212,7 +2231,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     f = DB.Requests.at(-1).fields;
     assert.equal(f["Open-ended duration"], true); assert.ok(!("Needed Until" in f));
   });
-  await t("r5 submit: phone formatting and minimum digits; no empty strings written to typed fields", async () => {
+  await t("r5 submit: phone optional; formatted when given; phone-based preferences need one; no empty strings written", async () => {
     const cases = [["5165551234", "(516) 555-1234"], [" 516.555.1234 ", "(516) 555-1234"], ["1-516-555-1234", "(516) 555-1234"],
                    ["+1 (516) 555 1234", "(516) 555-1234"], ["+44 20 7946 0958", "+44 20 7946 0958"], ["555-1234", "555-1234"], [" 011 972 2 555 1234 ", "011 972 2 555 1234"]];
     for (const [inp, want] of cases) {
@@ -2222,13 +2241,27 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     }
     await err({ ...base, phone: "123-45" }, /phone/i, "6 digits");
     await err({ ...base, phone: "call me" }, /phone/i, "no digits");
-    await err({ ...base, phone: "   " }, /required/i, "blank");
+    for (const pc of ["WhatsApp", "Phone", "SMS"]) {
+      await err({ ...base, phone: "", preferredContact: pc }, /^Please enter your phone number so the gemach can reach you that way\.$/, `no phone (${pc})`);
+    }
     await err({ ...base, name: { x: 1 } }, null, "object name");
-    const r = await post(`/submit-request`, { ...base, email: "", notes: "", neededUntil: "" });
+    for (const phone of [undefined, "", "   "]) {
+      const r = await post(`/submit-request`, { ...base, phone, preferredContact: "Email", email: "nophone@example.com", notes: "", neededUntil: "" });
+      assert.equal(r.status, 200, `phone=${JSON.stringify(phone)}`);
+      const f = DB.Requests.at(-1).fields;
+      assert.ok(!("Phone" in f), "no Phone field written");
+      for (const [k, v] of Object.entries(f)) assert.notEqual(v, "", `field ${k} written as ""`);
+    }
+    await Promise.allSettled(waits);
+    const isNotice = m => /^New request/.test(m.text || "");
+    const noPhone = resendCalls().filter(m => isNotice(m) && /nophone@example\.com/.test(m.text || "")).at(-1);
+    assert.ok(noPhone, "gemach emailed");
+    assert.match(noPhone.text, /Phone: not provided/, "notification says no phone");
+    assert.match(noPhone.html, /not provided/);
+    const r = await post(`/submit-request`, { ...base, email: "withphone@example.com", notes: "", neededUntil: "" });
     assert.equal(r.status, 200);
-    const f = DB.Requests.at(-1).fields;
-    for (const [k, v] of Object.entries(f)) assert.notEqual(v, "", `field ${k} written as ""`);
-    const mail = resendCalls().at(-1);
+    await Promise.allSettled(waits);
+    const mail = resendCalls().filter(m => isNotice(m) && /withphone@example\.com/.test(m.text || "")).at(-1);
     assert.match(mail.text, /\(516\) 555-1234/, "notification shows formatted phone");
   });
 }

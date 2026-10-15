@@ -2429,6 +2429,23 @@
 
   // ── Contacting borrowers ──────────────────────────────────────────────────
   // Requests store WhatsApp | Phone | SMS | Email; Borrowers store WhatsApp | Phone | Text.
+  /**
+   * Phone or tablet? WhatsApp, text and call links open apps there; on a computer they don't work well,
+   * so admin offers only email on a computer (Oct 2026). Email is the default everywhere.
+   * ?device=mobile|desktop overrides (tests, and checking the other layout).
+   */
+  const IS_MOBILE = (() => {
+    try {
+      const o = new URLSearchParams(location.search).get("device");
+      if (o === "mobile") return true;
+      if (o === "desktop") return false;
+      if (navigator.userAgentData && navigator.userAgentData.mobile === true) return true;
+      const ua = navigator.userAgent || "";
+      if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+      return /Macintosh/.test(ua) && navigator.maxTouchPoints > 1; // iPad showing the desktop site
+    } catch { return false; }
+  })();
+  const PHONE_METHODS = ["whatsapp", "sms", "call"];
   function contactMethod(pref) {
     const p = String(pref ?? "").trim().toLowerCase();
     return p === "whatsapp" ? "whatsapp" : (p === "sms" || p === "text") ? "sms" : (p === "phone" || p === "call") ? "call" : p === "email" ? "email" : null;
@@ -2450,12 +2467,19 @@
     if (m === "email") return mailtoHref(c.email);
     return null;
   }
-  /** Card buttons: only the borrower's preferred method (or what's on file when there's no usable preference). */
+  /**
+   * Card buttons: only the borrower's preferred method (or what's on file when there's no usable preference).
+   * On a computer only Email is a button; a phone preference shows the number, to call or message from a phone.
+   */
   function contactActions(c, stop = false) {
     const pref = contactMethod(c.pref);
-    const avail = ["whatsapp", "sms", "call", "email"].filter(m => methodHref(m, c));
+    const avail = (IS_MOBILE ? ["whatsapp", "sms", "call", "email"] : ["email"]).filter(m => methodHref(m, c));
     let show, caption;
     if (pref && avail.includes(pref)) { show = [pref]; caption = `Prefers ${METHOD_PREFERS[pref]}`; }
+    else if (!IS_MOBILE && phoneDigits(c.phone) && (PHONE_METHODS.includes(pref) || !avail.length)) {
+      show = avail;
+      caption = `${PHONE_METHODS.includes(pref) ? `Prefers ${METHOD_PREFERS[pref]}` : avail.length ? "Phone" : "No email on file"} · ${c.phone}`;
+    }
     else {
       show = avail;
       caption = !avail.length ? "No phone or email on file"
@@ -2469,13 +2493,21 @@
   // "Send this message by" control used by the confirm / decline / appointment / pickup sheets.
   const SEND_LABEL = { whatsapp: "WhatsApp", sms: "Text message", email: "Email", none: "Don't send" };
   const SEND_BY = {};
+  /** Email first (and the only one on a computer); WhatsApp / text only on a phone or tablet. */
   function sendChoices(c, allowNone = true) {
     const out = [];
-    if (waUrl(c.phone)) out.push("whatsapp");
-    if (phoneDigits(c.phone)) out.push("sms");
     if (safeEmail(c.email)) out.push("email");
+    if (IS_MOBILE && waUrl(c.phone)) out.push("whatsapp");
+    if (IS_MOBILE && phoneDigits(c.phone)) out.push("sms");
     if (allowNone || !out.length) out.push("none");
     return out;
+  }
+  /** On a computer, when the borrower has a phone: where WhatsApp / text went. */
+  function desktopPhoneNote(c) {
+    if (IS_MOBILE || !phoneDigits(c.phone)) return "";
+    return safeEmail(c.email)
+      ? ` To send it by WhatsApp or text instead, use admin on your phone.`
+      : ` No email on file — to send it by WhatsApp or text, use admin on your phone, or call ${c.phone}.`;
   }
   function sendHelp(choice, c, extra = "") {
     if (choice === "whatsapp") return "Opens WhatsApp on this device with the message ready — tap Send there.";
@@ -2494,7 +2526,9 @@
     const c = contactOf(r);
     const choices = sendChoices(c, !opts.noNone);
     const pref = contactMethod(c.pref);
+    // Email is the default whenever there is one (the borrower's preference is shown on the card).
     const choice = opts.initial && choices.includes(opts.initial) ? opts.initial
+      : choices.includes("email") ? "email"
       : choices.includes(pref) ? pref : (pref === "call" && choices.includes("sms")) ? "sms" : choices[0];
     SEND_BY[prefix] = { c, choice };
     const box = document.getElementById(`${prefix}-send-by`);
@@ -2503,7 +2537,7 @@
       box.innerHTML = `<label>Send this message by</label>
         <div class="send-by-options" role="radiogroup">${choices.map(v =>
           `<button type="button" role="radio" data-send="${v}" aria-checked="${v === cur}" class="${v === cur ? "active" : ""}">${SEND_LABEL[v]}</button>`).join("")}</div>
-        <div class="send-by-help">${esc(opts.mailto && cur === "email" ? `Opens your email app addressed to ${safeEmail(c.email)}.` : sendHelp(cur, c, opts.emailExtra || ""))}</div>`;
+        <div class="send-by-help">${esc((opts.mailto && cur === "email" ? `Opens your email app addressed to ${safeEmail(c.email)}.` : sendHelp(cur, c, opts.emailExtra || "")) + desktopPhoneNote(c))}</div>`;
       box.querySelectorAll("[data-send]").forEach(b => b.onclick = () => { SEND_BY[prefix].choice = b.dataset.send; paint(); });
       const btn = document.getElementById(btnId);
       if (btn) btn.textContent = labels[cur] || labels.none;

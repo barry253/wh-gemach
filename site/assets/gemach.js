@@ -1561,16 +1561,16 @@
     if (!$("f-name").value) $("f-name").value = d.name || "";
     if (!$("f-phone").value) $("f-phone").value = d.phone || "";
     if (!$("f-email").value) $("f-email").value = d.email || "";
-    if (!$("f-contact").value && d.preferredContact && $("f-contact").querySelector('option[value="' + d.preferredContact.replace(/[^A-Za-z]/g, "") + '"]')) $("f-contact").value = d.preferredContact;
-    updateEmailReq();
+    if (d.preferredContact && $("f-contact").querySelector('option[value="' + d.preferredContact.replace(/[^A-Za-z]/g, "") + '"]')) $("f-contact").value = d.preferredContact;
+    updateContactReq();
   }
   $("forget-me").addEventListener("click", function () {
     W.me.forget();
     ["f-name", "f-phone", "f-email"].forEach(function (id) { $(id).value = ""; });
-    $("f-contact").value = "";
+    $("f-contact").value = "Email";
     $("f-remember").checked = false;
     $("remember-saved").hidden = true;
-    updateEmailReq();
+    updateContactReq();
     $("f-name").focus();
   });
 
@@ -1631,7 +1631,7 @@
     fe.min = W.todayNY(); fe.max = W.maxEventDate();
     fe.required = ev;
     updateDateMins();
-    updateEmailReq();
+    updateContactReq();
     $("f-times").required = appt;
     var dep = !!gemach.depositRequired;
     $("deposit-group").hidden = !dep;
@@ -1672,16 +1672,19 @@
   $("f-from").addEventListener("input", updateDateMins);
   $("f-from").addEventListener("change", updateDateMins);
 
-  // ── Email becomes required when it's the best way to reach you ──
-  function updateEmailReq() {
-    var need = $("f-contact").value === "Email";
-    $("email-opt").hidden = need;
-    $("email-req").hidden = !need;
-    $("f-email").required = need;
+  // ── Email is always required; the phone becomes required when a call, text or WhatsApp is the best way ──
+  var PHONE_CONTACTS = ["Phone", "SMS", "WhatsApp"];
+  function needsPhone() { return PHONE_CONTACTS.indexOf($("f-contact").value) >= 0; }
+  function updateContactReq() {
+    if (!$("f-contact").value) $("f-contact").value = "Email"; // after a form reset in old browsers
+    var need = needsPhone();
+    $("phone-opt").hidden = need;
+    $("phone-req").hidden = !need;
+    $("f-phone").required = need;
   }
   $("f-contact").addEventListener("change", function () {
-    updateEmailReq();
-    if ($("f-contact").value !== "Email" && !$("f-email").value.trim()) clearFieldError($("f-email"));
+    updateContactReq();
+    if (!needsPhone() && !$("f-phone").value.trim()) clearFieldError($("f-phone"));
   });
 
   // ── Phone: format as you type / paste, and on blur ──
@@ -1801,11 +1804,11 @@
     var ids = Array.prototype.map.call(modal.querySelectorAll('input[name="modal-items"]:checked'), function (cb) { return cb.value; });
 
     if (!name) bad($("f-name"), "Please enter your name.");
-    var pe = W.phoneError(ph);
-    if (pe) bad($("f-phone"), pe);
-    if (!preferredContact) bad($("f-contact"), "Please choose the best way to reach you.");
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) bad($("f-email"), "That email address doesn’t look right.");
-    else if (preferredContact === "Email" && !email) bad($("f-email"), "Please add your email, since that’s the best way to reach you.");
+    if (!email) bad($("f-email"), "Please enter your email address.");
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) bad($("f-email"), "That email address doesn’t look right.");
+    if (ph) { var pe = W.phoneError(ph); if (pe) bad($("f-phone"), pe); }
+    else if (needsPhone()) bad($("f-phone"), "Please add your phone number, since that’s the best way to reach you.");
+    if (!preferredContact) preferredContact = "Email";
 
     var body = { gemach: gemach.slug || slug, name: name, phone: ph, itemsRequested: ids };
     var firstItem = modal.querySelector('input[name="modal-items"]');
@@ -1925,7 +1928,7 @@
       $("success-title").focus();
       var had = Array.from(selected); selected.clear(); had.forEach(syncRow); updateCTA();
       qtyVals = {};
-      $("form-view").reset(); updateEventSummary(); updateEmailReq(); updateDateMins();
+      $("form-view").reset(); updateEventSummary(); updateContactReq(); updateDateMins();
       $("qty-list").innerHTML = ""; $("qty-group").hidden = true;
       W.clearDirCache();
       refresh();

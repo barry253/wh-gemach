@@ -63,7 +63,7 @@ async function run(G) {
     return J([]);
   });
   await page.addInitScript(slug => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", slug); }, G.slug);
-  await page.goto("http://admin.test/admin.html");
+  await page.goto("http://admin.test/admin.html?device=mobile"); // WhatsApp / text flows are phone-only (Oct 2026)
   await page.waitForSelector("#quick-actions .quick-action");
   return { page, reqs, errors };
 }

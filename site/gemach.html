@@ -103,26 +103,25 @@
         <input type="text" id="f-name" name="name" placeholder="Full name" autocomplete="name" required maxlength="120" />
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="f-phone">Phone <span class="req" aria-hidden="true">*</span></label>
-          <input type="tel" id="f-phone" name="phone" placeholder="(516) 555-1234" autocomplete="tel" inputmode="tel" required maxlength="40" />
-        </div>
-        <div class="form-group">
-          <label for="f-contact">Best way to reach you <span class="req" aria-hidden="true">*</span></label>
-          <select id="f-contact" name="preferredContact" required>
-            <option value="">Choose…</option>
-            <option value="WhatsApp">WhatsApp</option>
-            <option value="Phone">Phone call</option>
-            <option value="SMS">Text / SMS</option>
-            <option value="Email">Email</option>
-          </select>
-        </div>
+      <div class="form-group">
+        <label for="f-email">Email <span class="req" aria-hidden="true">*</span></label>
+        <input type="email" id="f-email" name="email" placeholder="you@example.com" autocomplete="email" required maxlength="200" />
       </div>
 
-      <div class="form-group">
-        <label for="f-email">Email <span class="opt" id="email-opt">(optional)</span><span class="req" id="email-req" aria-hidden="true" hidden>*</span></label>
-        <input type="email" id="f-email" name="email" placeholder="you@example.com" autocomplete="email" maxlength="200" />
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-phone">Phone <span class="opt" id="phone-opt">(optional)</span><span class="req" id="phone-req" aria-hidden="true" hidden>*</span></label>
+          <input type="tel" id="f-phone" name="phone" placeholder="(516) 555-1234" autocomplete="tel" inputmode="tel" maxlength="40" />
+        </div>
+        <div class="form-group">
+          <label for="f-contact">Best way to reach you</label>
+          <select id="f-contact" name="preferredContact">
+            <option value="Email" selected>Email</option>
+            <option value="Phone">Phone call</option>
+            <option value="SMS">Text / SMS</option>
+            <option value="WhatsApp">WhatsApp</option>
+          </select>
+        </div>
       </div>
 
       <fieldset class="form-group" id="items-group">

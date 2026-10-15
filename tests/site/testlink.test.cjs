@@ -109,7 +109,7 @@ const manageData = {
     await page.screenshot({ path: path.join(SHOTS, 'm-testlink-page.png') });
     await page.check('#row-recHidIt1 input[type=checkbox]');
     await page.click('#btn-open-modal');
-    await page.fill('#f-name', 'Tess'); await page.fill('#f-phone', '5165550301'); await page.selectOption('#f-contact', 'Phone');
+    await page.fill('#f-name', 'Tess'); await page.fill('#f-email', 'tess@example.com'); await page.fill('#f-phone', '5165550301'); await page.selectOption('#f-contact', 'Phone');
     const d = new Date(); d.setDate(d.getDate() + 9); await page.fill('#f-from', d.toISOString().slice(0, 10));
     await page.click('#btn-submit');
     await page.waitForSelector('#success-view:not([hidden])');

@@ -75,7 +75,7 @@ const FAKE_TURNSTILE = `window.turnstile = {
 };`;
 
 async function fillAndSend(page) {
-  await page.fill('#f-name', 'Tess T'); await page.fill('#f-phone', '5165551234'); await page.selectOption('#f-contact', 'Phone');
+  await page.fill('#f-name', 'Tess T'); await page.fill('#f-email', 'tess@example.com'); await page.fill('#f-phone', '5165551234'); await page.selectOption('#f-contact', 'Phone');
   const d = new Date(); d.setDate(d.getDate() + 9); await page.fill('#f-from', d.toISOString().slice(0, 10));
   await page.click('#btn-submit');
 }

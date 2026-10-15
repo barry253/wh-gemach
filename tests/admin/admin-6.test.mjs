@@ -32,8 +32,8 @@ const G = {
   rawTemplates: {}, canEdit: true,
 };
 
-async function setup() {
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+async function setup(query = "?device=mobile", viewport = { width: 390, height: 844 }) {
+  const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
   const errors = [], calls = [];
   page.on("pageerror", e => errors.push(String(e)));
   page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
@@ -67,7 +67,7 @@ async function setup() {
       if (a && /^(sms|mailto|tel):/.test(a.getAttribute("href") || "")) { e.preventDefault(); window.__opened.push({ how: "anchor", url: a.href }); }
     }, true);
   });
-  await page.goto("http://admin.test/admin.html");
+  await page.goto("http://admin.test/admin.html" + query); // WhatsApp / text flows are phone-only (Oct 2026)
   await page.waitForTimeout(600);
   return { page, errors, calls };
 }
@@ -103,7 +103,10 @@ await page.locator("#req-recREQWA000000001").screenshot({ path: "shot-r5-request
 await page.evaluate(() => openConfirm(rec("req", "recREQWA000000001")));
 await page.waitForTimeout(200);
 const opts = await page.$$eval("#confirm-send-by [data-send]", bs => bs.map(b => [b.dataset.send, b.textContent, b.classList.contains("active")]));
-ok(JSON.stringify(opts.map(o => o[1])) === JSON.stringify(["WhatsApp", "Text message", "Email", "Don't send"]) && opts[0][2], "confirm choices, WhatsApp default " + JSON.stringify(opts));
+// Email first and selected even though she prefers WhatsApp (Oct 2026); WhatsApp / text still offered on a phone.
+ok(JSON.stringify(opts.map(o => o[1])) === JSON.stringify(["Email", "WhatsApp", "Text message", "Don't send"]) && opts[0][2], "confirm choices, Email default " + JSON.stringify(opts));
+ok(await page.textContent("#confirm-submit-btn") === "Confirm & email", "Email button label by default");
+await page.click(`#confirm-send-by [data-send="whatsapp"]`);
 ok(await page.textContent("#confirm-submit-btn") === "Confirm & open WhatsApp", "WA button label");
 ok((await page.textContent("#confirm-send-by .send-by-help")).includes("Opens WhatsApp on this device"), "WA helper");
 await page.screenshot({ path: "shot-r5-confirm-whatsapp.png" });
@@ -198,6 +201,8 @@ await page.evaluate(() => openPickupInstructions(rec("res", "recRES00000000001")
 await page.waitForSelector(`#pickup-instructions-send-by [data-send="sms"]`, { state: "visible", timeout: 5000 }).catch(async () => {
   console.log("FAIL pickup sheet not showing: " + JSON.stringify(await page.evaluate(() => ({ open: document.getElementById("pickup-instructions-sheet").className, opts: document.getElementById("pickup-instructions-send-by").innerHTML.slice(0, 300) }))));
 });
+ok(await page.textContent("#pickup-instructions-send-btn") === (await page.$(`#pickup-instructions-send-by [data-send="email"]`) ? "Send email" : "Open WhatsApp"), "pickup: email by default when there is one, else WhatsApp");
+await page.click(`#pickup-instructions-send-by [data-send="whatsapp"]`);
 ok(await page.textContent("#pickup-instructions-send-btn") === "Open WhatsApp", "pickup WA label");
 await page.click(`#pickup-instructions-send-by [data-send="sms"]`);
 ok(await page.textContent("#pickup-instructions-send-btn") === "Open text message", "pickup SMS label");
@@ -211,4 +216,41 @@ let allText = "";
 for (const t of ["requests", "loans", "reservations", "history"]) { await page.evaluate(x => switchTab(x), t); await page.waitForTimeout(350); allText += await bodyText(page); }
 ok(!/Invalid Date|NaN/.test(allText + html.match(/fmt\(r\.neededUntil \|\| "\?"\)/)), "no Invalid Date / NaN anywhere");
 ok(!errors.length, "no console/page errors " + errors.join(" | "));
+
+// ── On a computer (Oct 2026): email is the only way to send; a phone preference shows the number ──
+{
+  const { page: dp, errors: derr, calls: dcalls } = await setup("?device=desktop", { width: 1280, height: 900 });
+  await dp.evaluate(() => switchTab("requests"));
+  await dp.waitForSelector("#req-recREQWA000000001");
+  const info = Object.fromEntries((await dp.$$eval("#requests-list .card", cs => cs.map(c => ({
+    id: c.id.replace("req-", ""),
+    btns: [...c.querySelectorAll("[data-contact]")].map(a => [a.dataset.contact, a.textContent.trim(), a.getAttribute("href")]),
+    caption: c.querySelector(".contact-caption")?.textContent,
+  })))).map(c => [c.id, c]));
+  const dwa = info.recREQWA000000001, dsm = info.recREQSM000000004, dnp = info.recREQNP000000003, dem = info.recREQEM000000002;
+  ok(JSON.stringify(dwa.btns) === JSON.stringify([["email", "Email", "mailto:rivka@example.com"]]) && dwa.caption === "Prefers WhatsApp · (516) 555-1234", "desktop WhatsApp card: Email button + number " + JSON.stringify(dwa));
+  ok(!dsm.btns.length && dsm.caption === "Prefers text messages · 5165551111", "desktop text-only borrower: no buttons, number shown " + JSON.stringify(dsm));
+  ok(JSON.stringify(dnp.btns.map(b => b[0])) === JSON.stringify(["email"]), "desktop no-preference card: Email only " + JSON.stringify(dnp));
+  ok(dem.btns.length === 1 && dem.caption === "Prefers email", "desktop email card unchanged");
+  ok(!(await dp.$$("#requests-list a[href^='https://wa.me'], #requests-list a[href^='sms:'], #requests-list a[href^='tel:']")).length, "no WhatsApp / text / call links on a computer");
+  await dp.evaluate(() => openConfirm(rec("req", "recREQWA000000001")));
+  await dp.waitForTimeout(200);
+  const dopts = await dp.$$eval("#confirm-send-by [data-send]", bs => bs.map(b => [b.dataset.send, b.classList.contains("active")]));
+  ok(JSON.stringify(dopts) === JSON.stringify([["email", true], ["none", false]]), "desktop confirm: Email (selected) or Don't send " + JSON.stringify(dopts));
+  ok(await dp.textContent("#confirm-submit-btn") === "Confirm & email", "desktop confirm label");
+  ok((await dp.textContent("#confirm-send-by .send-by-help")).includes("use admin on your phone"), "desktop says where WhatsApp went");
+  await dp.screenshot({ path: "shot-desktop-confirm-email-only.png" });
+  await dp.evaluate(() => openDecline(rec("req", "recREQSM000000004")));
+  await dp.waitForTimeout(200);
+  const ddec = await dp.$$eval("#decline-send-by [data-send]", bs => bs.map(b => b.dataset.send));
+  const dhelp = await dp.textContent("#decline-send-by .send-by-help");
+  ok(JSON.stringify(ddec) === JSON.stringify(["none"]) && await dp.textContent("#decline-submit-btn") === "Decline without message", "desktop, no email: only Don't send " + ddec);
+  ok(/No email on file/.test(dhelp) && /5165551111/.test(dhelp), "desktop, no email: says to use the phone " + dhelp);
+  const nd = dcalls.length;
+  await dp.click("#decline-submit-btn");
+  await dp.waitForTimeout(300);
+  const dpost = dcalls.slice(nd).find(c => c.path.endsWith("/decline"));
+  ok(dpost && dpost.body.sendMessage === false && !(await dp.evaluate(() => window.__opened.length)), "desktop decline: nothing opened, no message sent");
+  ok(!derr.length, "desktop: no console/page errors " + derr.join(" | "));
+}
 await browser.close();

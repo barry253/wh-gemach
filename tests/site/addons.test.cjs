@@ -98,7 +98,7 @@ G('wedding-shtick').items.push(
       assert(/\$40 each — \$120 for 3 · paid separately/.test(note), `${label} price note: ` + note);
       assert(/Add-on · \$40 each/.test(await page.$eval('#modal-items-grid', e => e.innerText)), `${label} modal list marks add-on`);
       assert(await page.$eval('#deposit-group', e => e.hidden), `${label} add-on only: no deposit box`);
-      await page.fill('#f-name', 'Addon Buyer'); await page.fill('#f-phone', '5165551234');
+      await page.fill('#f-name', 'Addon Buyer'); await page.fill('#f-email', 'addon@example.com'); await page.fill('#f-phone', '5165551234');
       await page.selectOption('#f-contact', { index: 1 });
       const d = new Date(); d.setDate(d.getDate() + 30); const ymd = d.toISOString().slice(0, 10);
       await page.fill('#f-event', ymd);

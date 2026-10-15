@@ -50,7 +50,7 @@ await page.addInitScript(() => {
   window.__opened = [];
   window.open = u => { window.__opened.push(String(u)); return null; };
 });
-await page.goto("http://admin.test/admin.html");
+await page.goto("http://admin.test/admin.html?device=mobile"); // WhatsApp / text flows are phone-only (Oct 2026)
 await page.waitForTimeout(600);
 await page.evaluate(() => switchTab("requests"));
 await page.waitForSelector("#req-recREQGUARD000001");
@@ -70,6 +70,7 @@ ok(!(await page.evaluate(() => document.getElementById("confirm-submit-btn").dis
 const before = calls.filter(c => c.path === "/admin/requests").length;
 await page.evaluate(r => openConfirm(r), REQS[1]);
 await page.waitForTimeout(150);
+if (await page.$(`#confirm-send-by [data-send="whatsapp"]`)) await page.click(`#confirm-send-by [data-send="whatsapp"]`); // Email is the default now
 await page.click("#confirm-submit-btn");
 await page.waitForTimeout(400);
 const t2 = (await toasts()).join(" | ");

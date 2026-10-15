@@ -26,6 +26,8 @@ const RECEIPTS_PER_DAY = 3;         // "We got your request" emails to one addre
 
 /** Preferred Contact values the public form offers (all exist as Requests."Preferred Contact" choices). */
 const REQUEST_CONTACTS = ["WhatsApp", "Phone", "SMS", "Email"];
+/** The ones that need a phone number (since Oct 15, 2026 the phone is optional and the email required). */
+const PHONE_CONTACTS = ["WhatsApp", "Phone", "SMS"];
 
 /** US numbers -> "(516) 555-1234"; other formats kept as entered (trimmed); null if < 7 digits. */
 function formatPhone(raw) {
@@ -55,12 +57,14 @@ async function handleSubmitRequest(request, db, env, ctx) {
 
   const str = v => (typeof v === "string" ? v.trim() : v == null ? "" : typeof v === "number" ? String(v) : null);
   const name = str(body.name), rawPhone = str(body.phone), email = str(body.email), notes = str(body.notes);
-  const preferredContact = typeof body.preferredContact === "string" ? body.preferredContact.trim() : "";
+  // No preference sent (or blank) = Email, which is always there now; anything else must be one of REQUEST_CONTACTS.
+  const pcRaw = body.preferredContact;
+  const preferredContact = pcRaw == null || (typeof pcRaw === "string" && !pcRaw.trim()) ? "Email" : typeof pcRaw === "string" ? pcRaw.trim() : "";
   const neededFrom = str(body.neededFrom), neededUntil = str(body.neededUntil), openEnded = body.openEnded === true;
   if ([name, rawPhone, email, notes, neededFrom, neededUntil].some(v => v === null)) return json({ error: "Invalid request." }, 400);
   const itemsRequested = body.itemsRequested == null ? [] : body.itemsRequested;
   if (!Array.isArray(itemsRequested)) return json({ error: "Invalid items." }, 400);
-  if (!name || !rawPhone) return json({ error: "Name and phone are required." }, 400);
+  if (!name || !email) return json({ error: "Name and email are required." }, 400);
   if (name.length > MAX_NAME) return json({ error: `Please keep the name under ${MAX_NAME} characters.` }, 400);
   if (notes && notes.length > MAX_NOTES) return json({ error: `Please keep the note under ${MAX_NOTES} characters.` }, 400);
   if (itemsRequested.length > 50) return json({ error: "Too many items." }, 400);
@@ -83,14 +87,15 @@ async function handleSubmitRequest(request, db, env, ctx) {
   if (g.mode === "Directory" || g.mode === "Info" || (g.comingSoon && !test)) {
     return json({ error: `${g.name || "This gemach"} doesn't take online requests. Please contact them directly${g.phone ? ` at ${g.phone}` : ""}.` }, 400);
   }
-  const phone = formatPhone(rawPhone);
-  if (!phone) return json({ error: "Please enter a valid phone number." }, 400);
-  if (email && (!EMAIL_RE.test(email) || email.length > 200)) return json({ error: "Please enter a valid email address." }, 400);
+  // Phone is optional; when given it must be a real number.
+  const phone = rawPhone ? formatPhone(rawPhone) : "";
+  if (rawPhone && !phone) return json({ error: "Please enter a valid phone number." }, 400);
+  if (!EMAIL_RE.test(email) || email.length > 200) return json({ error: "Please enter a valid email address." }, 400);
   if (!REQUEST_CONTACTS.includes(preferredContact)) return json({ error: "Please choose the best way to reach you." }, 400);
-  if (preferredContact === "Email" && !email) return json({ error: "Please enter your email address so we can reach you by email." }, 400);
+  if (PHONE_CONTACTS.includes(preferredContact) && !phone) return json({ error: "Please enter your phone number so the gemach can reach you that way." }, 400);
   const style = g.requestStyle || "Dates";
   const isAppt = style === "Appointment";
-  if (!isAppt && !itemsRequested.length) return json({ error: "Name, phone, and at least one item are required." }, 400);
+  if (!isAppt && !itemsRequested.length) return json({ error: "Name, email, and at least one item are required." }, 400);
 
   // Event date (required for Event style, optional for appointments): not in the past (NY), ≤ 2 years ahead.
   let eventDate = null;
@@ -159,7 +164,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   const fields = {
     "Request ID": requestId,
     "Name": clip(name, 200),
-    "Phone": clip(phone, 50),
+    ...(phone ? { "Phone": clip(phone, 50) } : {}),
     "Status": "New",
     "Gemach": [g.id],
     "Request Type": isAppt ? "Appointment" : "Loan",
