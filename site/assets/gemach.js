@@ -379,6 +379,7 @@
                       : '<span class="badge badge-out">Taken for ' + esc(d) + "</span>" + back;
   }
   /** With "only what's free" on, items with none free on the checked date are left out (add-ons always stay). */
+  function availOnlyOn() { return availOnly && !!availWindow(); }
   function passesAvail(it) {
     if (!availOnly || isAddon(it)) return true;
     var a = availFor(it);
@@ -410,7 +411,7 @@
     var note = $("av-note");
     if (!note) return;
     var w = availWindow(), row = $("av-only-row");
-    if (row) row.hidden = !w;
+    if (row) row.hidden = !w || usableDefs().length > 0; // gemachs with filters keep it in the filter bar instead
     var until = $("av-until");
     if (until) until.min = availDate ? W.addDaysYMD(availDate, 1) : W.todayNY();
     if (!w) { note.textContent = availBad || "Choose a date to see what will be free."; note.classList.toggle("warn", !!availBad); return; }
@@ -431,8 +432,13 @@
   }
   $("g-body").addEventListener("change", function (e) {
     var id = e.target.id;
-    if (id !== "av-date" && id !== "av-until" && id !== "av-only") return;
-    if (id === "av-only") { availOnly = e.target.checked; saveAvail(); rerenderInventory(); return; }
+    if (id !== "av-date" && id !== "av-until" && id !== "av-only" && id !== "af-free") return;
+    if (id === "av-only" || id === "af-free") { // the same switch, in the date bar or (gemachs with filters) the filter bar
+      availOnly = e.target.checked; saveAvail();
+      var other = $(id === "av-only" ? "af-free" : "av-only"); if (other) other.checked = availOnly;
+      rerenderInventory(id === "af-free" ? "#af-free" : null);
+      return;
+    }
     var v = e.target.value, today = W.todayNY();
     if (id === "av-date") {
       if (!v) { setAvail("", ""); return; }
@@ -767,13 +773,16 @@
     v.forEach(function (x) { var i = d.values.indexOf(x); if (i !== -1 && i < best) best = i; });
     return best;
   }
-  function activeFilterCount() {
+  /** Chips picked in the filter bar. */
+  function chipFilterCount() {
     return Object.keys(attrFilter).reduce(function (n, k) { return n + (attrFilter[k] || []).length; }, 0);
   }
+  /** Active filters: chips picked, plus "Only show what's free" when it's on and a date is chosen. */
+  function activeFilterCount() { return chipFilterCount() + (availOnlyOn() ? 1 : 0); }
   /** Per filter: how many items have each choice, given the picks in the *other* filters (0 → grayed out)
       (OR within a filter, so picking size 8 never rules out size 10). */
   function facetCounts(defs) {
-    var base = pool().filter(function (it) { return !isAddon(it); });
+    var base = pool().filter(function (it) { return !isAddon(it) && passesAvail(it); }); // with "only what's free" on, chips with nothing free gray out
     return defs.map(function (d) {
       var c = {};
       base.forEach(function (it) {
@@ -817,9 +826,11 @@
     var sort = sd && defs.some(function (d) { return d.name === sd.name; })
       ? '<label class="af-sort">Sort <select id="af-sort"><option value="">Gemach’s order</option><option value="size"' + (sortBySize ? " selected" : "") + ">By " + esc(sd.name.toLowerCase()) + ", smallest first</option></select></label>" : "";
     var allOpen = defs.every(function (d) { return opened.indexOf(d.name) !== -1; });
+    var free = availWindow()
+      ? '<div class="af-free-row"><label class="avail-only"><input type="checkbox" id="af-free"' + (availOnly ? " checked" : "") + " /> <span>Only show what’s free on " + esc(availLabel()) + "</span></label></div>" : "";
     var head = '<div class="af-head"><span class="af-title">Filters</span>' +
       '<button type="button" class="af-all" id="af-all" data-open="' + (allOpen ? "0" : "1") + '">' + (allOpen ? "Collapse all" : "Expand all") + "</button></div>";
-    return '<div class="af-bar" id="af-bar">' + head + '<div class="af-rows">' + rows + "</div>" +
+    return '<div class="af-bar" id="af-bar">' + head + '<div class="af-rows">' + rows + "</div>" + free +
       '<div class="af-foot"><span class="af-count" role="status">' + (n ? "Showing " + shown + " of " + total : W.plural(total, "item")) + "</span>" +
       (n ? '<button type="button" class="af-clear" id="af-clear">Clear filters</button>' : "") + sort + "</div></div>";
   }
@@ -1044,11 +1055,11 @@
         return '<a class="shelf-link" href="#sec-' + k + '" data-sec="' + k + '">' + esc(b.c.name) + ' <span class="shelf-n">' + b.items.length + "</span></a>";
       }).join("") + "</nav>";
     }
-    if (availOnly && availWindow() && !listed.some(function (it) { return !isAddon(it); }) && !activeFilterCount()) {
+    if (availOnlyOn() && !listed.some(function (it) { return !isAddon(it); }) && !chipFilterCount()) {
       html += '<div class="notice notice-info af-none">Nothing is free on ' + esc(availLabel()) + '. Try another date, or untick “Only show what’s free” to see everything.</div>';
     }
-    if (activeFilterCount() && !listed.some(function (it) { return !isAddon(it); })) {
-      html += '<div class="notice notice-info af-none">Nothing matches these filters. <button type="button" class="af-clear" id="af-clear-2">Clear filters</button></div>';
+    if (chipFilterCount() && !listed.some(function (it) { return !isAddon(it); })) {
+      html += '<div class="notice notice-info af-none">' + (availOnlyOn() ? "Nothing free matches these filters." : "Nothing matches these filters.") + ' <button type="button" class="af-clear" id="af-clear-2">Clear filters</button></div>';
     }
     html += order.map(function (b, k) {
       if (b.shelf) {
@@ -1256,6 +1267,7 @@
     var wrap = $("inv-wrap");
     if (!wrap) return;
     wrap.innerHTML = renderInventory();
+    updateAvailBar();
     if (focusSel) { var f = wrap.querySelector(focusSel); if (f) f.focus(); }
   }
   $("g-body").addEventListener("change", function (e) {
@@ -1290,7 +1302,11 @@
       rerenderInventory("#af-all");
       return;
     }
-    if (t.closest(".af-clear")) { attrFilter = {}; rerenderInventory("#af-bar .af-chip"); return; }
+    if (t.closest(".af-clear")) {
+      attrFilter = {};
+      if (availOnly) { availOnly = false; saveAvail(); var ao = $("av-only"); if (ao) ao.checked = false; }
+      rerenderInventory("#af-bar .af-chip"); return;
+    }
     if (t.closest("#scope-clear")) { clearScope(); rerenderInventory("#inv-title"); return; }
     var jump = t.closest("[data-jump]");
     if (jump) { e.preventDefault(); flashRow(jump.getAttribute("data-jump")); return; }

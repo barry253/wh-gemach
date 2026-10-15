@@ -655,6 +655,8 @@ button.item-thumb:hover img { opacity: .88; }
 .avail-only { display: flex; align-items: center; gap: .5rem; margin: .55rem 0 0; font-size: .9375rem; cursor: pointer; min-height: 32px; }
 .avail-only[hidden] { display: none; }
 .avail-only input { width: 18px; height: 18px; margin: 0; }
+.af-free-row { margin: .25rem 0 .1rem; padding-top: .45rem; border-top: 1px solid var(--border); }
+.af-free-row .avail-only { margin: 0; }
 .avail-back { font-size: .8125rem; color: var(--muted); margin-left: .25rem; white-space: nowrap; }
 .avail-change { font: inherit; font-size: .875rem; background: none; border: 0; padding: .2rem 0; color: var(--primary); text-decoration: underline; cursor: pointer; }
 .avail-change:focus-visible { outline: 2px solid var(--focus-c); outline-offset: 2px; border-radius: 4px; }

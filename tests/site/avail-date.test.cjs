@@ -47,6 +47,20 @@ directory.gemachs.push(
   { ...base, id: 'recAVNO', slug: 'avail-now', name: 'Now Equipment', mode: 'Full', requestStyle: 'Dates', availabilityMode: 'Now', items: items().map(i => (i.tracking === 'addon' ? i : { ...i, bookings: undefined })) },
 );
 
+// A date-mode gemach WITH item filters: "Only show what's free" lives in the filter bar and grays out chips.
+const fitem = (id, name, attributes, bookings) => ({ id, name, description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catWC', capacity: 1, bookings, attributes });
+const busyWin = [{ from: plus(20), to: plus(23), qty: 1 }];
+directory.gemachs.push({ ...base, id: 'recAVFL', slug: 'avail-filters', name: 'Filtered Dresses', mode: 'Full', requestStyle: 'Event', eventLabel: 'Simcha date', pickupDaysBefore: 1, returnDaysAfter: 1, shabbosAdjust: false, availabilityMode: 'Date',
+  itemAttributes: [{ name: 'Size', values: ['4', '6', '8'] }, { name: 'Color', values: ['Navy', 'Gold'] }],
+  items: [
+    fitem('recF1', 'Navy four', { Size: ['4'], Color: ['Navy'] }, busyWin),
+    fitem('recF2', 'Navy six', { Size: ['6'], Color: ['Navy'] }, []),
+    fitem('recF3', 'Gold eight', { Size: ['8'], Color: ['Gold'] }, busyWin),
+    fitem('recF4', 'Gold six', { Size: ['6'], Color: ['Gold'] }, []),
+  ] });
+const chips = page => page.$$eval('.af-chip', cs => Object.fromEntries(cs.map(c => [c.textContent.trim(), c.disabled])));
+const names = page => page.$$eval('.item-name', els => els.map(e => e.textContent.trim()));
+
 const rowText = (page, id) => page.$eval('#row-' + id, el => el.innerText.replace(/\s+/g, ' ')).catch(() => null);
 
 (async () => {
@@ -160,6 +174,59 @@ const rowText = (page, id) => page.$eval('#row-' + id, el => el.innerText.replac
       assert(!(await p3.$('#avail-bar')), `${label} Right now gemach has no date bar`);
       assert(/Availability updates in real time/.test(await p3.textContent('.inv-title .section-sub')) && /available/.test(await rowText(p3, 'recGown0002')), `${label} Right now gemach still shows today's availability`);
       await ctx3.close();
+
+      // ── With filters: the toggle moves into the filter bar and grays out chips ──
+      const ctx4 = await browser.newContext({ viewport: vp, deviceScaleFactor: 2 });
+      await setup(ctx4);
+      const p4 = await ctx4.newPage();
+      p4.on('pageerror', e => errors.push('pageerror: ' + e.message));
+      await p4.goto(BASE + '/g/avail-filters', { waitUntil: 'networkidle' });
+      await p4.click('#af-all'); // filter sections start folded
+      assert(!(await p4.$('#af-free')), `${label} filters: no free-only switch until a date is chosen`);
+      await p4.fill('#av-date', plus(22));
+      await p4.waitForTimeout(100);
+      assert(await p4.isVisible('#af-free') && !(await p4.isChecked('#af-free')), `${label} filters: switch is in the filter bar, unticked`);
+      assert(await p4.isHidden('#av-only-row'), `${label} filters: the date bar's own checkbox is hidden (one switch, not two)`);
+      assert(/Only show what’s free on/.test(await p4.textContent('.af-free-row')), `${label} filters: switch names the date`);
+      assert((await names(p4)).length === 4 && /4 items/.test(await p4.textContent('.af-count')), `${label} filters: all four listed by default`);
+      let st = await chips(p4);
+      assert(Object.values(st).every(d => !d), `${label} filters: no chip grayed while unticked`);
+      await p4.screenshot({ path: path.join(SHOTS, `${label}-avail-filters.png`) });
+
+      await p4.check('#af-free');
+      await p4.waitForTimeout(100);
+      assert(JSON.stringify(await names(p4)) === '["Navy six","Gold six"]', `${label} filters: ticking hides taken items: ` + JSON.stringify(await names(p4)));
+      assert(/Showing 2 of 4/.test(await p4.textContent('.af-count')) && await p4.isVisible('#af-clear'), `${label} filters: counts as a filter (Showing 2 of 4, Clear filters)`);
+      st = await chips(p4);
+      assert(st['4'] === true && st['8'] === true && st['6'] === false && st['Navy'] === false && st['Gold'] === false, `${label} filters: chips with nothing free gray out: ` + JSON.stringify(st));
+      assert(await p4.evaluate(() => document.activeElement && document.activeElement.id) === 'af-free', `${label} filters: switch keeps focus`);
+      assert(await p4.evaluate(() => document.getElementById('av-only').checked), `${label} filters: both checkboxes stay in step`);
+
+      await p4.locator('#af-bar').screenshot({ path: path.join(SHOTS, `${label}-avail-filterbar.png`) });
+      await p4.click('.af-chip:has(.af-v:text-is("Navy"))');
+      st = await chips(p4);
+      assert(JSON.stringify(await names(p4)) === '["Navy six"]' && st['6'] === false && st['4'] === true && st['8'] === true, `${label} filters: free-only and chips combine: ` + JSON.stringify(st));
+
+      await p4.click('#af-clear');
+      await p4.waitForTimeout(100);
+      assert(!(await p4.isChecked('#af-free')) && (await names(p4)).length === 4 && /4 items/.test(await p4.textContent('.af-count')), `${label} filters: Clear filters also unticks the switch`);
+      st = await chips(p4);
+      assert(Object.values(st).every(d => !d), `${label} filters: chips back to normal after clearing`);
+
+      // a picked chip with nothing free: say so
+      await p4.click('.af-chip:has(.af-v:text-is("4"))');
+      await p4.check('#af-free');
+      await p4.waitForTimeout(100);
+      assert(/Nothing free matches these filters/.test(await p4.textContent('.af-none')), `${label} filters: empty result says nothing free matches`);
+      await p4.click('#af-clear-2');
+      await p4.waitForTimeout(100);
+      assert((await names(p4)).length === 4 && !(await p4.isChecked('#af-free')), `${label} filters: the empty notice's Clear filters resets both`);
+
+      // remembered after a reload, still one switch
+      await p4.check('#af-free');
+      await p4.reload({ waitUntil: 'networkidle' });
+      assert(await p4.isChecked('#af-free') && await p4.isHidden('#av-only-row'), `${label} filters: tick is remembered after a reload`);
+      await ctx4.close();
     }
     assert(!errors.length, 'no errors ' + errors.join(' | '));
   } finally { await browser.close(); srv.kill(); }
