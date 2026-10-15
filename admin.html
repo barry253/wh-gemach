@@ -1337,6 +1337,19 @@
       data-callback="handleGoogleLogin"
       data-auto_prompt="false">
     </div>
+    <script>
+      // iPhone / iPad Safari: Google's popup mode can send the whole tab to a blank accounts.google.com page
+      // and never come back. Use Google's redirect mode there: Google posts the sign-in to /admin-login
+      // (functions/admin-login.js), which sends the person back here (see "Google Login" below).
+      // Needs https://whgemachs.org/admin-login among the OAuth client's Authorized redirect URIs.
+      (function () {
+        var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        if (!ios || location.hostname !== "whgemachs.org") return;
+        var el = document.getElementById("g_id_onload");
+        el.setAttribute("data-ux_mode", "redirect");
+        el.setAttribute("data-login_uri", "https://whgemachs.org/admin-login");
+      })();
+    </script>
     <div class="g_id_signin"
       data-type="standard"
       data-size="large"
@@ -2556,7 +2569,14 @@
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
-  if (token) showApp();
+  // Back from Google's redirect sign-in (iPhone / iPad): /admin-login left the Google token for us.
+  let pendingCredential = null;
+  try {
+    pendingCredential = sessionStorage.getItem("whg_google_cred");
+    sessionStorage.removeItem("whg_google_cred");
+  } catch (e) { /* storage blocked: the person just signs in again */ }
+  if (pendingCredential) handleGoogleLogin({ credential: pendingCredential });
+  else if (token) showApp();
 
   async function showApp() {
     const deep = readDeepLink(location.search); // ?tab=…&req=…|loan=… (notification links), read before the URL is tidied
