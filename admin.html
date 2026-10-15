@@ -204,6 +204,12 @@
     }
 
     .gemach-switcher option { color: var(--text); }
+    .topbar { gap: 0.5rem; }
+    .topbar-brand { flex: 1 1 0; }
+    .topbar-left { flex: 0 1 auto; max-width: 22rem; }
+    .topbar-left .gemach-switcher { max-width: 100%; text-overflow: ellipsis; }
+    .topbar-user { flex: 0 0 auto; }
+    #admin-name { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── Settings ── */
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
@@ -600,55 +606,41 @@
       font-size: 0.95rem;
     }
 
-    /* ── Loans filter bar ── */
-    .loans-filter-bar {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: var(--white);
-      border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
-    }
-    .filter-chips {
-      display: flex;
-      gap: 0.35rem;
-      flex-wrap: wrap;
-      flex: 1;
-    }
-    .filter-chip {
-      padding: 0.2rem 0.65rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: transparent;
-      font-size: 0.78rem;
-      cursor: pointer;
-      color: var(--text);
-      transition: background 0.12s, color 0.12s;
-    }
-    .filter-chip.active {
-      background: var(--navy);
-      color: #fff;
-      border-color: var(--navy);
-    }
-    .filter-overdue-btn {
-      padding: 0.2rem 0.65rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: transparent;
-      font-size: 0.78rem;
-      cursor: pointer;
-      color: var(--muted);
-      white-space: nowrap;
-      transition: background 0.12s, color 0.12s;
-    }
-    .filter-overdue-btn.active {
-      background: var(--red);
-      color: #fff;
-      border-color: var(--red);
-    }
+    /* ── Loans: sticky search + status pills, then item / sort / group tools ── */
+    .loans-bar { position: sticky; top: var(--topbar-h, 56px); z-index: 30; background: var(--grey); margin: -1.25rem -1.25rem 0.5rem; padding: 0.6rem 1.25rem 0.55rem; border-bottom: 1px solid var(--border); }
+    .loans-bar.is-empty { position: static; background: none; border: 0; margin: 0 0 0.75rem; padding: 0; }
+    .loans-row { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+    .loans-search { flex: 1; min-width: 0; height: 40px; padding: 0 0.75rem; font: inherit; font-size: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--white); color: var(--text); }
+    .loans-search:focus { outline: 2px solid var(--navy); outline-offset: 1px; }
+    .loans-row .btn { height: 40px; white-space: nowrap; }
+    .loans-pills { display: flex; gap: 0.35rem; margin-top: 0.5rem; overflow-x: auto; scrollbar-width: none; }
+    .loans-pills::-webkit-scrollbar { display: none; }
+    .loans-pill { flex: 0 0 auto; min-height: 34px; padding: 0 0.8rem; border-radius: 999px; border: 1px solid var(--border); background: var(--white); color: var(--text); font: inherit; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+    .loans-pill b { font-weight: 700; margin-left: 0.15rem; }
+    .loans-pill.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .loans-pill.red.active { background: var(--red); border-color: var(--red); }
+    .loans-pill.green.active { background: var(--green); border-color: var(--green); }
+    .loans-tools { margin-bottom: 0.75rem; }
+    .loans-tools-row { display: flex; align-items: center; gap: 0.5rem; }
+    .loans-select { flex: 1 1 0; min-width: 0; height: 38px; padding: 0 0.7rem; font: inherit; font-size: 0.85rem; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--white); color: var(--text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .loans-select.on { border-color: var(--navy); background: #F3F7F9; font-weight: 600; }
+    .loans-meta { justify-content: space-between; margin-top: 0.5rem; }
+    .loans-count { font-size: 0.78rem; color: var(--muted); }
+    .loans-count .link-btn { margin-left: 0.35rem; }
+    .loans-toggle { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+    .loans-toggle input { width: 18px; height: 18px; accent-color: var(--navy); }
+    .loan-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .loan-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.25rem 0; }
+    .loan-group-name { font-weight: 700; font-size: 0.92rem; overflow-wrap: anywhere; }
+    .loan-group-sub { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+    .loan-group-sub .late { color: var(--red); font-weight: 600; }
+    .loan-group-rows { display: flex; flex-direction: column; gap: 0.4rem; margin-left: 0.5rem; padding-left: 0.5rem; border-left: 2px solid var(--border); }
+    .loan-item-opt { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; width: 100%; min-height: 46px; padding: 0 0.8rem; margin-bottom: 0.35rem; font: inherit; font-size: 0.92rem; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--white); color: var(--text); cursor: pointer; }
+    .loan-item-opt b { font-weight: 600; color: var(--muted); font-size: 0.82rem; }
+    .loan-item-opt.on { border-color: var(--navy); background: #F3F7F9; font-weight: 600; }
+    #loan-item-search { width: 100%; height: 40px; margin-bottom: 0.6rem; padding: 0 0.75rem; font: inherit; font-size: 1rem; border: 1px solid var(--border); border-radius: 8px; }
 
-    /* ── Compact loan rows ── */
+        /* ── Compact loan rows ── */
     .loan-row {
       display: flex;
       align-items: center;
@@ -692,14 +684,15 @@
     .loan-row-name {
       font-weight: 600;
       font-size: 0.88rem;
-      white-space: nowrap;
+      overflow-wrap: break-word;
     }
     .loan-row-item {
       font-size: 0.82rem;
       color: var(--navy);
       font-weight: 500;
-      white-space: nowrap;
+      overflow-wrap: break-word;
     }
+    .loan-row-item.lead { font-size: 0.88rem; font-weight: 600; color: var(--text); }
     .loan-row-code {
       font-size: 0.78rem;
       color: var(--muted);
@@ -711,10 +704,13 @@
       white-space: nowrap;
       margin-left: auto;
       flex-shrink: 0;
+      text-align: right;
+      line-height: 1.3;
     }
     .loan-row-tag {
       flex-shrink: 0;
     }
+    .loan-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; margin-left: auto; flex-shrink: 0; }
 
     .loan-actions-panel {
       display: none;
@@ -1457,12 +1453,29 @@
 
     <!-- Loans -->
     <div class="screen" id="screen-loans">
-      <div class="screen-toolbar"><button class="btn btn-primary btn-sm" id="new-loan-btn" onclick="openCheckout()">+ New loan</button></div>
-      <div class="loans-filter-bar" id="loans-filter-bar" style="display:none">
-        <div class="filter-chips" id="loans-type-chips"></div>
-        <button class="filter-overdue-btn" id="loans-overdue-btn" onclick="toggleOverdueFilter()">Overdue only</button>
+      <div class="loans-bar is-empty" id="loans-bar">
+        <div class="loans-row">
+          <input type="search" id="loans-search" class="loans-search" placeholder="Search name, item or unit #" aria-label="Search loans by borrower, item or unit number" autocomplete="off" enterkeyhint="search" oninput="onLoanSearch(this.value)" hidden />
+          <button class="btn btn-primary btn-sm" id="new-loan-btn" onclick="openCheckout()">+ New loan</button>
+        </div>
+        <div class="loans-pills" id="loans-pills" hidden></div>
       </div>
-      <div class="section-label" id="loans-section-label">Active loans</div>
+      <div class="loans-tools" id="loans-tools" hidden>
+        <div class="loans-tools-row">
+          <button type="button" class="loans-select" id="loans-item-btn" onclick="openLoanItemSheet()" aria-haspopup="dialog">Item: All ▾</button>
+          <select class="loans-select" id="loans-sort" aria-label="Sort loans" onchange="setLoanSort(this.value)">
+            <option value="out">Sort: Longest out</option>
+            <option value="due">Sort: Due date</option>
+            <option value="borrower">Sort: Borrower A–Z</option>
+            <option value="item">Sort: Item A–Z</option>
+            <option value="recent">Sort: Recently borrowed</option>
+          </select>
+        </div>
+        <div class="loans-tools-row loans-meta">
+          <span class="loans-count" id="loans-count" aria-live="polite"></span>
+          <label class="loans-toggle"><input type="checkbox" id="loans-group" onchange="setLoanGroup(this.checked)" /> Group by borrower</label>
+        </div>
+      </div>
       <div class="card-list" id="loans-list">
         <div class="loading">Loading…</div>
       </div>
@@ -1912,6 +1925,18 @@
       <button class="btn btn-ghost" onclick="closeSheet('decline-sheet')">Cancel</button>
       <button class="btn btn-danger" id="decline-submit-btn">Decline request</button>
     </div>
+  </div>
+</div>
+
+<!-- Loans: filter by item type -->
+<div class="sheet-overlay" id="loan-item-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('loan-item-sheet')">×</button>
+    <h3>Filter by item</h3>
+    <p class="sheet-subtitle">What's out right now</p>
+    <input type="search" id="loan-item-search" placeholder="Search item types…" aria-label="Search item types" autocomplete="off" hidden />
+    <div id="loan-item-list"></div>
   </div>
 </div>
 
@@ -3400,50 +3425,124 @@
 
   // ── Loans ─────────────────────────────────────────────────────────────────
   let allLoans = [];
-  let loanFilterType = null;
-  let loanFilterOverdue = false;
+  let loanFilterType = null;   // item type name; null = every type
+  let loanStatus = "all";      // "all" | "overdue" | "ready"
+  let loanQuery = "";
+  let loanSort = "out";        // sort and grouping are remembered on this device
+  let loanGroup = false;
+  const LOAN_SORTS = ["out", "due", "borrower", "item", "recent"];
+  try {
+    const v = JSON.parse(localStorage.getItem("whg_loans_view") || "null");
+    if (v && LOAN_SORTS.includes(v.sort)) loanSort = v.sort;
+    if (v && v.group) loanGroup = true;
+  } catch (e) { /* ignore */ }
+  function saveLoanView() {
+    try { localStorage.setItem("whg_loans_view", JSON.stringify({ sort: loanSort, group: loanGroup })); } catch (e) { /* ignore */ }
+  }
 
-  async function loadLoans() {
-    let first = true;
+  // The sticky bar sits under the top bar, whatever height that has on this screen.
+  (function trackTopbarHeight() {
+    const tb = document.querySelector(".topbar");
+    if (!tb) return;
+    const set = () => { const h = tb.offsetHeight; if (h) document.documentElement.style.setProperty("--topbar-h", h + "px"); };
+    set();
+    if (window.ResizeObserver) new ResizeObserver(set).observe(tb);
+    window.addEventListener("resize", set);
+  })();
+
+  /** keepFilters: refreshing after a change (a return), so the search and filters stay as they are. */
+  async function loadLoans(keepFilters) {
+    let first = !keepFilters;
     await snapLoad("/admin/loans", document.getElementById("loans-list"), data => { showLoans(data, first); first = false; });
   }
   function showLoans(data, resetFilters) {
     const list = document.getElementById("loans-list");
-    if (!data?.length) {
+    const show = !!data?.length;
+    document.getElementById("loans-bar").classList.toggle("is-empty", !show);
+    for (const id of ["loans-search", "loans-pills", "loans-tools"]) document.getElementById(id).hidden = !show;
+    if (!show) {
+      allLoans = [];
       list.innerHTML = '<div class="empty-state"><div class="icon">✓</div>No active loans</div>';
-      document.getElementById("loans-filter-bar").style.display = "none";
       return;
     }
     allLoans = data;
-    if (resetFilters) { loanFilterType = null; loanFilterOverdue = false; }
-    buildLoanFilterChips();
+    if (resetFilters) {
+      loanFilterType = null; loanStatus = "all"; loanQuery = "";
+      document.getElementById("loans-search").value = "";
+    }
+    if (loanFilterType && !allLoans.some(l => l.itemTypeName === loanFilterType)) loanFilterType = null; // all of that type came back
+    document.getElementById("loans-sort").value = loanSort;
+    document.getElementById("loans-group").checked = loanGroup;
     renderLoans();
   }
 
-  function buildLoanFilterChips() {
-    const types = [...new Set(allLoans.map(l => l.itemTypeName).filter(Boolean))].sort();
-    const bar = document.getElementById("loans-filter-bar");
-    const chips = document.getElementById("loans-type-chips");
-    chips.innerHTML = `<button class="filter-chip active" onclick="setLoanTypeFilter(null)">All</button>` +
-      types.map(t => `<button class="filter-chip" data-type="${esc(t)}" onclick="setLoanTypeFilter(this.dataset.type)">${esc(t)}</button>`).join("");
-    bar.style.display = "flex";
-  }
-
-  function setLoanTypeFilter(type) {
-    loanFilterType = type;
-    document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
-    const chips = document.querySelectorAll(".filter-chip");
-    chips.forEach(c => { if (c.textContent.trim() === (type || "All")) c.classList.add("active"); });
+  function onLoanSearch(v) { loanQuery = v || ""; renderLoans(); }
+  function setLoanTypeFilter(type) { loanFilterType = type || null; renderLoans(); }
+  function setLoanStatus(s) { loanStatus = s; renderLoans(); }
+  function setLoanSort(v) { if (LOAN_SORTS.includes(v)) { loanSort = v; saveLoanView(); renderLoans(); } }
+  function setLoanGroup(on) { loanGroup = !!on; saveLoanView(); renderLoans(); }
+  function clearLoanFilters() {
+    loanFilterType = null; loanStatus = "all"; loanQuery = "";
+    document.getElementById("loans-search").value = "";
     renderLoans();
   }
 
-  function toggleOverdueFilter() {
-    loanFilterOverdue = !loanFilterOverdue;
-    document.getElementById("loans-overdue-btn").classList.toggle("active", loanFilterOverdue);
-    renderLoans();
+  /** Item-type picker: every type that has something out, with how many. */
+  function openLoanItemSheet() {
+    const counts = new Map();
+    allLoans.forEach(l => { if (l.itemTypeName) counts.set(l.itemTypeName, (counts.get(l.itemTypeName) || 0) + 1); });
+    const types = [...counts.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+    const search = document.getElementById("loan-item-search");
+    search.hidden = types.length < 9;
+    search.value = "";
+    const opt = (type, label, n) =>
+      `<button type="button" class="loan-item-opt${(loanFilterType || "") === type ? " on" : ""}" data-type="${esc(type)}" onclick="pickLoanItem(this.dataset.type)"><span>${esc(label)}</span><b>${n}</b></button>`;
+    const draw = () => {
+      const f = search.value.trim().toLowerCase();
+      document.getElementById("loan-item-list").innerHTML =
+        (f ? "" : opt("", "All item types", allLoans.length)) +
+        types.filter(t => !f || t.toLowerCase().includes(f)).map(t => opt(t, t, counts.get(t))).join("");
+    };
+    search.oninput = draw;
+    draw();
+    openSheet("loan-item-sheet");
+  }
+  function pickLoanItem(type) { closeSheet("loan-item-sheet"); setLoanTypeFilter(type); }
+
+  const loanDigits = v => String(v ?? "").replace(/\D/g, "");
+  /** One person across rows: phone (last 10 digits), else email, else name. */
+  function loanPersonKey(l) {
+    const p = loanDigits(l.borrowerPhone).slice(-10);
+    if (p.length >= 7) return "p" + p;
+    const e = String(l.borrowerEmail || "").trim().toLowerCase();
+    if (e) return "e" + e;
+    return "n" + String(l.borrowerName || "").trim().toLowerCase();
+  }
+  /** Every word typed must match: start of a name / item word, part of the unit number or email, digits of the phone. */
+  function loanMatches(l, q) {
+    if (!q) return true;
+    const words = `${l.borrowerName || ""} ${l.itemTypeName || ""}`.toLowerCase().split(/[\s\-–—·,.()/]+/).filter(Boolean);
+    const unit = String(l.itemId || "").toLowerCase();
+    const email = String(l.borrowerEmail || "").toLowerCase();
+    const phone = loanDigits(l.borrowerPhone);
+    return q.toLowerCase().split(/\s+/).filter(Boolean).every(tok =>
+      words.some(w => w.startsWith(tok)) ||
+      (tok.length >= 2 && unit.includes(tok)) ||
+      (tok.length >= 3 && email.includes(tok)) ||
+      (/^[\d()+\-.]+$/.test(tok) && loanDigits(tok).length >= 3 && phone.includes(loanDigits(tok))));
+  }
+  function loanSortFn(kind) {
+    const str = (a, b) => String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base", numeric: true });
+    const dateAsc = (a, b) => (!a && !b) ? 0 : !a ? 1 : !b ? -1 : a < b ? -1 : a > b ? 1 : 0; // no date goes last
+    if (kind === "due") return (a, b) => dateAsc(a.expectedReturn, b.expectedReturn) || dateAsc(a.dateBorrowed, b.dateBorrowed);
+    if (kind === "borrower") return (a, b) => str(a.borrowerName, b.borrowerName) || str(a.itemTypeName, b.itemTypeName);
+    if (kind === "item") return (a, b) => str(a.itemTypeName, b.itemTypeName) || str(a.itemId, b.itemId) || str(a.borrowerName, b.borrowerName);
+    const dateDesc = (a, b) => (!a && !b) ? 0 : !a ? 1 : !b ? -1 : a > b ? -1 : a < b ? 1 : 0;
+    if (kind === "recent") return (a, b) => dateDesc(a.dateBorrowed, b.dateBorrowed);
+    return (a, b) => dateAsc(a.dateBorrowed, b.dateBorrowed); // longest out first (the order the server sends)
   }
 
-  /**
+/**
    * Item photo for a loan / reservation row (40px) or a request card (56px); a plain box when there's none.
    * Tapping it opens the photo viewer with all of the item's photos (cover first).
    */
@@ -3508,53 +3607,37 @@
       if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) showViewerPhoto(viewer.i + (dx < 0 ? 1 : -1));
     });
   })();
-  function renderLoans() {
-    let loans = allLoans;
-    if (loanFilterType) loans = loans.filter(l => l.itemTypeName === loanFilterType);
-    if (loanFilterOverdue) loans = loans.filter(l => l.overdue);
-
-    const label = document.getElementById("loans-section-label");
-    const total = allLoans.length;
-    const showing = loans.length;
-    label.textContent = showing === total ? `Active loans (${total})` : `Active loans — ${showing} of ${total}`;
-
-    const list = document.getElementById("loans-list");
-    if (!loans.length) {
-      list.innerHTML = '<div class="empty-state" style="padding:1.5rem;text-align:center;color:var(--muted)">No loans match this filter</div>';
-      return;
-    }
-
-    RECORDS.loan.clear();
-    list.innerHTML = loans.map(l => {
-      const lid = keep("loan", l);
-      // Warning: due within 3 days (if expectedReturn set), or out > 7 days (fallback)
-      const todayStr = nyTodayStr();
-      const dueSoon = l.expectedReturn
-        ? (l.expectedReturn >= todayStr && (new Date(l.expectedReturn) - new Date(todayStr)) / 86400000 <= 3)
-        : l.daysOut > 7;
-      const cls = l.overdue ? "overdue" : dueSoon ? "warning" : "";
-      const tag = l.overdue
-        ? `<span class="tag tag-red loan-row-tag">Overdue ${esc(l.daysOut)}d</span>`
-        : l.daysOut != null
-          ? `<span class="tag tag-navy loan-row-tag">${esc(l.daysOut)}d</span>`
-          : `<span class="tag tag-navy loan-row-tag">?</span>`;
-
-
-      const hasNote = l.notes || l.requestNote;
-      return `
+  function loanRowHtml(l, lead) {
+    const lid = keep("loan", l);
+    // Warning: due within 3 days (if expectedReturn set), or out > 7 days (fallback)
+    const todayStr = nyTodayStr();
+    const dueSoon = l.expectedReturn
+      ? (l.expectedReturn >= todayStr && (new Date(l.expectedReturn) - new Date(todayStr)) / 86400000 <= 3)
+      : l.daysOut > 7;
+    const cls = l.overdue ? "overdue" : dueSoon ? "warning" : "";
+    const tag = l.overdue
+      ? `<span class="tag tag-red loan-row-tag">Overdue ${esc(l.daysOut)}d</span>`
+      : l.daysOut != null
+        ? `<span class="tag tag-navy loan-row-tag">${esc(l.daysOut)}d</span>`
+        : `<span class="tag tag-navy loan-row-tag">?</span>`;
+    const due = l.expectedReturn ? fmt(l.expectedReturn) : "";
+    const hasNote = l.notes || l.requestNote;
+    return `
         <div class="loan-row ${cls}" id="loan-row-${lid}" onclick="toggleLoanActions('${lid}')">
           ${rowThumb(l.photo, l.itemTypeName, l.photos)}
           <div class="loan-row-main">
-            <span class="loan-row-name">${esc(l.borrowerName)}</span>
-            <span class="loan-row-item">${esc(l.itemTypeName || "")}</span>
+            ${lead ? "" : `<span class="loan-row-name">${esc(l.borrowerName)}</span>`}
+            <span class="loan-row-item${lead ? " lead" : ""}">${esc(l.itemTypeName || "")}</span>
             ${l.itemId ? `<span class="loan-row-code">${esc(l.itemId)}</span>` : ""}
             ${l.isQuantity ? `<span class="loan-row-code">× ${esc(l.quantity)}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
             ${l.readyToReturnAt ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
             ${l.reminderSentAt ? `<span class="tag tag-amber loan-row-tag" title="Return reminder ${esc(reminderVia(l.reminderSentVia))} ${esc(timeAgo(l.reminderSentAt))}">⏰ Reminded ${esc(timeAgo(l.reminderSentAt))}</span>` : ""}
           </div>
-          <span class="loan-row-date">${esc(fmt(l.dateBorrowed) || "—")}</span>
-          ${tag}
+          <span class="loan-row-side">
+            <span class="loan-row-date" title="Date borrowed${due ? " · due back" : ""}">Out ${esc(fmt(l.dateBorrowed) || "—")}${due ? `<br>Due ${esc(due)}` : ""}</span>
+            ${tag}
+          </span>
         </div>
         <div class="loan-actions-panel" id="loan-panel-${lid}">
           ${l.readyToReturnAt ? `<div class="loan-notes request-note"><span class="note-label">Ready to return:</span> the borrower let us know ${esc(timeAgo(l.readyToReturnAt))} — arrange the return.</div>` : ""}
@@ -3568,6 +3651,62 @@
             ${contactActions(contactOf(l), true)}
           </div>
         </div>`;
+  }
+
+  function renderLoans() {
+    const q = loanQuery.trim();
+    // Counts on the pills follow the search and item filter, so each pill shows what tapping it would give.
+    const base = allLoans.filter(l => (!loanFilterType || l.itemTypeName === loanFilterType) && loanMatches(l, q));
+    const counts = { all: base.length, overdue: base.filter(l => l.overdue).length, ready: base.filter(l => l.readyToReturnAt).length };
+    const loans = base
+      .filter(l => loanStatus === "overdue" ? l.overdue : loanStatus === "ready" ? !!l.readyToReturnAt : true)
+      .sort(loanSortFn(loanSort));
+
+    const pill = (key, label, n, color) =>
+      `<button type="button" class="loans-pill ${color}${loanStatus === key ? " active" : ""}" aria-pressed="${loanStatus === key}" onclick="setLoanStatus('${key}')">${label} <b>${n}</b></button>`;
+    document.getElementById("loans-pills").innerHTML =
+      pill("all", "All out", counts.all, "") + pill("overdue", "Overdue", counts.overdue, "red") +
+      (counts.ready || loanStatus === "ready" ? pill("ready", "Ready to return", counts.ready, "green") : "");
+
+    const types = new Set(allLoans.map(l => l.itemTypeName).filter(Boolean));
+    const itemBtn = document.getElementById("loans-item-btn");
+    itemBtn.hidden = types.size < 2 && !loanFilterType;
+    itemBtn.textContent = `Item: ${loanFilterType || "All"} ▾`;
+    itemBtn.classList.toggle("on", !!loanFilterType);
+
+    const filtered = !!(loanFilterType || q || loanStatus !== "all");
+    const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+    let txt = filtered ? `${loans.length} of ${plural(allLoans.length, "loan")}` : plural(allLoans.length, "loan");
+    if (loanGroup) txt += ` · ${plural(new Set(loans.map(loanPersonKey)).size, "borrower")}`;
+    document.getElementById("loans-count").innerHTML =
+      esc(txt) + (filtered ? ` <button type="button" class="link-btn" onclick="clearLoanFilters()">Clear</button>` : "");
+
+    const list = document.getElementById("loans-list");
+    RECORDS.loan.clear();
+    if (!loans.length) {
+      list.innerHTML = `<div class="empty-state" style="padding:1.5rem;text-align:center;color:var(--muted)">No loans match${filtered ? ` — <button type="button" class="link-btn" onclick="clearLoanFilters()">clear filters</button>` : ""}</div>`;
+      return;
+    }
+    if (!loanGroup) { list.innerHTML = loans.map(l => loanRowHtml(l, false)).join(""); return; }
+
+    // Grouped: a borrower with 2+ things out gets a header and their items under it; a single loan stays a normal row.
+    const groups = [], at = new Map();
+    for (const l of loans) {
+      const k = loanPersonKey(l);
+      let g = at.get(k);
+      if (!g) { g = { loans: [] }; at.set(k, g); groups.push(g); }
+      g.loans.push(l);
+    }
+    list.innerHTML = groups.map(g => {
+      if (g.loans.length === 1) return loanRowHtml(g.loans[0], false);
+      const late = g.loans.filter(l => l.overdue).length;
+      return `<div class="loan-group">
+        <div class="loan-group-head">
+          <span class="loan-group-name">${esc(g.loans[0].borrowerName)}</span>
+          <span class="loan-group-sub">${g.loans.length} items out${late ? ` · <span class="late">${late} overdue</span>` : ""}</span>
+        </div>
+        <div class="loan-group-rows">${g.loans.map(l => loanRowHtml(l, true)).join("")}</div>
+      </div>`;
     }).join("");
   }
 
@@ -3626,13 +3765,13 @@
       if (!res) return;
       if (res.error) {
         showToast(res.error, 6000);
-        if (res.current) { closeSheet("return-sheet"); loadLoans(); loadDashboard(); }
+        if (res.current) { closeSheet("return-sheet"); loadLoans(true); loadDashboard(); }
         return;
       }
       closeSheet("return-sheet");
       document.getElementById(`loan-row-${safeId(l.id)}`)?.remove();
       loadDashboard();
-      loadLoans();
+      loadLoans(true);
       showToast(res.missing ? `Returned · ${res.missing} missing (noted)` : "Item marked as returned");
     };
 
