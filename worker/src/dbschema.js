@@ -149,6 +149,8 @@ const TABLES = {
       "Preferred Times": t("preferred_times"), "Party Size": n("party_size"),
       "Appointment At": dt("appointment_at"), "Deposit Acknowledged": b("deposit_acknowledged"),
       "Item Quantities": t("item_quantities"),
+      // Items the gemach couldn't confirm when it confirmed the rest: JSON { "<item type id>": "optional note" }.
+      "Declined Items": t("declined_items"),
       // Appointment visits: "Checked out" / "Nothing borrowed" / "No-show" (blank = not visited yet).
       "Visit Outcome": t("visit_outcome"), "Visited At": dt("visited_at"),
       // "Admin" when the gemach made it in admin (New reservation / New appointment); blank = the public form.

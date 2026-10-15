@@ -77,6 +77,12 @@
   function render() {
     renderHead();
     var r = data.request, st = STATUS[r.status] || STATUS.closed;
+    var unavailable = r.items.filter(function (i) { return i.unavailable; });
+    // Some items confirmed, others not: say so up front rather than a plain "Confirmed".
+    if (unavailable.length && unavailable.length < r.items.length && (r.status === "confirmed" || r.status === "out")) {
+      st = [r.status === "out" ? "Picked up" : "Partly confirmed",
+        r.status === "out" ? "Some items couldn’t be filled — see below." : "Some of your items are reserved. The others weren’t available — see below.", "st-ok"];
+    }
     var rows = [];
     if (r.type === "Appointment") {
       if (r.appointmentAt) rows.push(["Appointment", esc(whenAppt(r.appointmentAt))]);
@@ -86,7 +92,10 @@
       if (r.neededFrom) rows.push(["Dates", esc(day(r.neededFrom)) + " → " + (r.neededUntil ? esc(day(r.neededUntil)) : r.openEnded ? "open-ended" : "—")]);
     }
     var items = r.items.length ? '<ul class="m-items">' + r.items.map(function (i) {
-      return "<li>" + qty(i.name, i.quantity) + (i.addon ? ' <span class="badge badge-addon">Add-on</span>' : "") + "</li>";
+      return "<li>" + (i.unavailable
+        ? '<div><div class="m-loan-name">' + qty(i.name, i.quantity) + '</div>' + (i.note ? '<div class="m-loan-sub">' + esc(i.note) + "</div>" : "") + "</div>" +
+          ' <span class="badge badge-dir">Not available</span>'
+        : qty(i.name, i.quantity) + (i.addon ? ' <span class="badge badge-addon">Add-on</span>' : "")) + "</li>";
     }).join("") + "</ul>" : "";
     var loans = (data.loans || []).filter(function (l) { return l.status !== "Cancelled" || r.status === "cancelled"; });
     var loanRows = loans.length && r.status !== "waiting" ? '<ul class="m-loans">' + loans.map(function (l) {

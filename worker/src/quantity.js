@@ -160,6 +160,7 @@ async function itemTypeInfoMap(db, ids, g) {
     lendable: lendableQty(r),
     owned: wholeNum(r.fields["Quantity Owned"]),
     outOfService: wholeNum(r.fields["Out of Service"]),
+    rec: r,
   }]));
 }
 
@@ -179,9 +180,18 @@ function requestWindow(f) {
  * backBy = soonest date something overlapping is due back (null if unknown / open-ended).
  */
 async function requestAvailability(db, g, typeRecs, qtyMap, win) {
+  const [res] = await requestAvailabilityBatch(db, g, typeRecs, [{ qtyMap, win }]);
+  return res;
+}
+
+/**
+ * Same check for several requests at once (admin Requests list): loans and units are read once, then each
+ * { qtyMap, win } is answered against them. Returns one { typeId: {...} } object per entry, in order.
+ */
+async function requestAvailabilityBatch(db, g, typeRecs, list) {
   typeRecs = typeRecs.filter(r => !isAddonType(r)); // add-ons are made to order: nothing to check
   const wanted = new Map(typeRecs.map(r => [r.id, r]));
-  if (!wanted.size) return {};
+  if (!wanted.size || !list.length) return list.map(() => ({}));
   const unitTypes = typeRecs.filter(r => !isQtyType(r)).map(r => r.id);
   const [loans, units] = await Promise.all([
     db.listAll(T.LOANS, { scope: g, where: [Q.in("Status", ["Active", "Reserved"])], fields: [...LOAN_WINDOW_FIELDS, "Item"] }),
@@ -206,20 +216,23 @@ async function requestAvailability(db, g, typeRecs, qtyMap, win) {
     if (w.to != null && w.to < today) continue;
     (bookings[t] ||= []).push({ ...w, qty: isQtyType(rec) ? loanQty(l.fields) : 1 });
   }
-  const out = {};
-  for (const [id, rec] of wanted) {
-    const cap = isQtyType(rec) ? lendableQty(rec) : capacity[id] || 0;
-    const needed = isQtyType(rec) ? qtyMap[id] || 1 : 1;
-    const free = qtyAvailable(cap, bookings[id], win.from, win.to);
-    const overlapping = (bookings[id] || []).filter(b => (win.to == null || b.from <= win.to) && (b.to == null || b.to >= win.from));
-    const back = overlapping.map(b => b.to).filter(Boolean).sort()[0] || null;
-    out[id] = {
-      capacity: cap, needed, free,
-      status: cap === 0 ? "none-owned" : free >= needed ? "ok" : free === 0 ? "none" : "short",
-      backBy: free >= needed ? null : back,
-    };
-  }
-  return out;
+  return list.map(({ qtyMap = {}, win, typeIds }) => {
+    const out = {};
+    for (const [id, rec] of wanted) {
+      if (typeIds && !typeIds.includes(id)) continue;
+      const cap = isQtyType(rec) ? lendableQty(rec) : capacity[id] || 0;
+      const needed = isQtyType(rec) ? qtyMap[id] || 1 : 1;
+      const free = qtyAvailable(cap, bookings[id], win.from, win.to);
+      const overlapping = (bookings[id] || []).filter(b => (win.to == null || b.from <= win.to) && (b.to == null || b.to >= win.from));
+      const back = overlapping.map(b => b.to).filter(Boolean).sort()[0] || null;
+      out[id] = {
+        capacity: cap, needed, free,
+        status: cap === 0 ? "none-owned" : free >= needed ? "ok" : free === 0 ? "none" : "short",
+        backBy: free >= needed ? null : back,
+      };
+    }
+    return out;
+  });
 }
 
-export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyBookingsFromLoans, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, isAddonType, addonPrice, money, typePhoto, typePhotos, TYPE_PUBLIC_FIELDS, TYPE_ADMIN_FIELDS, TYPE_PHOTO_FIELDS, TYPE_COUNT_FIELDS };
+export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyBookingsFromLoans, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, requestAvailabilityBatch, isAddonType, addonPrice, money, typePhoto, typePhotos, TYPE_PUBLIC_FIELDS, TYPE_ADMIN_FIELDS, TYPE_PHOTO_FIELDS, TYPE_COUNT_FIELDS };

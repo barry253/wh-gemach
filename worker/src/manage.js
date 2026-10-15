@@ -83,6 +83,13 @@ async function loadManaged(db, env, token) {
 }
 
 const reqStatus = rec => selName(rec.fields["Status"]) || "New";
+/** Items the gemach couldn't confirm: { "<item type id>": "optional note" } (blank/invalid = none). */
+function declinedOf(rec) {
+  try {
+    const o = JSON.parse(rec.fields["Declined Items"] || "{}");
+    return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+  } catch { return {}; }
+}
 const isAppt = rec => selName(rec.fields["Request Type"]) === "Appointment";
 const openLoans = loans => loans.filter(l => ["Reserved", "Active"].includes(selName(l.fields.Status)));
 /** Appointment visit recorded in admin: "Checked out" / "Nothing borrowed" / "No-show", or null. */
@@ -108,6 +115,7 @@ async function managePayload(db, rec, g, loans) {
   const typeIds = [...(f["Items Requested"] || []).map(linkedId), ...loans.map(l => linkedId(firstLink(l.fields["Item to Reserve"])))].filter(Boolean);
   const info = await itemTypeInfoMap(db, typeIds, g);
   const qmap = parseQtyMap(f["Item Quantities"]);
+  const declined = declinedOf(rec);
   const st = reqStatus(rec);
   const open = openLoans(loans);
   const active = loans.filter(l => selName(l.fields.Status) === "Active");
@@ -135,7 +143,8 @@ async function managePayload(db, rec, g, loans) {
       appointmentAt: st === "Converted" ? f["Appointment At"] || null : null,
       visitOutcome: isAppt(rec) ? visitOf(rec) : null,
       items: (f["Items Requested"] || []).map(linkedId).filter(id => info[id]).map(id => ({
-        name: info[id].name, quantity: info[id].qty || info[id].addon ? qmap[id] || 1 : null, addon: !!info[id].addon })),
+        name: info[id].name, quantity: info[id].qty || info[id].addon ? qmap[id] || 1 : null, addon: !!info[id].addon,
+        ...(id in declined ? { unavailable: true, note: String(declined[id] || "").trim() || null } : {}) })),
     },
     loans: loans.filter(l => selName(l.fields.Status) !== "Cancelled" || st === "Cancelled").map(l => {
       const lf = l.fields, t = info[linkedId(firstLink(lf["Item to Reserve"]))];

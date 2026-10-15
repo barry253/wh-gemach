@@ -347,6 +347,14 @@
     .qty-line input { width: 100%; }
     .qty-line .muted-small { grid-column: 1 / -1; }
     .qty-line .warn, .qty-warn { color: var(--amber); }
+    /* Confirm sheet: one row per requested item — tick = confirm it, untick = not available (optional note). */
+    .ci-row { display: grid; grid-template-columns: 1fr 6.5rem; align-items: center; gap: 0.2rem 0.75rem; padding: 0.55rem 0; border-top: 1px solid var(--border, #e6e0d2); }
+    .ci-row:first-child { border-top: 0; }
+    .ci-main { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; font-weight: 500; cursor: pointer; min-height: 44px; }
+    .ci-main input { width: 1.25rem; height: 1.25rem; flex: none; }
+    .ci-row .muted-small, .ci-row .ci-note { grid-column: 1 / -1; }
+    .ci-row.ci-off .ci-main .qty-name { text-decoration: line-through; opacity: 0.7; }
+    .ci-row input[type=number] { width: 100%; }
     .check-row { display: flex; align-items: center; gap: 0.45rem; cursor: pointer; }
     .form-group .check-row input { width: 18px; height: 18px; min-height: 0; flex: 0 0 auto; margin: 0; padding: 0; }
     .form-group .check-row span { flex: 1; text-align: left; }
@@ -1617,8 +1625,9 @@
     <p class="sheet-subtitle" id="confirm-subtitle"></p>
 
     <div class="form-group" id="confirm-qty-group" style="display:none">
-      <label>How many are you confirming?</label>
+      <label>Which items are you confirming?</label>
       <div id="confirm-qty-list" class="qty-list"></div>
+      <p class="muted-small" id="confirm-items-help">Untick anything you can't lend — the borrower is told which items are confirmed and which aren't.</p>
     </div>
 
     <div class="form-group">
@@ -1631,6 +1640,7 @@
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('confirm-sheet')">Cancel</button>
       <button class="btn btn-primary" id="confirm-submit-btn">Confirm request</button>
+      <button class="btn btn-danger" id="confirm-decline-btn" style="display:none">Nothing to confirm — decline instead</button>
     </div>
   </div>
 </div>
@@ -3147,56 +3157,102 @@
     document.getElementById("confirm-subtitle").textContent =
       `${(r.itemNames || []).join(", ")} · ${r.requestId}`;
 
-    // Quantity items (e.g. chairs): the admin can confirm a different count than was asked for.
-    const qtyItems = (r.items || []).filter(i => i.quantity != null);
+    // One row per requested item: tick = confirm it (quantity items also let the admin change the count),
+    // untick = not available, with an optional note for the borrower. Items the availability check says have
+    // nothing free for these dates start unticked (the admin can still tick them).
+    const allItems = (r.items || []).filter(i => i && i.id);
+    const isOut = i => i.availability && (i.availability.status === "none" || i.availability.status === "none-owned");
+    const qtyItems = allItems.filter(i => i.quantity != null);
     const qtyGroup = document.getElementById("confirm-qty-group");
     const qtyList = document.getElementById("confirm-qty-list");
-    qtyGroup.style.display = qtyItems.length ? "" : "none";
-    qtyList.innerHTML = qtyItems.map(i => {
+    const showRows = allItems.length > 1 || qtyItems.length > 0 || allItems.some(isOut);
+    qtyGroup.style.display = showRows ? "" : "none";
+    const statusText = i => {
+      if (i.addon) return i.price != null ? `Add-on · ${fmtMoney(i.price)} each` : "Add-on (made to order)";
+      const a = i.availability;
+      if (i.quantity != null) {
+        const base = i.available != null ? `${i.available} free for these dates · ${i.owned} total` : `${i.owned} total`;
+        return `Asked for ${i.quantity} · ${base}` + (a?.backBy && i.available === 0 ? ` · next due back ${fmt(a.backBy)}` : "");
+      }
+      if (!a) return "";
+      if (a.status === "none-owned") return "None listed in your inventory";
+      if (a.status === "none") return `None free for these dates${a.backBy ? ` · next due back ${fmt(a.backBy)}` : ""}`;
+      return "Free for these dates";
+    };
+    qtyList.innerHTML = allItems.map(i => {
       const iid = safeId(i.id);
-      const free = i.addon
-        ? (i.price != null ? `Add-on · ${fmtMoney(i.price)} each` : "Add-on (made to order)")
-        : i.available != null
-          ? `${i.available} free for these dates · ${i.owned} total`
-          : `${i.owned} total`;
-      return `<div class="qty-line">
-        <label class="qty-name" for="cq-${iid}">${esc(i.name)}</label>
-        <input type="number" id="cq-${iid}" data-qty="${iid}" min="1" step="1" inputmode="numeric" value="${esc(i.quantity)}" />
-        <div class="muted-small${i.available != null && i.quantity > i.available ? " warn" : ""}">Asked for ${esc(i.quantity)} · ${esc(free)}</div>
+      const warn = isOut(i) || (i.quantity != null && i.available != null && i.quantity > i.available);
+      return `<div class="ci-row${isOut(i) ? " ci-off" : ""}" data-ci-row="${iid}">
+        <label class="ci-main"><input type="checkbox" data-ci-box="${iid}" ${isOut(i) ? "" : "checked"} /><span class="qty-name">${esc(i.name)}</span></label>
+        ${i.quantity != null ? `<input type="number" id="cq-${iid}" data-qty="${iid}" min="1" step="1" inputmode="numeric" value="${esc(i.quantity)}" aria-label="How many ${esc(i.name)}" />` : "<span></span>"}
+        <div class="muted-small${warn ? " warn" : ""}">${esc(statusText(i))}</div>
+        <input type="text" class="ci-note" data-ci-note="${iid}" maxlength="300" placeholder="Note for the borrower (optional) — e.g. try size 10 instead" style="${isOut(i) ? "" : "display:none"}" />
       </div>`;
     }).join("");
+    const boxOf = i => document.getElementById("confirm-qty-list").querySelector(`[data-ci-box="${safeId(i.id)}"]`);
+    const noteOf = i => document.getElementById("confirm-qty-list").querySelector(`[data-ci-note="${safeId(i.id)}"]`);
+    const isOn = i => !boxOf(i) || boxOf(i).checked;
     const currentQty = () => Object.fromEntries(qtyItems.map(i => [i.id, parseInt(document.getElementById(`cq-${safeId(i.id)}`).value, 10)]));
-    const itemListNow = () => {
-      const q = currentQty();
-      return (r.items || []).map(i => i.quantity != null ? `${i.name} × ${q[i.id] > 0 ? q[i.id] : i.quantity}` : i.name).join(" and ")
-        || (r.itemNames || []).join(" and ");
+    const labelFor = (i, q) => i.quantity != null ? `${i.name} × ${q[i.id] > 0 ? q[i.id] : i.quantity}` : i.name;
+    const joinAnd = list => list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list[list.length - 1] : list[0] || "";
+    const confirmedText = () => { const q = currentQty(); return joinAnd(allItems.filter(isOn).map(i => labelFor(i, q))) || joinAnd((r.itemNames || [])); };
+    const notAvailable = () => allItems.filter(i => !isOn(i)).map(i => ({ id: i.id, name: i.name, note: (noteOf(i)?.value || "").trim() }));
+    // The one combined message: the usual confirmation for what's going out, then a short "not available" paragraph.
+    const buildMessage = () => {
+      const first = r.name.split(" ")[0];
+      let msg = renderMessage("confirm", first, confirmedText(), { eventDate: r.eventDate, manageUrl: r.manageUrl });
+      const na = notAvailable();
+      if (!na.length) return msg;
+      const item = d => d.note ? `${d.name} (${d.note.replace(/[.!\s]+$/, "")})` : d.name;
+      const para = na.length === 1
+        ? `Unfortunately we're not able to provide ${item(na[0])}.`
+        : `Unfortunately these aren't available: ${na.map(item).join("; ")}.`;
+      const cut = msg.indexOf("\n\n");
+      return cut === -1 ? msg + "\n\n" + para : msg.slice(0, cut) + "\n\n" + para + msg.slice(cut);
     };
     const msgEl = document.getElementById("confirm-message");
-    let lastAuto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate, manageUrl: r.manageUrl });
+    let lastAuto = buildMessage();
     msgEl.value = lastAuto;
-    qtyList.oninput = () => {
-      // Keep the message in step with the counts, unless the admin has edited it by hand.
-      const auto = renderMessage("confirm", r.name.split(" ")[0], itemListNow(), { eventDate: r.eventDate, manageUrl: r.manageUrl });
+    const submitBtn = document.getElementById("confirm-submit-btn");
+    const declineBtn = document.getElementById("confirm-decline-btn");
+    const refresh = () => {
+      // Keep the message in step with the ticks, notes and counts, unless the admin has edited it by hand.
+      const auto = buildMessage();
       if (msgEl.value === lastAuto) msgEl.value = auto;
       lastAuto = auto;
+      allItems.forEach(i => {
+        const row = qtyList.querySelector(`[data-ci-row="${safeId(i.id)}"]`);
+        const on = isOn(i);
+        row?.classList.toggle("ci-off", !on);
+        if (noteOf(i)) noteOf(i).style.display = on ? "none" : "";
+      });
+      // Nothing left ticked: there's nothing to confirm, so the button becomes Decline.
+      const none = allItems.length > 0 && allItems.every(i => !isOn(i));
+      submitBtn.style.display = none ? "none" : "";
+      declineBtn.style.display = none ? "" : "none";
     };
+    qtyList.oninput = qtyList.onchange = refresh;
+    declineBtn.onclick = () => { closeSheet("confirm-sheet"); openDecline(r); };
 
     setupSendBy("confirm", r, "confirm-submit-btn", {
       whatsapp: "Confirm & open WhatsApp", sms: "Confirm & open text message", email: "Confirm & email", none: "Confirm without message",
     });
+    refresh();
 
-    document.getElementById("confirm-submit-btn").onclick = async () => {
-      const btn = document.getElementById("confirm-submit-btn");
+    submitBtn.onclick = async () => {
+      const btn = submitBtn;
       if (btn.disabled) return;
       const quantities = currentQty();
-      const badQty = qtyItems.find(i => !(Number.isInteger(quantities[i.id]) && quantities[i.id] >= 1));
+      const badQty = qtyItems.find(i => isOn(i) && !(Number.isInteger(quantities[i.id]) && quantities[i.id] >= 1));
       if (badQty) { showToast(`Enter how many ${badQty.name} (1 or more)`); return; }
       const message = document.getElementById("confirm-message").value;
       const { choice, c } = SEND_BY.confirm;
       if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
       const sendMessage = choice === "email";
       const body = { message, sendMessage, adminName };
-      if (qtyItems.length) body.quantities = quantities;
+      if (qtyItems.length) body.quantities = Object.fromEntries(qtyItems.filter(isOn).map(i => [i.id, quantities[i.id]]));
+      const na = notAvailable();
+      if (na.length) body.items = na.map(d => ({ itemTypeId: d.id, confirm: false, ...(d.note ? { note: d.note } : {}) }));
       const res = await saveAction(btn, `/admin/requests/${r.id}/confirm`, "POST", body);
       if (!res) return;
       if (res.error) {
@@ -3208,7 +3264,8 @@
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
       const n = res?.reservations?.length || 0;
-      showToast((n ? `Request confirmed · ${n} reservation${n > 1 ? "s" : ""} added` : "Request confirmed") + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
+      const nd = res?.declined?.length || 0;
+      showToast((n ? `Request confirmed · ${n} reservation${n > 1 ? "s" : ""} added` : "Request confirmed") + (nd ? ` · ${nd} not available` : "") + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
     };
 
     openSheet("confirm-sheet");

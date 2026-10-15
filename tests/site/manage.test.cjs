@@ -65,7 +65,7 @@ const G = slug => directory.gemachs.find(g => g.slug === slug);
 
 
 
-const TOK = 'recREQMANAGE00001.AAAAAAAAAAAAAAAAAAAAAA', TOK_OUT = 'recREQMANAGE00002.BBBBBBBBBBBBBBBBBBBBBB', TOK_OLD = 'recREQMANAGE00003.CCCCCCCCCCCCCCCCCCCCCC';
+const TOK = 'recREQMANAGE00001.AAAAAAAAAAAAAAAAAAAAAA', TOK_OUT = 'recREQMANAGE00002.BBBBBBBBBBBBBBBBBBBBBB', TOK_OLD = 'recREQMANAGE00003.CCCCCCCCCCCCCCCCCCCCCC', TOK_PART = 'recREQMANAGE00004.DDDDDDDDDDDDDDDDDDDDDD';
 const G1 = { name: 'West Hempstead Medical Gemach', slug: 'wh-medical', phone: '(718) 986-7345', email: 'whmedicalgemach@gmail.com', whatsapp: '718-986-7345',
   primaryContact: 'Call', secondaryContact: 'WhatsApp', logoUrl: null, logoDarkUrl: null, themeColor: '#1B3A4B', accentColor: null, requestStyle: 'Dates', eventLabel: 'Event date' };
 const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
@@ -76,6 +76,11 @@ function fresh() {
     [TOK_OUT]: { gemach: G1, request: { requestId: 'R-051', firstName: 'Moshe', type: 'Loan', status: 'out', neededFrom: plus(-3), neededUntil: plus(4), openEnded: false, items: [{ name: 'Walker', quantity: null }] },
       loans: [{ loanId: 'L-090', itemName: 'Walker', quantity: null, status: 'Active', dateBorrowed: plus(-3), expectedReturn: plus(4), readyToReturnAt: null }],
       can: { cancel: false, readyToReturn: true }, partlyOut: false },
+    // Some items confirmed, one not available (with a note from the gemach)
+    [TOK_PART]: { gemach: G1, request: { requestId: 'R-052', firstName: 'Dina', type: 'Loan', status: 'confirmed', neededFrom: plus(5), neededUntil: plus(8), openEnded: false,
+      items: [{ name: 'Navy gown – size 8', quantity: null, addon: false }, { name: 'Gold gown – size 10', quantity: null, addon: false, unavailable: true, note: 'Try size 12 instead' }] },
+      loans: [{ loanId: 'L-091', itemName: 'Navy gown – size 8', quantity: null, status: 'Reserved', reservationStart: plus(5), reservationEnd: plus(8), readyToReturnAt: null }],
+      can: { cancel: true, readyToReturn: false }, partlyOut: false },
   };
 }
 let M = fresh(); const mposts = [];
@@ -179,6 +184,13 @@ const txt = (p, sel) => p.$eval(sel, e => e.innerText.replace(/\n+/g, ' / '));
       await page.click('[data-act="ready"]');
       await page.waitForSelector('.m-flash');
       assert(mposts.at(-1).action === 'ready' && /Gemach notified/.test(await txt(page, '.m-loans')) && !(await page.$('[data-act="ready"]')), `${label} ready to return sent`);
+
+      // 6b) Partly confirmed: the unavailable item says so, with the gemach's note
+      await page.goto(BASE + '/r/' + TOK_PART, { waitUntil: 'networkidle' });
+      const partTxt = await txt(page, '#m-body');
+      assert(/Partly confirmed/.test(partTxt) && !/Your items are reserved\./.test(partTxt), `${label} partly confirmed heading`);
+      assert(/Gold gown – size 10 \/ Try size 12 instead/.test(partTxt) && /Not available/.test(await txt(page, '.m-items')), `${label} unavailable item shows its note and badge`);
+      assert(/Navy gown – size 8/.test(await txt(page, '.m-loans')) && !/Gold/.test(await txt(page, '.m-loans')), `${label} only the confirmed item has a reservation row`);
 
       // 7) Bad and expired links
       await page.goto(BASE + '/r/junk', { waitUntil: 'networkidle' });

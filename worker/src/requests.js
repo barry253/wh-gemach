@@ -10,7 +10,7 @@ import { buildEmailHtml, sendEmail } from "./email.js";
 import { selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
-import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loadQtyBookings, parseQtyMap, qtyAvailable, qtyLabel, requestWindow, typePhoto, typePhotos } from "./quantity.js";
+import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loadQtyBookings, parseQtyMap, qtyAvailable, qtyLabel, requestAvailabilityBatch, requestWindow, typePhoto, typePhotos } from "./quantity.js";
 import { emailSignature } from "./settings.js";
 import { manageUrl } from "./manage.js";
 
@@ -31,18 +31,30 @@ async function handleGetRequests({ db, g, env }) {
   const info = await itemTypeInfoMap(db, reqs.flatMap(r => r.fields["Items Requested"] || []), g);
   const qtyTypeIds = Object.keys(info).filter(id => info[id].qty);
   const bookings = qtyTypeIds.length ? await loadQtyBookings(db, g, qtyTypeIds) : {};
+  // Per-item availability for the requested dates (numbered units too): one read of loans + units for all requests.
+  const availReqs = reqs.filter(r => selName(r.fields["Request Type"]) !== "Appointment" && requestWindow(r.fields));
+  let availList = [];
+  if (availReqs.length) {
+    const typeRecs = [...new Set(availReqs.flatMap(r => (r.fields["Items Requested"] || []).map(linkedId)))].map(id => info[id]?.rec).filter(Boolean);
+    try {
+      availList = await requestAvailabilityBatch(db, g, typeRecs, availReqs.map(r => ({ qtyMap: parseQtyMap(r.fields["Item Quantities"]), win: requestWindow(r.fields) })));
+    } catch (e) { console.error("Request availability failed:", e.message); availList = []; }
+  }
+  const availByReq = new Map(availReqs.map((r, i) => [r.id, availList[i] || null]));
   const records = await Promise.all(reqs.map(async r => {
     const f = r.fields;
     const qmap = parseQtyMap(f["Item Quantities"]);
     const win = requestWindow(f);
     // One entry per requested type; quantity types say how many and how many are free for the dates.
+    const avail = availByReq.get(r.id);
     const items = (f["Items Requested"] || []).map(linkedId).filter(id => info[id]).map(id => {
       const t = info[id];
       if (t.addon) return { id, name: t.name, photo: t.photo, photos: t.photos, quantity: qmap[id] || 1, available: null, owned: null, addon: true, price: t.price };
-      if (!t.qty) return { id, name: t.name, photo: t.photo, photos: t.photos, quantity: null, available: null, owned: null };
+      if (!t.qty) return { id, name: t.name, photo: t.photo, photos: t.photos, quantity: null, available: null, owned: null, ...(avail?.[id] ? { availability: avail[id] } : {}) };
       return {
         id, name: t.name, photo: t.photo, photos: t.photos, quantity: qmap[id] || 1, owned: t.lendable,
         available: win ? qtyAvailable(t.lendable, bookings[id], win.from, win.to) : null,
+        ...(avail?.[id] ? { availability: avail[id] } : {}),
       };
     });
     return {
@@ -94,13 +106,30 @@ async function handleRequestDecision(c, id, kind) {
       qtyMap[id] = n;
     } else if (!qtyMap[id]) qtyMap[id] = 1;
   }
+  // Per-item decisions (confirm only): body.items = [{ itemTypeId, confirm: false, note? }]. Items marked
+  // confirm:false are left out (no reservation) and remembered with the optional note; nothing sent = confirm all.
+  const declined = {};
+  if (kind === "confirm" && Array.isArray(body.items)) {
+    for (const d of body.items) {
+      if (d && typeof d.itemTypeId === "string" && d.confirm === false && itemIds.includes(d.itemTypeId) && info[d.itemTypeId]) {
+        declined[d.itemTypeId] = String(d.note || "").trim().slice(0, 300);
+      }
+    }
+    if (Object.keys(declined).length && itemIds.every(i => !info[i] || i in declined)) {
+      return json({ error: "Nothing is left to confirm — decline the request instead." }, 400);
+    }
+    for (const id of Object.keys(declined)) delete qtyMap[id];
+  }
   const nameMap = Object.fromEntries(Object.entries(info).map(([id, t]) => [id, qtyLabel(t.name, qtyMap[id])]));
-  const itemNames = itemIds.filter(i => nameMap[i]).map(i => nameMap[i]);
+  const confirmIds = itemIds.filter(i => nameMap[i] && !(i in declined));
+  const itemNames = confirmIds.map(i => nameMap[i]);
+  const declinedList = Object.keys(declined).map(id => ({ id, name: info[id].name, note: declined[id] || null }));
 
   // Claim the request first (New → Converted / Declined in one conditional write) so two taps, two admins, or a
   // borrower cancelling at the same moment can never both win: only the call that changed the row goes on.
   const reqUpdate = { "Status": kind === "confirm" ? "Converted" : "Declined" };
   if (kind === "confirm" && Object.keys(qtyMap).length) reqUpdate["Item Quantities"] = JSON.stringify(qtyMap);
+  if (declinedList.length) reqUpdate["Declined Items"] = JSON.stringify(declined);
   if (!(await db.updateIf(T.REQUESTS, id, [Q.eq("Status", "New")], reqUpdate))) return alreadyHandled(db, id);
 
   // Confirming turns the request into one reservation per requested item type, written in one go.
@@ -108,7 +137,7 @@ async function handleRequestDecision(c, id, kind) {
   if (kind === "confirm") {
     try {
       const addonIds = new Set(itemIds.filter(i => info[i]?.addon));
-      ({ reservations, events } = await createReservationsFromRequest(c, rec, itemIds.filter(i => nameMap[i]), nameMap, qtyMap, addonIds));
+      ({ reservations, events } = await createReservationsFromRequest(c, rec, confirmIds, nameMap, qtyMap, addonIds));
     } catch (e) {
       console.error("Reservation creation failed:", e.message, JSON.stringify(e.detail || ""));
       // Put the request back so it can be confirmed again (nothing was reserved: the loans are one write).
@@ -123,19 +152,20 @@ async function handleRequestDecision(c, id, kind) {
     itemType: itemNames.join(", ") || null,
     loanId: fields["Request ID"] || id,
     admin: c.adminName || adminName || null,
+    ...(declinedList.length ? { notes: "Not available: " + declinedList.map(d => d.note ? `${d.name} (${d.note})` : d.name).join("; ") } : {}),
   }, ...events]);
 
   let emailSent;
   if (sendMessage && message && fields["Email"]) {
     emailSent = await sendEmail(env, g, {
       to: fields["Email"],
-      subject: kind === "confirm" ? `Your ${g.name || "Gemach"} Request — Confirmed` : `Your ${g.name || "Gemach"} Request`,
+      subject: kind === "confirm" ? `Your ${g.name || "Gemach"} Request — ${declinedList.length ? "Update" : "Confirmed"}` : `Your ${g.name || "Gemach"} Request`,
       text: String(message) + emailSignature(g),
       html: buildEmailHtml(g, String(message), { signature: true }),
     });
     if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, kind === "confirm" ? "confirmation" : "decline", fields["Request ID"] || id));
   }
-  return json({ success: true, reservations, ...(emailSent === false ? { emailSent: false } : {}) });
+  return json({ success: true, reservations, ...(declinedList.length ? { declined: declinedList } : {}), ...(emailSent === false ? { emailSent: false } : {}) });
 }
 
 const APPT_AT_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;

@@ -1147,6 +1147,69 @@ await t("guards: confirm / decline only while the request is New (cancelled by t
   if (D1_MODE) assert.equal(DB.Loans.length, before2 + 1);
 });
 
+await t("partial confirm: a request with one free and one taken item → confirm the free one, note the other, one combined message", async () => {
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  DB["Item Types"].push(
+    rec("recPCTYPEFREE0001", { Name: "Navy gown – size 8", Active: true, ...Bf }),
+    rec("recPCTYPETAKEN001", { Name: "Gold gown – size 10", Active: true, ...Bf }));
+  DB.Items.push(
+    rec("recPCUNITFREE0001", { "Item ID": "PC-001", "Item Type": ["recPCTYPEFREE0001"], Active: true, Status: "Available", ...Bf }),
+    rec("recPCUNITTAKEN001", { "Item ID": "PC-002", "Item Type": ["recPCTYPETAKEN001"], Active: true, Status: "Available", ...Bf }));
+  // the gold gown is reserved for someone else over those dates
+  DB.Loans.push(rec("recPCLOANTAKEN001", { "Loan ID": "L-9901", Status: "Reserved", "Item to Reserve": ["recPCTYPETAKEN001"],
+    "Reservation Start": "2027-05-01", "Reservation End": "2027-05-10", ...Bf }));
+  DB.Requests.push(rec("recPCREQ000000001", { "Request ID": "R-960", Name: "Two Gowns", Phone: "5165550960", Email: "two@example.com", Status: "New",
+    "Items Requested": ["recPCTYPEFREE0001", "recPCTYPETAKEN001"], "Needed From": "2027-05-03", "Needed Until": "2027-05-06", ...Bf }));
+
+  // The admin list says which item is free for those dates (numbered units too).
+  const list = await (await call("/admin/requests", { headers: jsonB })).json();
+  const row = list.find(x => x.id === "recPCREQ000000001");
+  assert.equal(row.items.find(i => i.id === "recPCTYPEFREE0001").availability.status, "ok");
+  const taken = row.items.find(i => i.id === "recPCTYPETAKEN001").availability;
+  assert.equal(taken.status, "none"); assert.equal(taken.backBy, "2027-05-10");
+
+  // Unticking everything is refused (decline the request instead); nothing changed.
+  const none = await postB(`/admin/requests/recPCREQ000000001/confirm`, { items: [
+    { itemTypeId: "recPCTYPEFREE0001", confirm: false }, { itemTypeId: "recPCTYPETAKEN001", confirm: false }] });
+  assert.equal(none.status, 400);
+  assert.equal(DB.Requests.find(x => x.id === "recPCREQ000000001").fields.Status, "New");
+
+  const before = DB.Loans.length;
+  const r = await postB(`/admin/requests/recPCREQ000000001/confirm`, { message: "Hi Two, Navy is yours; gold isn't.", sendMessage: true,
+    items: [{ itemTypeId: "recPCTYPETAKEN001", confirm: false, note: "Try size 12 instead" }] });
+  assert.equal(r.status, 200, await r.clone().text());
+  const out = await r.json();
+  assert.equal(out.reservations.length, 1);
+  assert.deepEqual(out.declined, [{ id: "recPCTYPETAKEN001", name: "Gold gown – size 10", note: "Try size 12 instead" }]);
+  assert.equal(DB.Loans.length, before + 1, "only the confirmed item gets a reservation");
+  assert.deepEqual(DB.Loans.at(-1).fields["Item to Reserve"], ["recPCTYPEFREE0001"]);
+  const reqRec = DB.Requests.find(x => x.id === "recPCREQ000000001");
+  assert.equal(reqRec.fields.Status, "Converted");
+  assert.deepEqual(JSON.parse(reqRec.fields["Declined Items"]), { recPCTYPETAKEN001: "Try size 12 instead" });
+  await Promise.allSettled(waits);
+  const ev = DB["tblC3PY7f5sXQDMJK"].filter(l => l.fields["Event Type"] === "Request Confirmed" && l.fields.Borrower === "Two Gowns");
+  assert.equal(ev.length, 1);
+  assert.match(ev[0].fields.Notes || "", /Not available: Gold gown – size 10 \(Try size 12 instead\)/);
+
+  // The borrower's manage page: partly confirmed, the other item "unavailable" with the note.
+  const url = (await (await call("/admin/reservations", { headers: jsonB })).json()).find(x => x.id === out.reservations[0].id).manageUrl;
+  const m = await (await call(`/public/manage/${url.split("/r/")[1]}`)).json();
+  assert.equal(m.request.status, "confirmed");
+  const mi = Object.fromEntries(m.request.items.map(i => [i.name, i]));
+  assert.equal(mi["Gold gown – size 10"].unavailable, true);
+  assert.equal(mi["Gold gown – size 10"].note, "Try size 12 instead");
+  assert.equal(mi["Navy gown – size 8"].unavailable, undefined);
+  assert.equal(m.loans.length, 1);
+  assert.ok(!/two@example|5165550960/.test(JSON.stringify(m)), "no borrower contact on the manage page");
+
+  // Confirming again is refused (claimed once), and a request with no decisions still confirms everything.
+  assert.equal((await postB(`/admin/requests/recPCREQ000000001/confirm`, {})).status, 409);
+  DB.Requests.push(rec("recPCREQ000000002", { "Request ID": "R-961", Name: "All Of It", Status: "New", "Items Requested": ["recPCTYPEFREE0001", "recPCTYPETAKEN001"], ...Bf }));
+  const all = await (await postB(`/admin/requests/recPCREQ000000002/confirm`, {})).json();
+  assert.equal(all.reservations.length, 2); assert.equal(all.declined, undefined);
+  assert.equal(DB.Requests.find(x => x.id === "recPCREQ000000002").fields["Declined Items"], undefined);
+});
+
 await t("guards: pickup / return / cancel check the loan's state; unit pickups get a due date", async () => {
   const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
   DB["Item Types"].push(rec("recGUARDTYPEU0001", { Name: "Guard Chair", Active: true, ...Bf }), rec("recGUARDTYPEU0002", { Name: "Other Thing", Active: true, ...Bf }),

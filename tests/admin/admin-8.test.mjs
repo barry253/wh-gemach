@@ -84,7 +84,7 @@ const meta = await page.$eval("#requests-list .card .card-meta", e => e.innerTex
 ok(/📦 Arch/.test(meta) && !/📦[^\n]*Sweatshirt/.test(meta), "loan items listed without add-ons: " + meta.replace(/\n/g, " / "));
 ok(/🛍 Add-ons: Family Sweatshirt × 4 · \$160 \(separate payment\)/.test(meta), "add-on line with price total");
 await page.click("#requests-list .card button.btn-primary");
-await page.waitForSelector("#confirm-qty-list .qty-line");
+await page.waitForSelector("#confirm-qty-list .ci-row");
 const cq = await page.$eval("#confirm-qty-list", e => e.innerText);
 ok(/Family Sweatshirt/.test(cq) && /Add-on · \$40 each/.test(cq) && !/null/.test(cq), "confirm sheet: add-on count editable, no 'null total': " + cq.replace(/\n/g, " / "));
 const cm = await page.inputValue("#confirm-message");
