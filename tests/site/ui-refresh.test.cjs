@@ -92,9 +92,9 @@ G('wh-medical').description = Array(6).fill('We lend medical and mobility equipm
     // ── Home: compact gemach rows ──
     await page.goto(BASE + '/', { waitUntil: 'networkidle' });
     const card = await page.locator('.gemach-card[data-slug="wh-medical"]').boundingBox();
-    assert(card.height < 135, 'home gemach card is a compact row: ' + Math.round(card.height) + 'px tall');
+    assert(card.height < 175,'home gemach card is a compact row: ' + Math.round(card.height) + 'px tall');
     assert(await page.locator('.gemach-card:has-text("View gemach")').count() === 0, 'no "View gemach" text (the whole card is the link)');
-    assert(await page.$eval('.gemach-card[data-slug="wh-medical"] .gemach-tagline', el => getComputedStyle(el).whiteSpace === 'nowrap' && el.scrollWidth > el.clientWidth), 'long tagline cut to one line');
+    assert(await page.$eval('.gemach-card[data-slug="wh-medical"] .gemach-tagline', el => getComputedStyle(el).whiteSpace !== 'nowrap' && el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().height > 22), 'long tagline wraps to a second line instead of being cut off');
     await page.locator('#gemachs-section').screenshot({ path: path.join(SHOTS, 'ui14-m-home-cards.png') });
 
     // ── Gemach page: About card ──

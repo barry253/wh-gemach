@@ -387,7 +387,7 @@ main { flex: 1; }
 .gemach-card h3 a::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
 .gemach-card h3 a:focus-visible { box-shadow: none; }
 .gemach-card h3 a:focus-visible::after { box-shadow: var(--focus); }
-.gemach-tagline { font-size: .875rem; color: var(--muted); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gemach-tagline { font-size: .875rem; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; } /* wraps to as many lines as it needs; keep taglines short (admin limit 200) */
 .gemach-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .5rem; font-size: .875rem; color: var(--muted); }
 .chip {
   display: inline-flex; align-items: center; font-size: .8125rem; font-weight: 600; letter-spacing: .02em;
