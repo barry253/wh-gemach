@@ -106,9 +106,26 @@
   function clearDirCache() {
     try { sessionStorage.removeItem(DIR_CACHE_KEY); } catch (e) { /* ignore */ }
   }
+  // The directory is the first thing every visitor loads, and a connection that stalls (seen on Windows
+  // Firefox, Oct 15) would otherwise sit for the full 20 s timeout before the single retry. So: three
+  // attempts, the first two give up on a stalled connection after 8 s, with a short pause between them
+  // (about 17 s worst case before the "couldn't load" screen, instead of ~40 s).
+  var DIR_ATTEMPTS = [{ timeout: 8000, pause: 0 }, { timeout: 8000, pause: 700 }, { timeout: 15000, pause: 1500 }];
   function loadDirectory() {
-    return fetchJSON("/public/directory").then(function (data) {
-      if (!data || !Array.isArray(data.gemachs)) throw new Error("bad directory");
+    function attempt(i) {
+      var step = DIR_ATTEMPTS[i];
+      return sleep(step.pause).then(function () {
+        return fetchJSON("/public/directory", { timeout: step.timeout, retry: false });
+      }).then(function (data) {
+        if (!data || !Array.isArray(data.gemachs)) throw new Error("bad directory");
+        return data;
+      }).catch(function (e) {
+        // A 4xx means the request itself is wrong; trying again won't help.
+        if (i + 1 < DIR_ATTEMPTS.length && !(e && e.status >= 400 && e.status < 500)) return attempt(i + 1);
+        throw e;
+      });
+    }
+    return attempt(0).then(function (data) {
       data.categories = Array.isArray(data.categories) ? data.categories : [];
       writeDirCache(data);
       return data;

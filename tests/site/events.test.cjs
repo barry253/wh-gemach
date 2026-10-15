@@ -103,7 +103,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     // "couldn't load" on the home page and on a gemach page
     dirFail = true; events.length = 0;
     const p2 = await ctx.newPage();
-    await p2.goto(BASE + '/', { waitUntil: 'networkidle' }); await wait(1500);
+    await p2.goto(BASE + '/', { waitUntil: 'networkidle' }); await wait(4000); // 3 directory attempts, pauses 0.7 s + 1.5 s
     assert(events.some(e => e.body.kind === 'load-fail' && e.body.what === 'directory' && e.body.page === '/'), 'directory load failure sent: ' + JSON.stringify(events));
     dirFail = false; gemachFail = true; events.length = 0;
     await p2.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
