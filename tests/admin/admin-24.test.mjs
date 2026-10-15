@@ -60,10 +60,15 @@ ok(sp && JSON.stringify(sp.body) === '{"availabilityMode":"Date"}', "PATCH sends
 ok(await page.isChecked('input[name="set-availabilityMode"][value="Date"]'), "choice kept after save");
 
 // saving something else doesn't resend it
+const patches = () => calls.filter(c => c.method === "PATCH" && c.path === "/admin/gemach").length;
+const before = patches();
+// let the first save finish re-drawing the form before editing again (the save bar is rebuilt while it settles)
+await page.waitForFunction(() => { const b = document.getElementById("settings-save-btn"); return !b || (!b.disabled && b.textContent.trim() === "Save") || !document.getElementById("settings-savebar") || document.getElementById("settings-savebar").offsetParent === null; });
 await page.fill("#set-defaultLoanDays", "10");
+await page.waitForFunction(() => { const b = document.getElementById("settings-save-btn"); return b && b.offsetParent !== null && !b.disabled && b.textContent.trim() === "Save"; });
 await page.click("#settings-save-btn");
-await page.waitForFunction(() => document.body.querySelectorAll(".toast, [role=status]").length > 0);
-await page.waitForTimeout(400);
+for (let i = 0; i < 50 && patches() === before; i++) await page.waitForTimeout(100);
+await page.waitForTimeout(200);
 sp = lastPatch();
 ok(sp && !("availabilityMode" in sp.body), "unchanged availability isn't resent " + JSON.stringify(sp && sp.body));
 
