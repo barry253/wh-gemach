@@ -75,6 +75,10 @@ const rowText = (page, id) => page.$eval('#row-' + id, el => el.innerText.replac
       const E = plus(22); // window: pickup E-1 .. return E+1 = plus(21)..plus(23)
       await page.fill('#av-date', E);
       await page.waitForTimeout(100);
+      assert(await page.isChecked('#av-only'), `${label} 'only show what's free' starts ticked`);
+      assert(!(await rowText(page, 'recGown0001')) && !!(await rowText(page, 'recGown0002')), `${label} so taken items are hidden by default`);
+      await page.uncheck('#av-only');
+      await page.waitForTimeout(100);
       const navy = await rowText(page, 'recGown0001');
       assert(new RegExp('Taken for ' + short(E)).test(navy) && new RegExp('back ' + short(plus(23))).test(navy), `${label} booked gown: Taken for ${short(E)}, back ${short(plus(23))}: ` + navy);
       assert(new RegExp('Free on ' + short(E)).test(await rowText(page, 'recGown0002')), `${label} free gown: Free on ${short(E)}`);
@@ -96,7 +100,7 @@ const rowText = (page, id) => page.$eval('#row-' + id, el => el.innerText.replac
       assert(/Taken for/.test(await rowText(page, 'recGown0003')), `${label} later date: an open-ended loan still blocks`);
       await page.fill('#av-date', E);
 
-      // only what's free
+      // only what's free (ticked again)
       await page.check('#av-only');
       await page.waitForTimeout(100);
       assert(!(await rowText(page, 'recGown0001')) && !(await rowText(page, 'recGown0003')) && !(await rowText(page, 'recGown0004')), `${label} 'only free' hides taken and unavailable items`);
@@ -135,6 +139,7 @@ const rowText = (page, id) => page.$eval('#row-' + id, el => el.innerText.replac
       await p2.goto(BASE + '/g/avail-dates', { waitUntil: 'networkidle' });
       assert(/Needed from/.test(await p2.textContent('label[for=av-date]')) && await p2.isVisible('#av-until'), `${label} Dates style: needed from + until`);
       await p2.fill('#av-date', plus(19));
+      await p2.uncheck('#av-only');
       await p2.waitForTimeout(80);
       assert(new RegExp('Free on ' + short(plus(19))).test(await rowText(p2, 'recGown0001')), `${label} single day before the booking: free`);
       await p2.fill('#av-until', plus(22));

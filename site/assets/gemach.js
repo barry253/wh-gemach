@@ -55,8 +55,8 @@
   var attrFilter = {};        // { "Size": ["8","10"] } — values picked in the filter bar
   var sortBySize = false;
   // Availability for a date (gemach Settings → Availability = "For a date"): the date a person is checking, and
-  // whether to list only what's free on it. Kept for the tab so it carries into the request form.
-  var availDate = "", availUntil = "", availOnly = false, availBad = "", availLoaded = false;
+  // whether to list only what's free on it (on by default). Kept for the tab so it carries into the request form.
+  var availDate = "", availUntil = "", availOnly = true, availBad = "", availLoaded = false; // "only what's free" starts ticked
   var lastFocus = null;
   var loadedFresh = false;
   // Arriving from the home page's "See all N at …": ?cat=<category slug>&q=<search text> narrows the
