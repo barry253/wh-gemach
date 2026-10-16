@@ -2058,6 +2058,35 @@ await t("r4 item condition validated on create/update", async () => {
   assert.equal((await ok.json()).fields.Condition, "Needs Repair");
 });
 
+await t("inventory sheet: item notes save on the item for every status; /assign without notes leaves loan notes alone", async () => {
+  const H = J(tokenA, { "X-Gemach": A.slug });
+  const item = () => DB.Items.find(x => x.id === "recITEMA000000001").fields;
+  const patch = b => call("/admin/catalog/items/recITEMA000000001", { method: "PATCH", headers: H, body: JSON.stringify(b) });
+  const assign = b => call("/admin/inventory/recITEMA000000001/assign", { method: "POST", headers: H, body: JSON.stringify(b) });
+  // Available: a note saves on the item.
+  assert.equal((await patch({ notes: "Blue" })).status, 200);
+  assert.equal(item().Notes, "Blue");
+  // Needs Repair: /assign sets the condition and does not touch the item's note; the note PATCH still saves.
+  assert.equal((await assign({ status: "Needs Repair" })).status, 200);
+  assert.equal(item().Condition, "Needs Repair");
+  assert.equal(item().Notes, "Blue", "assign leaves the item note alone");
+  assert.equal((await patch({ notes: "Blue, broken armrest" })).status, 200);
+  assert.equal(item().Notes, "Blue, broken armrest");
+  // On Loan: the loan gets no Notes unless the caller sends some; the item note is edited separately.
+  const r = await assign({ status: "On Loan", borrowerName: "Dina Cohen", borrowerPhone: "5165550100" });
+  assert.equal(r.status, 200);
+  const loanLabel = (await r.json()).loanId;
+  const loan = DB.Loans.find(l => l.fields["Loan ID"] === loanLabel);
+  assert.ok(loan, "loan created");
+  assert.ok(!loan.fields.Notes, "loan has no notes from this sheet");
+  assert.equal((await patch({ notes: "Blue, left wheel squeaks" })).status, 200);
+  assert.equal(item().Notes, "Blue, left wheel squeaks");
+  assert.ok(!loan.fields.Notes, "item note edit never touches the loan");
+  // Back to Available for later tests.
+  assert.equal((await assign({ status: "Available", existingLoanId: loan.id })).status, 200);
+  await patch({ condition: "Good", notes: "" });
+});
+
 await t("r4 gemach name editable via PATCH /admin/gemach (1..100, trimmed); slug unchanged", async () => {
   const H = J(tokenA, { "X-Gemach": A.slug });
   const p = b => call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify(b) });

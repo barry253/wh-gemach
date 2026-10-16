@@ -180,9 +180,9 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   ok(await page.$eval("#assign-condition", e => e.disabled && e.value === "Needs Repair"), "status Needs Repair locks condition");
   await page.click("#assign-item-sheet .sheet-close");
   await page.click(".inventory-item");
-  await page.click("#assign-edit-details-btn");
-  ok(await page.evaluate(() => document.getElementById("physical-item-sheet").classList.contains("open")) && JSON.stringify(await page.$$eval("#pi-condition option", o => o.map(x => x.value))) === '["Good","Needs Repair"]', "Edit item details sheet opens with Condition (Good/Needs Repair)");
-  await page.click("#physical-item-sheet .sheet-close");
+  ok(await page.$("#assign-edit-details-btn") === null, "no separate Edit item details button any more");
+  ok(await page.$eval("#assign-details", e => !e.open) && await page.inputValue("#assign-itemid") === "WC-001", "Item details section is collapsed on the same sheet and holds the ID");
+  await page.click("#assign-item-sheet .sheet-close");
 
   // item type browse category
   await page.click("button[title='Edit item type']");

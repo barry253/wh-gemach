@@ -2162,8 +2162,8 @@
     </div>
 
     <div class="form-group">
-      <label>Notes</label>
-      <textarea id="assign-notes" rows="2" placeholder="Optional"></textarea>
+      <label for="assign-notes">Notes</label>
+      <textarea id="assign-notes" rows="2" placeholder="About this item, e.g. Blue, broken armrest"></textarea>
     </div>
 
     <div class="form-group">
@@ -2173,10 +2173,30 @@
         <option value="Needs Repair">Needs Repair</option>
       </select>
     </div>
-    <button class="btn btn-ghost btn-sm" type="button" id="assign-edit-details-btn" onclick="openEditItemFromAssign()">✎ Edit item details (ID, type, active)</button>
+    <details id="assign-details" style="margin:0 0 1rem">
+      <summary style="cursor:pointer;font-size:0.9375rem;color:var(--muted);padding:0.35rem 0">Item details (ID, type, active)</summary>
+      <div class="form-group" style="margin-top:0.5rem">
+        <label for="assign-type">Item Type</label>
+        <select id="assign-type"></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="assign-itemid">Item ID</label>
+          <input type="text" id="assign-itemid" placeholder="e.g. WC-007" />
+        </div>
+        <div class="form-group">
+          <label for="assign-active">Active</label>
+          <select id="assign-active">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+      </div>
+    </details>
 
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('assign-item-sheet')">Cancel</button>
+      <button class="btn btn-danger" id="assign-item-delete-btn" onclick="deleteAssignItem()">Delete</button>
       <button class="btn btn-primary" id="assign-item-submit-btn">Save</button>
     </div>
   </div>
@@ -2385,7 +2405,6 @@
 
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('physical-item-sheet')">Cancel</button>
-      <button class="btn btn-danger" id="physical-item-delete-btn" style="display:none" onclick="deleteItem()">Delete</button>
       <button class="btn btn-primary" id="physical-item-submit-btn">Save</button>
     </div>
   </div>
@@ -5287,6 +5306,7 @@
     const types = (itemsData?.itemTypes || []).filter(t => !qtyTypeIds.has(t.id)); // counted types and add-ons have no units
     select.innerHTML = '<option value="">Select type…</option>' +
       types.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+    document.getElementById("assign-type").innerHTML = types.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
     renderInventory();
   }
 
@@ -5483,43 +5503,46 @@
   function openAssignItem(item) {
     assignItemRecord = item;
     const loan = item.currentLoan || null;
+    const $ = id => document.getElementById(id);
 
-    document.getElementById("assign-item-title").textContent = item.itemId;
-    document.getElementById("assign-item-subtitle").textContent =
+    $("assign-item-title").textContent = item.itemId;
+    $("assign-item-subtitle").textContent =
       (item.itemTypeName || "") + (loan ? ` · ${loan.loanId || ""}` : "");
 
-    if (loan) {
-      document.getElementById("assign-borrower-name").value    = loan.borrowerName    || "";
-      document.getElementById("assign-borrower-phone").value   = loan.borrowerPhone   || "";
-      document.getElementById("assign-borrower-email").value   = loan.borrowerEmail   || "";
-      document.getElementById("assign-borrower-contact").value = loan.borrowerContact || "";
-      document.getElementById("assign-date-borrowed").value    = loan.dateBorrowed    || nyTodayStr();
-      document.getElementById("assign-res-start").value        = loan.reservationStart || "";
-      document.getElementById("assign-res-end").value          = loan.reservationEnd   || "";
-      document.getElementById("assign-notes").value            = loan.notes || item.notes || "";
-    } else {
-      document.getElementById("assign-borrower-name").value    = "";
-      document.getElementById("assign-borrower-phone").value   = "";
-      document.getElementById("assign-borrower-email").value   = "";
-      document.getElementById("assign-borrower-contact").value = "";
-      document.getElementById("assign-date-borrowed").value    = nyTodayStr();
-      document.getElementById("assign-res-start").value        = "";
-      document.getElementById("assign-res-end").value          = "";
-      document.getElementById("assign-notes").value            = item.notes || "";
+    $("assign-borrower-name").value    = loan?.borrowerName    || "";
+    $("assign-borrower-phone").value   = loan?.borrowerPhone   || "";
+    $("assign-borrower-email").value   = loan?.borrowerEmail   || "";
+    $("assign-borrower-contact").value = loan?.borrowerContact || "";
+    $("assign-date-borrowed").value    = loan?.dateBorrowed || nyTodayStr();
+    $("assign-res-start").value        = loan?.reservationStart || "";
+    $("assign-res-end").value          = loan?.reservationEnd   || "";
+    // Notes are the item's own note (loan notes live in Edit booking).
+    $("assign-notes").value = item.notes || "";
+
+    // Item details (ID, type, active) live in the collapsed section of this same sheet.
+    const typeSel = $("assign-type");
+    if (item.itemTypeId && ![...typeSel.options].some(o => o.value === item.itemTypeId)) {
+      typeSel.insertAdjacentHTML("beforeend", `<option value="${esc(item.itemTypeId)}">${esc(item.itemTypeName || "Unknown")}</option>`);
     }
+    typeSel.value = item.itemTypeId || "";
+    $("assign-itemid").value = item.itemId || "";
+    $("assign-active").value = item.active === false ? "false" : "true";
+    $("assign-details").open = false;
 
     const cond = item.condition === "Needs Repair" ? "Needs Repair" : "Good";
-    document.getElementById("assign-condition").value = cond;
-    document.getElementById("assign-condition").dataset.original = cond;
-    selectAssignStatus(item.status || "Available");
+    $("assign-condition").value = cond;
+    $("assign-condition").dataset.original = cond;
+    assignOrigStatus = item.status || "Available";
+    selectAssignStatus(assignOrigStatus);
+    assignOrigLoan = assignLoanSnapshot();
     openSheet("assign-item-sheet");
   }
 
-  function openEditItemFromAssign() {
-    const item = assignItemRecord;
-    if (!item) return;
-    closeSheet("assign-item-sheet");
-    openEditItem({ ...item, condition: document.getElementById("assign-condition").value });
+  let assignOrigStatus = null, assignOrigLoan = "";
+  // What the status / borrower / date fields say right now; compared with the opening values to see if the loan changed.
+  function assignLoanSnapshot() {
+    return JSON.stringify(["assign-borrower-name", "assign-borrower-phone", "assign-borrower-email", "assign-borrower-contact",
+      "assign-date-borrowed", "assign-res-start", "assign-res-end"].map(id => document.getElementById(id).value.trim()));
   }
 
   function selectAssignStatus(status) {
@@ -5534,68 +5557,102 @@
     document.getElementById("assign-reservation-date-fields").style.display = status === "Reserved" ? "" : "none";
     const condEl = document.getElementById("assign-condition");
     if (status === "Needs Repair") condEl.value = "Needs Repair";
+    else if (condEl.disabled) condEl.value = status === "Available" ? "Good" : (condEl.dataset.original || "Good");
     condEl.disabled = status === "Needs Repair";
+  }
+
+  async function deleteAssignItem() {
+    const item = assignItemRecord;
+    if (!item) return;
+    if (!confirm(`Delete item "${item.itemId}"? This cannot be undone.`)) return;
+    const btn = document.getElementById("assign-item-delete-btn");
+    const res = await saveAction(btn, `/admin/catalog/items/${safeId(item.id)}`, "DELETE");
+    if (!res) return;
+    if (res.error) { showToast(res.error, 6000); return; }
+    closeSheet("assign-item-sheet");
+    await refreshItemScreens();
+    showToast("Item deleted");
   }
 
   document.getElementById("assign-item-submit-btn").addEventListener("click", async () => {
     if (!assignItemRecord) return;
+    const $ = id => document.getElementById(id);
     const needsBorrower = assignStatus === "On Loan" || assignStatus === "Reserved";
-    if (needsBorrower && !document.getElementById("assign-borrower-name").value.trim()) {
+    if (needsBorrower && !$("assign-borrower-name").value.trim()) {
       showToast("Borrower name is required");
       return;
     }
-    const btn = document.getElementById("assign-item-submit-btn");
+    const itemId = $("assign-itemid").value.trim();
+    if (!itemId) { showToast("Item ID is required"); $("assign-details").open = true; return; }
+    if (!$("assign-type").value) { showToast("Item type is required"); $("assign-details").open = true; return; }
+    const btn = $("assign-item-submit-btn");
     btn.disabled = true;
     btn.textContent = "Saving…";
+    const restore = () => { btn.disabled = false; btn.textContent = "Save"; };
 
-    const payload = {
-      status: assignStatus,
-      notes: document.getElementById("assign-notes").value || null
-    };
-    // Pass existing loan ID so worker can update rather than create a duplicate
-    const existingLoan = assignItemRecord?.currentLoan;
-    if (existingLoan?.loanRecId) payload.existingLoanId = existingLoan.loanRecId;
-
-    if (needsBorrower) {
-      payload.borrowerName    = document.getElementById("assign-borrower-name").value.trim();
-      payload.borrowerPhone   = document.getElementById("assign-borrower-phone").value.trim() || null;
-      payload.borrowerEmail   = document.getElementById("assign-borrower-email").value.trim() || null;
-      payload.borrowerContact = document.getElementById("assign-borrower-contact").value || null;
-    }
-    if (assignStatus === "On Loan") {
-      payload.dateBorrowed = document.getElementById("assign-date-borrowed").value || null;
-    }
-    if (assignStatus === "Reserved") {
-      payload.reservationStart = document.getElementById("assign-res-start").value || null;
-      payload.reservationEnd   = document.getElementById("assign-res-end").value   || null;
-    }
-
-    const result = await api(`/admin/inventory/${safeId(assignItemRecord.id)}/assign`, "POST", payload);
-    // Condition: "Needs Repair" status sets it, "Available" resets it to Good — otherwise apply the select.
-    if (result?.success && assignStatus !== "Needs Repair") {
-      const condEl = document.getElementById("assign-condition");
-      const implied = assignStatus === "Available" ? "Good" : condEl.dataset.original;
-      if (condEl.value !== implied) {
-        const r2 = await api(`/admin/catalog/items/${safeId(assignItemRecord.id)}`, "PATCH", { condition: condEl.value });
-        if (r2?.error) showToast(r2.error);
+    // 1. Status / loan: only when the status changed or the borrower & dates were edited, so saving
+    //    a note alone never files a "returned" or "loan updated" entry in History.
+    const statusChanged = assignStatus !== assignOrigStatus;
+    const loanEdited = needsBorrower && assignLoanSnapshot() !== assignOrigLoan;
+    let result = { success: true };
+    if (statusChanged || loanEdited) {
+      const payload = { status: assignStatus, itemCode: assignItemRecord.itemId, itemType: assignItemRecord.itemTypeName };
+      // Pass existing loan ID so worker can update rather than create a duplicate
+      const existingLoan = assignItemRecord?.currentLoan;
+      if (existingLoan?.loanRecId) payload.existingLoanId = existingLoan.loanRecId;
+      if (needsBorrower) {
+        payload.borrowerName    = $("assign-borrower-name").value.trim();
+        payload.borrowerPhone   = $("assign-borrower-phone").value.trim() || null;
+        payload.borrowerEmail   = $("assign-borrower-email").value.trim() || null;
+        payload.borrowerContact = $("assign-borrower-contact").value || null;
+      }
+      if (assignStatus === "On Loan") payload.dateBorrowed = $("assign-date-borrowed").value || null;
+      if (assignStatus === "Reserved") {
+        payload.reservationStart = $("assign-res-start").value || null;
+        payload.reservationEnd   = $("assign-res-end").value   || null;
+      }
+      result = await saveAction(null, `/admin/inventory/${safeId(assignItemRecord.id)}/assign`, "POST", payload);
+      if (!result?.success) {
+        restore();
+        showToast(result?.error || "Something went wrong — please try again");
+        console.error("Assign error:", result);
+        return;
       }
     }
-    btn.disabled = false;
-    btn.textContent = "Save";
 
-    if (result?.success) {
-      closeSheet("assign-item-sheet");
-      showToast(assignStatus === "Available" ? "Item marked available"
-               : assignStatus === "Needs Repair" ? "Item marked for repair"
-               : assignStatus === "Reserved" ? `Reserved — Loan ${result.loanId}`
-               : `Loan created — ${result.loanId}`);
-      loadInventory();
-      loadDashboard();
-    } else {
-      const errMsg = result?.error || "Something went wrong — please try again";
-      showToast(errMsg);
-      console.error("Assign error:", result);
+    // 2. The item's own fields, in one PATCH: notes, condition, and ID / type / active when changed.
+    //    The assign call already set Condition for Needs Repair (→ Needs Repair) and Available (→ Good).
+    const condEl = $("assign-condition");
+    const orig = condEl.dataset.original;
+    const afterAssign = !(statusChanged || loanEdited) ? orig
+      : assignStatus === "Needs Repair" ? "Needs Repair"
+      : assignStatus === "Available" ? "Good" : orig;
+    const patch = {};
+    if ($("assign-notes").value.trim() !== (assignItemRecord.notes || "").trim()) patch.notes = $("assign-notes").value.trim();
+    if (condEl.value !== afterAssign) patch.condition = condEl.value;
+    if (itemId !== assignItemRecord.itemId) patch.itemId = itemId;
+    if ($("assign-type").value !== (assignItemRecord.itemTypeId || "")) patch.itemTypeId = $("assign-type").value;
+    if (($("assign-active").value === "true") !== (assignItemRecord.active !== false)) patch.active = $("assign-active").value === "true";
+    let patchErr = null;
+    if (Object.keys(patch).length) {
+      const r2 = await saveAction(null, `/admin/catalog/items/${safeId(assignItemRecord.id)}`, "PATCH", patch);
+      if (!r2 || r2.error) patchErr = r2?.error || "Not saved — check your connection and try again.";
     }
+    restore();
+
+    if (patchErr) {
+      showToast(patchErr, 6000);
+      loadInventory(); loadDashboard();
+      return;
+    }
+    closeSheet("assign-item-sheet");
+    showToast(!statusChanged && !loanEdited ? "Item updated"
+             : assignStatus === "Available" ? "Item marked available"
+             : assignStatus === "Needs Repair" ? "Item marked for repair"
+             : assignStatus === "Reserved" ? `Reserved — Loan ${result.loanId}`
+             : `Loan created — ${result.loanId}`);
+    loadInventory();
+    loadDashboard();
   });
 
   // ── Settings (grouped: profile, contact, branding, info, requests, templates) ──
@@ -7698,7 +7755,6 @@
     sel.value = browseCategories.some(c => c.id === selected) ? selected : "";
     sel.dataset.original = sel.value;
   }
-  let editingItemId = null;
   let pendingPhotoUrl = null;      // cover (first photo) — kept for older code paths
   let PHOTOS = [], photosOrig = "[]"; // all photos in order; [0] is the cover
   const MAX_PHOTOS = 10;
@@ -7932,7 +7988,6 @@
   }
 
   function openAddItem(typeId = "", typeName = "") {
-    editingItemId = null;
     document.getElementById("physical-item-sheet-title").textContent = "Add Item";
     document.getElementById("pi-type").value = typeId;
     document.getElementById("pi-id").value = "";
@@ -7940,20 +7995,6 @@
     document.getElementById("pi-active").value = "true";
     document.getElementById("pi-notes").value = "";
     document.getElementById("physical-item-submit-btn").onclick = saveItem;
-    document.getElementById("physical-item-delete-btn").style.display = "none";
-    openSheet("physical-item-sheet");
-  }
-
-  function openEditItem(item) {
-    editingItemId = item.id;
-    document.getElementById("physical-item-sheet-title").textContent = "Edit Item";
-    document.getElementById("pi-type").value = item.itemTypeId || "";
-    document.getElementById("pi-id").value = item.itemId;
-    document.getElementById("pi-condition").value = item.condition === "Needs Repair" ? "Needs Repair" : "Good";
-    document.getElementById("pi-active").value = item.active ? "true" : "false";
-    document.getElementById("pi-notes").value = item.notes || "";
-    document.getElementById("physical-item-submit-btn").onclick = saveItem;
-    document.getElementById("physical-item-delete-btn").style.display = "";
     openSheet("physical-item-sheet");
   }
 
@@ -7970,31 +8011,13 @@
     const btn = document.getElementById("physical-item-submit-btn");
     btn.disabled = true; btn.textContent = "Saving…";
     let result;
-    if (editingItemId) {
-      result = await api(`/admin/catalog/items/${safeId(editingItemId)}`, "PATCH", body);
-    } else {
-      result = await api("/admin/catalog/items", "POST", body);
-    }
+    result = await api("/admin/catalog/items", "POST", body);
     if (result?.error) { btn.disabled = false; btn.textContent = "Save"; showToast(result.error); return; }
     closeSheet("physical-item-sheet");
     await refreshItemScreens();
     const genId = result?.generatedId;
-    showToast(editingItemId ? "Item updated" : `Item added${genId && !body.itemId ? " — ID: " + genId : ""}`);
+    showToast(`Item added${genId && !body.itemId ? " — ID: " + genId : ""}`);
     btn.disabled = false; btn.textContent = "Save";
-  }
-
-  async function deleteItem() {
-    const itemId = document.getElementById("pi-id").value || editingItemId;
-    if (!confirm(`Delete item "${itemId}"? This cannot be undone.`)) return;
-    const btn = document.getElementById("physical-item-delete-btn");
-    btn.textContent = "Deleting…";
-    const res = await saveAction(btn, `/admin/catalog/items/${editingItemId}`, "DELETE");
-    btn.textContent = "Delete";
-    if (!res) return;
-    if (res.error) { showToast(res.error, 6000); return; }
-    closeSheet("physical-item-sheet");
-    await refreshItemScreens();
-    showToast("Item deleted");
   }
 
   async function refreshItemScreens() {
