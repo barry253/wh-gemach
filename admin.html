@@ -7404,7 +7404,8 @@
             <div class="card-title">${esc(c.icon || "▫️")} ${esc(c.name)}${c.active ? "" : ' <span class="tag tag-amber">Off</span>'}</div>
             <div class="card-id">Order ${esc(c.displayOrder ?? "—")} · ${esc(c.itemTypeCount ?? 0)} item type${c.itemTypeCount === 1 ? "" : "s"}</div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="openCategorySheet('${id}')">Edit</button>
+          <div style="display:flex;gap:0.4rem"><button class="btn btn-ghost btn-sm" onclick="openCategorySheet('${id}')">Edit</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteCategory('${id}')">Delete</button></div>
         </div>
         ${c.keywords?.length ? `<div class="muted-small">${esc(c.keywords.join(", "))}</div>` : ""}
       </div>`;
@@ -7463,6 +7464,21 @@
     NET.types = NET.types.filter(x => x.id !== id);
     renderNetTypes(); renderNetGemachs();
     showToast("Type deleted");
+  }
+
+  async function deleteCategory(id) {
+    const c = netStore.category.get(id);
+    if (!c) return;
+    if (c.itemTypeCount) { showToast(`${c.itemTypeCount} item type${c.itemTypeCount === 1 ? " is" : "s are"} in “${c.name}”. Move ${c.itemTypeCount === 1 ? "it" : "them"} to another category first (or turn this one off).`); return; }
+    const used = NET.gemachs.filter(g => (g.browseCategoryIds || []).includes(c.id)).length;
+    if (!confirm(`Delete the category “${c.name}”?` + (used ? ` It will be removed from ${used} gemach${used === 1 ? "" : "s"}.` : ""))) return;
+    const res = await api(`/admin/network/categories/${safeId(c.id)}`, "DELETE");
+    if (!res) return;
+    if (res.error) { showToast(res.error); return; }
+    NET.categories = NET.categories.filter(x => x.id !== c.id);
+    NET.gemachs.forEach(g => { if (g.browseCategoryIds) g.browseCategoryIds = g.browseCategoryIds.filter(x => x !== c.id); });
+    renderNetCategories();
+    showToast("Category deleted");
   }
 
   function openCategorySheet(id) {

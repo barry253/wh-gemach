@@ -61,6 +61,7 @@ async function networkDispatch(c, path, method) {
   if (method === "PATCH" && (m = path.match(/^\/admin\/network\/gemach-types\/([^/]+)$/))) return netUpdateGemachType(c, m[1]);
   if (method === "DELETE" && (m = path.match(/^\/admin\/network\/gemach-types\/([^/]+)$/))) return netDeleteGemachType(c, m[1]);
   if (method === "POST"  && path === "/admin/network/categories") return netCreateCategory(c);
+  if (method === "DELETE" && (m = path.match(/^\/admin\/network\/categories\/([^/]+)$/))) return netDeleteCategory(c, m[1]);
   if (method === "PATCH" && (m = path.match(/^\/admin\/network\/categories\/([^/]+)$/))) return netUpdateCategory(c, m[1]);
   return json({ error: "Not found" }, 404);
 }
@@ -576,4 +577,26 @@ async function netDeleteGemachType(c, id) {
   return json({ ok: true, id });
 }
 
-export { GEMACH_CATEGORIES, loadGemachTypeNames, netListGemachTypes, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, netOverview, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, sendAdminInvite, NET_ADMIN_FIELDS, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };
+/** DELETE /admin/network/categories/:id — only when no item type is in it; gemachs are unlinked from it. */
+async function netDeleteCategory(c, id) {
+  const { db, env, ctx } = c;
+  if (!REC_RE.test(id)) return json({ error: "Not found" }, 404);
+  const rec = (await db.listAll(T.PRODUCT_CATEGORIES, { fields: ["Name", "Item Types"] })).find(r => r.id === id); // listed, like the Network tab: that is where the item-type count is worked out
+  if (!rec) return json({ error: "Not found" }, 404);
+  const n = (rec.fields["Item Types"] || []).length;
+  if (n) return json({ error: `${n} item type${n === 1 ? " is" : "s are"} in “${rec.fields.Name}”. Move ${n === 1 ? "it" : "them"} to another category first (or turn this one off instead).` }, 409);
+  const gemachs = await db.listAll(T.GEMACHS, { fields: ["Slug", "Browse Categories"] });
+  for (const g of gemachs) {
+    const cur = (g.fields["Browse Categories"] || []).map(linkedId);
+    if (cur.includes(id)) await db.update(T.GEMACHS, g.id, { "Browse Categories": cur.filter(x => x !== id) });
+  }
+  try { await db.del(T.PRODUCT_CATEGORIES, id); }
+  catch (e) {
+    if (!(e instanceof AirtableError)) throw e;
+    return json({ error: "Could not delete the category." }, 502);
+  }
+  purgeManyPublic(env, ctx, gemachs.map(g => g.fields.Slug));
+  return json({ ok: true, id });
+}
+
+export { netDeleteCategory, GEMACH_CATEGORIES, loadGemachTypeNames, netListGemachTypes, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, netOverview, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, sendAdminInvite, NET_ADMIN_FIELDS, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };

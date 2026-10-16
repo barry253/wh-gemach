@@ -4002,6 +4002,25 @@ await t("network categories: each shows how many item types use it (reverse link
   if (before === undefined) delete wc["Product Category"]; else wc["Product Category"] = before;
 });
 
+await t("network: delete a home page category (refused while item types use it; unlinks gemachs; 404 after)", async () => {
+  const del = id => req(tokNet, "DELETE", `/admin/network/categories/${id}`);
+  // put an item type in Wheelchairs (the fake needs its reverse link set by hand; D1 works it out itself)
+  const pr = await call("/admin/catalog/item-types/recTYPEA000000001", { method: "PATCH", headers: J(tokenA, { "X-Gemach": A.slug }), body: JSON.stringify({ categoryId: "recCAT0000000000A" }) });
+  assert.equal(pr.status, 200, await pr.clone().text());
+  if (!D1_MODE) DB["Product Categories"].find(c => c.id === "recCAT0000000000A").fields["Item Types"] = ["recTYPEA000000001"];
+  assert.equal((await del("recCAT0000000000A")).status, 409, "Wheelchairs has item types");
+  assert.equal((await del("recNOPE")).status, 404);
+  assert.equal((await call("/admin/network/categories/recCAT0000000000Z", { method: "DELETE", headers: auth(tokenA) })).status, 403, "not for gemach admins");
+  const made = await (await req(tokNet, "POST", "/admin/network/categories", { name: "Temp Cat" })).json();
+  assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${B.id}`, { browseCategoryIds: [made.id, "recCAT0000000000B"] })).status, 200);
+  assert.equal((await del(made.id)).status, 200);
+  const g = (await (await req(tokNet, "GET", "/admin/network/gemachs")).json()).find(x => x.id === B.id);
+  assert.deepEqual(g.browseCategoryIds, ["recCAT0000000000B"], "unlinked from the deleted category only");
+  assert.ok(!(await (await req(tokNet, "GET", "/admin/network/categories")).json()).some(x => x.id === made.id));
+  assert.equal((await del(made.id)).status, 404);
+  await req(tokNet, "PATCH", `/admin/network/gemachs/${B.id}`, { browseCategoryIds: [] });
+});
+
 // ─── D1 layer ──────────────────────────────────────────────────────────────────
 {
   const { schemaSql } = await import("../src/dbschema.js");

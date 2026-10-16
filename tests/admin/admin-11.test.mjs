@@ -117,8 +117,9 @@ ok(sp && sp.body.returnReminderMessage === "Hi {first_name}, please return the {
 ok(sp && sp.body.autoReminders === true && sp.body.reminderDaysBefore === 3 && sp.body.reminderRepeatDays === 5, "auto reminder settings saved: " + JSON.stringify(sp && sp.body));
 
 // Settings areas: four tabs, one save bar for all, dots on areas with changes, discard, leave warning
-await page.waitForFunction(() => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === "Profile|Page|Requests|Messages", null, { timeout: 3000 }).catch(() => {});
-ok((await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages", "four areas (short names on a phone): " + (await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|"));
+await page.waitForFunction(() => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === "Profile|Page|Requests|Messages", null, { timeout: 10000 }).catch(() => {});
+await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))); // let the phone-width CSS settle
+{ const tabs = (await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|"); ok(tabs === "Profile|Page|Requests|Messages", "four areas (short names on a phone): " + tabs); }
 ok(await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all four tabs fit on a phone " + await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth + "/" + el.clientWidth + " " + [...el.children].map(c => Math.round(c.getBoundingClientRect().width)).join(",")));
 await page.waitForSelector("#settings-savebar", { state: "hidden", timeout: 5000 }).catch(() => {});
 ok(await page.isHidden("#settings-savebar"), "no save bar after saving");
