@@ -14,7 +14,18 @@ import { handleRemindersPreview } from "./reminders.js";
 
 // ─── Network admin (role "Network Admin", re-checked live) ────────────────────
 
-const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"]; // Gemachs.Category choices
+const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"]; // starting list; the live list is the Gemach Types table
+
+/** The gemach types in use: the Gemach Types table, or the starting list when it is empty / missing. */
+async function loadGemachTypeNames(db) {
+  try {
+    const recs = await db.listAll(T.GEMACH_TYPES, {});
+    const names = recs.sort(byOrderThenName).map(r => r.fields.Name).filter(Boolean);
+    if (names.length) return names;
+  } catch (e) { if (!(e instanceof AirtableError)) throw e; }
+  return GEMACH_CATEGORIES;
+}
+const typeError = names => `Type must be one of: ${names.join(", ")}.`;
 const ADMIN_ROLES = ["Owner", "Manager", "Volunteer", NETWORK_ADMIN_ROLE];             // Admins.Role choices
 
 /** Live role check: the JWT may be up to 12h old, so read the Admins row now. */
@@ -45,6 +56,10 @@ async function networkDispatch(c, path, method) {
   if (method === "GET"   && path === "/admin/network/analytics")  return handleNetworkAnalytics(c);
   if (method === "GET"   && path === "/admin/network/traffic")    return handleNetworkTraffic(c);
   if (method === "GET"   && path === "/admin/network/reminders")  return handleRemindersPreview(c); // dry run: sends nothing
+  if (method === "GET"   && path === "/admin/network/gemach-types") return netListGemachTypes(c);
+  if (method === "POST"  && path === "/admin/network/gemach-types") return netCreateGemachType(c);
+  if (method === "PATCH" && (m = path.match(/^\/admin\/network\/gemach-types\/([^/]+)$/))) return netUpdateGemachType(c, m[1]);
+  if (method === "DELETE" && (m = path.match(/^\/admin\/network\/gemach-types\/([^/]+)$/))) return netDeleteGemachType(c, m[1]);
   if (method === "POST"  && path === "/admin/network/categories") return netCreateCategory(c);
   if (method === "PATCH" && (m = path.match(/^\/admin\/network\/categories\/([^/]+)$/))) return netUpdateCategory(c, m[1]);
   return json({ error: "Not found" }, 404);
@@ -134,7 +149,8 @@ async function netCreateGemach(c) {
   const name = netStr(body.name);
   if (typeof name !== "string" || !name) return json({ error: "Name is required." }, 400);
   if (name.length > 100) return json({ error: "Name is too long (max 100 characters)." }, 400);
-  if (!GEMACH_CATEGORIES.includes(body.category)) return json({ error: `Category must be one of: ${GEMACH_CATEGORIES.join(", ")}.` }, 400);
+  const types = await loadGemachTypeNames(db);
+  if (!types.includes(body.category)) return json({ error: typeError(types) }, 400);
   const mode = body.mode === undefined ? "Full" : body.mode;
   if (!GEMACH_MODES.has(mode)) return json({ error: "Mode must be Full, Directory or Info." }, 400);
   const email = typeof body.email === "string" ? body.email.trim() : "";
@@ -183,7 +199,7 @@ async function netCreateGemach(c) {
 async function netUpdateGemach(c, id) {
   const { db, env, ctx } = c;
   if (!REC_RE.test(id)) return json({ error: "Not found" }, 404);
-  const [rec] = await fetchByIds(db, T.GEMACHS, [id], { fields: ["Slug", "Active", "Email", "Phone"] });
+  const [rec] = await fetchByIds(db, T.GEMACHS, [id], { fields: ["Slug", "Active", "Email", "Phone", "Category"] });
   if (!rec) return json({ error: "Not found" }, 404);
   const body = await readJson(c.request);
   const f = {};
@@ -207,7 +223,8 @@ async function netUpdateGemach(c, id) {
     f["Mode"] = body.mode;
   }
   if (body.category !== undefined) {
-    if (!GEMACH_CATEGORIES.includes(body.category)) return json({ error: `Category must be one of: ${GEMACH_CATEGORIES.join(", ")}.` }, 400);
+    const types = await loadGemachTypeNames(db);
+    if (!types.includes(body.category) && body.category !== rec.fields.Category) return json({ error: typeError(types) }, 400);
     f["Category"] = body.category;
   }
   if (body.displayOrder !== undefined) {
@@ -476,4 +493,87 @@ async function netUpdateCategory(c, id) {
   return json(categoryRow(rec));
 }
 
-export { GEMACH_CATEGORIES, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, netOverview, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, sendAdminInvite, NET_ADMIN_FIELDS, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };
+// Gemach types (the label on each gemach card)
+async function typeRows(db) {
+  const [types, gemachs] = await Promise.all([db.listAll(T.GEMACH_TYPES, {}), db.listAll(T.GEMACHS, { fields: ["Category", "Slug"] })]);
+  const used = {};
+  for (const g of gemachs) { const k = selName(g.fields.Category); if (k) used[k] = (used[k] || 0) + 1; }
+  return {
+    rows: types.map(r => ({ id: r.id, name: r.fields.Name || "", displayOrder: typeof r.fields["Display Order"] === "number" ? r.fields["Display Order"] : null, gemachCount: used[r.fields.Name] || 0 })).sort(byOrderThenName),
+    gemachs,
+  };
+}
+
+async function netListGemachTypes({ db }) {
+  const { rows } = await typeRows(db);
+  if (!rows.length) { // first use: start from the standard list so every label can be edited
+    for (const [i, name] of GEMACH_CATEGORIES.entries()) await db.create(T.GEMACH_TYPES, { Name: name, "Display Order": (i + 1) * 10 });
+    return json((await typeRows(db)).rows);
+  }
+  return json(rows);
+}
+
+async function typeNameFrom(db, body, selfId = null) {
+  const name = netStr(body.name);
+  if (typeof name !== "string" || !name) return { error: "Name is required." };
+  if (name.length > 40) return { error: "Name is too long (max 40 characters)." };
+  const same = await db.listAll(T.GEMACH_TYPES, { where: [Q.ieq("Name", name)], fields: ["Name"], maxRecords: 2 });
+  if (same.some(r => r.id !== selfId)) return { error: `A type named “${name}” already exists.`, status: 409 };
+  return { name };
+}
+
+async function netCreateGemachType(c) {
+  const { db } = c;
+  const body = await readJson(c.request);
+  const { name, error, status } = await typeNameFrom(db, body);
+  if (error) return json({ error }, status || 400);
+  const existing = await db.listAll(T.GEMACH_TYPES, {});
+  if (!existing.length) await netListGemachTypes(c); // seed the standard list first so it isn't lost
+  const all = await db.listAll(T.GEMACH_TYPES, {});
+  const order = Math.max(0, ...all.map(r => Number(r.fields["Display Order"]) || 0)) + 10;
+  const rec = await db.create(T.GEMACH_TYPES, { Name: name, "Display Order": order });
+  return json({ id: rec.id, name, displayOrder: order, gemachCount: 0 }, 201);
+}
+
+async function netUpdateGemachType(c, id) {
+  const { db, env, ctx } = c;
+  if (!REC_RE.test(id)) return json({ error: "Not found" }, 404);
+  const [rec] = await fetchByIds(db, T.GEMACH_TYPES, [id], {});
+  if (!rec) return json({ error: "Not found" }, 404);
+  const body = await readJson(c.request);
+  const f = {};
+  let renamed = null;
+  if (body.name !== undefined) {
+    const { name, error, status } = await typeNameFrom(db, body, id);
+    if (error) return json({ error }, status || 400);
+    if (name !== rec.fields.Name) { f["Name"] = name; renamed = name; }
+  }
+  if (body.displayOrder !== undefined) {
+    if (body.displayOrder === null || body.displayOrder === "") f["Display Order"] = null;
+    else if (!Number.isFinite(Number(body.displayOrder))) return json({ error: "Display order must be a number." }, 400);
+    else f["Display Order"] = Number(body.displayOrder);
+  }
+  if (!Object.keys(f).length) return json({ error: "Nothing to update." }, 400);
+  await db.update(T.GEMACH_TYPES, id, f);
+  if (renamed) { // gemachs carry the label by name: move them along
+    const gemachs = await db.listAll(T.GEMACHS, { fields: ["Category", "Slug"] });
+    const mine = gemachs.filter(g => selName(g.fields.Category) === rec.fields.Name);
+    for (const g of mine) await db.update(T.GEMACHS, g.id, { Category: renamed });
+    if (mine.length) purgeManyPublic(env, ctx, gemachs.map(g => g.fields.Slug));
+  }
+  return json((await typeRows(db)).rows.find(r => r.id === id));
+}
+
+async function netDeleteGemachType(c, id) {
+  const { db } = c;
+  if (!REC_RE.test(id)) return json({ error: "Not found" }, 404);
+  const { rows } = await typeRows(db);
+  const row = rows.find(r => r.id === id);
+  if (!row) return json({ error: "Not found" }, 404);
+  if (row.gemachCount) return json({ error: `${row.gemachCount} gemach${row.gemachCount === 1 ? " uses" : "s use"} “${row.name}”. Give ${row.gemachCount === 1 ? "it" : "them"} another type first.` }, 409);
+  if (rows.length <= 1) return json({ error: "Keep at least one type." }, 400);
+  await db.del(T.GEMACH_TYPES, id);
+  return json({ ok: true, id });
+}
+
+export { GEMACH_CATEGORIES, loadGemachTypeNames, netListGemachTypes, ADMIN_ROLES, isLiveNetworkAdmin, networkDispatch, netOverview, purgeManyPublic, netStr, slugify, uniqueSlug, netGemachRows, netListGemachs, gemachNameTaken, NAME_TAKEN, netCreateGemach, netUpdateGemach, adminRow, gemachIndex, netListAdmins, validateAdminInput, netCreateAdmin, netUpdateAdmin, sendAdminInvite, NET_ADMIN_FIELDS, categoryRow, netListCategories, validateCategoryInput, allSlugs, netCreateCategory, netUpdateCategory };

@@ -45,6 +45,11 @@ const TABLES = {
       "Item Types": calc("item_type_ids", "(SELECT json_group_array(x.id) FROM (SELECT id FROM item_types WHERE product_category_id = r.id ORDER BY rowid) x)", { json: true }),
     },
   },
+  // The labels a gemach can carry ("Medical", "Baby", ...), editable in the Network tab. Gemachs.Category holds the name.
+  "Gemach Types": {
+    sql: "gemach_types",
+    fields: { "Name": t("name"), "Display Order": n("display_order") },
+  },
   "Gemachs": {
     sql: "gemachs",
     fields: {

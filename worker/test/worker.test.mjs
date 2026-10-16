@@ -15,6 +15,7 @@ const DB = {
     rec(C.id, { Name: "Aardvark Directory Gemach", Slug: C.slug, Active: true, Phone: "516-555-0000", Mode: "Directory", "Display Order": 20 }),
   ],
   "Communities": [rec("recCCCCCCCCCCCCC1", { Name: "West Hempstead" })],
+  "Gemach Types": [],
   "Product Categories": [
     rec("recCAT0000000000B", { Name: "Walkers", Icon: "🚶", Keywords: "rollator, walking frame,", "Display Order": 20, Active: true }),
     rec("recCAT0000000000A", { Name: "Wheelchairs", Icon: "🦽", Keywords: "wheel chair,transport chair", "Display Order": 10, Active: true, "Item Types": ["recTYPEA000000001"] }),
@@ -2135,6 +2136,38 @@ await t("network: home page categories on a gemach (listed, saved, validated, re
   assert.deepEqual(await ids(), ["recCAT0000000000C"], "replaced, not added");
   await patch({ browseCategoryIds: [] });
   assert.deepEqual(await ids(), [], "cleared");
+});
+
+await t("network: gemach types (starts from the standard list, add, rename moves gemachs, delete only when unused, new type usable)", async () => {
+  const api = (m, path, b) => req(tokNet, m, `/admin/network/gemach-types${path}`, b);
+  const list = await (await api("GET", "")).json();
+  assert.deepEqual(list.map(x => x.name), ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"], "seeded in order");
+  assert.equal(list.find(x => x.name === "Baby").gemachCount, 1, "counts gemachs using it (Hidden Gemach)");
+  assert.equal((await (await api("GET", "")).json()).length, 7, "seeding happens once");
+  assert.equal((await api("POST", "", { name: "  " })).status, 400);
+  assert.equal((await api("POST", "", { name: "baby" })).status, 409, "duplicate (case-insensitive)");
+  const mk = await api("POST", "", { name: "Home & Appliances" });
+  assert.equal(mk.status, 201);
+  const home = await mk.json();
+  assert.equal(home.gemachCount, 0);
+  // a gemach can be given the new type, and unknown types are still refused
+  assert.equal((await req(tokNet, "PATCH", `/admin/network/gemachs/${B.id}`, { category: "Toys" })).status, 400);
+  const set = await req(tokNet, "PATCH", `/admin/network/gemachs/${B.id}`, { category: "Home & Appliances" });
+  assert.equal(set.status, 200); assert.equal((await set.json()).category, "Home & Appliances");
+  // can't delete while used
+  assert.equal((await api("DELETE", `/${home.id}`)).status, 409);
+  // rename carries the gemach along
+  const rn = await api("PATCH", `/${home.id}`, { name: "Household" });
+  assert.equal(rn.status, 200); assert.equal((await rn.json()).gemachCount, 1);
+  const g = (await (await req(tokNet, "GET", "/admin/network/gemachs")).json()).find(x => x.id === B.id);
+  assert.equal(g.category, "Household");
+  assert.equal((await api("PATCH", `/${home.id}`, { name: "Baby" })).status, 409);
+  // free it, then delete
+  await req(tokNet, "PATCH", `/admin/network/gemachs/${B.id}`, { category: "Other" });
+  assert.equal((await api("DELETE", `/${home.id}`)).status, 200);
+  assert.ok(!(await (await api("GET", "")).json()).some(x => x.name === "Household"));
+  assert.equal((await api("DELETE", `/${home.id}`)).status, 404);
+  assert.equal((await call("/admin/network/gemach-types", { headers: auth(tokenA) })).status, 403, "not for gemach admins");
 });
 
 await t("r4 gemach name editable via PATCH /admin/gemach (1..100, trimmed); slug unchanged", async () => {

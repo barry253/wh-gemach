@@ -1576,6 +1576,11 @@
           <button class="btn btn-primary btn-sm" onclick="openCategorySheet(null)">+ Add category</button>
         </div>
         <div class="card-list" id="net-categories" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+        <div class="net-toolbar">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-types">Gemach types <span class="muted-small">(the label on each gemach)</span></div>
+          <button class="btn btn-primary btn-sm" onclick="openTypeSheet(null)">+ Add type</button>
+        </div>
+        <div class="card-list" id="net-types" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
       </div>
 
       <div class="net-area" id="net-area-analytics" role="tabpanel" aria-labelledby="net-tab-analytics" hidden>
@@ -1872,6 +1877,23 @@
 </div>
 
 <!-- Network: Category Sheet -->
+<div class="sheet-overlay" id="net-type-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('net-type-sheet')">×</button>
+    <h3 id="nt-title">Add type</h3>
+    <div class="form-group">
+      <label for="nt-name">Name <span style="color:var(--red)">*</span></label>
+      <input type="text" id="nt-name" maxlength="40" />
+      <div class="muted-small" style="margin-top:0.3rem" id="nt-note"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" onclick="closeSheet('net-type-sheet')">Cancel</button>
+      <button class="btn btn-primary" id="nt-submit-btn">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-overlay" id="net-category-sheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -6729,8 +6751,9 @@
   }
 
   // ── Network (Network Admins only) ─────────────────────────────────────────
-  const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"];
-  const NET = { gemachs: [], admins: [], categories: [] };
+  const DEFAULT_GEMACH_TYPES = ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"];
+  const NET = { gemachs: [], admins: [], categories: [], types: [] };
+  const typeNames = () => (NET.types.length ? NET.types.map(t => t.name) : DEFAULT_GEMACH_TYPES);
   const netStore = { gemach: new Map(), admin: new Map(), category: new Map() };
 
   function slugifyName(name) {
@@ -6750,6 +6773,7 @@
     const netEls = ["net-gemachs", "net-admins", "net-categories"].map(id => document.getElementById(id));
     if (NET.fromSnap) netEls.forEach(el => el?.classList.add("is-stale"));
     // One request for gemachs + admins + categories (3 Airtable reads instead of ~9 across three requests).
+    const typesReq = api("/admin/network/gemach-types").catch(() => null);
     let ov = await api("/admin/network/overview").catch(e => ({ error: e.message }));
     let g, a, c;
     NET.fromSnap = false;
@@ -6767,6 +6791,9 @@
         NET[key] = [];
       } else NET[key] = data;
     }
+    const ty = await typesReq;
+    if (Array.isArray(ty)) NET.types = ty;
+    renderNetTypes();
     if (Array.isArray(g)) renderNetGemachs();
     if (Array.isArray(a)) { fillAdminFilter(); renderNetAdmins(); }
     if (Array.isArray(c)) renderNetCategories();
@@ -7090,8 +7117,8 @@
     if (!NET.gemachs.length) { el.innerHTML = '<div class="empty-state">No gemachs yet</div>'; return; }
     el.innerHTML = NET.gemachs.map(g => {
       const id = safeId(g.id); netStore.gemach.set(id, g);
-      const catOpts = GEMACH_CATEGORIES.map(c => `<option value="${esc(c)}"${g.category === c ? " selected" : ""}>${esc(c)}</option>`).join("") +
-        (g.category && !GEMACH_CATEGORIES.includes(g.category) ? `<option selected>${esc(g.category)}</option>` : "");
+      const catOpts = typeNames().map(c => `<option value="${esc(c)}"${g.category === c ? " selected" : ""}>${esc(c)}</option>`).join("") +
+        (g.category && !typeNames().includes(g.category) ? `<option selected>${esc(g.category)}</option>` : "");
       return `<div class="card net-row" id="ng-row-${id}">
         <div class="net-row-head">
           <div style="min-width:0">
@@ -7155,7 +7182,7 @@
       NET.gemachs = NET.gemachs.map(x => (x.id === res.id ? res : x));
       const mine = MY_GEMACHS.find(x => x.id === res.id);
       if (mine) { mine.active = res.active; mine.name = res.name; mine.slug = res.slug; renderGemachSwitcher(); }
-      renderNetGemachs();
+      renderNetGemachs(); renderNetTypes();
       showToast("Saved");
     } finally { if (control) control.disabled = false; }
   }
@@ -7226,8 +7253,8 @@
     document.getElementById("ng-form").hidden = false;
     document.getElementById("ng-done").hidden = true;
     for (const k of ["name", "slug", "email", "phone"]) document.getElementById(`ng-${k}`).value = "";
-    document.getElementById("ng-category").innerHTML = GEMACH_CATEGORIES.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-    document.getElementById("ng-category").value = "Other";
+    document.getElementById("ng-category").innerHTML = typeNames().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    { const sel = document.getElementById("ng-category"); sel.value = typeNames().includes("Other") ? "Other" : typeNames()[0]; }
     document.getElementById("ng-mode").value = "Full";
     updateSlugPreview();
     openSheet("net-gemach-sheet");
@@ -7382,6 +7409,60 @@
         ${c.keywords?.length ? `<div class="muted-small">${esc(c.keywords.join(", "))}</div>` : ""}
       </div>`;
     }).join("");
+  }
+
+  const typeCount = t => (NET.gemachs.length ? NET.gemachs.filter(g => g.category === t.name).length : t.gemachCount);
+  function renderNetTypes() {
+    const el = document.getElementById("net-types");
+    if (!el) return;
+    if (!NET.types.length) { el.innerHTML = '<div class="empty-state">Using the standard types. Add or rename one to customize.</div>'; return; }
+    el.innerHTML = NET.types.map(t => {
+      const id = safeId(t.id);
+      return `<div class="card net-row" id="nt-row-${id}"><div class="net-row-head">
+        <div style="min-width:0"><div class="card-title">${esc(t.name)}</div><div class="card-id">${esc(typeCount(t))} gemach${typeCount(t) === 1 ? "" : "s"}</div></div>
+        <div style="display:flex;gap:0.4rem"><button class="btn btn-ghost btn-sm" onclick="openTypeSheet('${id}')">Rename</button>
+        <button class="btn btn-ghost btn-sm" onclick="deleteType('${id}')">Delete</button></div>
+      </div></div>`;
+    }).join("");
+  }
+  function openTypeSheet(id) {
+    const t = id ? NET.types.find(x => x.id === id) : null;
+    document.getElementById("nt-title").textContent = t ? "Rename type" : "Add type";
+    document.getElementById("nt-name").value = t?.name || "";
+    document.getElementById("nt-note").textContent = t && typeCount(t) ? `The ${typeCount(t)} gemach${typeCount(t) === 1 ? "" : "s"} using it will show the new name.` : "";
+    document.getElementById("nt-submit-btn").onclick = () => saveType(t);
+    openSheet("net-type-sheet");
+  }
+  async function saveType(t) {
+    const name = document.getElementById("nt-name").value.trim();
+    if (!name) { showToast("Name is required"); return; }
+    if (t && name === t.name) { closeSheet("net-type-sheet"); return; }
+    const btn = document.getElementById("nt-submit-btn");
+    btn.disabled = true;
+    try {
+      const res = await api(t ? `/admin/network/gemach-types/${safeId(t.id)}` : "/admin/network/gemach-types", t ? "PATCH" : "POST", { name });
+      if (!res) return;
+      if (res.error) { showToast(res.error); return; }
+      if (!NET.types.length) { const all = await api("/admin/network/gemach-types"); if (Array.isArray(all)) NET.types = all; }
+      else NET.types = t ? NET.types.map(x => (x.id === res.id ? res : x)) : [...NET.types, res];
+      if (t) NET.gemachs.forEach(g => { if (g.category === t.name) g.category = res.name; });
+      renderNetTypes(); renderNetGemachs();
+      closeSheet("net-type-sheet");
+      showToast(t ? "Type renamed" : "Type added");
+    } finally { btn.disabled = false; }
+  }
+  async function deleteType(id) {
+    const t = NET.types.find(x => x.id === id);
+    if (!t) return;
+    const n = typeCount(t);
+    if (n) { showToast(`${n} gemach${n === 1 ? " uses" : "s use"} “${t.name}”. Give ${n === 1 ? "it" : "them"} another type first.`); return; }
+    if (!confirm(`Delete the type “${t.name}”?`)) return;
+    const res = await api(`/admin/network/gemach-types/${safeId(id)}`, "DELETE");
+    if (!res) return;
+    if (res.error) { showToast(res.error); return; }
+    NET.types = NET.types.filter(x => x.id !== id);
+    renderNetTypes(); renderNetGemachs();
+    showToast("Type deleted");
   }
 
   function openCategorySheet(id) {

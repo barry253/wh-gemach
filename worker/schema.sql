@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS product_categories (
   active INTEGER NOT NULL DEFAULT 0  -- Active
 );
 
+CREATE TABLE IF NOT EXISTS gemach_types (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  name TEXT,  -- Name
+  display_order REAL  -- Display Order
+);
+
 CREATE TABLE IF NOT EXISTS gemachs (
   id TEXT PRIMARY KEY,
   created_at TEXT NOT NULL,
@@ -287,6 +294,11 @@ CREATE VIEW product_categories_v AS SELECT r.*,
   r.rowid AS _seq,
   (SELECT json_group_array(x.id) FROM (SELECT id FROM item_types WHERE product_category_id = r.id ORDER BY rowid) x) AS item_type_ids
 FROM product_categories r;
+
+DROP VIEW IF EXISTS gemach_types_v;
+CREATE VIEW gemach_types_v AS SELECT r.*,
+  r.rowid AS _seq
+FROM gemach_types r;
 
 DROP VIEW IF EXISTS gemachs_v;
 CREATE VIEW gemachs_v AS SELECT r.*,
