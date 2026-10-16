@@ -1902,7 +1902,7 @@ await t("r4 GET /admin/network/gemachs: all gemachs sorted by name with counts",
   const d = await (await req(tokNet, "GET", "/admin/network/gemachs")).json();
   assert.deepEqual(d.map(g => g.name), [...d.map(g => g.name)].sort((a, b) => a.localeCompare(b)));
   const a = d.find(g => g.id === A.id);
-  assert.deepEqual(Object.keys(a).sort(), ["active", "adminCount", "category", "comingSoon", "displayOrder", "email", "id", "itemCount", "mode", "name", "phone", "slug"]);
+  assert.deepEqual(Object.keys(a).sort(), ["active", "adminCount", "browseCategoryIds", "category", "comingSoon", "displayOrder", "email", "id", "itemCount", "mode", "name", "phone", "slug"]);
   assert.equal(a.adminCount, 4, "Barry + v@ + Demoted + Vol are active admins of A");
   assert.ok(d.some(g => g.slug === "hidden-one" && g.active === false && g.category === "Baby"));
 });
@@ -2119,6 +2119,22 @@ await t("inventory sheet: expected return date on a manual loan (saved, validate
   assert.equal((await assign({ status: "On Loan", ...borrower, existingLoanId: loan.id, dateBorrowed: "2026-10-16", expectedReturn: null })).status, 200);
   assert.ok(!loan.fields["Expected Return"], "null clears it");
   assert.equal((await assign({ status: "Available", existingLoanId: loan.id })).status, 200);
+});
+
+await t("network: home page categories on a gemach (listed, saved, validated, replaced, cleared)", async () => {
+  const patch = b => req(tokNet, "PATCH", `/admin/network/gemachs/${B.id}`, b);
+  const ids = async () => (await (await req(tokNet, "GET", "/admin/network/gemachs")).json()).find(g => g.id === B.id).browseCategoryIds;
+  assert.deepEqual(await ids(), []);
+  for (const bad of [["recCAT0000000000D"], ["recNOPE"], ["recCAT9999999999Z"], "recCAT0000000000A", [5]]) assert.equal((await patch({ browseCategoryIds: bad })).status, 400, JSON.stringify(bad));
+  assert.deepEqual(await ids(), [], "rejected requests change nothing");
+  const r = await patch({ browseCategoryIds: ["recCAT0000000000A", "recCAT0000000000B", "recCAT0000000000A"] });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await r.json()).browseCategoryIds.sort(), ["recCAT0000000000A", "recCAT0000000000B"]);
+  assert.deepEqual((await ids()).sort(), ["recCAT0000000000A", "recCAT0000000000B"]);
+  await patch({ browseCategoryIds: ["recCAT0000000000C"] });
+  assert.deepEqual(await ids(), ["recCAT0000000000C"], "replaced, not added");
+  await patch({ browseCategoryIds: [] });
+  assert.deepEqual(await ids(), [], "cleared");
 });
 
 await t("r4 gemach name editable via PATCH /admin/gemach (1..100, trimmed); slug unchanged", async () => {

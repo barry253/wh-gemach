@@ -1721,6 +1721,10 @@
       <label for="eg-order">Display order <span class="muted-small">(optional — lower shows first on the home page)</span></label>
       <input type="number" id="eg-order" step="1" style="max-width:8rem" />
     </div>
+    <div class="form-group">
+      <label>Home page categories <span class="muted-small">(the tiles this gemach appears under)</span></label>
+      <div class="attr-chips" id="eg-cats"></div>
+    </div>
     <p class="muted-small" style="margin:0 0 0.75rem">Type, category and whether it's live are in the list. For the description, hours, pickup, logo, messages and the rest, <a href="#" id="eg-more" onclick="return false">open the gemach's Settings</a>.</p>
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('net-gemach-edit-sheet')">Cancel</button>
@@ -7157,6 +7161,7 @@
   }
 
   // Edit a gemach's basics from the Network tab (everything else is in that gemach's own Settings).
+  let EG_SEL = new Set();
   function openEditGemach(id) {
     const g = netStore.gemach.get(id);
     if (!g) return;
@@ -7170,6 +7175,17 @@
     document.getElementById("eg-email").value = g.email || "";
     document.getElementById("eg-phone").value = g.phone || "";
     document.getElementById("eg-order").value = g.displayOrder ?? "";
+    EG_SEL = new Set(g.browseCategoryIds || []);
+    const cbox = document.getElementById("eg-cats");
+    const cats = (NET.categories || []).filter(c => c.active || EG_SEL.has(c.id));
+    cbox.innerHTML = cats.length
+      ? cats.map(c => `<button type="button" class="attr-chip" data-cat="${esc(c.id)}" aria-pressed="${EG_SEL.has(c.id)}">${esc((c.icon ? c.icon + " " : "") + c.name)}${c.active ? "" : " (off)"}</button>`).join("")
+      : '<div class="muted-small">No categories yet — add them under Categories.</div>';
+    cbox.querySelectorAll(".attr-chip[data-cat]").forEach(b => b.onclick = () => {
+      const cid = b.dataset.cat;
+      EG_SEL.has(cid) ? EG_SEL.delete(cid) : EG_SEL.add(cid);
+      b.setAttribute("aria-pressed", EG_SEL.has(cid));
+    });
     document.getElementById("eg-more").onclick = () => { closeSheet("net-gemach-edit-sheet"); try { sessionStorage.setItem("whg_settings_area", "profile"); } catch (e) {} switchGemach(g.slug, "settings"); };
     document.getElementById("eg-submit-btn").onclick = () => saveEditGemach(id);
     openSheet("net-gemach-edit-sheet");
@@ -7186,6 +7202,8 @@
     if (val("phone") !== (g.phone || "")) patch.phone = val("phone");
     const order = val("order");
     if (order !== String(g.displayOrder ?? "")) patch.displayOrder = order === "" ? null : Number(order);
+    const key = set => JSON.stringify([...set].sort());
+    if (key(EG_SEL) !== key(new Set(g.browseCategoryIds || []))) patch.browseCategoryIds = [...EG_SEL];
     if (!Object.keys(patch).length) { closeSheet("net-gemach-edit-sheet"); return; }
     const btn = document.getElementById("eg-submit-btn");
     btn.disabled = true;

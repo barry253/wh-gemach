@@ -68,7 +68,7 @@ function uniqueSlug(base, taken) {
   for (let i = 2; ; i++) { const s = `${base.slice(0, 60)}-${i}`; if (!taken.has(s)) return s; }
 }
 
-const NET_GEMACH_FIELDS = ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email", "Phone"];
+const NET_GEMACH_FIELDS = ["Name", "Slug", "Active", "Coming Soon", "Mode", "Category", "Display Order", "Items", "Email", "Phone", "Browse Categories"];
 const NET_ADMIN_FIELDS = ["Name", "Email", "Role", "Active", "Gemachs", "Last Active"];
 
 async function netGemachRows(db, pre = null) {
@@ -86,6 +86,7 @@ async function netGemachRows(db, pre = null) {
       mode: GEMACH_MODES.has(mode) ? mode : "Full", category: selName(f.Category) || null,
       displayOrder: typeof f["Display Order"] === "number" ? f["Display Order"] : null,
       itemCount: (f.Items || []).length, adminCount: adminCount[r.id] || 0, email: f.Email || null, phone: f.Phone || null,
+      browseCategoryIds: (f["Browse Categories"] || []).map(linkedId).filter(Boolean),
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -213,6 +214,17 @@ async function netUpdateGemach(c, id) {
     if (body.displayOrder === null || body.displayOrder === "") f["Display Order"] = null;
     else if (!Number.isFinite(Number(body.displayOrder)) || Math.abs(Number(body.displayOrder)) > 1e6) return json({ error: "Display order must be a number." }, 400);
     else f["Display Order"] = Number(body.displayOrder);
+  }
+  if (body.browseCategoryIds !== undefined) { // home page categories this gemach appears under
+    const ids = body.browseCategoryIds;
+    if (!Array.isArray(ids) || ids.length > 50 || !ids.every(x => typeof x === "string" && REC_RE.test(x))) return json({ error: "Unknown browse category." }, 400);
+    const uniq = [...new Set(ids)];
+    if (uniq.length) {
+      const found = await fetchByIds(db, T.PRODUCT_CATEGORIES, uniq, { fields: ["Active"] });
+      const ok = new Set(found.filter(r => r.fields.Active).map(r => r.id));
+      if (!uniq.every(x => ok.has(x))) return json({ error: "Unknown browse category." }, 400);
+    }
+    f["Browse Categories"] = uniq;
   }
   // Contact email/phone can be changed here; clearing them is left to the gemach's own Settings, which
   // checks they aren't the gemach's contact method.
