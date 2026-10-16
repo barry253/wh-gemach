@@ -2142,9 +2142,15 @@
     </div>
 
     <div id="assign-loan-date-fields" style="display:none">
-      <div class="form-group">
-        <label>Date borrowed</label>
-        <input type="date" id="assign-date-borrowed" />
+      <div class="form-row">
+        <div class="form-group">
+          <label for="assign-date-borrowed">Date borrowed</label>
+          <input type="date" id="assign-date-borrowed" />
+        </div>
+        <div class="form-group">
+          <label for="assign-expected-return">Expected return <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+          <input type="date" id="assign-expected-return" />
+        </div>
       </div>
     </div>
 
@@ -5514,6 +5520,8 @@
     $("assign-borrower-email").value   = loan?.borrowerEmail   || "";
     $("assign-borrower-contact").value = loan?.borrowerContact || "";
     $("assign-date-borrowed").value    = loan?.dateBorrowed || nyTodayStr();
+    // Projected return: the loan's due date, or (for a reservation being picked up) the day the reservation ends.
+    $("assign-expected-return").value  = loan?.expectedReturn || (loan?.status === "Reserved" ? loan?.reservationEnd : "") || "";
     $("assign-res-start").value        = loan?.reservationStart || "";
     $("assign-res-end").value          = loan?.reservationEnd   || "";
     // Notes are the item's own note (loan notes live in Edit booking).
@@ -5542,7 +5550,7 @@
   // What the status / borrower / date fields say right now; compared with the opening values to see if the loan changed.
   function assignLoanSnapshot() {
     return JSON.stringify(["assign-borrower-name", "assign-borrower-phone", "assign-borrower-email", "assign-borrower-contact",
-      "assign-date-borrowed", "assign-res-start", "assign-res-end"].map(id => document.getElementById(id).value.trim()));
+      "assign-date-borrowed", "assign-expected-return", "assign-res-start", "assign-res-end"].map(id => document.getElementById(id).value.trim()));
   }
 
   function selectAssignStatus(status) {
@@ -5582,6 +5590,10 @@
       showToast("Borrower name is required");
       return;
     }
+    if (assignStatus === "On Loan") {
+      const out = $("assign-date-borrowed").value || nyTodayStr(), back = $("assign-expected-return").value;
+      if (back && back < out) { showToast("The expected return date is before the date borrowed"); return; }
+    }
     const itemId = $("assign-itemid").value.trim();
     if (!itemId) { showToast("Item ID is required"); $("assign-details").open = true; return; }
     if (!$("assign-type").value) { showToast("Item type is required"); $("assign-details").open = true; return; }
@@ -5606,7 +5618,10 @@
         payload.borrowerEmail   = $("assign-borrower-email").value.trim() || null;
         payload.borrowerContact = $("assign-borrower-contact").value || null;
       }
-      if (assignStatus === "On Loan") payload.dateBorrowed = $("assign-date-borrowed").value || null;
+      if (assignStatus === "On Loan") {
+        payload.dateBorrowed = $("assign-date-borrowed").value || null;
+        payload.expectedReturn = $("assign-expected-return").value || null;
+      }
       if (assignStatus === "Reserved") {
         payload.reservationStart = $("assign-res-start").value || null;
         payload.reservationEnd   = $("assign-res-end").value   || null;

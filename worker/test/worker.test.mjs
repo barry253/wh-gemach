@@ -2087,6 +2087,40 @@ await t("inventory sheet: item notes save on the item for every status; /assign 
   await patch({ condition: "Good", notes: "" });
 });
 
+await t("inventory sheet: expected return date on a manual loan (saved, validated, editable, clearable)", async () => {
+  const H = J(tokenA, { "X-Gemach": A.slug });
+  // A fresh unit, so earlier tests' loans on the shared fixtures can't get in the way.
+  const mk = await call("/admin/catalog/items", { method: "POST", headers: H, body: JSON.stringify({ itemTypeId: "recTYPEA000000001", itemId: "WC-ER1" }) });
+  assert.equal(mk.status, 200);
+  const unitId = (await mk.json()).id;
+  const assign = b => call(`/admin/inventory/${unitId}/assign`, { method: "POST", headers: H, body: JSON.stringify(b) });
+  const borrower = { borrowerName: "Dina Cohen", borrowerPhone: "5165550100" };
+  // Bad dates are refused and nothing is created.
+  const before = DB.Loans.length;
+  assert.equal((await assign({ status: "On Loan", ...borrower, dateBorrowed: "2026-10-16", expectedReturn: "not-a-date" })).status, 400);
+  const early = await assign({ status: "On Loan", ...borrower, dateBorrowed: "2026-10-16", expectedReturn: "2026-10-10" });
+  assert.equal(early.status, 400);
+  assert.match((await early.json()).error, /before the date borrowed/);
+  assert.equal(DB.Loans.length, before, "no loan created for a bad date");
+  // A good date is stored on the new loan.
+  const r = await assign({ status: "On Loan", ...borrower, dateBorrowed: "2026-10-16", expectedReturn: "2026-10-30" });
+  assert.equal(r.status, 200);
+  const label = (await r.json()).loanId;
+  const loan = DB.Loans.find(l => l.fields["Loan ID"] === label);
+  assert.equal(loan.fields["Expected Return"], "2026-10-30");
+  // The inventory list returns it for the sheet.
+  const inv = await (await call("/admin/inventory", { headers: H })).json();
+  assert.equal(inv.find(i => i.id === unitId).currentLoan.expectedReturn, "2026-10-30");
+  // Editing the existing loan changes it; an empty value clears it; leaving the key out leaves it alone.
+  assert.equal((await assign({ status: "On Loan", ...borrower, existingLoanId: loan.id, dateBorrowed: "2026-10-16", expectedReturn: "2026-11-06" })).status, 200);
+  assert.equal(loan.fields["Expected Return"], "2026-11-06");
+  assert.equal((await assign({ status: "On Loan", ...borrower, existingLoanId: loan.id, dateBorrowed: "2026-10-16" })).status, 200);
+  assert.equal(loan.fields["Expected Return"], "2026-11-06", "no expectedReturn key = unchanged");
+  assert.equal((await assign({ status: "On Loan", ...borrower, existingLoanId: loan.id, dateBorrowed: "2026-10-16", expectedReturn: null })).status, 200);
+  assert.ok(!loan.fields["Expected Return"], "null clears it");
+  assert.equal((await assign({ status: "Available", existingLoanId: loan.id })).status, 200);
+});
+
 await t("r4 gemach name editable via PATCH /admin/gemach (1..100, trimmed); slug unchanged", async () => {
   const H = J(tokenA, { "X-Gemach": A.slug });
   const p = b => call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify(b) });

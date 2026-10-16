@@ -436,6 +436,8 @@ async function handleAssignItem(c, itemRecId) {
   const body = await readJson(c.request);
   const { status, borrowerName, borrowerPhone, borrowerEmail, borrowerContact,
           dateBorrowed, reservationStart, reservationEnd, notes, existingLoanId } = body;
+  const hasExpected = Object.prototype.hasOwnProperty.call(body, "expectedReturn");
+  const expectedReturn = hasExpected && body.expectedReturn ? String(body.expectedReturn) : null;
   const admin = c.adminName || body.adminName || null;
 
   const [item, existingLoan] = await Promise.all([
@@ -484,6 +486,12 @@ async function handleAssignItem(c, itemRecId) {
   }
 
   if (!borrowerName) return json({ error: "Borrower name required" }, 400);
+  // Projected return date (On Loan only; optional). Must be a real date, not before the day it went out.
+  if (status === "On Loan" && expectedReturn) {
+    if (!isValidDate(expectedReturn)) return json({ error: "Choose a valid expected return date." }, 400);
+    const out = isValidDate(dateBorrowed || "") ? dateBorrowed : today();
+    if (expectedReturn < out) return json({ error: "The expected return date is before the date borrowed." }, 400);
+  }
 
   let borrowerId;
   try {
@@ -495,7 +503,10 @@ async function handleAssignItem(c, itemRecId) {
   if (existingLoanId) {
     const updateFields = { "Borrower": [borrowerId], "Status": status === "Reserved" ? "Reserved" : "Active" };
     if (notes) updateFields["Notes"] = notes;
-    if (status === "On Loan") updateFields["Date Borrowed"] = dateBorrowed || today();
+    if (status === "On Loan") {
+      updateFields["Date Borrowed"] = dateBorrowed || today();
+      if (hasExpected) updateFields["Expected Return"] = expectedReturn; // blank clears it
+    }
     if (status === "Reserved") {
       if (reservationStart) updateFields["Reservation Start"] = reservationStart;
       if (reservationEnd)   updateFields["Reservation End"]   = reservationEnd;
@@ -523,7 +534,10 @@ async function handleAssignItem(c, itemRecId) {
     "Gemach": [g.id],
   };
   if (notes) loanFields["Notes"] = notes;
-  if (status === "On Loan") loanFields["Date Borrowed"] = dateBorrowed || today();
+  if (status === "On Loan") {
+    loanFields["Date Borrowed"] = dateBorrowed || today();
+    if (expectedReturn) loanFields["Expected Return"] = expectedReturn;
+  }
   if (status === "Reserved") {
     if (reservationStart) loanFields["Reservation Start"] = reservationStart;
     if (reservationEnd)   loanFields["Reservation End"]   = reservationEnd;

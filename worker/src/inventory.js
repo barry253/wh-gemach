@@ -20,7 +20,7 @@ async function handleAdminInventory({ db, g, url }) {
     db.listAll(T.LOANS, {
       scope: g, where: [Q.in("Status", ["Active", "Reserved"])],
       sort: [{ field: "Loan ID", direction: "asc" }],
-      fields: ["Loan ID", "Item", "Item to Reserve", "Status", "Date Borrowed", "Reservation Start", "Reservation End", "Notes", "Borrower"],
+      fields: ["Loan ID", "Item", "Item to Reserve", "Status", "Date Borrowed", "Expected Return", "Reservation Start", "Reservation End", "Notes", "Borrower"],
     }),
   ]);
   const itemTypeMap = Object.fromEntries(itemTypes.map(r => [r.id, r.fields["Name"]]));
@@ -38,6 +38,7 @@ async function handleAdminInventory({ db, g, url }) {
         loanId: l.fields["Loan ID"] || null,
         status: l.fields["Status"] || null,
         dateBorrowed: l.fields["Date Borrowed"] || null,
+        expectedReturn: l.fields["Expected Return"] || null,
         reservationStart: l.fields["Reservation Start"] || null,
         reservationEnd: l.fields["Reservation End"] || null,
         notes: l.fields["Notes"] || null,
@@ -58,7 +59,7 @@ async function handleAdminInventory({ db, g, url }) {
       const b = borrowerMap[loan.borrowerId] || {};
       currentLoan = {
         loanRecId: loan.loanRecId, loanId: loan.loanId, status: loan.status,
-        dateBorrowed: loan.dateBorrowed, reservationStart: loan.reservationStart,
+        dateBorrowed: loan.dateBorrowed, expectedReturn: loan.expectedReturn, reservationStart: loan.reservationStart,
         reservationEnd: loan.reservationEnd, notes: loan.notes,
         borrowerName: b.name || null, borrowerPhone: b.phone || null,
         borrowerEmail: b.email || null, borrowerContact: b.preferredContact || null,

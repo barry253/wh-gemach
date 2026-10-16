@@ -11,7 +11,7 @@ const ok = (c, m) => { console.log(c ? "PASS" : "FAIL", m); if (!c) process.exit
 const ITEMS = [
   { id: "recITEM1", itemId: "WC-001", itemTypeId: "recT1", itemTypeName: "Wheelchair", condition: "Good", status: "Available", active: true, notes: null, currentLoan: null },
   { id: "recITEM2", itemId: "WC-002", itemTypeId: "recT1", itemTypeName: "Wheelchair", condition: "Good", status: "On Loan", active: true, notes: "Blue",
-    currentLoan: { loanRecId: "recLOAN2", loanId: "L-2", status: "Active", dateBorrowed: "2026-10-10", reservationStart: null, reservationEnd: null, notes: "Loan note stays put",
+    currentLoan: { loanRecId: "recLOAN2", loanId: "L-2", status: "Active", dateBorrowed: "2026-10-10", expectedReturn: "2026-10-24", reservationStart: null, reservationEnd: null, notes: "Loan note stays put",
       borrowerName: "Dina Cohen", borrowerPhone: "5165550100", borrowerEmail: "d@example.com", borrowerContact: "Email" } },
 ];
 const calls = [];
@@ -92,6 +92,29 @@ await page.fill("#assign-borrower-phone", "5165559999");
 await page.click("#assign-item-submit-btn"); await wait(); await page.waitForTimeout(200);
 const a2 = sent("POST", /recITEM2\/assign$/).at(-1);
 ok(a2 && a2.body.existingLoanId === "recLOAN2" && a2.body.borrowerPhone === "5165559999" && !("notes" in a2.body), "borrower edit updates the existing loan without notes");
+
+// 5b. Expected return: shown for a loan, editable, sent with the update; bad order refused on the device.
+await page.locator(".inventory-item").nth(1).click();
+await page.waitForSelector("#assign-item-sheet.open");
+ok(await page.inputValue("#assign-expected-return") === "2026-10-24", "On Loan: expected return is filled in from the loan");
+await page.fill("#assign-expected-return", "2026-10-01");
+await page.click("#assign-item-submit-btn"); await page.waitForTimeout(200);
+ok(await page.$eval("#assign-item-sheet", e => e.classList.contains("open")) && sent("POST", /recITEM2\/assign$/).length === 1, "a return date before the borrowed date is refused without saving");
+await page.fill("#assign-expected-return", "2026-11-07");
+await page.click("#assign-item-submit-btn"); await wait(); await page.waitForTimeout(200);
+const a3 = sent("POST", /recITEM2\/assign$/).at(-1);
+ok(a3.body.existingLoanId === "recLOAN2" && a3.body.expectedReturn === "2026-11-07", "changed expected return is sent with the loan: " + JSON.stringify(a3.body.expectedReturn));
+// A new loan: switching an Available item to On Loan carries the date.
+await page.locator(".inventory-item").nth(0).click();
+await page.waitForSelector("#assign-item-sheet.open");
+await page.click('#assign-status-btns button[data-status="On Loan"]');
+ok(await page.$eval("#assign-expected-return", e => e.offsetParent !== null && e.value === ""), "new loan: expected return field is shown and starts empty");
+await page.fill("#assign-borrower-name", "Moshe Katz");
+await page.fill("#assign-expected-return", "2026-10-30");
+await page.screenshot({ path: "shot-r27-expected-return.png" });
+await page.click("#assign-item-submit-btn"); await wait(); await page.waitForTimeout(200);
+const a4 = sent("POST", /recITEM1\/assign$/).at(-1);
+ok(a4.body.status === "On Loan" && a4.body.expectedReturn === "2026-10-30", "new loan sends expectedReturn");
 
 // 6. Item details (ID / type / active) save in the same PATCH.
 await page.locator(".inventory-item").nth(0).click();
