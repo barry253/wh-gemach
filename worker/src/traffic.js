@@ -221,4 +221,4 @@ async function buildTraffic(env, days, nowMs = Date.now()) {
   return { configured: true, days, since, today, visitors, worker, http, problems: [...new Set(problems)].slice(0, 6) };
 }
 
-export { handleNetworkTraffic, buildTraffic, sourceName, trafficMemo };
+export { handleNetworkTraffic, buildTraffic, sourceName, trafficMemo, gql, DEFAULTS as TRAFFIC_DEFAULTS };

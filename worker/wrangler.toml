@@ -37,8 +37,10 @@ binding = "ASSETS_BUCKET"
 bucket_name = "wh-gemach-assets"
 
 # Daily at 14:00 UTC (10am New York in summer, 9am in winter): automatic return reminder emails (src/reminders.js).
+# Hourly at :07: warns by email + push when today's Worker requests or D1 rows near the free daily limits
+# (src/usagewatch.js; the string must match USAGE_CRON there).
 [triggers]
-crons = ["0 14 * * *"]
+crons = ["0 14 * * *", "7 * * * *"]
 
 # Workers Logs (Observability tab).
 [observability]

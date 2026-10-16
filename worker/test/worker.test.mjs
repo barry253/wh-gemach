@@ -3721,6 +3721,74 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
     assert.ok(next.sent.filter(x => x.gemach.startsWith("rem-many-")).length >= 48 - mine.length, "the rest sent the next day");
   });
 
+  await t("usage watch: alerts once per level per day when requests / D1 rows near the free limits; says so when it can't read", async () => {
+    const U = await import("../src/usagewatch.js");
+    // pure parts
+    assert.deepEqual([49999, 50000, 79999, 80000, 100000, 250000].map(n => U.levelFor(n, 100000)), [0, 50, 50, 80, 100, 100]);
+    const d1 = U.dueAlerts({ requests: 60000, rowsRead: 10, rowsWritten: null }, null, "2026-10-19");
+    assert.deepEqual(d1.alerts.map(a => [a.metric, a.level]), [["requests", 50]]);
+    assert.equal(U.dueAlerts({ requests: 70000 }, d1.state, "2026-10-19").alerts.length, 0, "same level, same day: quiet");
+    assert.deepEqual(U.dueAlerts({ requests: 85000 }, d1.state, "2026-10-19").alerts.map(a => a.level), [80], "next level alerts");
+    assert.deepEqual(U.dueAlerts({ requests: 60000 }, d1.state, "2026-10-20").alerts.map(a => a.level), [50], "new day starts over");
+
+    // the job, with a faked Cloudflare
+    const NOW = Date.parse("2026-10-19T15:07:00Z");
+    let usage = { requests: 30000, rowsRead: 100000, rowsWritten: 50 }, broken = null;
+    cfAnswer = (url, init) => {
+      const b = JSON.parse(init.body);
+      if (broken && broken.test(b.query)) return new Response(JSON.stringify({ errors: [{ message: "unknown field" }] }), { status: 400 });
+      if (/query WorkerUsage/.test(b.query)) {
+        assert.match(b.variables.from, /^\d{4}-\d\d-\d\dT00:00:00Z$/);
+        return new Response(JSON.stringify({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [
+          { sum: { requests: usage.requests - 1000 }, dimensions: { scriptName: "wh-gemach" } },
+          { sum: { requests: 1000 }, dimensions: { scriptName: "whgemachs" } }] }] } } }));
+      }
+      assert.match(b.variables.day, /^\d{4}-\d\d-\d\d$/); assert.equal(b.variables.db, "974be829-ed62-4e9a-9965-77784d5d74a5");
+      return new Response(JSON.stringify({ data: { viewer: { accounts: [{ d1AnalyticsAdaptiveGroups: [{ sum: { rowsRead: usage.rowsRead, rowsWritten: usage.rowsWritten } }] }] } } }));
+    };
+    const mail = () => resendCalls().filter(m => /% of today's free limit|couldn't read Cloudflare/.test(m.subject || ""));
+    const before = mail().length;
+    env.CF_ANALYTICS_TOKEN = "cf-test-token";
+    delete env.USAGE_WATCH;
+    let r = await U.runUsageWatch(env, { now: NOW });
+    assert.equal(r.alerts.length, 0, "30% is quiet"); assert.equal(mail().length, before);
+
+    usage = { requests: 82000, rowsRead: 3000000, rowsWritten: 50 };
+    r = await U.runUsageWatch(env, { now: NOW + 3600e3 });
+    await Promise.allSettled(waits);
+    const sent = mail().slice(before);
+    assert.deepEqual(sent.map(m => m.subject).sort(), ["[whgemachs] D1 rows read at 50% of today's free limit (3,000,000 of 5,000,000)", "[whgemachs] Worker requests at 80% of today's free limit (82,000 of 100,000)"]);
+    assert.ok(sent.every(m => m.to[0] === "alerts@example.com"));
+    const wr = sent.find(m => /Worker requests/.test(m.subject));
+    assert.match(wr.text, /Error 1027/); assert.match(wr.text, /resets at midnight UTC/); assert.match(wr.text, /wh-gemach 81,000, whgemachs 1,000/);
+
+    await U.runUsageWatch(env, { now: NOW + 7200e3 });
+    assert.equal(mail().slice(before).length, 2, "nothing new an hour later at the same levels");
+    usage.requests = 100500;
+    await U.runUsageWatch(env, { now: NOW + 10800e3 });
+    assert.ok(mail().slice(before).some(m => /Worker requests at 100%/.test(m.subject)), "100% alerts");
+
+    // can't read one part: one explanatory email per day, the other part still works
+    broken = /query D1Usage/;
+    await U.runUsageWatch(env, { now: Date.parse("2026-10-20T10:07:00Z") });
+    await U.runUsageWatch(env, { now: Date.parse("2026-10-20T11:07:00Z") });
+    await Promise.allSettled(waits);
+    assert.equal(mail().filter(m => /couldn't read Cloudflare/.test(m.subject)).length, 1, "told once that D1 numbers can't be read");
+    assert.ok(mail().some(m => /D1 rows/.test(m.text || "")) && !mail().some(m => /Worker requests: /.test(m.text || "")), "only the D1 part was unreadable");
+    broken = null;
+
+    // off / no token
+    env.USAGE_WATCH = "off"; assert.deepEqual(await U.runUsageWatch(env, { now: NOW }), { skipped: "off" }); delete env.USAGE_WATCH;
+    delete env.CF_ANALYTICS_TOKEN; assert.deepEqual(await U.runUsageWatch(env, { now: NOW }), { skipped: "no token" });
+
+    // the cron hands :07 to the usage check and 14:00 to reminders
+    env.CF_ANALYTICS_TOKEN = "cf-test-token"; usage = { requests: 1, rowsRead: 1, rowsWritten: 1 };
+    const seenQ = []; const prev = cfAnswer; cfAnswer = (u, i) => { seenQ.push(JSON.parse(i.body).query); return prev(u, i); };
+    const cw = []; await worker.scheduled({ cron: U.USAGE_CRON }, env, { waitUntil: p => cw.push(p) }); await Promise.allSettled(cw);
+    assert.ok(seenQ.some(q => /WorkerUsage/.test(q)), "hourly cron runs the usage check");
+    delete env.CF_ANALYTICS_TOKEN; cfAnswer = () => new Response("{}", { status: 500 });
+  });
+
   await t("reminders: settings — on/off, days before, repeat; validated", async () => {
     const tokNet2 = await sign({ email: "n@x", name: "N", role: "Network Admin", gemachs: [] });
     const H = { ...auth(tokNet2), "X-Gemach": "rem-gemach", "Content-Type": "application/json" };
