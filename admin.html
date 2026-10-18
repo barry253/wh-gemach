@@ -7609,7 +7609,12 @@
   /** After sign-in: get the service worker ready and listen for taps on notifications. */
   async function initPushOnLoad() {
     if (!pushSupported()) return;
-    navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "open-url") openAdminUrl(e.data.url); });
+    navigator.serviceWorker.addEventListener("message", e => {
+      if (!e.data || e.data.type !== "open-url") return;
+      openAdminUrl(e.data.url);
+      // Tell the service worker we got it; without this answer it reloads the window at the link.
+      try { e.ports && e.ports[0] && e.ports[0].postMessage("ok"); } catch (err) { /* ignore */ }
+    });
     await getSwReg();
   }
 

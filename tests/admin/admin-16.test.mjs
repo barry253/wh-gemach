@@ -190,7 +190,8 @@ const openBell = async page => { await page.click("#btn-bell"); await page.waitF
 
   // Admin already open: the service worker posts the tapped notification's link.
   await page.waitForFunction(() => window.__push.listeners.length > 0);
-  await page.evaluate(() => window.__push.listeners.forEach(fn => fn({ data: { type: "open-url", url: "/admin?g=kallah&tab=loans&loan=recLOANACT0000001" } })));
+  await page.evaluate(() => { window.__acks = 0; window.__push.listeners.forEach(fn => fn({ data: { type: "open-url", url: "/admin?g=kallah&tab=loans&loan=recLOANACT0000001" }, ports: [{ postMessage: () => { window.__acks++; } }] })); });
+  ok(await page.evaluate(() => window.__acks) === 1, "tap while open: admin tells the service worker it got the link");
   await page.waitForSelector("#loan-row-recLOANACT0000001.deep-hl", { timeout: 8000 }).catch(() => {});
   ok(await page.locator("#screen-loans.active").count() === 1, "tap while open → Loans tab");
   ok(await page.locator("#loan-row-recLOANACT0000001.deep-hl").count() === 1 && await page.locator("#loan-panel-recLOANACT0000001.open").count() === 1, "the loan is pointed out and opened");
@@ -216,7 +217,7 @@ const openBell = async page => { await page.click("#btn-bell"); await page.waitF
     registration: { showNotification: async (title, o) => { shown.push({ title, ...o }); } },
     navigator: { setAppBadge: async () => { badge++; } },
   };
-  vm.runInNewContext(code, { self, URL, Promise, Date, console });
+  vm.runInNewContext(code, { self, URL, Promise, Date, console, MessageChannel, setTimeout });
   const run = async (type, ev) => { let p; handlers[type]({ ...ev, waitUntil: x => { p = x; } }); await p; };
   const pushEv = d => ({ data: { json: () => d, text: () => JSON.stringify(d) } });
   await run("push", pushEv({ title: "New request · Kallah Gemach", body: "1 item · needed Sun, Oct 18", url: "/admin?g=kallah&tab=requests&req=recX", tag: "request-R-1", event: "request" }));
@@ -231,9 +232,19 @@ const openBell = async page => { await page.click("#btn-bell"); await page.waitF
   ok(opened.at(-1) === "/admin?g=kallah&tab=loans&loan=recL" && close.closed === 1, "SW: tap with admin closed → opens the link");
   let focused = 0;
   windows = [{ url: "https://whgemachs.org/g/kallah", focus: async () => {}, postMessage() { throw new Error("wrong window"); } },
-             { url: "https://whgemachs.org/admin", focus: async () => { focused++; }, postMessage: m => posted.push(m) }];
+             { url: "https://whgemachs.org/admin", focus: async () => { focused++; }, postMessage: (m, ports) => { posted.push(m); ports[0].postMessage("ok"); } }];
   await run("notificationclick", clickEv("/admin?tab=network"));
   ok(focused === 1 && posted.at(-1)?.type === "open-url" && posted.at(-1).url === "/admin?tab=network" && opened.length === 1, "SW: tap with admin open → focus it and pass the link");
+  // Page asleep / reloading / on sign-in: no answer → that window is loaded straight at the link.
+  const navigated = [];
+  windows = [{ url: "https://whgemachs.org/admin", focus: async () => {}, postMessage: m => posted.push(m), navigate: async u => { navigated.push(u); return {}; } }];
+  let t0 = Date.now();
+  await run("notificationclick", clickEv("/admin?g=kallah&tab=requests&req=recQ"));
+  ok(navigated.at(-1) === "/admin?g=kallah&tab=requests&req=recQ" && opened.length === 1 && Date.now() - t0 >= 1400, "SW: no answer from admin → reload that window at the request link");
+  // The window is gone (navigate fails) → open a new one at the link.
+  windows = [{ url: "https://whgemachs.org/admin", focus: async () => {}, postMessage: () => {}, navigate: async () => { throw new TypeError("gone"); } }];
+  await run("notificationclick", clickEv("/admin?g=kallah&tab=requests&req=recR"));
+  ok(opened.at(-1) === "/admin?g=kallah&tab=requests&req=recR", "SW: window gone → opens a new one at the link");
 }
 
 await browser.close();

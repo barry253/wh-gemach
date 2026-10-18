@@ -34,6 +34,24 @@ self.addEventListener("push", event => {
   event.waitUntil(Promise.all(jobs));
 });
 
+/**
+ * Pass the link to an open admin window and wait for it to say it got it. A phone often has the
+ * page asleep, reloading or still on the sign-in screen, and then the message is simply lost.
+ * Resolves true only when the page answered on the reply port within `ms`.
+ */
+function handOver(win, url, ms = 1500) {
+  return new Promise(resolve => {
+    let done = false, ch = null;
+    const finish = v => { if (!done) { done = true; try { ch && ch.port1.close(); } catch (e) { /* ignore */ } resolve(v); } };
+    try {
+      ch = new MessageChannel();
+      ch.port1.onmessage = () => finish(true);
+      win.postMessage({ type: "open-url", url }, [ch.port2]);
+    } catch (e) { finish(false); return; }
+    setTimeout(() => finish(false), ms);
+  });
+}
+
 self.addEventListener("notificationclick", event => {
   event.notification.close();
   const url = adminUrl(event.notification.data && event.notification.data.url);
@@ -43,8 +61,9 @@ self.addEventListener("notificationclick", event => {
     if (win) {
       // Admin is already open: bring it forward and let it go to the page (no reload unless the gemach changes).
       try { await win.focus(); } catch (e) { /* ignore */ }
-      win.postMessage({ type: "open-url", url });
-      return;
+      if (await handOver(win, url)) return;
+      // No answer: load that window straight at the link, so it still opens on the request.
+      try { if (win.navigate && await win.navigate(url)) return; } catch (e) { /* window gone or not ours */ }
     }
     await self.clients.openWindow(url);
   })());
