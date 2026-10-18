@@ -88,7 +88,7 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     assert(rows.every(r => r.headTop > 0 && r.headTop < 844 - 60), 'every gemach’s heading is on the first phone screen ' + JSON.stringify(rows.map(r => Math.round(r.headTop))));
     assert(big && big.tiles === 10 && /See all 12/.test(big.more), 'big gemach: 10 tiles + "See all 12" tile: ' + (big && big.tiles) + ' ' + (big && big.more));
     assert(big && big.moreHref === '/g/big-dresses?cat=dresses-and-gowns' && big.head === big.moreHref, 'See all links carry the category: ' + (big && big.moreHref));
-    assert(big && /12 items · 12 available/.test(big.meta) && /See all/.test(big.all), 'row heading: count, available, See all: ' + (big && big.meta));
+    assert(big && big.meta === '12 items' && /See all/.test(big.all), 'row heading: item count (no available total), See all: ' + (big && big.meta));
     assert(small && small.tiles === 2 && !small.more, 'small gemach: its 2 tiles, no See-all tile');
     const strip = await page.$eval('#rg-big-dresses .gem-strip', el => ({ sw: el.scrollWidth, cw: el.clientWidth, ox: getComputedStyle(el).overflowX }));
     assert(strip.ox === 'auto' && strip.sw > strip.cw, 'tiles scroll sideways inside the row ' + JSON.stringify(strip));

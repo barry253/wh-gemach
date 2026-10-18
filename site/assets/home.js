@@ -401,8 +401,8 @@
       var g = grp.g, n = grp.rows.length;
       // A gemach shown here through its Home page categories: its page isn't narrowed to this category.
       var link = n ? W.gemachScopeUrl(g.slug, grp.linked ? { cat: "", q: "" } : scope) : W.gemachUrl(g.slug);
-      var avail = g._dir || g._appt ? 0 : grp.rows.reduce(function (t, h) { return t + Math.max(0, h.e.item.availableCount || 0); }, 0);
-      var meta = n ? W.plural(n, "item") + (avail ? ' · <span class="ok">' + avail + " available</span>" : "")
+      // No "N available" total here: for most gemachs it depends on the dates, which aren't chosen yet.
+      var meta = n ? W.plural(n, "item")
         : esc(g._soon ? "Coming soon" : (g.tagline || "Contact for details"));
       var tiles = grp.rows.slice(0, ROW_TILES).map(function (h) {
         var it = h.e.item, c = h.e.cat;
