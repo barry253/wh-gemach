@@ -1309,6 +1309,8 @@ fieldset { border: 0; }
 .browsing-cat #clear-filters:hover { text-decoration: underline; }
 .cat-title { order: -1; font-family: var(--font-display); font-weight: 600; font-size: 1.625rem; line-height: 1.15; }
 .cat-title:focus { outline: none; }
+.browsing-cat .cat-title { display: flex; align-items: center; gap: .5rem; }
+.cat-title-icon { font-size: 1.5rem; line-height: 1; flex: none; }
 .browsing-cat .results-count { margin: .3rem 0 1rem; }
 
 /* One row per gemach, item tiles swiped sideways */

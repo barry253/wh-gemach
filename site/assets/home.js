@@ -446,7 +446,10 @@
     var browsing = !!(r.cat && !state.q.trim());
     document.body.classList.toggle("browsing-cat", browsing);
     var title = $("results-title");
-    title.textContent = browsing ? r.cat.name : "Search results";
+    title.innerHTML = browsing
+      ? (r.cat.icon ? '<span class="cat-title-icon" aria-hidden="true">' + esc(r.cat.icon) + "</span>" : "") +
+        '<span class="cat-title-name">' + esc(r.cat.name) + "</span>"
+      : "Search results";
     title.className = browsing ? "cat-title" : "sr-only";
     $("clear-filters").textContent = state.q.trim() && r.cat ? "Clear all" : (r.cat ? "All categories" : "Clear search");
 

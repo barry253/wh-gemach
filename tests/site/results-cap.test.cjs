@@ -93,11 +93,13 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     const strip = await page.$eval('#rg-big-dresses .gem-strip', el => ({ sw: el.scrollWidth, cw: el.clientWidth, ox: getComputedStyle(el).overflowX }));
     assert(strip.ox === 'auto' && strip.sw > strip.cw, 'tiles scroll sideways inside the row ' + JSON.stringify(strip));
     const hdr = await page.evaluate(() => ({
-      title: document.getElementById('results-title').textContent, titleVisible: document.getElementById('results-title').getBoundingClientRect().height > 20,
+      title: document.querySelector('#results-title .cat-title-name').textContent,
+      icon: (document.querySelector('#results-title .cat-title-icon') || {}).textContent, titleVisible: document.getElementById('results-title').getBoundingClientRect().height > 20,
       count: document.getElementById('results-count').textContent, back: document.getElementById('clear-filters').textContent.trim(),
       backAbove: document.getElementById('clear-filters').getBoundingClientRect().top < document.getElementById('results-title').getBoundingClientRect().top,
       tiles: getComputedStyle(document.getElementById('cats-section')).display }));
     assert(hdr.title === 'Dresses and Gowns' && hdr.titleVisible, 'category name is the heading ' + JSON.stringify(hdr));
+    assert(hdr.icon === '👗', 'heading keeps the category icon: ' + hdr.icon);
     assert(hdr.count === '3 gemachs · 15 items', 'count line: ' + hdr.count);
     assert(hdr.back === 'All categories' && hdr.backAbove, '"‹ All categories" above the heading');
     assert(hdr.tiles === 'none', 'category tile scroller hidden while browsing a category');
@@ -112,7 +114,7 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     await page.waitForSelector('#results .result-group');
     assert(await page.$$eval('.gem-row', e => e.length) === 0, 'single gemach: list, not rows');
     assert(await page.$$eval('.result-more', e => e.length) === 0, 'small category: no See all');
-    assert(await page.textContent('#results-title') === 'Bathroom Safety' && await page.textContent('#results-count') === '1 gemach · 3 items', 'single gemach: heading + count');
+    assert(await page.textContent('#results-title .cat-title-name') === 'Bathroom Safety' && await page.textContent('#results-count') === '1 gemach · 3 items', 'single gemach: heading + count');
 
     // ── Gemach listed under a category through Home page categories, items filed elsewhere ──
     await page.goto(BASE + '/?cat=catWS', { waitUntil: 'networkidle' });
