@@ -299,8 +299,8 @@ const PHOTO_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp
 /**
  * Item photo upload (multipart, field "photo"): JPEG, PNG or WebP only, checked by the file's first bytes
  * (not the name or the browser's label), stored with that type. Anything else — SVG, HTML, a renamed file —
- * is refused, so nothing that could run as a page ever lands in the public photo bucket. (Importing from a
- * web address was removed: admin never used it and it let the worker fetch any URL.)
+ * is refused, so nothing that could run as a page ever lands in the public photo bucket. Photos from a web
+ * address come through handleFetchPhoto (below) and are then uploaded here by the browser.
  */
 async function handleUploadPhoto(c) {
   const { request, env, g } = c;
@@ -321,4 +321,81 @@ async function handleUploadPhoto(c) {
   return json({ success: true, url: `${env.ASSETS_URL}/${fileName}` });
 }
 
+/**
+ * Fetch a photo from a web address for admin's "Add from a link" box and hand the bytes back to the
+ * browser, which then shrinks it and uploads it through handleUploadPhoto like any file (nothing is
+ * stored here). Guarded so it can only ever bring back a JPEG / PNG / WebP picture: http(s) on the
+ * default port, no bare IP addresses or local names, each redirect re-checked (max 4), 10 s limit,
+ * 10 MB cap read as it streams, type decided by the bytes.
+ */
+const FETCH_PHOTO_TIMEOUT_MS = 10000;
+
+function photoLinkProblem(raw) {
+  let u;
+  try { u = new URL(String(raw || "").trim()); } catch { return "That doesn't look like a web address."; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return "Use a link that starts with https://";
+  if (u.username || u.password || u.port) return "That link can't be used.";
+  const host = u.hostname.toLowerCase().replace(/\.$/, "");
+  if (!host.includes(".") || /^[\d.]+$/.test(host) || host.startsWith("[") ||
+      /(^|\.)(localhost|local|internal|lan|home|arpa)$/.test(host)) return "That link can't be used.";
+  return null;
+}
+
+async function readCapped(res, max) {
+  const len = Number(res.headers.get("Content-Length") || 0);
+  if (len > max) return null;
+  if (!res.body) return new Uint8Array(await res.arrayBuffer());
+  const reader = res.body.getReader();
+  const parts = []; let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) { try { await reader.cancel(); } catch { /* ignore */ } return null; }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total); let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.byteLength; }
+  return out;
+}
+
+async function handleFetchPhoto(c) {
+  let body;
+  try { body = await c.request.json(); } catch { return json({ error: "No link given." }, 400); }
+  let url = String(body?.url || "").trim();
+  const bad = photoLinkProblem(url);
+  if (bad) return json({ error: bad }, 400);
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), FETCH_PHOTO_TIMEOUT_MS);
+  try {
+    let res;
+    for (let hop = 0; ; hop++) {
+      res = await fetch(url, {
+        redirect: "manual", signal: ac.signal,
+        headers: { "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8", "User-Agent": "Mozilla/5.0 (compatible; whgemachs.org photo import)" },
+      });
+      if (res.status < 300 || res.status >= 400) break;
+      const next = res.headers.get("Location");
+      if (!next || hop >= 4) return json({ error: "That link keeps redirecting — try the image's own address." }, 400);
+      url = new URL(next, url).toString();
+      const nextBad = photoLinkProblem(url);
+      if (nextBad) return json({ error: nextBad }, 400);
+    }
+    if (!res.ok) return json({ error: `That site answered ${res.status} — it may not allow downloads. Save the photo and upload it instead.` }, 400);
+    const bytes = await readCapped(res, MAX_PHOTO_BYTES);
+    if (!bytes) return json({ error: "Image too large (max 10MB)" }, 413);
+    const mimeType = sniffImageType(bytes.buffer);
+    if (!mimeType) {
+      const isPage = /text\/html/i.test(res.headers.get("Content-Type") || "");
+      return json({ error: isPage
+        ? "That link is a web page, not the picture itself. Right-click (or long-press) the photo and choose “Copy image address”, then paste that."
+        : "That link isn't a JPG, PNG or WebP picture." }, 400);
+    }
+    return new Response(bytes, { headers: { "Content-Type": mimeType, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+  } catch (e) {
+    return json({ error: ac.signal.aborted ? "That site took too long to answer." : "Couldn't reach that link." }, 400);
+  } finally { clearTimeout(timer); }
+}
+
+export { handleFetchPhoto, photoLinkProblem };
 export { handleGetItemTypes, itemTypeQtyFields, resolveCategoryField, airtableResult, handleCreateItemType, handleUpdateItemType, handleGetCatalogItems, ITEM_CONDITIONS, badCondition, handleCreateItem, handleUpdateItem, handleDeleteItem, MAX_PHOTO_BYTES, handleUploadPhoto };

@@ -88,7 +88,7 @@ import { alertServerError, handleHealth, sendAlert } from "./alerts.js";
 import { USAGE_CRON, runUsageWatch } from "./usagewatch.js";
 import { handleLogin, handleMe, lookupAdminSession, signJWT, verifyJWT } from "./auth.js";
 import { purgePublicCache, refreshCache } from "./cache.js";
-import { handleCreateItem, handleCreateItemType, handleDeleteItem, handleGetCatalogItems, handleGetItemTypes, handleUpdateItem, handleUpdateItemType, handleUploadPhoto } from "./catalog.js";
+import { handleCreateItem, handleCreateItemType, handleDeleteItem, handleGetCatalogItems, handleGetItemTypes, handleUpdateItem, handleUpdateItemType, handleUploadPhoto, handleFetchPhoto } from "./catalog.js";
 import { JWT_REFRESH_MS, safeDecode } from "./config.js";
 import { buildIcs, eventDates, formatNy, nyLocalToUtc, nyToday } from "./dates.js";
 import { buildEmailHtml, contrastRatio, textColorFor } from "./email.js";
@@ -266,8 +266,8 @@ async function adminDispatch(request, env, ctx, url, path, method, db, user) {
   const c = { request, env, ctx, db, url, user: liveUser, g: resolved.g, adminName: user.name || user.email };
 
   const res = await adminRoute(c, path, method);
-  // A photo upload only stores a file; the item type that uses it is saved (and purges) separately.
-  if (method !== "GET" && res.status < 400 && path !== "/admin/catalog/upload-photo") purgePublicCache(env, ctx, c.g.slug);
+  // A photo upload only stores a file (and fetch-photo stores nothing); the item type that uses it is saved (and purges) separately.
+  if (method !== "GET" && res.status < 400 && path !== "/admin/catalog/upload-photo" && path !== "/admin/catalog/fetch-photo") purgePublicCache(env, ctx, c.g.slug);
   return res;
 }
 
@@ -313,6 +313,7 @@ async function adminRoute(c, path, method) {
   if (method === "PATCH"  && (m = path.match(/^\/admin\/catalog\/items\/([^/]+)$/)))    return handleUpdateItem(c, m[1]);
   if (method === "DELETE" && (m = path.match(/^\/admin\/catalog\/items\/([^/]+)$/)))    return handleDeleteItem(c, m[1]);
   if (method === "POST"  && path === "/admin/catalog/upload-photo") return handleUploadPhoto(c);
+  if (method === "POST"  && path === "/admin/catalog/fetch-photo")  return handleFetchPhoto(c);
 
   if (method === "GET"  && path === "/admin/history")      return handleGetHistory(c);
   if (method === "GET"  && path === "/admin/borrowers")    return handleListBorrowers(c);

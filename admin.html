@@ -7795,18 +7795,35 @@
 
   // ── Sheet helpers ─────────────────────────────────────────────────────────
   function openSheet(id) {
-    document.getElementById(id).classList.add("open");
+    const el = document.getElementById(id);
+    delete el.dataset.dirty;             // nothing typed yet in this opening of the sheet
+    el.classList.add("open");
     document.body.style.overflow = "hidden";
   }
 
   function closeSheet(id) {
-    document.getElementById(id).classList.remove("open");
+    const el = document.getElementById(id);
+    delete el.dataset.dirty;
+    el.classList.remove("open");
     document.body.style.overflow = "";
   }
 
+  // Tapping the dark area outside a sheet closes it — but not once something has been typed or picked
+  // in it (then it asks first), and only when the press also started outside: selecting text in a field
+  // and letting go past the sheet's edge used to close it and lose everything.
   document.querySelectorAll(".sheet-overlay").forEach(el => {
+    let downOnBackdrop = false;
+    el.addEventListener("pointerdown", e => { downOnBackdrop = e.target === el; });
+    const markDirty = e => { if (e.isTrusted && e.target !== el && e.target.closest("input, textarea, select, [contenteditable]")) el.dataset.dirty = "1"; };
+    el.addEventListener("input", markDirty);
+    el.addEventListener("change", markDirty);
     el.addEventListener("click", e => {
-      if (e.target === el) closeSheet(el.id);
+      if (e.target !== el) return;
+      const startedOutside = downOnBackdrop;
+      downOnBackdrop = false;
+      if (!startedOutside) return;
+      if (el.dataset.dirty && !confirm("Close without saving? What you entered here will be lost.")) return;
+      closeSheet(el.id);
     });
   });
 
@@ -8254,7 +8271,29 @@
     if (PHOTOS.length >= MAX_PHOTOS) { setPhotoStatus("This item already has 10 photos — remove one first."); return; }
     setPhotoStatus("Importing from URL…");
     try {
-      PHOTOS.push(await uploadPhotoBody(JSON.stringify({ url }), true));
+      // The worker fetches the picture (sites don't let a browser page download their images directly),
+      // then it goes through the same shrink + upload as a file from the device.
+      let blob;
+      if (/^data:image\/(jpeg|png|webp);base64,/i.test(url)) {
+        // "Copy image address" sometimes gives the picture itself (data:image/…;base64,…)
+        const [head, b64] = url.split(",");
+        const bin = atob(b64.replace(/\s/g, ""));
+        blob = new Blob([Uint8Array.from(bin, ch => ch.charCodeAt(0))], { type: head.slice(5, head.indexOf(";")) });
+      } else {
+        const res = await fetch(`${WORKER}/admin/catalog/fetch-photo`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", ...gemachHeaders() },
+          body: JSON.stringify({ url }),
+        });
+        const fresh = res.headers.get("X-Session-Token");
+        if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Couldn't get that photo (${res.status})`);
+        blob = await res.blob();
+      }
+      const name = /^data:/i.test(url) ? "photo" : (() => { try { return decodeURIComponent(new URL(url).pathname.split("/").pop() || "").slice(0, 80) || "photo"; } catch { return "photo"; } })();
+      const fd = new FormData();
+      fd.append("photo", await shrinkPhoto(new File([blob], name, { type: blob.type || "image/jpeg" })));
+      PHOTOS.push(await uploadPhotoBody(fd, false));
       renderPhotoStrip();
       setPhotoStatus("Photo imported ✓ — remember to Save");
       document.getElementById("it-photo-url").value = "";

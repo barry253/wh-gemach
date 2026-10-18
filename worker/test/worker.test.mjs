@@ -2772,6 +2772,53 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.equal((await call(`/admin/catalog/item-types/${id}`, { method: "PATCH", headers: H, body: JSON.stringify({ r2PhotoUrl: "https://old.example/legacy.jpg", description: "x" }) })).status, 200);
   });
 
+  await t("photos from a link: fetch-photo hands back only real JPEG / PNG / WebP pictures, stores nothing, refuses local addresses", async () => {
+    const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+    const JPEG = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    const realFetch = globalThis.fetch;
+    const hits = [];
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const site = url.match(/^https?:\/\/(photos\.example|shop\.example)\//);
+      if (!site) return realFetch(input, init);
+      hits.push({ url, redirect: init?.redirect });
+      if (url.endsWith("/gown.jpg")) return new Response(JPEG, { headers: { "Content-Type": "image/jpeg" } });
+      if (url.endsWith("/move")) return new Response(null, { status: 302, headers: { Location: "/gown.jpg" } });
+      if (url.endsWith("/to-local")) return new Response(null, { status: 301, headers: { Location: "http://localhost/x.jpg" } });
+      if (url.endsWith("/loop")) return new Response(null, { status: 302, headers: { Location: "/loop" } });
+      if (url.endsWith("/page")) return new Response("<html>gallery</html>", { headers: { "Content-Type": "text/html" } });
+      if (url.endsWith("/svg")) return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { "Content-Type": "image/jpeg" } });
+      if (url.endsWith("/huge.jpg")) return new Response(JPEG, { headers: { "Content-Length": String(11 * 1024 * 1024) } });
+      if (url.endsWith("/blocked")) return new Response("no", { status: 403 });
+      throw new Error("unexpected " + url);
+    };
+    const go = url => call("/admin/catalog/fetch-photo", { method: "POST", headers: H, body: JSON.stringify({ url }) });
+    try {
+      const before = R2.length, purges = calls.filter(x => x.url.includes("purge")).length;
+      const r = await go("https://photos.example/gown.jpg");
+      assert.equal(r.status, 200, await r.clone().text());
+      assert.equal(r.headers.get("Content-Type"), "image/jpeg");
+      assert.deepEqual(new Uint8Array(await r.arrayBuffer()), JPEG, "the picture's bytes come back");
+      assert.equal(R2.length, before, "nothing stored (the browser uploads it after shrinking)");
+      assert.equal(hits.at(-1).redirect, "manual", "redirects are followed by hand, each one checked");
+      assert.equal((await go("https://shop.example/move")).status, 200, "a redirect to the picture is followed");
+      const err = async (url, status, re) => { const x = await go(url); assert.equal(x.status, status, url); assert.match((await x.json()).error, re, url); };
+      await err("https://shop.example/to-local", 400, /can't be used/);
+      await err("https://shop.example/loop", 400, /redirecting/);
+      await err("https://shop.example/page", 400, /web page, not the picture/);
+      await err("https://shop.example/svg", 400, /JPG, PNG or WebP/);
+      await err("https://photos.example/huge.jpg", 413, /too large/);
+      await err("https://shop.example/blocked", 400, /answered 403/);
+      const n = hits.length;
+      for (const bad of ["http://127.0.0.1/a.jpg", "http://localhost/a.jpg", "https://[::1]/a.jpg", "https://printer.local/a.jpg", "https://photos.example:8080/a.jpg",
+                         "ftp://photos.example/a.jpg", "file:///etc/passwd", "javascript:alert(1)", "https://user:pw@photos.example/a.jpg", "intranet/a.jpg", ""])
+        assert.equal((await go(bad)).status, 400, bad);
+      assert.equal(hits.length, n, "refused links are never fetched");
+      assert.equal(calls.filter(x => x.url.includes("purge")).length, purges, "no public cache purge");
+      assert.equal((await call("/admin/catalog/fetch-photo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: "https://photos.example/gown.jpg" }) })).status, 401, "admins only");
+    } finally { globalThis.fetch = realFetch; }
+  });
+
 }
 
 // ── Public cache resilience (fake Cache API) ──

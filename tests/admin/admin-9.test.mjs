@@ -22,6 +22,7 @@ const TYPES = [{ id: "recTYPEGOWN000001", name: "Navy A-line", description: "", 
   { id: "recTYPEGOWN000002", name: "Gold Mermaid", description: "", displayOrder: 2, active: true, itemCount: 0, tracking: "Units", price: null, quantityOwned: 0, outOfService: 0, attributes: {}, r2PhotoUrl: "https://photos.test/gold.svg",
     morePhotos: ["https://photos.test/gold-2.svg", "https://photos.test/gold-3.svg"] }];
 const UPLOADS = [];
+const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 const HIST = { records: [{ id: "recH1", timestamp: "nope", eventType: "Loan Created", borrower: "X" }, { id: "recH2", timestamp: null, eventType: "Item Returned" }], offset: null };
 const G = {
   id: "recA", slug: "wh-medical", name: "West Hempstead Medical Gemach", email: "gemach@example.com", phone: "(718) 986-7345",
@@ -35,7 +36,8 @@ async function setup() {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const errors = [], calls = [];
   page.on("pageerror", e => errors.push(String(e)));
-  page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
+  // (the browser logs the deliberate 400 from the photo-link test as a console error; that one is expected)
+  page.on("console", m => { if (m.type() === "error" && !/fetch-photo/.test(m.location()?.url || "")) errors.push(m.text()); });
   await page.route("https://accounts.google.com/**", r => r.fulfill({ contentType: "text/javascript", body: "" }));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ body: "" }));
   await page.route("http://admin.test/**", r => r.fulfill({ contentType: "text/html", body: html }));
@@ -47,6 +49,10 @@ async function setup() {
     const J = d => r.fulfill({ contentType: "application/json", body: JSON.stringify(d) });
     if (p === "/admin/me") return J({ email: "b@x", name: "Barry", role: "Owner", gemachs: [{ id: "recA", slug: "wh-medical", name: G.name }] });
     if (p === "/admin/gemach" && req.method() === "PATCH") { Object.assign(G, body); return J(G); }
+    if (p === "/admin/catalog/fetch-photo") {
+      if (/page/.test(body?.url || "")) return r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "That link is a web page, not the picture itself." }) });
+      return r.fulfill({ contentType: "image/png", body: Buffer.from(PNG_1PX, "base64") });
+    }
     if (p === "/admin/catalog/upload-photo") {
       const raw = req.postDataBuffer() || Buffer.alloc(0);
       const type = (raw.toString("latin1").match(/Content-Type: (image\/[a-z]+)/i) || [])[1] || null;
@@ -207,6 +213,57 @@ await page.waitForTimeout(300);
 const ph = calls.filter(c => c.method === "PATCH" && /item-types\/recTYPEGOWN000002/.test(c.path)).at(-1);
 ok(ph && ph.body.r2PhotoUrl === "https://photos.test/gold-3.svg" && JSON.stringify(ph.body.morePhotos) === JSON.stringify(["https://photos.test/gold-2.svg", "https://photos.test/up-1.svg", "https://photos.test/up-2.svg"]),
   "save sends cover + the rest in order " + JSON.stringify(ph && { c: ph.body.r2PhotoUrl, m: ph.body.morePhotos }));
+
+// Photo from a link: the worker fetches it, then it's uploaded like a file (it used to fail every time)
+await page.evaluate(() => switchTab("inventory"));
+await page.waitForSelector(".inventory-group");
+await page.locator(".inventory-group").nth(1).locator("[title='Edit item type']").click();
+await page.waitForSelector("#it-photos .photo-tile");
+const nUp = UPLOADS.length;
+await page.fill("#it-photo-url", "https://shop.example/gowns/navy.png");
+await page.click("button:has-text('Import')");
+await page.waitForFunction(() => /Photo imported/.test(document.getElementById("it-photo-status").textContent), null, { timeout: 8000 }).catch(() => {});
+const fp = calls.filter(c => c.path === "/admin/catalog/fetch-photo");
+ok(fp.length === 1 && fp[0].body.url === "https://shop.example/gowns/navy.png" && fp[0].gemach === "wh-medical", "link sent to the worker to fetch");
+ok(UPLOADS.length === nUp + 1 && UPLOADS.at(-1).type === "image/png" && (await tiles()).at(-1) === `up-${UPLOADS.length}.svg`, "fetched picture uploaded as a file and added to the strip");
+ok(await page.inputValue("#it-photo-url") === "", "link box cleared");
+await page.fill("#it-photo-url", "https://shop.example/page");
+await page.click("button:has-text('Import')");
+await page.waitForFunction(() => /Import failed/.test(document.getElementById("it-photo-status").textContent));
+ok(/web page, not the picture/.test(await page.textContent("#it-photo-status")) && UPLOADS.length === nUp + 1, "worker's reason shown; nothing uploaded");
+await page.fill("#it-photo-url", "data:image/png;base64," + PNG_1PX);
+await page.click("button:has-text('Import')");
+await page.waitForFunction(() => /Photo imported/.test(document.getElementById("it-photo-status").textContent));
+ok(UPLOADS.length === nUp + 2 && calls.filter(c => c.path === "/admin/catalog/fetch-photo").length === 2, "a data: picture is uploaded directly (no worker fetch)");
+
+// Tapping outside a sheet: something typed → asks first (and stays open if they say no)
+const dialogs = [];
+page.on("dialog", d => { dialogs.push(d.message()); d.dismiss(); });
+const sheetOpen = () => page.$eval("#item-type-sheet", el => el.classList.contains("open"));
+await page.mouse.click(195, 8);   // the dark strip above the sheet
+await page.waitForTimeout(200);
+ok(dialogs.length === 1 && /Close without saving/.test(dialogs[0]) && await sheetOpen(), "typed in → outside tap asks; No keeps the sheet and its data");
+await page.evaluate(() => closeSheet("item-type-sheet"));
+// Fresh, untouched sheet: selecting text in a field and letting go outside doesn't close it
+await page.locator(".inventory-group").nth(1).locator("[title='Edit item type']").click();
+await page.waitForSelector("#it-photos .photo-tile");
+const nameBox = await page.locator("#item-type-sheet input:visible").first().boundingBox();
+await page.mouse.move(nameBox.x + 10, nameBox.y + nameBox.height / 2);
+await page.mouse.down();
+await page.mouse.move(195, 8, { steps: 5 });
+await page.mouse.up();
+await page.waitForTimeout(200);
+ok(await sheetOpen() && dialogs.length === 1, "press inside, release outside → stays open");
+// …and a plain outside tap on an untouched sheet still closes it, without asking
+await page.mouse.click(195, 8);
+await page.waitForTimeout(200);
+ok(!(await sheetOpen()) && dialogs.length === 1, "untouched sheet: outside tap closes it as before");
+// Reopened: no longer counts as typed in
+await page.locator(".inventory-group").nth(1).locator("[title='Edit item type']").click();
+await page.waitForSelector("#it-photos .photo-tile");
+await page.mouse.click(195, 8);
+await page.waitForTimeout(200);
+ok(!(await sheetOpen()) && dialogs.length === 1, "reopening starts clean");
 
 // Settings → How items look
 await page.click("text=Settings");
