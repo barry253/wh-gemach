@@ -62,7 +62,9 @@ const G = slug => directory.gemachs.find(g => g.slug === slug);
 G('wh-medical').items.push(
   { id: 'recPkg0001', name: 'Gold Jacquard · Round', description: '120" round.', totalUnits: 12, availableCount: 12, hasPhoto: false, photoUrl: null, categoryId: 'catWC', tracking: 'quantity', bookings: [], packageSize: 6, packageUnit: 'bag' },
   { id: 'recPkg0002', name: 'Lilac Velvet · Round', description: '', totalUnits: 12, availableCount: 12, hasPhoto: false, photoUrl: null, categoryId: 'catWC', tracking: 'quantity', packageSize: 4, packageUnit: null,
-    bookings: [{ from: '2000-01-01', to: '2100-01-01', qty: 5 }] });
+    bookings: [{ from: '2000-01-01', to: '2100-01-01', qty: 5 }] },
+  { id: 'recPkg0003', name: 'Solid Navy · Rectangle', description: '', totalUnits: 24, availableCount: 24, hasPhoto: false, photoUrl: null, categoryId: 'catWC', tracking: 'quantity', packageSize: 6, packageUnit: 'bag',
+    maxPerRequest: 12, bookings: [] });
 
 (async () => {
   const srv = spawn('node', [path.join(__dirname, 'server.js'), path.join(__dirname, '../../dist'), '8798'], { stdio: 'inherit' });
@@ -80,12 +82,18 @@ G('wh-medical').items.push(
       assert(/lent in packages of 4/.test(await page.$eval('#row-recPkg0002', el => el.innerText)), `${label} card without a package word`);
       await page.click('#row-recPkg0001 input[type=checkbox]');
       await page.click('#row-recPkg0002 input[type=checkbox]');
+      await page.click('#row-recPkg0003 input[type=checkbox]');
       await page.click('#btn-open-modal');
       await page.waitForSelector('#qty-group:not([hidden])');
       const opts = await page.$$eval('#q-recPkg0001 option', os => os.map(o => o.value + '=' + o.textContent));
       assert(JSON.stringify(opts) === JSON.stringify(['=Choose…', '6=6 (1 bag)', '12=12 (2 bags)']), `${label} dropdown choices: ` + JSON.stringify(opts));
       assert(JSON.stringify(await page.$$eval('#q-recPkg0002 option', os => os.map(o => o.value))) === '["","4","8","12"]', `${label} packages of 4`);
-      let note = await page.textContent('#qn-recPkg0001');
+      const capped = await page.$$eval('#q-recPkg0003 option', os => os.map(o => o.value));
+      assert(JSON.stringify(capped) === '["","6","12"]', `${label} max per request caps the choices at 12 of 24: ` + JSON.stringify(capped));
+      let note = await page.textContent('#qn-recPkg0003');
+      assert(/^Lent in bags of 6\. Up to 12 per request\. 24 in the gemach/.test(note), `${label} max note: ` + note);
+      await page.selectOption('#q-recPkg0003', '12');
+      note = await page.textContent('#qn-recPkg0001');
       assert(/^Lent in bags of 6\. 12 in the gemach — choose your dates/.test(note), `${label} note: ` + note);
       await page.selectOption('#q-recPkg0001', '12');
       await page.selectOption('#q-recPkg0002', '8');
@@ -103,7 +111,7 @@ G('wh-medical').items.push(
       await page.click('#btn-submit');
       await page.waitForTimeout(700);
       const p = posts[before];
-      assert(p && p.quantities && p.quantities.recPkg0001 === 12 && p.quantities.recPkg0002 === 8, `${label} submitted 12 + 8: ` + JSON.stringify(p && p.quantities));
+      assert(p && p.quantities && p.quantities.recPkg0001 === 12 && p.quantities.recPkg0002 === 8 && p.quantities.recPkg0003 === 12, `${label} submitted 12 + 8 + 12: ` + JSON.stringify(p && p.quantities));
       await ctx.close();
     }
     assert(!errors.length, 'no errors ' + errors.join(' | '));

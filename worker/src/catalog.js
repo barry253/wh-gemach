@@ -9,7 +9,7 @@ import { REC_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { json, readJson } from "./http.js";
 import { generateNextItemId } from "./ids.js";
-import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, packageFields, packageSize, packageUnit, qtyAvailable, wholeNum, TYPE_ADMIN_FIELDS } from "./quantity.js";
+import { MAX_QTY, addonPrice, isAddonType, isQtyType, lendableQty, loadQtyBookings, maxPerRequest, packageFields, packageSize, packageUnit, qtyAvailable, wholeNum, TYPE_ADMIN_FIELDS } from "./quantity.js";
 
 // ─── Catalog — Item Types ─────────────────────────────────────────────────────
 
@@ -37,6 +37,7 @@ async function handleGetItemTypes({ db, g }) {
       attributes: parseItemAttrs(r.fields["Attributes"]),
       packageSize: packageSize(r),
       packageUnit: packageUnit(r),
+      maxPerRequest: maxPerRequest(r) || null,
       ...typeExtras(r),
     };
     if (isQtyType(r)) {

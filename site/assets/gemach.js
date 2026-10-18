@@ -278,7 +278,7 @@
               var v = String(n);
               return '<option value="' + v + '"' + (qtyVals[it.id] === v ? " selected" : "") + ">" + n + " (" + esc(pkgCount(it, n / pkgSize(it))) + ")</option>";
             }).join("") + "</select>"
-          : '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (isAddon(it) ? 500 : (it.totalUnits || 1)) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || (isAddon(it) ? "1" : "")) + '" aria-describedby="qn-' + id + '" />';
+          : '<input type="number" id="q-' + id + '" data-qty="' + id + '" min="1" max="' + (isAddon(it) ? 500 : (maxAsk(it) || 1)) + '" step="1" inputmode="numeric" value="' + esc(qtyVals[it.id] || (isAddon(it) ? "1" : "")) + '" aria-describedby="qn-' + id + '" />';
         return '<div class="qty-row"><label for="q-' + id + '">' + esc(it.name) + "</label>" + field +
           '<p class="qty-note" id="qn-' + id + '" aria-live="polite"></p></div>';
       }).join("");
@@ -310,6 +310,8 @@
         else txt = free + " of " + total + " free for your dates";
       }
       if (n > total) { warn = true; txt = "The gemach has " + total + " in total."; }
+      else if (maxAsk(it) < total && n > maxAsk(it)) { warn = true; txt = "Up to " + maxAsk(it) + " per request."; }
+      else if (maxAsk(it) < total) txt = "Up to " + maxAsk(it) + " per request. " + txt;
       if (pkgSize(it) > 1) txt = "Lent in " + unitsWord(it.packageUnit || "package") + " of " + pkgSize(it) + ". " + txt;
       note.textContent = txt;
       note.classList.toggle("warn", warn);
@@ -490,8 +492,10 @@
   function pkgCount(it, n) { var u = it.packageUnit || "package"; return W.plural(n, u, unitsWord(u)); }
   /** "Lent in bags of 6" */
   function pkgPhrase(it) { return "lent in " + unitsWord(it.packageUnit || "package") + " of " + pkgSize(it); }
-  /** Whole packages that fit in what the gemach lends: [6, 12] */
-  function pkgChoices(it) { var ps = pkgSize(it), out = []; for (var n = ps; n <= (it.totalUnits || 0); n += ps) out.push(n); return out; }
+  /** Most one borrower may ask for: the item's per-request limit, else everything the gemach lends. */
+  function maxAsk(it) { var t = it.totalUnits || 0; return isQty(it) && it.maxPerRequest > 0 && it.maxPerRequest < t ? it.maxPerRequest : t; }
+  /** Whole packages a borrower may ask for: [6, 12] */
+  function pkgChoices(it) { var ps = pkgSize(it), out = []; for (var n = ps; n <= maxAsk(it); n += ps) out.push(n); return out; }
 
   function isPayment(g) { return !!g && g.chargeType === "Payment"; } // a fee, not a refundable deposit
   function depositHtml(g) {
@@ -1824,6 +1828,7 @@
         else if (!/^\d+$/.test(v) || n < 1) bad(inp, "Please enter a whole number, 1 or more.");
         else if (isAddon(it) && n > 500) bad(inp, "Please enter 500 or fewer.");
         else if (!isAddon(it) && it.totalUnits && n > it.totalUnits) bad(inp, "The gemach has " + it.totalUnits + " " + it.name + " in total.");
+        else if (!isAddon(it) && n > maxAsk(it)) bad(inp, "You can ask for up to " + maxAsk(it) + " at a time. For more, please contact the gemach.");
         else quantities[it.id] = n;
       });
       if (Object.keys(quantities).length) body.quantities = quantities;
