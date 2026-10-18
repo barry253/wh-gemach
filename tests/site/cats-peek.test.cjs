@@ -98,11 +98,11 @@ const logs = [];
     await page.click('#cat-less-btn');
     assert(await visibleTiles(page) === 6 && await page.isVisible('#cat-more-btn'), 'Show fewer collapses again');
 
-    // Tapping a category: chips row with every category, no button
+    // Tapping a category: the tiles give way to the category's heading (no chips row, no button)
     await page.click('#cat-grid .cat-tile >> nth=0'); await page.waitForTimeout(500);
-    assert(await visibleTiles(page) === total, 'filtering: all categories as chips');
+    assert(!(await page.isVisible('#cat-grid')) && await page.isVisible('#results-title.cat-title'), 'browsing a category: tiles hidden, category heading shown');
     assert(!(await page.isVisible('#cat-more-btn')), 'filtering: no Show all button');
-    await page.click('#cat-grid .cat-tile[aria-pressed="true"]'); await page.waitForTimeout(500);
+    await page.click('#clear-filters'); await page.waitForTimeout(500);
     assert(await visibleTiles(page) === 6 && await page.isVisible('#cat-more-btn'), 'back from filtering: collapsed again');
     const g2 = await page.$eval('#cat-grid', el => { const r = el.getBoundingClientRect(), t5 = el.children[4].getBoundingClientRect(); return r.bottom > t5.top + 20 && r.bottom < t5.bottom - 10; });
     assert(g2, 'fade position recomputed after filtering');

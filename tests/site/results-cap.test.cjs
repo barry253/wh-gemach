@@ -1,6 +1,7 @@
 // Home page results: a few rows per gemach + "See all N at …" that opens the gemach page narrowed to the
-// same category / search (?cat= & ?q=). Browsing a category: no gemach chip row, "‹ All categories" pill on the
-// count row, and a gemach listed under the category only through its Home page categories shows its own items.
+// same category / search (?cat= & ?q=). Browsing a category (no search): the category name is the heading, the
+// tile scroller is hidden, and 2+ gemachs show as one swipe row each; a gemach listed under the category only
+// through its Home page categories shows its own items.
 const { chromium } = require('playwright');
 const path = require('path'), { spawn } = require('child_process');
 const API = 'https://wh-gemach.barry253-0f5.workers.dev';
@@ -72,55 +73,74 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     page.on('pageerror', e => errors.push('pageerror: ' + e.message));
     page.on('console', m => { if (m.type() === 'error' && !/fonts|Failed to load resource/.test(m.text())) errors.push('console: ' + m.text()); });
 
-    // ── Browsing a category with a big and a small gemach ──
+    // ── Browsing a category that 3 gemachs have: one swipe row per gemach, every gemach on the first screen ──
     await page.goto(BASE + '/?cat=dresses-and-gowns', { waitUntil: 'networkidle' });
-    await page.waitForSelector('#results .result-group');
-    const groups = await page.$$eval('#results .result-group', els => els.map(s => ({
-      id: s.id, rows: s.querySelectorAll('.result-row:not(.result-more)').length,
-      more: (s.querySelector('.result-more') || {}).textContent || '', moreHref: (s.querySelector('.result-more') || {}).getAttribute ? s.querySelector('.result-more').getAttribute('href') : '',
-      head: s.querySelector('.result-group-head h3 a').getAttribute('href') })));
-    const big = groups.find(g => g.id === 'rg-big-dresses'), small = groups.find(g => g.id === 'rg-small-dresses');
-    assert(big && big.rows === 4, 'category: big gemach shows 4 rows (' + (big && big.rows) + ')');
-    assert(big && /See all 12 at Big Dress Gemach/.test(big.more), 'category: "See all 12" row: ' + (big && big.more));
-    assert(big && /Filter by size and color/.test(big.more), 'See all mentions the gemach’s filters');
-    assert(big && big.moreHref === '/g/big-dresses?cat=dresses-and-gowns', 'See all link carries the category: ' + (big && big.moreHref));
-    assert(big && big.head === '/g/big-dresses?cat=dresses-and-gowns', 'group header links to the gemach with the category');
-    assert(small && small.rows === 2 && !small.more, 'small gemach shows all its rows and no See all');
-    assert(/15 items/.test(await page.textContent('#results-count')), 'count line keeps full totals: ' + await page.textContent('#results-count'));
-    assert(await page.$$eval('.rg-summary, .rg-card', e => e.length) === 0, 'category: no gemach chip row above the results');
-    const bar = await page.evaluate(() => {
-      const b = document.getElementById('clear-filters'), c = document.getElementById('results-count');
-      const br = b.getBoundingClientRect(), cr = c.getBoundingClientRect();
-      return { text: b.textContent.trim(), back: b.classList.contains('back'), sameRow: br.top < cr.bottom && br.left > cr.left };
-    });
-    assert(bar.text === 'All categories' && bar.back, 'back pill reads "All categories": ' + JSON.stringify(bar));
-    assert(bar.sameRow, 'back pill sits on the count row, not a line of its own ' + JSON.stringify(bar));
-    await page.screenshot({ path: path.join(SHOTS, 'm-results-cap-category.png'), fullPage: true });
-    const noHScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-    assert(noHScroll, 'no sideways page scroll on a phone');
+    await page.waitForSelector('#results .gem-row');
+    const rows = await page.$$eval('#results .gem-row', els => els.map(s => ({
+      id: s.id, tiles: s.querySelectorAll('.gem-tile:not(.gem-tile-more)').length,
+      more: (s.querySelector('.gem-tile-more') || {}).textContent || '',
+      moreHref: s.querySelector('.gem-tile-more') ? s.querySelector('.gem-tile-more').getAttribute('href') : '',
+      head: s.querySelector('.gem-row-title h3 a').getAttribute('href'),
+      all: s.querySelector('.gem-row-all').textContent, meta: s.querySelector('.gem-row-meta').textContent,
+      headTop: s.querySelector('.gem-row-head').getBoundingClientRect().top })));
+    const big = rows.find(g => g.id === 'rg-big-dresses'), small = rows.find(g => g.id === 'rg-small-dresses');
+    assert(rows.length === 3, 'category with 3 gemachs: 3 rows (' + rows.length + ')');
+    assert(rows.every(r => r.headTop > 0 && r.headTop < 844 - 60), 'every gemach’s heading is on the first phone screen ' + JSON.stringify(rows.map(r => Math.round(r.headTop))));
+    assert(big && big.tiles === 10 && /See all 12/.test(big.more), 'big gemach: 10 tiles + "See all 12" tile: ' + (big && big.tiles) + ' ' + (big && big.more));
+    assert(big && big.moreHref === '/g/big-dresses?cat=dresses-and-gowns' && big.head === big.moreHref, 'See all links carry the category: ' + (big && big.moreHref));
+    assert(big && /12 items · 12 available/.test(big.meta) && /See all/.test(big.all), 'row heading: count, available, See all: ' + (big && big.meta));
+    assert(small && small.tiles === 2 && !small.more, 'small gemach: its 2 tiles, no See-all tile');
+    const strip = await page.$eval('#rg-big-dresses .gem-strip', el => ({ sw: el.scrollWidth, cw: el.clientWidth, ox: getComputedStyle(el).overflowX }));
+    assert(strip.ox === 'auto' && strip.sw > strip.cw, 'tiles scroll sideways inside the row ' + JSON.stringify(strip));
+    const hdr = await page.evaluate(() => ({
+      title: document.getElementById('results-title').textContent, titleVisible: document.getElementById('results-title').getBoundingClientRect().height > 20,
+      count: document.getElementById('results-count').textContent, back: document.getElementById('clear-filters').textContent.trim(),
+      backAbove: document.getElementById('clear-filters').getBoundingClientRect().top < document.getElementById('results-title').getBoundingClientRect().top,
+      tiles: getComputedStyle(document.getElementById('cats-section')).display }));
+    assert(hdr.title === 'Dresses and Gowns' && hdr.titleVisible, 'category name is the heading ' + JSON.stringify(hdr));
+    assert(hdr.count === '3 gemachs · 15 items', 'count line: ' + hdr.count);
+    assert(hdr.back === 'All categories' && hdr.backAbove, '"‹ All categories" above the heading');
+    assert(hdr.tiles === 'none', 'category tile scroller hidden while browsing a category');
+    await page.screenshot({ path: path.join(SHOTS, 'm-results-cap-category.png') });
+    const wide = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth,
+      [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1 && !e.closest('.gem-strip'))
+        .slice(0, 5).map(e => e.tagName + '.' + e.className + '#' + e.id)]);
+    assert(wide[0] <= wide[1], 'no sideways page scroll on a phone ' + JSON.stringify(wide));
 
-    // ── Category with small groups: no summary for one gemach, no See all ──
+    // ── Category with one gemach: the usual list, same heading ──
     await page.goto(BASE + '/?cat=bathroom-safety', { waitUntil: 'networkidle' });
     await page.waitForSelector('#results .result-group');
+    assert(await page.$$eval('.gem-row', e => e.length) === 0, 'single gemach: list, not rows');
     assert(await page.$$eval('.result-more', e => e.length) === 0, 'small category: no See all');
+    assert(await page.textContent('#results-title') === 'Bathroom Safety' && await page.textContent('#results-count') === '1 gemach · 3 items', 'single gemach: heading + count');
 
     // ── Gemach listed under a category through Home page categories, items filed elsewhere ──
     await page.goto(BASE + '/?cat=catWS', { waitUntil: 'networkidle' });
-    await page.waitForSelector('#results .result-group');
+    await page.waitForSelector('#results .gem-row');
     const tbl = await page.$eval('#rg-tablecloths', el => ({
-      rows: [...el.querySelectorAll('.result-row:not(.result-more) .result-name')].map(e => e.textContent),
-      more: (el.querySelector('.result-more') || {}).textContent || '',
-      moreHref: el.querySelector('.result-more') ? el.querySelector('.result-more').getAttribute('href') : '',
-      head: el.querySelector('.result-group-head h3 a').getAttribute('href') }));
-    assert(tbl.rows.length === 4 && !tbl.rows.some(n => /View gemach/.test(n)), 'linked gemach shows its own items, not "View gemach & contact info": ' + tbl.rows.join(','));
-    assert(/See all 5 at Tablecloth Gemach/.test(tbl.more), 'linked gemach: See all 5 ' + tbl.more);
-    assert(tbl.head === '/g/tablecloths' && tbl.moreHref === '/g/tablecloths', 'linked gemach links to its whole page, not narrowed to the category: ' + tbl.head + ' ' + tbl.moreHref);
-    const sht = await page.$$eval('#rg-shtick .result-name', els => els.map(e => e.textContent));
+      tiles: [...el.querySelectorAll('.gem-tile-name')].map(e => e.textContent),
+      head: el.querySelector('.gem-row-title h3 a').getAttribute('href') }));
+    assert(tbl.tiles.length === 5, 'linked gemach shows its own items: ' + tbl.tiles.join(','));
+    assert(tbl.head === '/g/tablecloths', 'linked gemach links to its whole page, not narrowed to the category: ' + tbl.head);
+    const sht = await page.$$eval('#rg-shtick .gem-tile-name', els => els.map(e => e.textContent));
     assert(sht.join() === 'Light-up Arch', 'gemach with items in the category shows only those: ' + sht.join());
     await page.click('#clear-filters');
     await page.waitForTimeout(300);
-    assert(!(await page.evaluate(() => document.body.classList.contains('filtering'))), 'All categories: back to the category list');
+    assert(!(await page.evaluate(() => document.body.classList.contains('filtering') || document.body.classList.contains('browsing-cat'))), 'All categories: back to the category list');
+    assert(await page.evaluate(() => getComputedStyle(document.getElementById('cats-section')).display !== 'none'), 'tiles shown again');
     assert(await page.evaluate(() => document.activeElement !== document.getElementById('q')), 'All categories: search box not focused (no keyboard)');
+    assert(await page.textContent('#results-title') === 'Search results' || await page.evaluate(() => document.getElementById('results-section').hidden), 'heading reset');
+
+    // ── Tapping a tile: category view from the top ──
+    await page.evaluate(() => window.scrollTo(0, 400));
+    await page.click('.cat-tile[data-cat="dresses-and-gowns"]');
+    await page.waitForSelector('#results .gem-row');
+    assert(await page.evaluate(() => scrollY) === 0 && await page.evaluate(() => document.activeElement && document.activeElement.id === 'results-title'), 'tile tap: page at top, focus on the heading');
+
+    // ── Typed search inside a category keeps the list ──
+    await page.goto(BASE + '/?cat=dresses-and-gowns&q=gown', { waitUntil: 'networkidle' });
+    await page.waitForSelector('#results .result-group');
+    assert(await page.$$eval('.gem-row', e => e.length) === 0 && !(await page.evaluate(() => document.body.classList.contains('browsing-cat'))), 'search + category: list, tiles still shown');
 
     // ── Typed search: 6 rows, q carried over ──
     await page.goto(BASE + '/?q=gown', { waitUntil: 'networkidle' });

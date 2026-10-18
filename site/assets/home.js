@@ -373,24 +373,82 @@
     return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
   }
 
+  function avatarHtml(g, size) {
+    var logo = W.safeUrl(g.logoUrl);
+    return logo
+      ? '<img class="g-avatar" src="' + esc(logo) + '" alt="" width="' + size + '" height="' + size + '" loading="lazy" decoding="async" />'
+      : '<span class="g-avatar g-initials" data-slug="' + esc(g.slug) + '" aria-hidden="true">' + esc(W.initials(g)) + "</span>";
+  }
+  /** Theme colors on initials avatars, via CSSOM (CSP forbids inline style attributes). */
+  function paintInitials(root) {
+    var els = root.querySelectorAll(".g-initials[data-slug]");
+    for (var i = 0; i < els.length; i++) {
+      var g = null, slug = els[i].getAttribute("data-slug");
+      for (var j = 0; j < data.gemachs.length; j++) if (data.gemachs[j].slug === slug) g = data.gemachs[j];
+      if (!g) continue;
+      var t = W.validHex(g.themeColor) || W.DEFAULT_THEME;
+      els[i].style.setProperty("--card-t", W.stripeColor(g));
+      if (t !== W.DEFAULT_THEME) els[i].style.setProperty("--card-on", W.onColor(W.stripeColor(g)));
+    }
+  }
+
+  // Browsing a category that several gemachs have: one row per gemach (name, count, See all) with a
+  // strip of item tiles to swipe sideways, so every gemach shows on the first screen.
+  var ROW_TILES = 10;
+  function renderRows(r) {
+    var scope = { cat: catSlug(r.cat), q: "" };
+    resultsEl.innerHTML = '<div class="gem-rows">' + r.groups.map(function (grp) {
+      var g = grp.g, n = grp.rows.length;
+      // A gemach shown here through its Home page categories: its page isn't narrowed to this category.
+      var link = n ? W.gemachScopeUrl(g.slug, grp.linked ? { cat: "", q: "" } : scope) : W.gemachUrl(g.slug);
+      var avail = g._dir || g._appt ? 0 : grp.rows.reduce(function (t, h) { return t + Math.max(0, h.e.item.availableCount || 0); }, 0);
+      var meta = n ? W.plural(n, "item") + (avail ? ' · <span class="ok">' + avail + " available</span>" : "")
+        : esc(g._soon ? "Coming soon" : (g.tagline || "Contact for details"));
+      var tiles = grp.rows.slice(0, ROW_TILES).map(function (h) {
+        var it = h.e.item, c = h.e.cat;
+        var img = it.photoUrl && W.safeUrl(it.photoUrl)
+          ? '<img src="' + esc(it.photoUrl) + '" alt="" loading="lazy" decoding="async" />'
+          : '<span aria-hidden="true">' + esc((c && c.icon) || "📦") + "</span>";
+        return '<li><a class="gem-tile" href="' + W.gemachUrl(g.slug, it.id) + '">' +
+          '<span class="gem-tile-img">' + img + "</span>" +
+          '<span class="gem-tile-name">' + esc(it.name) + '</span><span class="sr-only"> at ' + esc(g.name) + "</span>" +
+          badge(g, it) + "</a></li>";
+      }).join("");
+      if (n > ROW_TILES) {
+        tiles += '<li><a class="gem-tile gem-tile-more" href="' + link + '">See all ' + n +
+          '<span class="sr-only"> at ' + esc(g.name) + "</span>" + W.ICONS.chevron + "</a></li>";
+      }
+      return '<section class="gem-row" id="rg-' + esc(g.slug) + '" aria-label="' + esc(g.name) + '">' +
+        '<div class="gem-row-head">' + avatarHtml(g, 36) +
+        '<div class="gem-row-title"><h3><a href="' + link + '">' + esc(g.name) + "</a></h3>" +
+        '<p class="gem-row-meta">' + meta + "</p></div>" +
+        '<a class="gem-row-all" href="' + link + '">' + (n ? "See all" : "View gemach") +
+        '<span class="sr-only"> at ' + esc(g.name) + "</span>" + W.ICONS.chevron + "</a></div>" +
+        (tiles ? '<ul class="gem-strip">' + tiles + "</ul>" : "") + "</section>";
+    }).join("") + "</div>";
+    paintInitials(resultsEl);
+  }
+
   function renderResults() {
     var active = !!(state.q.trim() || state.cat);
     document.body.classList.toggle("filtering", active);
     resultsSection.hidden = !active;
     $("search-hint").hidden = active;
     clearBtn.hidden = !state.q;
-    if (!active) { clearTimeout(logTimer); resultsEl.innerHTML = ""; return; }
+    if (!active) { document.body.classList.remove("browsing-cat"); clearTimeout(logTimer); resultsEl.innerHTML = ""; return; }
 
     var r = search();
     scheduleSearchLog(searchOutcome(r), r.cat);
     var what = [];
     if (state.q.trim()) what.push("“" + esc(state.q.trim()) + "”");
     if (r.cat) what.push(esc(r.cat.name));
-    var clr = $("clear-filters");
-    clr.textContent = state.q.trim() && r.cat ? "Clear all" : (r.cat ? "All categories" : "Clear search");
-    var back = !!(r.cat && !state.q.trim());
-    clr.classList.toggle("back", back);
-    clr.parentNode.classList.toggle("browsing", back);
+    // Browsing a category (no typed search): the tile scroller is hidden and the category name is the heading.
+    var browsing = !!(r.cat && !state.q.trim());
+    document.body.classList.toggle("browsing-cat", browsing);
+    var title = $("results-title");
+    title.textContent = browsing ? r.cat.name : "Search results";
+    title.className = browsing ? "cat-title" : "sr-only";
+    $("clear-filters").textContent = state.q.trim() && r.cat ? "Clear all" : (r.cat ? "All categories" : "Clear search");
 
     if (!r.groups.length) {
       resultsCount.innerHTML = "No matches for " + what.join(" in ");
@@ -403,7 +461,10 @@
     }
 
     var nG = r.groups.length;
-    resultsCount.innerHTML = (r.partial ? "Partial matches for " : "") +
+    if (browsing) {
+      resultsCount.innerHTML = "<strong>" + W.plural(nG, "gemach") + "</strong>" + (r.count ? " · " + W.plural(r.count, "item") : "");
+      if (nG > 1) { renderRows(r); return; }
+    } else resultsCount.innerHTML = (r.partial ? "Partial matches for " : "") +
       (r.count ? "<strong>" + W.plural(r.count, "item") + "</strong>" + " from " : "") +
       "<strong>" + W.plural(nG, "gemach") + "</strong>" + (what.length && !r.partial ? " for " + what.join(" in ") : (r.partial ? " " + what.join(" in ") : ""));
 
@@ -610,14 +671,15 @@
     var t = e.target.closest(".cat-tile");
     if (!t) return;
     var c = t.getAttribute("data-cat");
-    var wasFiltering = document.body.classList.contains("filtering");
     state.cat = state.cat === c ? "" : c;
     searchPushed = false;
     update(true);
-    if (!wasFiltering && state.cat) {
-      $("cats-section").scrollIntoView({ block: "start", behavior: "smooth" });
-      var sel = catGrid.querySelector('.cat-tile[aria-pressed="true"]');
-      if (sel) sel.focus({ preventScroll: true });
+    if (state.cat) {
+      // The category heading replaces the tile list: start at the top with focus on the heading.
+      window.scrollTo(0, 0);
+      var h = $("results-title");
+      h.tabIndex = -1;
+      h.focus({ preventScroll: true });
     }
     revealActiveChip();
   });
@@ -631,6 +693,7 @@
   clearBtn.hidden = !state.q;
   if (state.q || state.cat) {
     document.body.classList.add("filtering");
+    if (state.cat && !state.q.trim()) document.body.classList.add("browsing-cat");
     resultsSection.hidden = false;
     $("search-hint").hidden = true;
     resultsEl.innerHTML = '<div class="sk sk-row"></div>';
@@ -653,7 +716,7 @@
       '<p><button type="button" class="btn btn-primary" id="retry">Try again</button></p>' +
       '<p>Or email <a href="mailto:' + W.CONTACT_EMAIL + '">' + W.CONTACT_EMAIL + "</a>.</p></div>";
     $("cats-section").hidden = true;
-    document.body.classList.remove("filtering");
+    document.body.classList.remove("filtering", "browsing-cat");
     resultsSection.hidden = true;
     gemachList.outerHTML = '<div id="gemach-list">' + msg + "</div>";
     var r = document.getElementById("retry");

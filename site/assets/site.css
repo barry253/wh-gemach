@@ -294,16 +294,6 @@ main { flex: 1; }
   display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap;
   margin: .25rem 0 .9rem;
 }
-/* Browsing a category: the count and a compact "‹ All categories" pill share one row */
-.results-bar.browsing { flex-wrap: nowrap; align-items: flex-start; }
-.results-bar .results-count { flex: 1 1 auto; min-width: 0; }
-#clear-filters.back {
-  flex: none; display: inline-flex; align-items: center; gap: .2rem; min-height: 40px; margin-top: -.35rem;
-  padding: 0 .8rem 0 .55rem; border: 1px solid var(--border-strong); border-radius: 999px;
-  background: var(--white); text-decoration: none; font-size: .875rem; white-space: nowrap;
-}
-#clear-filters.back::before { content: "‹"; font-size: 1.25rem; line-height: 1; margin-top: -.1rem; }
-#clear-filters.back:hover { border-color: var(--navy); }
 .results-count { font-size: 1rem; color: var(--muted); }
 .results-count strong { color: var(--text); }
 .btn-link {
@@ -1300,3 +1290,71 @@ fieldset { border: 0; }
 /* tall covers: more across, so a page of books isn't a wall of huge covers */
 @media (min-width: 640px) { .photos-portrait .item-list.item-grid { grid-template-columns: repeat(4, minmax(0,1fr)); } }
 @media (min-width: 880px) { .photos-portrait .item-list.item-grid { grid-template-columns: repeat(6, minmax(0,1fr)); } }
+
+
+/* ── Browsing one category (no typed search): no tile scroller, category name as the heading ── */
+.browsing-cat #cats-section { display: none; }
+.browsing-cat .hero-home { padding: .75rem 0 .9rem; }
+.browsing-cat .hero-home h1 {
+  position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
+}
+.browsing-cat .search-form { margin-top: 0; }
+.browsing-cat #results-section:not([hidden]) { display: flex; flex-direction: column; padding-top: .5rem; }
+.browsing-cat .results-bar { display: contents; }
+.browsing-cat #clear-filters {
+  order: -2; align-self: flex-start; min-height: 40px; padding: 0; margin-left: -.1rem;
+  text-decoration: none; font-size: .9375rem;
+}
+.browsing-cat #clear-filters::before { content: "‹"; font-size: 1.3rem; line-height: 1; margin-right: .3rem; }
+.browsing-cat #clear-filters:hover { text-decoration: underline; }
+.cat-title { order: -1; font-family: var(--font-display); font-weight: 600; font-size: 1.625rem; line-height: 1.15; }
+.cat-title:focus { outline: none; }
+.browsing-cat .results-count { margin: .3rem 0 1rem; }
+
+/* One row per gemach, item tiles swiped sideways */
+.gem-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.browsing-cat #results { min-width: 0; }
+.gem-row { padding-bottom: 1rem; border-bottom: 1px solid var(--border); scroll-margin-top: 72px; min-width: 0; }
+.gem-row:last-child { border-bottom: 0; }
+.gem-row-head { display: flex; align-items: center; gap: .7rem; margin-bottom: .55rem; }
+.gem-row-head .g-avatar { width: 36px; height: 36px; border-radius: 9px; }
+.gem-row-head .g-initials { font-size: .9375rem; }
+.gem-row-title { flex: 1; min-width: 0; }
+.gem-row-title h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.125rem; line-height: 1.25; }
+.gem-row-title h3 a { color: var(--text); text-decoration: none; }
+.gem-row-title h3 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.gem-row-meta { font-size: .875rem; color: var(--muted); line-height: 1.35; }
+.gem-row-meta .ok { color: var(--green); font-weight: 600; }
+.gem-row-all {
+  flex: none; display: inline-flex; align-items: center; gap: .1rem; min-height: 44px;
+  font-weight: 600; font-size: .9375rem; white-space: nowrap; text-decoration: none; color: var(--navy);
+}
+.gem-row-all .chev { color: currentColor; }
+.gem-strip {
+  position: relative; list-style: none; display: flex; gap: .6rem; overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity; scroll-padding: 0 1rem; margin: 0 -1rem; padding: 2px 1rem .5rem;
+  scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+}
+.gem-strip li { flex: 0 0 9rem; scroll-snap-align: start; display: flex; }
+.gem-tile {
+  flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+  text-decoration: none; color: var(--text);
+}
+.gem-tile:hover { border-color: var(--border-strong); color: var(--text); }
+.gem-tile:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.gem-tile-img {
+  aspect-ratio: 4 / 3; background: var(--teal); display: flex; align-items: center; justify-content: center;
+  overflow: hidden; font-size: 2rem;
+}
+.gem-tile-img img { width: 100%; height: 100%; object-fit: cover; }
+.gem-tile-name {
+  font-weight: 600; font-size: .875rem; line-height: 1.3; padding: .5rem .6rem .4rem;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.gem-tile .badge { margin: auto .6rem .6rem; align-self: flex-start; max-width: calc(100% - 1.2rem); }
+.gem-tile-more {
+  align-items: center; justify-content: center; gap: .2rem; flex-direction: row;
+  background: var(--teal); color: var(--primary); font-weight: 600; font-size: .9375rem; box-shadow: none;
+}
+.gem-tile-more .chev { color: currentColor; }
