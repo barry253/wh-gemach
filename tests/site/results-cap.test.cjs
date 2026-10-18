@@ -1,5 +1,6 @@
 // Home page results: a few rows per gemach + "See all N at …" that opens the gemach page narrowed to the
-// same category / search (?cat= & ?q=), with a summary row of gemachs when browsing a category.
+// same category / search (?cat= & ?q=). Browsing a category: no gemach chip row, "‹ All categories" pill on the
+// count row, and a gemach listed under the category only through its Home page categories shows its own items.
 const { chromium } = require('playwright');
 const path = require('path'), { spawn } = require('child_process');
 const API = 'https://wh-gemach.barry253-0f5.workers.dev';
@@ -11,6 +12,7 @@ const cats = [
   { id: 'catGW', name: 'Dresses and Gowns', icon: '👗', keywords: ['dress', 'gown'], displayOrder: 100 },
   { id: 'catBA', name: 'Bathroom Safety', icon: '🚿', keywords: ['shower', 'toilet'], displayOrder: 60 },
   { id: 'catTC', name: 'Tablecloths & Linens', icon: '🍽️', keywords: ['tablecloth'], displayOrder: 75 },
+  { id: 'catWS', name: 'Wedding & Simcha', icon: '💍', keywords: ['simcha'], displayOrder: 80 },
 ];
 const V3 = { primaryContact: 'Call', secondaryContact: null, themeColor: '#1B3A4B', requestStyle: 'Dates', eventLabel: 'Event date', depositRequired: false };
 let n = 0;
@@ -30,6 +32,12 @@ const gemachs = [
   { id: 'recGMED', slug: 'medical', name: 'Medical Gemach', tagline: 'Medical', category: 'Medical', mode: 'Full',
     phone: '(516) 555-0102', email: null, whatsapp: null, ...V3,
     items: [it('Shower Seat', 'catBA', 2), it('Toilet Seat Riser', 'catBA', 1), it('Commode', 'catBA', 1)] },
+  { id: 'recGTBL', slug: 'tablecloths', name: 'Tablecloth Gemach', tagline: 'Tablecloths', category: 'Wedding & Events', mode: 'Full',
+    phone: '(516) 555-0103', email: null, whatsapp: null, ...V3, browseCategoryIds: ['catWS'],
+    items: [it('Gold Round', 'catTC', 1), it('Navy Rectangle', 'catTC', 1), it('White Round', 'catTC', 0), it('Ivory Round', 'catTC', 1), it('Black Round', 'catTC', 1)] },
+  { id: 'recGSHT', slug: 'shtick', name: 'Shtick Gemach', tagline: 'Shtick', category: 'Wedding & Events', mode: 'Full',
+    phone: '(516) 555-0104', email: null, whatsapp: null, ...V3, browseCategoryIds: ['catWS'],
+    items: [it('Light-up Arch', 'catWS', 1), it('Kids Gown', 'catGW', 1)] },
 ];
 const directory = { categories: cats, gemachs, generatedAt: new Date().toISOString() };
 const payload = slug => { const g = gemachs.find(x => x.slug === slug); if (!g) return null; const { items, ...gemach } = g; return { gemach, items, categories: cats }; };
@@ -78,15 +86,16 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     assert(big && big.moreHref === '/g/big-dresses?cat=dresses-and-gowns', 'See all link carries the category: ' + (big && big.moreHref));
     assert(big && big.head === '/g/big-dresses?cat=dresses-and-gowns', 'group header links to the gemach with the category');
     assert(small && small.rows === 2 && !small.more, 'small gemach shows all its rows and no See all');
-    assert(/14 items/.test(await page.textContent('#results-count')), 'count line keeps full totals: ' + await page.textContent('#results-count'));
-    const cards = await page.$$eval('.rg-summary .rg-card', els => els.map(e => e.textContent));
-    assert(cards.length === 2 && /Big Dress Gemach12 items/.test(cards.join('|')), 'summary row: one card per gemach ' + JSON.stringify(cards));
+    assert(/15 items/.test(await page.textContent('#results-count')), 'count line keeps full totals: ' + await page.textContent('#results-count'));
+    assert(await page.$$eval('.rg-summary, .rg-card', e => e.length) === 0, 'category: no gemach chip row above the results');
+    const bar = await page.evaluate(() => {
+      const b = document.getElementById('clear-filters'), c = document.getElementById('results-count');
+      const br = b.getBoundingClientRect(), cr = c.getBoundingClientRect();
+      return { text: b.textContent.trim(), back: b.classList.contains('back'), sameRow: br.top < cr.bottom && br.left > cr.left };
+    });
+    assert(bar.text === 'All categories' && bar.back, 'back pill reads "All categories": ' + JSON.stringify(bar));
+    assert(bar.sameRow, 'back pill sits on the count row, not a line of its own ' + JSON.stringify(bar));
     await page.screenshot({ path: path.join(SHOTS, 'm-results-cap-category.png'), fullPage: true });
-    await page.click('.rg-card[data-goto="rg-small-dresses"]');
-    await page.waitForTimeout(800);
-    const vis = await page.$eval('#rg-small-dresses', e => { const r = e.getBoundingClientRect(); return { top: r.top, inView: r.top >= 0 && r.top < innerHeight - 100, y: scrollY }; });
-    assert(vis.inView && vis.y > 0, 'tapping a summary card scrolls that gemach into view ' + JSON.stringify(vis));
-    assert(await page.evaluate(() => document.activeElement && document.activeElement.closest('#rg-small-dresses') !== null), 'focus moves to that gemach');
     const noHScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     assert(noHScroll, 'no sideways page scroll on a phone');
 
@@ -94,7 +103,24 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     await page.goto(BASE + '/?cat=bathroom-safety', { waitUntil: 'networkidle' });
     await page.waitForSelector('#results .result-group');
     assert(await page.$$eval('.result-more', e => e.length) === 0, 'small category: no See all');
-    assert(await page.$$eval('.rg-summary', e => e.length) === 0, 'single gemach: no summary row');
+
+    // ── Gemach listed under a category through Home page categories, items filed elsewhere ──
+    await page.goto(BASE + '/?cat=catWS', { waitUntil: 'networkidle' });
+    await page.waitForSelector('#results .result-group');
+    const tbl = await page.$eval('#rg-tablecloths', el => ({
+      rows: [...el.querySelectorAll('.result-row:not(.result-more) .result-name')].map(e => e.textContent),
+      more: (el.querySelector('.result-more') || {}).textContent || '',
+      moreHref: el.querySelector('.result-more') ? el.querySelector('.result-more').getAttribute('href') : '',
+      head: el.querySelector('.result-group-head h3 a').getAttribute('href') }));
+    assert(tbl.rows.length === 4 && !tbl.rows.some(n => /View gemach/.test(n)), 'linked gemach shows its own items, not "View gemach & contact info": ' + tbl.rows.join(','));
+    assert(/See all 5 at Tablecloth Gemach/.test(tbl.more), 'linked gemach: See all 5 ' + tbl.more);
+    assert(tbl.head === '/g/tablecloths' && tbl.moreHref === '/g/tablecloths', 'linked gemach links to its whole page, not narrowed to the category: ' + tbl.head + ' ' + tbl.moreHref);
+    const sht = await page.$$eval('#rg-shtick .result-name', els => els.map(e => e.textContent));
+    assert(sht.join() === 'Light-up Arch', 'gemach with items in the category shows only those: ' + sht.join());
+    await page.click('#clear-filters');
+    await page.waitForTimeout(300);
+    assert(!(await page.evaluate(() => document.body.classList.contains('filtering'))), 'All categories: back to the category list');
+    assert(await page.evaluate(() => document.activeElement !== document.getElementById('q')), 'All categories: search box not focused (no keyboard)');
 
     // ── Typed search: 6 rows, q carried over ──
     await page.goto(BASE + '/?q=gown', { waitUntil: 'networkidle' });

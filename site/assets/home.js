@@ -256,11 +256,17 @@
     var toks = tokens(state.q);
     var cat = findCat(state.cat);
     var partial = false;
+    // A gemach listed under this category (its "Home page categories") whose items are filed under
+    // other categories (e.g. a tablecloth gemach under Wedding & Simcha) shows its own items here,
+    // not just a "View gemach" row.
+    var inCat = {};
+    if (cat) index.forEach(function (e) { if (e.cat && e.cat.id === cat.id) inCat[e.g.id] = 1; });
+    function linkedOnly(g) { return !!(cat && g._cats && g._cats[cat.id] && !inCat[g.id]); }
 
     function run(mode) {
       var hits = [];
       index.forEach(function (e) {
-        if (cat && (!e.cat || e.cat.id !== cat.id)) return;
+        if (cat && (!e.cat || e.cat.id !== cat.id) && !linkedOnly(e.g)) return;
         if (!toks.length) { hits.push({ e: e, score: 0 }); return; }
         var score = 0, matched = 0;
         for (var i = 0; i < toks.length; i++) {
@@ -297,7 +303,7 @@
     var groups = {};
     hits.forEach(function (h) {
       var g = h.e.g;
-      var grp = groups[g.id] || (groups[g.id] = { g: g, rows: [], best: 0 });
+      var grp = groups[g.id] || (groups[g.id] = { g: g, rows: [], best: 0, linked: linkedOnly(g) });
       grp.rows.push(h);
       grp.best = Math.max(grp.best, h.score);
     });
@@ -380,7 +386,11 @@
     var what = [];
     if (state.q.trim()) what.push("“" + esc(state.q.trim()) + "”");
     if (r.cat) what.push(esc(r.cat.name));
-    $("clear-filters").textContent = state.q.trim() && r.cat ? "Clear all" : (r.cat ? "Show all categories" : "Clear search");
+    var clr = $("clear-filters");
+    clr.textContent = state.q.trim() && r.cat ? "Clear all" : (r.cat ? "All categories" : "Clear search");
+    var back = !!(r.cat && !state.q.trim());
+    clr.classList.toggle("back", back);
+    clr.parentNode.classList.toggle("browsing", back);
 
     if (!r.groups.length) {
       resultsCount.innerHTML = "No matches for " + what.join(" in ");
@@ -401,20 +411,9 @@
     // narrowed to the same category/search and has that gemach's own filters (size, color, …).
     var cap = r.cat ? CAP_CATEGORY : CAP_SEARCH;
     var scope = { cat: r.cat ? catSlug(r.cat) : "", q: r.partial ? "" : state.q };
-    var summary = "";
-    if (r.cat && r.groups.length > 1) {
-      summary = '<nav class="rg-summary" aria-label="Gemachs with ' + esc(r.cat.name) + '"><ul>' + r.groups.map(function (grp) {
-        var g = grp.g, n = grp.rows.length;
-        var avail = g._dir || g._appt ? 0 : grp.rows.reduce(function (s, h) { return s + Math.max(0, h.e.item.availableCount || 0); }, 0);
-        var meta = n ? W.plural(n, "item") + (avail ? ' · <span class="ok">' + avail + " available</span>" : "")
-          : (g._soon ? "Coming soon" : "Contact for details");
-        return '<li><button type="button" class="rg-card" data-goto="rg-' + esc(g.slug) + '">' +
-          '<span class="rg-card-name">' + esc(g.name) + '</span><span class="rg-card-meta">' + meta + "</span></button></li>";
-      }).join("") + "</ul></nav>";
-    }
-
-    resultsEl.innerHTML = summary + r.groups.map(function (grp) {
-      var g = grp.g, link = W.gemachScopeUrl(g.slug, scope);
+    resultsEl.innerHTML = r.groups.map(function (grp) {
+      // A gemach shown here through its Home page categories: its page isn't narrowed to this category.
+      var g = grp.g, link = W.gemachScopeUrl(g.slug, grp.linked ? { cat: "", q: scope.q } : scope);
       var more = grp.rows.length > cap ? grp.rows.length : 0;
       var rows = grp.rows.slice(0, cap).map(function (h) {
         var it = h.e.item, c = h.e.cat;
@@ -594,8 +593,11 @@
     qInput.value = ""; state.q = ""; searchPushed = false; update(true); qInput.focus();
   });
   $("clear-filters").addEventListener("click", function () {
+    var browsing = state.cat && !state.q.trim();
     qInput.value = ""; state.q = ""; state.cat = ""; searchPushed = false; update(true);
-    qInput.focus();
+    // Back from a category: show the category list (no keyboard popping up on a phone).
+    if (browsing) $("cats-section").scrollIntoView({ block: "start" });
+    else qInput.focus();
   });
   $("search-hint").addEventListener("click", function (e) {
     var b = e.target.closest("button[data-q]");
@@ -618,16 +620,6 @@
       if (sel) sel.focus({ preventScroll: true });
     }
     revealActiveChip();
-  });
-  resultsEl.addEventListener("click", function (e) {
-    var b = e.target.closest(".rg-card[data-goto]");
-    if (!b) return;
-    var sec = document.getElementById(b.getAttribute("data-goto"));
-    if (!sec) return;
-    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    sec.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
-    var a = sec.querySelector(".result-group-head a");
-    if (a) a.focus({ preventScroll: true });
   });
   window.addEventListener("popstate", function () {
     readUrl(); searchPushed = false;
