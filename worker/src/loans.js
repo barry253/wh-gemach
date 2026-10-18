@@ -194,15 +194,22 @@ async function handleLoanReminder(c, id) {
     const sent = await emailBorrower(c, loan, body.message, `Reminder: please return the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`);
     if (sent.error) return json({ error: sent.error }, sent.status);
   }
+  // WhatsApp / text from the admin's phone: the same message is also emailed, as the borrower's record (when they have an address).
+  let emailSent;
+  if ((body.via === "whatsapp" || body.via === "sms") && body.emailCopy === true && String(body.message ?? "").trim()) {
+    const sent = await emailBorrower(c, loan, body.message, `Reminder: please return the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`);
+    if (sent.ok) emailSent = true;
+    else if (sent.status === 422) emailSent = false;    // no address or empty message: nothing to copy
+  }
   const now = new Date().toISOString();
   await db.update(T.LOANS, id, { "Reminder Sent At": now, ...(via ? { "Reminder Sent Via": via } : {}) });
   logEvent(ctx, db, g, {
     eventType: "Return Reminder Sent",
     ...(await loanLogDetails(db, g, loan, body)),
     admin: c.adminName || null,
-    notes: via ? `Sent by ${via}` : null,
+    notes: via ? `Sent by ${via}${emailSent ? " (copy emailed)" : ""}` : null,
   });
-  return json({ success: true, reminderSentAt: now, reminderSentVia: via });
+  return json({ success: true, reminderSentAt: now, reminderSentVia: via, ...(emailSent !== undefined ? { emailSent } : {}) });
 }
 
 async function handleReturnLoan(c, id) {

@@ -69,7 +69,7 @@ await page.waitForTimeout(300);
 const opened = await page.evaluate(() => window.__opened);
 ok(opened.some(u => u.startsWith("https://wa.me/") && decodeURIComponent(u).includes("P.S. edited")), "WhatsApp opens with the edited message");
 const rc = calls.find(c => c.method === "POST" && c.path === "/admin/loans/recLOANOVERDUE001/reminder");
-ok(rc && rc.body.via === "whatsapp", "reminder noted on the server: " + JSON.stringify(rc && rc.body));
+ok(rc && rc.body.via === "whatsapp" && !rc.body.emailCopy && !("message" in rc.body), "reminder noted on the server (no email on file → no email copy asked for): " + JSON.stringify(rc && rc.body));
 await page.waitForFunction(() => /Return reminder sent/.test(document.getElementById("loans-list").textContent));
 ok(true, "loan shows 'Return reminder sent'");
 

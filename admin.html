@@ -2569,6 +2569,17 @@
   // "Send this message by" control used by the confirm / decline / appointment / pickup sheets.
   const SEND_LABEL = { whatsapp: "WhatsApp", sms: "Text message", email: "Email", none: "Don't send" };
   const SEND_BY = {};
+  /**
+   * Every message to a borrower also reaches their inbox as a record: WhatsApp / text go from the admin's
+   * phone, and the same message is emailed too when the borrower gave an email address.
+   */
+  function emailCopy(choice, c) { return (choice === "whatsapp" || choice === "sms") && !!safeEmail(c && c.email); }
+  /** Should the server email this message? (Email chosen, or WhatsApp / text with an email copy.) */
+  function serverEmails(choice, c) { return choice === "email" || emailCopy(choice, c); }
+  function emailFailText(choice) {
+    return choice === "whatsapp" || choice === "sms" ? " — but the email copy didn't send." : emailFailText(choice);
+  }
+  function copyNote(c) { const e = safeEmail(c && c.email); return e ? ` A copy is also emailed to ${e}.` : ""; }
   /** Email first (and the only one on a computer); WhatsApp / text only on a phone or tablet. */
   function sendChoices(c, allowNone = true) {
     const out = [];
@@ -2586,8 +2597,8 @@
       : ` No email on file — to send it by WhatsApp or text, use admin on your phone, or call ${c.phone}.`;
   }
   function sendHelp(choice, c, extra = "") {
-    if (choice === "whatsapp") return "Opens WhatsApp on this device with the message ready — tap Send there.";
-    if (choice === "sms") return "Opens Messages on this device with the message ready — tap Send there.";
+    if (choice === "whatsapp") return "Opens WhatsApp on this device with the message ready — tap Send there." + copyNote(c);
+    if (choice === "sms") return "Opens Messages on this device with the message ready — tap Send there." + copyNote(c);
     if (choice === "email") {
       const replyTo = safeEmail(GEMACH?.email);
       return `Sent from noreply@whgemachs.org to ${safeEmail(c.email)}${replyTo ? `; replies go to ${replyTo}` : ""}.${extra}`;
@@ -3358,7 +3369,7 @@
       const message = document.getElementById("confirm-message").value;
       const { choice, c } = SEND_BY.confirm;
       if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
-      const sendMessage = choice === "email";
+      const sendMessage = serverEmails(choice, c);
       const body = { message, sendMessage, adminName };
       if (qtyItems.length) body.quantities = Object.fromEntries(qtyItems.filter(isOn).map(i => [i.id, quantities[i.id]]));
       const na = notAvailable();
@@ -3375,7 +3386,7 @@
       loadDashboard();
       const n = res?.reservations?.length || 0;
       const nd = res?.declined?.length || 0;
-      showToast((n ? `Request confirmed · ${n} reservation${n > 1 ? "s" : ""} added` : "Request confirmed") + (nd ? ` · ${nd} not available` : "") + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
+      showToast((n ? `Request confirmed · ${n} reservation${n > 1 ? "s" : ""} added` : "Request confirmed") + (nd ? ` · ${nd} not available` : "") + (res?.emailSent === false ? emailFailText(choice) : ""), res?.emailSent === false ? 8000 : undefined);
     };
 
     openSheet("confirm-sheet");
@@ -3423,7 +3434,7 @@
       const { choice, c } = SEND_BY.appointment;
       if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
       const res = await saveAction(btn, `/admin/requests/${safeId(r.id)}/confirm`, "POST", {
-        appointmentAt: `${dateEl.value}T${timeEl.value}`, message, sendMessage: choice === "email", adminName,
+        appointmentAt: `${dateEl.value}T${timeEl.value}`, message, sendMessage: serverEmails(choice, c), adminName,
       });
       if (!res) return;
       if (res.error) {
@@ -3434,7 +3445,7 @@
       closeSheet("appointment-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
-      showToast(`Appointment set · ${fmtAppointment(dateEl.value, timeEl.value)}` + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
+      showToast(`Appointment set · ${fmtAppointment(dateEl.value, timeEl.value)}` + (res?.emailSent === false ? emailFailText(choice) : ""), res?.emailSent === false ? 8000 : undefined);
     };
     openSheet("appointment-sheet");
   }
@@ -3458,7 +3469,7 @@
       const message = document.getElementById("decline-message").value;
       const { choice, c } = SEND_BY.decline;
       if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
-      const res = await saveAction(btn, `/admin/requests/${r.id}/decline`, "POST", { message, sendMessage: choice === "email", adminName });
+      const res = await saveAction(btn, `/admin/requests/${r.id}/decline`, "POST", { message, sendMessage: serverEmails(choice, c), adminName });
       if (!res) return;
       if (res.error) {
         showToast(res.error + outboundNotSaved(choice), 8000);
@@ -3468,7 +3479,7 @@
       closeSheet("decline-sheet");
       document.getElementById(`req-${safeId(r.id)}`)?.remove();
       loadDashboard();
-      showToast("Request declined" + (res?.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res?.emailSent === false ? 8000 : undefined);
+      showToast("Request declined" + (res?.emailSent === false ? emailFailText(choice) : ""), res?.emailSent === false ? 8000 : undefined);
     };
 
     openSheet("decline-sheet");
@@ -4228,7 +4239,7 @@
     const { choice } = SEND_BY.checkout || { choice: "none" };
     if (choice === "whatsapp" || choice === "sms") openOutbound(choice, SEND_BY.checkout.c, message); // before any await
     body.message = message;
-    body.sendMessage = choice === "email";
+    body.sendMessage = serverEmails(choice, SEND_BY.checkout?.c);
     const btn = document.getElementById("checkout-submit-btn");
     btn.disabled = true;
     let res;
@@ -4241,7 +4252,7 @@
     const who = CO.walkIn ? body.borrower.name : CO.req?.name;
     if (!CO.walkIn) document.getElementById(`appt-${safeId(CO.req.id)}`)?.remove();
     closeSheet("checkout-sheet");
-    showToast(`Lent ${n} item${n === 1 ? "" : "s"}${who ? ` to ${who}` : ""}` + (res.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res.emailSent === false ? 8000 : undefined);
+    showToast(`Lent ${n} item${n === 1 ? "" : "s"}${who ? ` to ${who}` : ""}` + (res.emailSent === false ? emailFailText(choice) : ""), res.emailSent === false ? 8000 : undefined);
     refreshAfterLending();
   }
 
@@ -4549,7 +4560,7 @@
     const message = bkEl("bk-message").value;
     const { choice, c } = SEND_BY.bk || { choice: "none" };
     if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
-    if (choice === "email") { body.message = message; body.sendMessage = true; }
+    if (serverEmails(choice, c)) { body.message = message; body.sendMessage = true; }
     const btn = bkEl("bk-save-btn");
     btn.disabled = true;
     let res;
@@ -4557,7 +4568,7 @@
     if (!res) return;
     if (res.error) { fail(res.error); return; }
     closeSheet("booking-sheet");
-    showToast((res.changes?.length ? "Saved" : "Saved — nothing to change") + (res.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res.emailSent === false ? 8000 : undefined);
+    showToast((res.changes?.length ? "Saved" : "Saved — nothing to change") + (res.emailSent === false ? emailFailText(choice) : ""), res.emailSent === false ? 8000 : undefined);
     refreshAfterLending();
   }
 
@@ -4569,12 +4580,12 @@
     const { choice, c } = SEND_BY.bk || { choice: "none" };
     if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message);
     const body = BK.ref.request ? { request: BK.ref.request } : { loan: BK.ref.loan };
-    if (choice === "email") { body.message = message; body.sendMessage = true; }
+    if (serverEmails(choice, c)) { body.message = message; body.sendMessage = true; }
     const res = await api("/admin/booking/cancel", "POST", body);
     if (!res) return;
     if (res.error) { bkEl("bk-error").textContent = res.error; bkEl("bk-error").style.display = "block"; return; }
     closeSheet("booking-sheet");
-    showToast(`${word[0].toUpperCase()}${word.slice(1)} cancelled` + (res.emailSent === false ? " — but the email didn't send." : ""));
+    showToast(`${word[0].toUpperCase()}${word.slice(1)} cancelled` + (res.emailSent === false ? emailFailText(choice) : ""));
     refreshAfterLending();
   }
 
@@ -4898,7 +4909,7 @@
     }
     const message = nbEl("nb-message").value;
     const { choice, c } = SEND_BY.nb || { choice: "none" };
-    if (choice === "email") { body.message = message; body.sendMessage = true; }
+    if (serverEmails(choice, c)) { body.message = message; body.sendMessage = true; }
     const btn = nbEl("nb-save-btn");
     btn.disabled = true;
     let res;
@@ -4912,7 +4923,8 @@
       const final = message.replace(/\{manage_link\}/g, res.manageUrl || "");
       nbEl("nb-foot").style.display = "none";
       nbEl("nb-done").style.display = "";
-      nbEl("nb-done").innerHTML = `<div role="status" style="margin:0.5rem 0 1rem;padding:0.7rem 0.85rem;border-radius:8px;background:#DCFCE7;color:var(--green);font-weight:600;font-size:0.9rem">✓ ${what}${res.requestId ? ` · ${esc(res.requestId)}` : ""}</div>
+      nbEl("nb-done").innerHTML = `<div role="status" style="margin:0.5rem 0 1rem;padding:0.7rem 0.85rem;border-radius:8px;background:#DCFCE7;color:var(--green);font-weight:600;font-size:0.9rem">✓ ${what}${res.requestId ? ` · ${esc(res.requestId)}` : ""}${
+          emailCopy(choice, c) ? (res.emailSent === false ? `<div style="color:var(--red,#B91C1C);font-weight:500;margin-top:0.25rem">The email copy didn't send.</div>` : `<div style="font-weight:500;margin-top:0.25rem">A copy was emailed to ${esc(safeEmail(c.email))}.</div>`) : ""}</div>
         <div class="sheet-actions" style="margin-top:0">
           <button class="btn btn-ghost" onclick="closeSheet('newbk-sheet')">Done</button>
           <button class="btn ${choice === "whatsapp" ? "btn-whatsapp" : "btn-primary"}" id="nb-send-now">${choice === "whatsapp" ? "Send on WhatsApp" : "Send the text"}</button>
@@ -4921,7 +4933,7 @@
       return;
     }
     closeSheet("newbk-sheet");
-    showToast(`${what}${res.requestId ? ` · ${res.requestId}` : ""}` + (res.emailSent === false ? " — but the email didn't send. Please contact them another way." : ""), res.emailSent === false ? 8000 : undefined);
+    showToast(`${what}${res.requestId ? ` · ${res.requestId}` : ""}` + (res.emailSent === false ? emailFailText(choice) : ""), res.emailSent === false ? 8000 : undefined);
   }
 
   // ── Dashboard: quick actions + upcoming ─────────────────────────────────────
@@ -5265,12 +5277,13 @@
       }
       if (choice !== "none") openOutbound(choice, c, message); // before any await
       closeSheet("reminder-sheet");
-      const res = await api(`/admin/loans/${safeId(l.id)}/reminder`, "POST", body).catch(() => null);
+      const copy = emailCopy(choice, c) && message.trim();
+      const res = await api(`/admin/loans/${safeId(l.id)}/reminder`, "POST", copy ? { ...body, message, emailCopy: true } : body).catch(() => null);
       if (res && res.success) {
         l.reminderSentAt = res.reminderSentAt;
         l.reminderSentVia = res.reminderSentVia || null;
         renderLoans();
-        showToast("Reminder noted on the loan");
+        showToast("Reminder noted on the loan" + (copy ? (res.emailSent === false ? emailFailText(choice) : " · copy emailed") : ""), res.emailSent === false ? 8000 : undefined);
       } else showToast("Message opened — couldn't note it on the loan");
     };
     openSheet("reminder-sheet");
@@ -5298,8 +5311,12 @@
         showToast("Pickup details emailed");
         return;
       }
-      if (choice !== "none") openOutbound(choice, c, message);
+      if (choice !== "none") openOutbound(choice, c, message); // before any await
       closeSheet("pickup-instructions-sheet");
+      if (emailCopy(choice, c) && message.trim()) {
+        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message }).catch(() => null);
+        showToast(res && res.success ? "Pickup details · copy emailed" : "The email copy of the pickup details didn't send.", res && res.success ? undefined : 8000);
+      }
     };
     openSheet("pickup-instructions-sheet");
   }

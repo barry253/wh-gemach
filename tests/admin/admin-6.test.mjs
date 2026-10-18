@@ -108,7 +108,7 @@ ok(JSON.stringify(opts.map(o => o[1])) === JSON.stringify(["Email", "WhatsApp", 
 ok(await page.textContent("#confirm-submit-btn") === "Confirm & email", "Email button label by default");
 await page.click(`#confirm-send-by [data-send="whatsapp"]`);
 ok(await page.textContent("#confirm-submit-btn") === "Confirm & open WhatsApp", "WA button label");
-ok((await page.textContent("#confirm-send-by .send-by-help")).includes("Opens WhatsApp on this device"), "WA helper");
+ok((await page.textContent("#confirm-send-by .send-by-help")).includes("Opens WhatsApp on this device") && (await page.textContent("#confirm-send-by .send-by-help")).includes("A copy is also emailed to rivka@example.com."), "WA helper says a copy is emailed");
 await page.screenshot({ path: "shot-r5-confirm-whatsapp.png" });
 for (const [v, lbl] of [["sms", "Confirm & open text message"], ["email", "Confirm & email"], ["none", "Confirm without message"]]) {
   await page.click(`#confirm-send-by [data-send="${v}"]`);
@@ -122,7 +122,7 @@ await page.waitForTimeout(300);
 let opened = await page.evaluate(() => window.__opened.splice(0));
 ok(opened.length === 1 && opened[0].how === "window.open" && opened[0].url === "https://wa.me/15165551234?text=" + encodeURIComponent("Hi Rivka & co — ready?"), "wa.me opened with message " + JSON.stringify(opened));
 let post = calls.slice(n).find(c => c.path.endsWith("/confirm"));
-ok(post && post.body.sendMessage === false && post.gemach === "wh-medical", "WA confirm posts sendMessage:false " + JSON.stringify(post?.body));
+ok(post && post.body.sendMessage === true && post.body.message === "Hi Rivka & co — ready?" && post.gemach === "wh-medical", "WA confirm: borrower has an email → the same message is emailed too " + JSON.stringify(post?.body));
 
 // Confirm — Email default for email-preferring borrower
 await page.evaluate(() => openConfirm(rec("req", "recREQEM000000002")));
@@ -151,7 +151,8 @@ await page.waitForTimeout(300);
 opened = await page.evaluate(() => window.__opened.splice(0));
 post = calls.slice(n).find(c => c.path.endsWith("/decline"));
 ok(opened.length === 1 && opened[0].how === "anchor" && opened[0].url.startsWith("sms:5165551111?&body=Sorry%20Sara."), "sms: link carries message " + JSON.stringify(opened));
-ok(post.body.sendMessage === false, "decline SMS sendMessage:false");
+ok(post.body.sendMessage === false, "decline SMS, no email on file → nothing emailed (sendMessage:false)");
+ok(!(await page.evaluate(() => document.getElementById("decline-send-by").textContent)).includes("copy is also emailed"), "no copy note without an email");
 
 // Decline — Don't send
 await page.evaluate(() => openDecline(rec("req", "recREQNP000000003")));
@@ -209,7 +210,9 @@ ok(await page.textContent("#pickup-instructions-send-btn") === "Open text messag
 n = calls.length;
 await page.click("#pickup-instructions-send-btn");
 opened = await page.evaluate(() => window.__opened.splice(0));
-ok(opened[0]?.url.startsWith("sms:5165554444?&body=") && calls.length === n, "pickup sms opened, no API call");
+await page.waitForTimeout(300);
+const pc = calls.slice(n).filter(c => c.path === "/admin/loans/recRES00000000001/pickup-email");
+ok(opened[0]?.url.startsWith("sms:5165554444?&body=") && pc.length === 1 && /pick up at 507 Walton Court/.test(pc[0].body.message), "pickup sms opened, and the same message emailed as a copy " + JSON.stringify(pc));
 await page.evaluate(() => switchTab("history"));
 await page.waitForTimeout(400);
 let allText = "";

@@ -3641,6 +3641,31 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
   resendFail = false;
   assert.equal(r.status, 422); assert.match((await r.json()).error, /didn't go through/);
   assert.equal(DB.Loans.find(l => l.id === "recLOANREMIND0003").fields["Reminder Sent At"], before, "failed email isn't recorded");
+  // WhatsApp / text from the admin's phone + an email copy for the borrower's records
+  const n2 = resendCalls().length;
+  r = await call("/admin/loans/recLOANREMIND0003/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "sms", emailCopy: true, message: "Hi Mail, text: please return it." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  const rj = await r.json();
+  assert.equal(rj.emailSent, true); assert.equal(rj.reminderSentVia, "text message");
+  const cm = resendCalls().slice(n2).filter(m => m.to[0] !== "alerts@example.com");
+  assert.equal(cm.length, 1, "copy emailed"); assert.equal(cm[0].to[0], "mail.person@example.com"); assert.match(cm[0].text, /^Hi Mail, text: please return it\./);
+  await Promise.allSettled(waits);
+  assert.ok(DB["tblC3PY7f5sXQDMJK"].some(l => l.fields["Loan ID"] === "L-953" && l.fields.Notes === "Sent by text message (copy emailed)"), "log says a copy was emailed");
+  // no email on file → the phone reminder is still noted, nothing emailed
+  const n3 = resendCalls().length;
+  r = await call("/admin/loans/recLOANREMIND0001/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "whatsapp", emailCopy: true, message: "Hi" }) });
+  assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, undefined);
+  assert.equal(resendCalls().length, n3, "no address, no email");
+  // copy fails → still noted (the WhatsApp / text already went), admin told
+  resendFail = true;
+  r = await call("/admin/loans/recLOANREMIND0003/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "whatsapp", emailCopy: true, message: "Hi again" }) });
+  resendFail = false;
+  assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, false);
+  assert.equal(DB.Loans.find(l => l.id === "recLOANREMIND0003").fields["Reminder Sent Via"], "WhatsApp");
+  // without emailCopy (an older admin page) nothing is emailed
+  const n4 = resendCalls().length;
+  await call("/admin/loans/recLOANREMIND0003/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "whatsapp", message: "Hi" }) });
+  assert.equal(resendCalls().length, n4);
   // Pickup details by email
   const n1 = resendCalls().length;
   r = await call("/admin/loans/recLOANREMIND0004/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ message: "Your Wheelchair is ready at 507 Walton Court." }) });
