@@ -108,7 +108,7 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.waitForSelector("#set-name");
   await page.waitForSelector("#set-testlink:not([hidden])");
   ok(await page.textContent("#set-test-url") === st.whmTest.testUrl && (await page.getAttribute("#open-test-btn", "href")) === st.whmTest.testUrl, "Settings shows the test link");
-  ok(decodeURIComponent(await page.getAttribute("#share-test-btn", "href")).includes(st.whmTest.testUrl), "test link WhatsApp share");
+  ok(!(await page.$("#share-test-btn")) && !(await page.$("#set-testlink .btn-whatsapp")), "no WhatsApp button on the test link");
   ok(/2 test requests so far/.test(await page.textContent("#set-testlink")), "test request count shown");
   await page.locator("#set-testlink").screenshot({ path: "shot-r4-settings-testlink.png" });
   await page.click("#set-testlink button:has-text('Copy')");

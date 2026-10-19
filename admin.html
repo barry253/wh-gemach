@@ -6636,14 +6636,12 @@
           <code id="set-test-url"></code>
           <button class="btn btn-ghost btn-sm" type="button" onclick="copyText(document.getElementById('set-test-url').textContent, 'Test link copied')">Copy</button>
           <a class="btn btn-ghost btn-sm" id="open-test-btn" target="_blank" rel="noopener">Open ↗</a>
-          <a class="btn btn-whatsapp btn-sm" id="share-test-btn" target="_blank" rel="noopener">Share on WhatsApp</a>
         </div>
         <div class="muted-small" style="margin-top:0.4rem">Anyone with this link can open your page and send requests before it's open to the public — try it yourself or send it to a friend. These requests are marked <b>Test</b> and aren't real loans. The link stops working once the gemach is Live.</div>${counts}`
       : `<label>Test requests</label>${counts}`;
     if (d.testUrl) {
       document.getElementById("set-test-url").textContent = d.testUrl;
       document.getElementById("open-test-btn").href = d.testUrl;
-      document.getElementById("share-test-btn").href = "https://wa.me/?text=" + encodeURIComponent(`Can you try sending a test request to ${g.name || "our gemach"}? It isn't a real loan: ${d.testUrl}`);
     }
     box.hidden = false;
   }
