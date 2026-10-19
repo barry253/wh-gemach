@@ -3,7 +3,7 @@ import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId } from "./airtabl
 import { cacheKey, cachedJson } from "./cache.js";
 import { LEGACY_SLUG, REC_RE, SLUG_RE, T } from "./config.js";
 import { nyToday } from "./dates.js";
-import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byOrderThenName, listActiveGemachs, loadGemachBySlug, nonBlank } from "./gemachs.js";
+import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, byName, listActiveGemachs, loadGemachBySlug, nonBlank } from "./gemachs.js";
 import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
 import { publicTypeExtras } from "./extras.js";
@@ -240,22 +240,18 @@ async function handlePublicMeta(db, env, ctx, slug, itemId = null) {
   });
 }
 
-/** Active Product Categories, sorted by Display Order (blank last) then name. */
+/** Active Product Categories, A–Z by name. */
 async function loadCategories(db) {
-  const recs = await db.listAll(T.PRODUCT_CATEGORIES, { where: [Q.isTrue("Active")], fields: ["Name", "Icon", "Keywords", "Display Order", "Active"] });
+  const recs = await db.listAll(T.PRODUCT_CATEGORIES, { where: [Q.isTrue("Active")], fields: ["Name", "Icon", "Keywords", "Active"] });
   return recs
     .filter(r => r.fields.Active && r.fields.Name)
-    .map(r => {
-      const order = Number(r.fields["Display Order"]);
-      return {
-        id: r.id,
-        name: r.fields.Name,
-        icon: nonBlank(r.fields.Icon),
-        keywords: String(r.fields.Keywords || "").split(/[,\n]/).map(k => k.trim()).filter(Boolean),
-        displayOrder: r.fields["Display Order"] != null && Number.isFinite(order) ? order : null,
-      };
-    })
-    .sort(byOrderThenName);
+    .map(r => ({
+      id: r.id,
+      name: r.fields.Name,
+      icon: nonBlank(r.fields.Icon),
+      keywords: String(r.fields.Keywords || "").split(/[,\n]/).map(k => k.trim()).filter(Boolean),
+    }))
+    .sort(byName);
 }
 
 // Legacy: exact shape of the original /inventory, for wh-medical only.

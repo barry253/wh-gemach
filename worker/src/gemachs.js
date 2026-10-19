@@ -119,6 +119,11 @@ function loanDays(v) {
   return Number.isInteger(n) && n >= 1 && n <= 365 ? n : null;
 }
 
+/** A–Z by name (case-insensitive; numbers in names compare as numbers). Product categories and gemach types. */
+function byName(a, b) {
+  return String(a.name || "").localeCompare(String(b.name || ""), "en", { sensitivity: "base", numeric: true });
+}
+
 /** Display Order ascending (blank last), then name. */
 function byOrderThenName(a, b) {
   const ao = a.displayOrder, bo = b.displayOrder;
@@ -222,4 +227,4 @@ async function isLiveNetworkAdminMemo(db, email) {
   return ok;
 }
 
-export { GEMACH_FIELDS, getGemachRecord, ITEM_VIEWS, gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo, liveAdminMemo, fetchLiveAdmin, forgetLiveAdmin, forgetAllLiveAdmins };
+export { GEMACH_FIELDS, getGemachRecord, ITEM_VIEWS, gemachMemo, nonBlank, GEMACH_MODES, CONTACT_METHODS, REQUEST_STYLES, HEX_RE, DEFAULT_THEME, DEFAULT_EVENT_LABEL, selName, clampInt, gemachFromRecord, byName, byOrderThenName, loadGemachBySlug, listActiveGemachs, listAllGemachs, gemachRef, resolveAdminGemach, liveNetMemo, isLiveNetworkAdminMemo, liveAdminMemo, fetchLiveAdmin, forgetLiveAdmin, forgetAllLiveAdmins };

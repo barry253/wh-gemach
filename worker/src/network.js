@@ -4,7 +4,7 @@ import { sendAlert } from "./alerts.js";
 import { purgePublicCache } from "./cache.js";
 import { DEFAULT_ADMIN_URL, LEGACY_SLUG, NETWORK_ADMIN_ROLE, REC_RE, SLUG_RE, T } from "./config.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
-import { DEFAULT_THEME, GEMACH_MODES, byOrderThenName, gemachFromRecord, gemachMemo, gemachRef, isLiveNetworkAdminMemo, liveNetMemo, selName, forgetLiveAdmin } from "./gemachs.js";
+import { DEFAULT_THEME, GEMACH_MODES, byName, gemachFromRecord, gemachMemo, gemachRef, isLiveNetworkAdminMemo, liveNetMemo, selName, forgetLiveAdmin } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { netListSearches } from "./search.js";
 import { handleNetworkAnalytics } from "./analytics.js";
@@ -14,13 +14,13 @@ import { handleRemindersPreview } from "./reminders.js";
 
 // ─── Network admin (role "Network Admin", re-checked live) ────────────────────
 
-const GEMACH_CATEGORIES = ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"]; // starting list; the live list is the Gemach Types table
+const GEMACH_CATEGORIES = ["Baby", "Books", "Clothing", "Food", "Medical", "Other", "Wedding & Events"]; // starting list (A–Z); the live list is the Gemach Types table
 
 /** The gemach types in use: the Gemach Types table, or the starting list when it is empty / missing. */
 async function loadGemachTypeNames(db) {
   try {
     const recs = await db.listAll(T.GEMACH_TYPES, {});
-    const names = recs.sort(byOrderThenName).map(r => r.fields.Name).filter(Boolean);
+    const names = recs.map(r => ({ name: r.fields.Name })).filter(r => r.name).sort(byName).map(r => r.name);
     if (names.length) return names;
   } catch (e) { if (!(e instanceof AirtableError)) throw e; }
   return GEMACH_CATEGORIES;
@@ -131,7 +131,7 @@ async function netOverview({ db, user }) {
   return json({
     gemachs: await netGemachRows(db, { gemachs, admins }),
     admins: admins.map(r => adminRow(r, idx)).sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email)),
-    categories: cats.map(categoryRow).sort(byOrderThenName),
+    categories: cats.map(categoryRow).sort(byName),
   });
 }
 
@@ -405,21 +405,19 @@ async function netUpdateAdmin(c, id) {
   return json(adminRow(updated, idx));
 }
 
-// Product categories
+// Product categories (listed A–Z everywhere; the old Display Order column is no longer read or written)
 function categoryRow(r) {
   const f = r.fields;
-  const order = Number(f["Display Order"]);
   return {
     id: r.id, name: f.Name || "", icon: f.Icon || "",
     keywords: String(f.Keywords || "").split(/[,\n]/).map(k => k.trim()).filter(Boolean),
-    displayOrder: f["Display Order"] != null && Number.isFinite(order) ? order : null,
     active: !!f.Active, itemTypeCount: (f["Item Types"] || []).length,
   };
 }
 
 async function netListCategories({ db }) {
   const recs = await db.listAll(T.PRODUCT_CATEGORIES, {});
-  return json(recs.map(categoryRow).sort(byOrderThenName));
+  return json(recs.map(categoryRow).sort(byName));
 }
 
 async function validateCategoryInput(db, body, { partial, selfId = null }) {
@@ -443,11 +441,6 @@ async function validateCategoryInput(db, body, { partial, selfId = null }) {
     const kw = [...new Set(list.map(k => k.trim()).filter(Boolean))].join(", ");
     if (kw.length > 1000) return { error: "Keywords are too long (max 1000 characters)." };
     f["Keywords"] = kw || null;
-  }
-  if (body.displayOrder !== undefined) {
-    if (body.displayOrder === null || body.displayOrder === "") f["Display Order"] = null;
-    else if (!Number.isFinite(Number(body.displayOrder))) return { error: "Display order must be a number." };
-    else f["Display Order"] = Number(body.displayOrder);
   }
   if (partial && body.active !== undefined) {
     if (typeof body.active !== "boolean") return { error: "Active must be true or false." };
@@ -494,13 +487,13 @@ async function netUpdateCategory(c, id) {
   return json(categoryRow(rec));
 }
 
-// Gemach types (the label on each gemach card)
+// Gemach types (the label on each gemach card), listed A–Z; the old Display Order column is no longer read or written
 async function typeRows(db) {
   const [types, gemachs] = await Promise.all([db.listAll(T.GEMACH_TYPES, {}), db.listAll(T.GEMACHS, { fields: ["Category", "Slug"] })]);
   const used = {};
   for (const g of gemachs) { const k = selName(g.fields.Category); if (k) used[k] = (used[k] || 0) + 1; }
   return {
-    rows: types.map(r => ({ id: r.id, name: r.fields.Name || "", displayOrder: typeof r.fields["Display Order"] === "number" ? r.fields["Display Order"] : null, gemachCount: used[r.fields.Name] || 0 })).sort(byOrderThenName),
+    rows: types.map(r => ({ id: r.id, name: r.fields.Name || "", gemachCount: used[r.fields.Name] || 0 })).sort(byName),
     gemachs,
   };
 }
@@ -508,7 +501,7 @@ async function typeRows(db) {
 async function netListGemachTypes({ db }) {
   const { rows } = await typeRows(db);
   if (!rows.length) { // first use: start from the standard list so every label can be edited
-    for (const [i, name] of GEMACH_CATEGORIES.entries()) await db.create(T.GEMACH_TYPES, { Name: name, "Display Order": (i + 1) * 10 });
+    for (const name of GEMACH_CATEGORIES) await db.create(T.GEMACH_TYPES, { Name: name });
     return json((await typeRows(db)).rows);
   }
   return json(rows);
@@ -530,10 +523,8 @@ async function netCreateGemachType(c) {
   if (error) return json({ error }, status || 400);
   const existing = await db.listAll(T.GEMACH_TYPES, {});
   if (!existing.length) await netListGemachTypes(c); // seed the standard list first so it isn't lost
-  const all = await db.listAll(T.GEMACH_TYPES, {});
-  const order = Math.max(0, ...all.map(r => Number(r.fields["Display Order"]) || 0)) + 10;
-  const rec = await db.create(T.GEMACH_TYPES, { Name: name, "Display Order": order });
-  return json({ id: rec.id, name, displayOrder: order, gemachCount: 0 }, 201);
+  const rec = await db.create(T.GEMACH_TYPES, { Name: name });
+  return json({ id: rec.id, name, gemachCount: 0 }, 201);
 }
 
 async function netUpdateGemachType(c, id) {
@@ -548,11 +539,6 @@ async function netUpdateGemachType(c, id) {
     const { name, error, status } = await typeNameFrom(db, body, id);
     if (error) return json({ error }, status || 400);
     if (name !== rec.fields.Name) { f["Name"] = name; renamed = name; }
-  }
-  if (body.displayOrder !== undefined) {
-    if (body.displayOrder === null || body.displayOrder === "") f["Display Order"] = null;
-    else if (!Number.isFinite(Number(body.displayOrder))) return json({ error: "Display order must be a number." }, 400);
-    else f["Display Order"] = Number(body.displayOrder);
   }
   if (!Object.keys(f).length) return json({ error: "Nothing to update." }, 400);
   await db.update(T.GEMACH_TYPES, id, f);

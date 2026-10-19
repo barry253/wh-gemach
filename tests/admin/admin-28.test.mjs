@@ -50,10 +50,10 @@ await page.click(".nav-tab:has-text('Network')");
 await page.click("#net-tab-gemachs");
 await page.click("#ng-row-recA button:has-text('Edit')");
 const state = () => page.$$eval("#eg-cats .attr-chip", e => e.map(x => x.dataset.cat + ":" + x.getAttribute("aria-pressed")).join(","));
-ok(await state() === "recC1:true,recC2:false", "active categories shown, current one selected, off ones hidden: " + await state());
+ok(await state() === "recC2:false,recC1:true", "active categories shown A–Z, current one selected, off ones hidden: " + await state());
 await page.click("#eg-cats [data-cat=recC2]");
 await page.click("#eg-cats [data-cat=recC1]");
-ok(await state() === "recC1:false,recC2:true", "chips toggle");
+ok(await state() === "recC2:true,recC1:false", "chips toggle");
 await page.click("#eg-cats [data-cat=recC1]");
 await page.screenshot({ path: "shot-network-edit-gemach-cats.png" });
 await page.click("#eg-submit-btn");
@@ -62,7 +62,7 @@ const pg = calls.filter(c => c.method === "PATCH" && c.path === "/admin/network/
 ok(pg && JSON.stringify(pg.body.browseCategoryIds.slice().sort()) === '["recC1","recC2"]' && Object.keys(pg.body).length === 1, "only the categories sent: " + JSON.stringify(pg?.body));
 // reopen: saved selection is remembered; no change -> no request
 await page.click("#ng-row-recA button:has-text('Edit')");
-ok(await state() === "recC1:true,recC2:true", "reopened with saved selection: " + await state());
+ok(await state() === "recC2:true,recC1:true", "reopened with saved selection: " + await state());
 const n = calls.filter(c => c.method === "PATCH").length;
 await page.click("#eg-submit-btn");
 await page.waitForTimeout(300);

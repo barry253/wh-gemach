@@ -1914,17 +1914,9 @@
       <label for="nc-keywords">Search keywords</label>
       <textarea id="nc-keywords" rows="2" style="min-height:0" placeholder="comma-separated: wheel chair, transport chair"></textarea>
     </div>
-    <div class="settings-grid2">
-      <div class="form-group">
-        <label for="nc-order">Display order</label>
-        <input type="number" id="nc-order" step="1" />
-      </div>
-      <div class="form-group" style="display:flex;align-items:flex-end">
-        <div class="checkbox-row" style="margin:0 0 0.6rem">
-          <input type="checkbox" id="nc-active" checked />
-          <label for="nc-active">Active</label>
-        </div>
-      </div>
+    <div class="checkbox-row" style="margin:0 0 0.9rem">
+      <input type="checkbox" id="nc-active" checked />
+      <label for="nc-active">Active</label>
     </div>
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('net-category-sheet')">Cancel</button>
@@ -6754,9 +6746,11 @@
   }
 
   // ── Network (Network Admins only) ─────────────────────────────────────────
-  const DEFAULT_GEMACH_TYPES = ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"];
+  const DEFAULT_GEMACH_TYPES = ["Baby", "Books", "Clothing", "Food", "Medical", "Other", "Wedding & Events"];
+  // Product categories and gemach types are listed A–Z (numbers in names compare as numbers).
+  const byNameAZ = (x, y) => String(x.name || "").localeCompare(String(y.name || ""), "en", { sensitivity: "base", numeric: true });
   const NET = { gemachs: [], admins: [], categories: [], types: [] };
-  const typeNames = () => (NET.types.length ? NET.types.map(t => t.name) : DEFAULT_GEMACH_TYPES);
+  const typeNames = () => (NET.types.length ? NET.types.slice().sort(byNameAZ).map(t => t.name) : DEFAULT_GEMACH_TYPES);
   const netStore = { gemach: new Map(), admin: new Map(), category: new Map() };
 
   function slugifyName(name) {
@@ -7397,6 +7391,7 @@
 
   function renderNetCategories() {
     netStore.category.clear();
+    NET.categories.sort(byNameAZ);
     const el = document.getElementById("net-categories");
     if (!NET.categories.length) { el.innerHTML = '<div class="empty-state">No categories yet</div>'; return; }
     el.innerHTML = NET.categories.map(c => {
@@ -7405,7 +7400,7 @@
         <div class="net-row-head">
           <div style="min-width:0">
             <div class="card-title">${esc(c.icon || "▫️")} ${esc(c.name)}${c.active ? "" : ' <span class="tag tag-amber">Off</span>'}</div>
-            <div class="card-id">Order ${esc(c.displayOrder ?? "—")} · ${esc(c.itemTypeCount ?? 0)} item type${c.itemTypeCount === 1 ? "" : "s"}</div>
+            <div class="card-id">${esc(c.itemTypeCount ?? 0)} item type${c.itemTypeCount === 1 ? "" : "s"}</div>
           </div>
           <div style="display:flex;gap:0.4rem"><button class="btn btn-ghost btn-sm" onclick="openCategorySheet('${id}')">Edit</button>
           <button class="btn btn-ghost btn-sm" onclick="deleteCategory('${id}')">Delete</button></div>
@@ -7420,6 +7415,7 @@
     const el = document.getElementById("net-types");
     if (!el) return;
     if (!NET.types.length) { el.innerHTML = '<div class="empty-state">Using the standard types. Add or rename one to customize.</div>'; return; }
+    NET.types.sort(byNameAZ);
     el.innerHTML = NET.types.map(t => {
       const id = safeId(t.id);
       return `<div class="card net-row" id="nt-row-${id}"><div class="net-row-head">
@@ -7490,20 +7486,16 @@
     document.getElementById("nc-icon").value = c?.icon || "";
     document.getElementById("nc-name").value = c?.name || "";
     document.getElementById("nc-keywords").value = (c?.keywords || []).join(", ");
-    const maxOrder = Math.max(0, ...NET.categories.map(x => x.displayOrder || 0));
-    document.getElementById("nc-order").value = c ? (c.displayOrder ?? "") : maxOrder + 10;
     document.getElementById("nc-active").checked = c ? !!c.active : true;
     document.getElementById("nc-submit-btn").onclick = () => saveCategory(c);
     openSheet("net-category-sheet");
   }
 
   async function saveCategory(c) {
-    const orderRaw = document.getElementById("nc-order").value.trim();
     const body = {
       name: document.getElementById("nc-name").value.trim(),
       icon: document.getElementById("nc-icon").value.trim(),
       keywords: document.getElementById("nc-keywords").value,
-      displayOrder: orderRaw === "" ? null : Number(orderRaw),
       active: document.getElementById("nc-active").checked,
     };
     if (!body.name) { showToast("Name is required"); return; }
@@ -7514,7 +7506,6 @@
       if (!res) return;
       if (res.error) { showToast(res.error); return; }
       NET.categories = c ? NET.categories.map(x => (x.id === res.id ? res : x)) : [...NET.categories, res];
-      NET.categories.sort((x, y) => ((x.displayOrder ?? 1e9) - (y.displayOrder ?? 1e9)) || x.name.localeCompare(y.name));
       renderNetCategories();
       closeSheet("net-category-sheet");
       showToast(c ? "Category updated" : "Category added");

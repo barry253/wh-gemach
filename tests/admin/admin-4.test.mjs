@@ -320,7 +320,11 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.click("#nc-submit-btn");
   await page.waitForFunction(() => document.body.textContent.includes("Category added"));
   const cb = reqs.find(r => r.method === "POST" && r.path === "/admin/network/categories").body;
-  ok(cb.name === "Cribs" && cb.icon === "🛏️" && cb.keywords === "crib, bassinet" && cb.displayOrder === 30 && cb.active === true, "add category body: " + JSON.stringify(cb));
+  ok(cb.name === "Cribs" && cb.icon === "🛏️" && cb.keywords === "crib, bassinet" && !("displayOrder" in cb) && cb.active === true, "add category body: " + JSON.stringify(cb));
+  ok(!(await page.$("#nc-order")), "no Display order field on categories");
+  await page.waitForSelector("#nc-row-recCAT9"); // the tab's background refresh can land after the add
+  { const titles = await page.$$eval("#net-categories .net-row .card-title", e => e.map(x => x.textContent));
+    ok(["Cribs", "Old", "Walkers", "Wheelchairs"].every((name, i) => (titles[i] || "").includes(name)) && titles.length === 4, "categories listed A–Z: " + titles.join(" | ")); }
   await page.click("#net-tab-admins");
   await page.screenshot({ path: "shot-r4-network-admins.png" });
   await page.click("#net-tab-categories");

@@ -53,10 +53,11 @@ await page.fill("#nt-name", "Home & Appliances");
 await page.click("#nt-submit-btn");
 await page.waitForFunction(() => /Home & Appliances/.test(document.getElementById("net-types").textContent));
 ok(calls.some(c => c.m === "POST" && c.p === "/admin/network/gemach-types" && c.body.name === "Home & Appliances"), "add sends the name");
+ok(JSON.stringify(await page.$$eval("#net-types .card-title", e => e.map(x => x.textContent.trim()))) === JSON.stringify(["Home & Appliances", "Medical", "Other"]), "types listed A–Z");
 // new type shows up in the gemach list dropdown; give A/C that type
 await page.click("#net-tab-gemachs");
 const opts = await page.$$eval("#ng-row-recB select[aria-label=Category] option", e => e.map(x => x.textContent));
-ok(opts.includes("Home & Appliances"), "new type offered on each gemach: " + opts.join(","));
+ok(opts.join(",") === "Home & Appliances,Medical,Other", "type dropdown A–Z, new type included: " + opts.join(","));
 await page.selectOption("#ng-row-recB select[aria-label=Category]", "Home & Appliances");
 await page.waitForFunction(() => document.querySelector("#ng-row-recB select[aria-label=Category]").value === "Home & Appliances");
 ok(calls.some(c => c.m === "PATCH" && c.p === "/admin/network/gemachs/recB" && c.body.category === "Home & Appliances"), "gemach saved with the new type");

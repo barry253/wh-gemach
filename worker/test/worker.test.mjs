@@ -459,10 +459,9 @@ await t("v2 directory: categories (active, sorted, keywords), gemach order, mode
   const txt = await r.text();
   for (const secret of ["SECRET ADDR", "SECRET INSTR", "SECRET TPL", "pickupAddress", "pickupInstructions", "templates"]) assert.ok(!txt.includes(secret), secret);
   const d = JSON.parse(txt);
-  assert.deepEqual(d.categories.map(c => c.name), ["Wheelchairs", "Walkers", "Zebra"]);
-  assert.deepEqual(d.categories[0], { id: "recCAT0000000000A", name: "Wheelchairs", icon: "🦽", keywords: ["wheel chair", "transport chair"], displayOrder: 10 });
-  assert.deepEqual(d.categories[1].keywords, ["rollator", "walking frame"]);
-  assert.equal(d.categories[2].displayOrder, null);
+  assert.deepEqual(d.categories.map(c => c.name), ["Walkers", "Wheelchairs", "Zebra"], "A–Z (Display Order ignored)");
+  assert.deepEqual(d.categories[1], { id: "recCAT0000000000A", name: "Wheelchairs", icon: "🦽", keywords: ["wheel chair", "transport chair"] });
+  assert.deepEqual(d.categories[0].keywords, ["rollator", "walking frame"]);
   assert.deepEqual(d.gemachs.map(g => g.slug), [A.slug, C.slug, B.slug], "displayOrder then blank last");
   const a = d.gemachs[0];
   assert.equal(a.mode, "Full"); assert.equal(a.tagline, "Mobility equipment"); assert.equal(a.displayOrder, 10);
@@ -2006,12 +2005,12 @@ await t("r4 categories: list/create/patch with validation and cache purge", asyn
     assert.equal((await req(tokNet, "POST", "/admin/network/categories", { name: "" })).status, 400);
     assert.equal((await req(tokNet, "POST", "/admin/network/categories", { name: "wheelchairs" })).status, 409, "case-insensitive dup");
     assert.equal((await req(tokNet, "POST", "/admin/network/categories", { name: "Cribs", icon: "not an emoji at all" })).status, 400);
-    assert.equal((await req(tokNet, "POST", "/admin/network/categories", { name: "Cribs", displayOrder: "abc" })).status, 400);
     const r = await req(tokNet, "POST", "/admin/network/categories", { name: " Cribs ", icon: "🛏️", keywords: "crib, bassinet,, pack n play", displayOrder: 30 });
     assert.equal(r.status, 201);
     const cat = await r.json();
-    assert.deepEqual({ name: cat.name, icon: cat.icon, keywords: cat.keywords, displayOrder: cat.displayOrder, active: cat.active },
-      { name: "Cribs", icon: "🛏️", keywords: ["crib", "bassinet", "pack n play"], displayOrder: 30, active: true });
+    assert.deepEqual({ name: cat.name, icon: cat.icon, keywords: cat.keywords, active: cat.active },
+      { name: "Cribs", icon: "🛏️", keywords: ["crib", "bassinet", "pack n play"], active: true });
+    assert.ok(!("displayOrder" in cat), "no display order (categories are A–Z; an old admin page sending one is ignored)");
     await Promise.allSettled(waits);
     assert.ok(deleted.some(u => u.endsWith("/directory")) && deleted.some(u => u.endsWith("/gemach/wh-medical")));
     const p = await (await req(tokNet, "PATCH", `/admin/network/categories/${cat.id}`, { active: false, keywords: ["cot"] })).json();
@@ -2028,7 +2027,7 @@ await t("r4 item types: categoryId in GET, validated on POST/PATCH ('' clears, i
   assert.equal(types.find(x => x.id === "recTYPEA000000001").categoryId, "recCAT0000000000A");
   assert.equal(types.find(x => x.id === "recTYPEA000000002").categoryId, null);
   const cats = await (await call("/admin/catalog/categories", { headers: H })).json();
-  assert.deepEqual(cats.map(c => c.name), ["Wheelchairs", "Walkers", "Zebra"], "active only, sorted (Cribs deactivated)");
+  assert.deepEqual(cats.map(c => c.name), ["Walkers", "Wheelchairs", "Zebra"], "active only, A–Z (Cribs deactivated)");
   const patch = (id, b, h = H) => call(`/admin/catalog/item-types/${id}`, { method: "PATCH", headers: h, body: JSON.stringify(b) });
   assert.equal((await patch("recTYPEA000000002", { categoryId: "recCAT0000000000D" })).status, 400, "inactive");
   assert.equal((await patch("recTYPEA000000002", { categoryId: globalThis.__catCribs })).status, 400, "deactivated");
@@ -2141,13 +2140,15 @@ await t("network: home page categories on a gemach (listed, saved, validated, re
 await t("network: gemach types (starts from the standard list, add, rename moves gemachs, delete only when unused, new type usable)", async () => {
   const api = (m, path, b) => req(tokNet, m, `/admin/network/gemach-types${path}`, b);
   const list = await (await api("GET", "")).json();
-  assert.deepEqual(list.map(x => x.name), ["Medical", "Clothing", "Baby", "Books", "Food", "Wedding & Events", "Other"], "seeded in order");
+  assert.deepEqual(list.map(x => x.name), ["Baby", "Books", "Clothing", "Food", "Medical", "Other", "Wedding & Events"], "seeded, listed A–Z");
+  assert.ok(list.every(x => !("displayOrder" in x)), "no display order on types");
   assert.equal(list.find(x => x.name === "Baby").gemachCount, 1, "counts gemachs using it (Hidden Gemach)");
   assert.equal((await (await api("GET", "")).json()).length, 7, "seeding happens once");
   assert.equal((await api("POST", "", { name: "  " })).status, 400);
   assert.equal((await api("POST", "", { name: "baby" })).status, 409, "duplicate (case-insensitive)");
   const mk = await api("POST", "", { name: "Home & Appliances" });
   assert.equal(mk.status, 201);
+  assert.deepEqual((await (await api("GET", "")).json()).map(x => x.name).slice(3, 6), ["Food", "Home & Appliances", "Medical"], "a new type lands in A–Z place");
   const home = await mk.json();
   assert.equal(home.gemachCount, 0);
   // a gemach can be given the new type, and unknown types are still refused
