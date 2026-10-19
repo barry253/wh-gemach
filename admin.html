@@ -549,6 +549,13 @@
     }
 
     .stat-card:hover { border-color: var(--navy); }
+    button.stat-card { display: block; width: 100%; font: inherit; color: inherit; }
+    button.stat-card .stat-number, button.stat-card .stat-label { display: block; }
+    .stat-card:focus-visible, .row-open:focus-visible, button.inventory-item:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+    /* The part of a loan / reservation row that opens its actions: a real button so the keyboard can reach it */
+    .row-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0; border: 0; background: none;
+      font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+    .grp-open { display: inline-flex; flex: 0 1 auto; gap: 0.5rem; }
 
     .stat-number {
       font-family: 'DM Serif Display', serif;
@@ -1083,6 +1090,7 @@
     }
 
     .inventory-item {
+      width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer;
       background: var(--white);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -1367,7 +1375,7 @@
       data-shape="rectangular"
       data-logo_alignment="left">
     </div>
-    <p class="login-error" id="login-error"></p>
+    <p class="login-error" id="login-error" role="alert"></p>
   </div>
 </div>
 
@@ -1408,22 +1416,22 @@
     <div class="screen active" id="screen-dashboard">
       <div class="quick-actions" id="quick-actions" role="group" aria-label="Quick actions"></div>
       <div class="stat-grid" id="stat-grid">
-        <div class="stat-card red" onclick="switchTab('requests')">
-          <div class="stat-number" id="stat-new-requests">—</div>
-          <div class="stat-label">New requests</div>
-        </div>
-        <div class="stat-card amber" onclick="switchTab('loans')">
-          <div class="stat-number" id="stat-overdue">—</div>
-          <div class="stat-label">Overdue loans</div>
-        </div>
-        <div class="stat-card navy" onclick="switchTab('loans')">
-          <div class="stat-number" id="stat-active">—</div>
-          <div class="stat-label">Active loans</div>
-        </div>
-        <div class="stat-card green" onclick="switchTab('reservations')">
-          <div class="stat-number" id="stat-reservations">—</div>
-          <div class="stat-label">Reservations</div>
-        </div>
+        <button type="button" class="stat-card red" onclick="switchTab('requests')">
+          <span class="stat-number" id="stat-new-requests">—</span>
+          <span class="stat-label">New requests</span>
+        </button>
+        <button type="button" class="stat-card amber" onclick="switchTab('loans')">
+          <span class="stat-number" id="stat-overdue">—</span>
+          <span class="stat-label">Overdue loans</span>
+        </button>
+        <button type="button" class="stat-card navy" onclick="switchTab('loans')">
+          <span class="stat-number" id="stat-active">—</span>
+          <span class="stat-label">Active loans</span>
+        </button>
+        <button type="button" class="stat-card green" onclick="switchTab('reservations')">
+          <span class="stat-number" id="stat-reservations">—</span>
+          <span class="stat-label">Reservations</span>
+        </button>
       </div>
 
       <div class="stats-head">
@@ -2016,7 +2024,7 @@
       </div>
       <div class="form-group" id="checkout-send-by"></div>
       <p class="co-summary" id="checkout-summary"></p>
-      <p class="login-error" id="checkout-error" style="text-align:left"></p>
+      <p class="login-error" id="checkout-error" role="alert" style="text-align:left"></p>
       <div class="sheet-actions">
         <button class="btn btn-ghost" onclick="closeSheet('checkout-sheet')">Cancel</button>
         <button class="btn btn-primary" id="checkout-submit-btn">Lend</button>
@@ -2041,7 +2049,7 @@
       </div>
       <div class="form-group" id="nb-send-by"></div>
       <p class="co-summary" id="nb-summary"></p>
-      <p class="login-error" id="nb-error" style="text-align:left"></p>
+      <p class="login-error" id="nb-error" role="alert" style="text-align:left"></p>
       <div class="sheet-actions">
         <button class="btn btn-ghost" onclick="closeSheet('newbk-sheet')">Cancel</button>
         <button class="btn btn-primary" id="nb-save-btn">Save</button>
@@ -2061,12 +2069,12 @@
     <div class="form-group" id="pickup-item-group" style="margin-top:0.75rem;display:none">
       <label for="pickup-item">Which item is going out?</label>
       <select id="pickup-item"></select>
-      <p class="login-error" id="pickup-item-error" style="text-align:left"></p>
+      <p class="login-error" id="pickup-item-error" role="alert" style="text-align:left"></p>
     </div>
     <div class="form-group" id="pickup-qty-group" style="margin-top:0.75rem;display:none">
       <label for="pickup-qty" id="pickup-qty-label">How many are going out?</label>
       <input type="number" id="pickup-qty" min="1" step="1" inputmode="numeric" style="max-width:8rem" />
-      <p class="login-error" id="pickup-qty-error" style="text-align:left"></p>
+      <p class="login-error" id="pickup-qty-error" role="alert" style="text-align:left"></p>
     </div>
     <div class="form-group" style="margin-top:0.75rem">
       <label>Date picked up</label>
@@ -2246,7 +2254,7 @@
         <textarea id="bk-message" rows="5"></textarea>
       </div>
       <div class="form-group" id="bk-send-by"></div>
-      <p class="login-error" id="bk-error" style="text-align:left"></p>
+      <p class="login-error" id="bk-error" role="alert" style="text-align:left"></p>
       <div class="sheet-actions">
         <button class="btn btn-ghost" onclick="closeSheet('booking-sheet')">Close</button>
         <button class="btn btn-primary" id="bk-save-btn">Save changes</button>
@@ -3688,19 +3696,21 @@
     return `
         <div class="loan-row ${cls}" id="loan-row-${lid}" onclick="toggleLoanActions('${lid}')">
           ${rowThumb(l.photo, l.itemTypeName, l.photos)}
-          <div class="loan-row-main">
+          <button type="button" class="row-open" aria-expanded="false" aria-controls="loan-panel-${lid}">
+          <span class="loan-row-main">
             ${lead ? "" : `<span class="loan-row-name">${esc(l.borrowerName)}</span>`}
             <span class="loan-row-item${lead ? " lead" : ""}">${esc(l.itemTypeName || "")}</span>
             ${l.itemId ? `<span class="loan-row-code">${esc(l.itemId)}</span>` : ""}
             ${l.isQuantity ? `<span class="loan-row-code">× ${esc(l.quantity)}</span>` : ""}
-            ${hasNote ? `<span class="note-indicator" title="Has notes">💬</span>` : ""}
+            ${hasNote ? `<span class="note-indicator" title="Has notes" role="img" aria-label="Has notes">💬</span>` : ""}
             ${l.readyToReturnAt ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
             ${l.reminderSentAt ? `<span class="tag tag-amber loan-row-tag" title="Return reminder ${esc(reminderVia(l.reminderSentVia))} ${esc(timeAgo(l.reminderSentAt))}">⏰ Reminded ${esc(timeAgo(l.reminderSentAt))}</span>` : ""}
-          </div>
+          </span>
           <span class="loan-row-side">
             <span class="loan-row-date" title="Date borrowed${due ? " · due back" : ""}">Out ${esc(fmt(l.dateBorrowed) || "—")}${due ? `<br>Due ${esc(due)}` : ""}</span>
             ${tag}
           </span>
+          </button>
         </div>
         <div class="loan-actions-panel" id="loan-panel-${lid}">
           ${l.readyToReturnAt ? `<div class="loan-notes request-note"><span class="note-label">Ready to return:</span> the borrower let us know ${esc(timeAgo(l.readyToReturnAt))} — arrange the return.</div>` : ""}
@@ -3779,9 +3789,11 @@
     const isOpen = panel.classList.contains("open");
     document.querySelectorAll(".loan-actions-panel.open").forEach(p => p.classList.remove("open"));
     document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
+    document.querySelectorAll(".loan-row .row-open[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
     if (!isOpen) {
       panel.classList.add("open");
       row.style.borderRadius = "8px 8px 0 0";
+      row.querySelector(".row-open")?.setAttribute("aria-expanded", "true");
     }
   }
 
@@ -5097,15 +5109,17 @@
       return `
         <div class="loan-row" id="res-row-${rid}" onclick="toggleResActions('${rid}')">
           ${rowThumb(r.photo, r.itemTypeName, r.photos)}
-          <div class="loan-row-main">
+          <button type="button" class="row-open" aria-expanded="false" aria-controls="res-panel-${rid}">
+          <span class="loan-row-main">
             <span class="loan-row-name">${esc(r.borrowerName)}</span>
             <span class="loan-row-item">${esc(r.itemTypeName || "Item TBD")}</span>
             ${r.itemId ? `<span class="loan-row-code">${esc(r.itemId)}</span>` : ""}
             ${r.isQuantity ? `<span class="loan-row-code">× ${esc(r.quantity)}</span>` : ""}
             ${r.isAddon ? `<span class="loan-row-code">× ${esc(r.quantity)}${r.price != null ? ` · ${esc(fmtMoney(r.price * r.quantity))}` : ""}</span>` : ""}
-          </div>
+          </span>
           <span class="loan-row-date">${esc(dates)}</span>
           ${r.isAddon ? `<span class="tag tag-addon loan-row-tag">Add-on</span>` : `<span class="tag tag-navy loan-row-tag">Reserved</span>`}
+          </button>
         </div>
         <div class="loan-actions-panel" id="res-panel-${rid}">
           ${r.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(r.requestNote)}</div>` : ""}
@@ -5127,9 +5141,11 @@
     const isOpen = panel.classList.contains("open");
     document.querySelectorAll(".loan-actions-panel.open").forEach(p => p.classList.remove("open"));
     document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
+    document.querySelectorAll(".loan-row .row-open[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
     if (!isOpen) {
       panel.classList.add("open");
       row.style.borderRadius = "8px 8px 0 0";
+      row.querySelector(".row-open")?.setAttribute("aria-expanded", "true");
     }
   }
 
@@ -5441,34 +5457,34 @@
       const itemsHtml = items.length ? items.map(item => {
           const iid = keep("item", item);
           return `
-          <div class="inventory-item" style="cursor:pointer" onclick="openAssignItem(rec('item','${iid}'))">
-            <div>
+          <button type="button" class="inventory-item" onclick="openAssignItem(rec('item','${iid}'))">
+            <span>
               <strong>${esc(item.itemId)}</strong>
               ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${esc(item.notes)}</span>` : ""}
-            </div>
-            <div style="display:flex;align-items:center;gap:0.5rem">
+            </span>
+            <span style="display:flex;align-items:center;gap:0.5rem">
               <span class="tag ${item.status === "Available" ? "tag-green" : item.status === "On Loan" ? "tag-red" : "tag-amber"}">
                 ${esc(item.status)}
               </span>
               <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${esc(item.condition)}</span>
-              <span style="color:var(--muted);font-size:1rem">›</span>
-            </div>
-          </div>`;
+              <span style="color:var(--muted);font-size:1rem" aria-hidden="true">›</span>
+            </span>
+          </button>`;
         }).join("") : '<div style="color:var(--muted);font-size:0.8rem;padding:0.5rem 0">No items yet</div>';
       if (type.tracking === "Add-on") {
         return `
       <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${tid}">
         <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
           <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-            <span class="inventory-group-chevron">▾</span>
+            <span class="inventory-group-chevron" aria-hidden="true">▾</span>
             ${invThumb(type, tid)}
-            <span class="inventory-group-title">${esc(type.name)}</span>
-            <span class="tag tag-addon">Add-on${type.price != null ? ` · ${esc(fmtMoney(type.price))}` : ""}</span>
+            <button type="button" class="row-open grp-open" aria-expanded="true" aria-controls="inv-body-${tid}"><span class="inventory-group-title">${esc(type.name)}</span>
+            <span class="tag tag-addon">Add-on${type.price != null ? ` · ${esc(fmtMoney(type.price))}` : ""}</span></button>
             ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
           </div>
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">Edit</button>
         </div>
-        <div class="inventory-group-body">
+        <div class="inventory-group-body" id="inv-body-${tid}">
           <div class="muted-small">Made to order, for purchase — nothing to count. Orders show under Reservations until handed over.</div>
         </div>
       </div>`;
@@ -5479,16 +5495,16 @@
       <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${tid}">
         <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
           <div style="display:flex;align-items:center;gap:0.5rem">
-            <span class="inventory-group-chevron">▾</span>
+            <span class="inventory-group-chevron" aria-hidden="true">▾</span>
             ${invThumb(type, tid)}
-            <span class="inventory-group-title">${esc(type.name)}</span>
-            <span class="badge">${esc(type.quantityOwned)}</span>
+            <button type="button" class="row-open grp-open" aria-expanded="true" aria-controls="inv-body-${tid}"><span class="inventory-group-title">${esc(type.name)}</span>
+            <span class="badge">${esc(type.quantityOwned)}</span></button>
             ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
             <button class="btn btn-ghost btn-sm" style="padding:0.1rem 0.35rem;font-size:0.75rem;opacity:0.6" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))" title="Edit item type">✎</button>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">Edit count</button>
         </div>
-        <div class="inventory-group-body">
+        <div class="inventory-group-body" id="inv-body-${tid}">
           ${attrSummary(type)}
           <div class="qty-stats">
             ${stat(type.quantityOwned, "own")}
@@ -5505,16 +5521,16 @@
       <div class="inventory-group${inactive ? " inventory-group--inactive" : ""}" id="inv-group-${tid}">
         <div class="inventory-group-header" onclick="toggleGroup('${tid}')" style="cursor:pointer">
           <div style="display:flex;align-items:center;gap:0.5rem">
-            <span class="inventory-group-chevron">▾</span>
+            <span class="inventory-group-chevron" aria-hidden="true">▾</span>
             ${invThumb(type, tid)}
-            <span class="inventory-group-title">${esc(type.name)}</span>
-            <span class="badge">${items.length}</span>
+            <button type="button" class="row-open grp-open" aria-expanded="true" aria-controls="inv-body-${tid}"><span class="inventory-group-title">${esc(type.name)}</span>
+            <span class="badge">${items.length}</span></button>
             ${inactive ? `<span style="font-size:0.68rem;color:var(--muted);font-weight:500;letter-spacing:0.02em">INACTIVE</span>` : ""}
             <button class="btn btn-ghost btn-sm" style="padding:0.1rem 0.35rem;font-size:0.75rem;opacity:0.6" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))" title="Edit item type">✎</button>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddItem('${tid}', rec('type','${tid}').name)">+ Add Item</button>
         </div>
-        <div class="inventory-group-body">${attrSummary(type)}${holdsHtml(type)}${itemsHtml}</div>
+        <div class="inventory-group-body" id="inv-body-${tid}">${attrSummary(type)}${holdsHtml(type)}${itemsHtml}</div>
       </div>`;
     }).join("");
   }
@@ -5528,13 +5544,14 @@
     const el = document.getElementById(`inv-group-${typeId}`);
     if (!el) return;
     el.dataset.collapsed = el.dataset.collapsed === "true" ? "false" : "true";
+    el.querySelector(".grp-open")?.setAttribute("aria-expanded", el.dataset.collapsed === "true" ? "false" : "true");
     updateCollapseAllLabel();
   }
 
   function toggleAllGroups() {
     const groups = document.querySelectorAll(".inventory-group[id^='inv-group-']");
     const anyExpanded = [...groups].some(g => g.dataset.collapsed !== "true");
-    groups.forEach(g => g.dataset.collapsed = anyExpanded ? "true" : "false");
+    groups.forEach(g => { g.dataset.collapsed = anyExpanded ? "true" : "false"; g.querySelector(".grp-open")?.setAttribute("aria-expanded", anyExpanded ? "false" : "true"); });
     updateCollapseAllLabel();
   }
 
@@ -7882,8 +7899,24 @@
   });
 
   // ── Toast ─────────────────────────────────────────────────────────────────
+  // Screen readers hear every toast through one live region that stays in the page (a region added together
+  // with its text is often not read). It sits outside #app, so it still speaks while a sheet makes #app inert.
+  function announce(msg) {
+    let live = document.getElementById("sr-status");
+    if (!live) {
+      live = Object.assign(document.createElement("div"), { id: "sr-status", className: "sr-only" });
+      live.setAttribute("role", "status");
+      live.setAttribute("aria-live", "polite");
+      document.body.appendChild(live);
+    }
+    live.textContent = "";                               // so the same message twice ("Saved") is read again
+    setTimeout(() => { live.textContent = String(msg ?? ""); }, 60);
+  }
+  announce("");                                          // create the region at load, before anything needs saying
   function showToast(msg, ms) {
+    announce(msg);
     const toast = document.createElement("div");
+    toast.setAttribute("aria-hidden", "true");          // read once, by the live region
     toast.textContent = msg;
     Object.assign(toast.style, {
       position: "fixed", bottom: document.body.classList.contains("settings-dirty") ? "5.5rem" : "1.5rem", left: "50%", // above the save bar
