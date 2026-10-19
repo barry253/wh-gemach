@@ -64,8 +64,21 @@ const patches = () => calls.filter(c => c.method === "PATCH" && c.path === "/adm
 const before = patches();
 // let the first save finish re-drawing the form before editing again (the save bar is rebuilt while it settles)
 await page.waitForFunction(() => { const b = document.getElementById("settings-save-btn"); return !b || (!b.disabled && b.textContent.trim() === "Save") || !document.getElementById("settings-savebar") || document.getElementById("settings-savebar").offsetParent === null; });
-await page.fill("#set-defaultLoanDays", "10");
-await page.waitForFunction(() => { const b = document.getElementById("settings-save-btn"); return b && b.offsetParent !== null && !b.disabled && b.textContent.trim() === "Save"; });
+// Flaky on CI (Oct 18, 3 timeouts here, never locally): a late redraw could wipe the typed value or the save bar.
+// Let pending requests settle, then type and retry if the value was reset; report the form state if it still fails.
+await page.waitForLoadState("networkidle").catch(() => {});
+const saveReady = () => page.waitForFunction(() => { const b = document.getElementById("settings-save-btn"); return b && b.offsetParent !== null && !b.disabled && b.textContent.trim() === "Save"; }, null, { timeout: 5000 }).then(() => true, () => false);
+let ready = false;
+for (let i = 0; i < 3 && !ready; i++) {
+  await page.fill("#set-defaultLoanDays", "10");
+  ready = await saveReady();
+}
+if (!ready) console.log("save bar state:", JSON.stringify(await page.evaluate(() => {
+  const b = document.getElementById("settings-save-btn"), bar = document.getElementById("settings-savebar");
+  return { value: document.getElementById("set-defaultLoanDays")?.value, bar: !!bar, barHidden: bar?.hidden, btn: b && { text: b.textContent.trim(), disabled: b.disabled, shown: b.offsetParent !== null },
+    settingsActive: document.getElementById("screen-settings")?.classList.contains("active") };
+})));
+ok(ready, "save bar comes back after editing again");
 await page.click("#settings-save-btn");
 for (let i = 0; i < 50 && patches() === before; i++) await page.waitForTimeout(100);
 await page.waitForTimeout(200);
