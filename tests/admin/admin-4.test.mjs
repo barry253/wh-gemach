@@ -134,12 +134,7 @@ async function setup(role, { viewport = { width: 390, height: 844 } } = {}) {
   await page.waitForSelector("#set-name");
   ok(await page.textContent("#set-mode") === "Listing only" && (await page.textContent("#set-mode-help")).includes("no live availability"), "mode shown in plain words + help");
   ok(await page.$eval("#request-form-wrap", el => !el.hidden), "request form link field offered for Listing only");
-  ok(await page.textContent("#set-public-url") === "https://whgemachs.org/g/wh-medical", "public URL shown");
-  ok((await page.getAttribute("#share-url-btn", "href")).startsWith("https://wa.me/?text=") && (await page.getAttribute("#share-url-btn", "href")).includes(encodeURIComponent("https://whgemachs.org/g/wh-medical")), "WhatsApp share link");
-  ok(await page.getAttribute("#open-url-btn", "href") === "https://whgemachs.org/g/wh-medical", "Open link");
-  await page.click("#copy-url-btn");
-  await page.waitForFunction(() => document.body.textContent.includes("Link copied"));
-  ok(await page.evaluate(() => window.__copied) === "https://whgemachs.org/g/wh-medical", "Copy puts URL on clipboard + toast");
+  ok(!(await page.$("#set-public-url")) && !(await page.$("#share-url-btn")), "no Public page box in Settings (the top bar has View public page)");
   await page.evaluate(() => { const e = document.getElementById("set-title"); window.scrollTo(0, e.closest(".card").getBoundingClientRect().top + scrollY - 200); });
   await page.screenshot({ path: "shot-r4-settings-profile.png" });
   await page.fill("#set-name", "");

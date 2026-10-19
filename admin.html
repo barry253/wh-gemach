@@ -6027,16 +6027,7 @@
           <span class="tag tag-navy" id="set-mode"></span>
         </div>
         <div class="muted-small" id="set-mode-help" style="margin-top:0.4rem"></div>
-        <div class="form-group" style="margin:0.75rem 0 0">
-          <label>Public page</label>
-          <div class="url-box">
-            <code id="set-public-url"></code>
-            <button class="btn btn-ghost btn-sm" type="button" id="copy-url-btn" onclick="copyPublicUrl()">Copy</button>
-            <a class="btn btn-ghost btn-sm" id="open-url-btn" target="_blank" rel="noopener">Open ↗</a>
-            <a class="btn btn-whatsapp btn-sm" id="share-url-btn" target="_blank" rel="noopener">Share on WhatsApp</a>
-          </div>
-        </div>
-        <div class="form-group" id="set-testlink" style="margin:0.9rem 0 0" hidden></div>
+        <div class="form-group" id="set-testlink" style="margin:0.75rem 0 0" hidden></div>
       </div>
       ${areaGroups("profile")}
       </div>
@@ -6088,10 +6079,6 @@
       (g.comingSoon ? " It's marked Coming soon: listed on the home page, but not in search and not taking requests yet." : "");
     setEl("mode").title = modeHelp;
     setEl("mode-help").textContent = modeHelp + (isNetworkAdmin() ? " Change it in the Network tab." : " Only a network admin can change this.");
-    const url = publicUrl(g.slug);
-    setEl("public-url").textContent = url;
-    document.getElementById("open-url-btn").href = url;
-    document.getElementById("share-url-btn").href = "https://wa.me/?text=" + encodeURIComponent(`${g.name || "Our gemach"} — ${url}`);
     loadTestLink(g, ro);
     settingsOriginal = {};
     const remember = (key, v) => { settingsOriginal[key] = v; };
@@ -6616,10 +6603,6 @@
     fitTemplateBox(el);
     updateTemplateState(t);
     refreshSettingsDirty();
-  }
-
-  function copyPublicUrl() {
-    return copyText(publicUrl(GEMACH?.slug || gemachSlug));
   }
 
   async function copyText(text, okMsg = "Link copied") {
