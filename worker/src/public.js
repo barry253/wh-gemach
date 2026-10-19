@@ -9,7 +9,7 @@ import { itemAttrsFor } from "./attributes.js";
 import { publicTypeExtras } from "./extras.js";
 import { parseMorePhotos } from "./photos.js";
 import { inTestMode } from "./testmode.js";
-import { addonPrice, isAddonType, isQtyType, lendableQty, loanWindow, LOAN_WINDOW_FIELDS, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, loanWindow, LOAN_WINDOW_FIELDS, maxPerRequest, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
 
@@ -42,6 +42,8 @@ function publicItemType(type, units, { withCategory = false, bookings = null, wi
     if (withBookings) out.bookings = list.map(b => ({ from: b.from, to: b.to, qty: b.qty }));
     const ps = packageSize(type); // lent in whole packages, e.g. bags of 6 tablecloths
     if (ps > 1) { out.packageSize = ps; out.packageUnit = packageUnit(type); }
+    const mx = maxPerRequest(type); // most one borrower may ask for
+    if (mx && mx < out.totalUnits) out.maxPerRequest = mx;
   }
   else if (unitBookings && !isAddonType(type)) {
     // Numbered units on a gemach that shows availability for a date: how many units can be lent at all

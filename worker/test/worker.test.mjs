@@ -3580,6 +3580,30 @@ await t("borrower email: pickup address is our own Maps link (instructions not s
     r = await q("recPKGTYPE0000002", 7); // no package size: any count
     assert.equal(r.status, 200, await r.clone().text());
   });
+
+  await t("max per request: admin sets / clears it; public page and submit enforce it (rounded to whole packages)", async () => {
+    DB["Item Types"].push(rec("recPKGTYPE0000005", { Name: "Solid Navy · Rectangle", Active: true, Tracking: "Quantity", "Quantity Owned": 24, "Package Size": 6, "Package Unit": "bag", Gemach: [G.id], "Gemach Slug": [G.slug] }));
+    for (const bad of [-1, 2.5, "x", 10001]) assert.equal((await patch("recPKGTYPE0000005", { maxPerRequest: bad })).status, 400, String(bad));
+    let r = await patch("recPKGTYPE0000005", { maxPerRequest: 14 }); // 14 with bags of 6 → 12
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(fieldsOf("recPKGTYPE0000005")["Max Per Request"], 14);
+    const types = await (await call("/admin/catalog/item-types", { headers: H })).json();
+    assert.equal(types.find(x => x.id === "recPKGTYPE0000005").maxPerRequest, 12);
+    assert.equal(types.find(x => x.id === "recPKGTYPE0000001").maxPerRequest, null);
+    __WHG_TEST__.clearMemo();
+    const items = (await (await call(`/public/gemach/${G.slug}?mpr=1`)).json()).items;
+    assert.equal(items.find(x => x.id === "recPKGTYPE0000005").maxPerRequest, 12);
+    assert.equal(items.find(x => x.id === "recPKGTYPE0000001").maxPerRequest, undefined);
+    const q = n => post("/submit-request", { ...base, itemsRequested: ["recPKGTYPE0000005"], quantities: { recPKGTYPE0000005: n } });
+    r = await q(18);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /up to 12 Solid Navy · Rectangle at a time/);
+    r = await q(12);
+    assert.equal(r.status, 200, await r.clone().text());
+    r = await patch("recPKGTYPE0000005", { maxPerRequest: null });
+    assert.equal(r.status, 200); assert.equal(fieldsOf("recPKGTYPE0000005")["Max Per Request"], null);
+    r = await q(24);
+    assert.equal(r.status, 200, await r.clone().text());
+  });
 }
 await t("inventory ?holds=1: reservations without a unit yet, per numbered item type", async () => {
   const H = { ...auth(tokenA), "X-Gemach": A.slug };

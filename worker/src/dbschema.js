@@ -108,7 +108,7 @@ const TABLES = {
       "Product Category": link("product_category_id", "Product Categories"),
       "Tracking": t("tracking"), "Quantity Owned": n("quantity_owned"), "Out of Service": n("out_of_service"),
       "Price": n("price"), "Attributes": t("attributes"),
-      "Package Size": n("package_size"), "Package Unit": t("package_unit"),
+      "Package Size": n("package_size"), "Package Unit": t("package_unit"), "Max Per Request": n("max_per_request"),
       // Optional line under the name (e.g. a book's author), extra search words, and the Featured / New strips.
       "Byline": t("byline"), "Search Words": t("search_words"), "Featured": b("featured"), "New Until": d("new_until"),
       "Gemach Slug": gemachSlug(),

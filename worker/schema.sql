@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS item_types (
   attributes TEXT,  -- Attributes
   package_size REAL,  -- Package Size
   package_unit TEXT,  -- Package Unit
+  max_per_request REAL,  -- Max Per Request
   byline TEXT,  -- Byline
   search_words TEXT,  -- Search Words
   featured INTEGER NOT NULL DEFAULT 0,  -- Featured

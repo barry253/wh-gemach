@@ -8,7 +8,7 @@ import { buildEmailHtml, escHtml, sendEmail, sendNotificationEmail } from "./ema
 import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
 import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
-import { addonPrice, isAddonType, isQtyType, lendableQty, packageSize, packageUnit, qtyLabel, requestAvailability } from "./quantity.js";
+import { addonPrice, isAddonType, isQtyType, lendableQty, maxPerRequest, packageSize, packageUnit, qtyLabel, requestAvailability } from "./quantity.js";
 import { EMAIL_RE, emailSignature } from "./settings.js";
 import { manageUrl } from "./manage.js";
 import { notifyAdmins, requestMessage } from "./push.js";
@@ -150,6 +150,8 @@ async function handleSubmitRequest(request, db, env, ctx) {
       if (ps > 1 && n % ps) return json({ error: `${name} ${packageUnit(t) ? `come in ${packageUnit(t)}s of ${ps}` : `are lent in sets of ${ps}`} — please ask for ${ps}, ${ps * 2}, and so on.` }, 400);
       if (ps > 1 && n > max - (max % ps)) return json({ error: max >= ps ? `The gemach has ${max - (max % ps)} ${name} to lend in total — please ask for ${max - (max % ps)} or fewer.` : `${name} aren't available from this gemach right now. Please contact them directly.` }, 400);
       if (n > max) return json({ error: `The gemach has ${max} ${name} in total — please ask for ${max} or fewer.` }, 400);
+      const cap = maxPerRequest(t);
+      if (cap && n > cap) return json({ error: `You can ask for up to ${cap} ${name} at a time. If you need more, please contact the gemach.` }, 400);
       qtyMap[id] = n;
     }
     itemNames = itemIds.map(id => qtyLabel(typeMap[id].fields.Name || id, qtyMap[id]));

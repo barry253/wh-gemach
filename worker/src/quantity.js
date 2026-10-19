@@ -32,6 +32,15 @@ const MAX_QTY = 10000;
 const PACKAGE_UNIT_MAX = 30, PACKAGE_SIZE_MAX = 1000;
 const packageSize = rec => isQtyType(rec) ? Math.max(1, Math.min(PACKAGE_SIZE_MAX, wholeNum(rec?.fields?.["Package Size"]))) : 1;
 const packageUnit = rec => String(rec?.fields?.["Package Unit"] || "").trim() || null;
+/**
+ * Most one borrower may ask for in a request (Item Types."Max Per Request"; blank = no limit beyond what's owned).
+ * Quantity types only. Rounded down to whole packages, e.g. 14 with bags of 6 → 12. Admin can still lend more.
+ */
+const maxPerRequest = rec => {
+  if (!isQtyType(rec)) return 0;
+  const m = wholeNum(rec?.fields?.["Max Per Request"]), ps = packageSize(rec);
+  return m ? m - (m % ps) || ps : 0;
+};
 /** body.packageSize / body.packageUnit from admin → { fields } | { error } (only the keys that were sent). */
 function packageFields(body) {
   const fields = {};
@@ -49,13 +58,22 @@ function packageFields(body) {
     if (u.length > PACKAGE_UNIT_MAX) return { error: `The package word can be up to ${PACKAGE_UNIT_MAX} characters.` };
     fields["Package Unit"] = u || null;
   }
+  if (body.maxPerRequest !== undefined) {
+    const v = body.maxPerRequest;
+    if (v === null || v === "" || Number(v) === 0) fields["Max Per Request"] = null;
+    else {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1 || n > MAX_QTY) return { error: `The most per request must be a whole number from 1 to ${MAX_QTY}.` };
+      fields["Max Per Request"] = n;
+    }
+  }
   return { fields };
 }
 
 /** "Chairs × 40" for quantity types, plain name otherwise. */
 const qtyLabel = (name, n) => (n ? `${name} × ${n}` : name);
 // Item Types rows link to every Loan and Request ever made for them; reads name their fields to skip those.
-const TYPE_COUNT_FIELDS = ["Tracking", "Quantity Owned", "Out of Service", "Package Size", "Package Unit", "Price"]; // quantity / add-on helpers
+const TYPE_COUNT_FIELDS = ["Tracking", "Quantity Owned", "Out of Service", "Package Size", "Package Unit", "Max Per Request", "Price"]; // quantity / add-on helpers
 const TYPE_PHOTO_FIELDS = ["R2 Photo URL", "More Photos"];
 const TYPE_EXTRA_FIELDS = ["Byline", "Search Words", "Featured", "New Until"]; // catalog extras (catalog.js)
 const TYPE_PUBLIC_FIELDS = ["Name", "Description", ...TYPE_PHOTO_FIELDS, ...TYPE_COUNT_FIELDS, "Attributes", ...TYPE_EXTRA_FIELDS, "Product Category", "Gemach"];
@@ -235,4 +253,4 @@ async function requestAvailabilityBatch(db, g, typeRecs, list) {
   });
 }
 
-export { packageSize, packageUnit, packageFields, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyBookingsFromLoans, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, requestAvailabilityBatch, isAddonType, addonPrice, money, typePhoto, typePhotos, TYPE_PUBLIC_FIELDS, TYPE_ADMIN_FIELDS, TYPE_PHOTO_FIELDS, TYPE_COUNT_FIELDS };
+export { packageSize, packageUnit, packageFields, maxPerRequest, isQtyType, wholeNum, loanQty, lendableQty, MAX_QTY, qtyLabel, LOAN_WINDOW_FIELDS, parseQtyMap, loanWindow, loadQtyBookings, qtyBookingsFromLoans, qtyAvailable, itemTypeInfoMap, requestWindow, requestAvailability, requestAvailabilityBatch, isAddonType, addonPrice, money, typePhoto, typePhotos, TYPE_PUBLIC_FIELDS, TYPE_ADMIN_FIELDS, TYPE_PHOTO_FIELDS, TYPE_COUNT_FIELDS };
