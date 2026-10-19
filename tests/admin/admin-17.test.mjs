@@ -62,7 +62,7 @@ async function run(G) {
     if (p === "/admin/appointments" && M === "POST") return J({ success: true, request: "recNEWAPPT000001", requestId: "R-201", manageUrl: "https://whgemachs.org/r/recNEWAPPT000001.sig" });
     return J([]);
   });
-  await page.addInitScript(slug => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", slug); }, G.slug);
+  await page.addInitScript(slug => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", slug); localStorage.setItem("whg_dash_view", "overview"); }, G.slug);
   await page.goto("http://admin.test/admin.html?device=mobile"); // WhatsApp / text flows are phone-only (Oct 2026)
   await page.waitForSelector("#quick-actions .quick-action");
   return { page, reqs, errors };

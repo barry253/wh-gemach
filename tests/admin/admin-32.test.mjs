@@ -36,7 +36,7 @@ await page.route("https://wh-gemach.barry253-0f5.workers.dev/**", r => {
   if (p === "/admin/inventory") return J(u.searchParams.get("holds") === "1" ? { items: UNITS, holds: [] } : UNITS);
   return J([]);
 });
-await page.addInitScript(() => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", "wh-medical"); });
+await page.addInitScript(() => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", "wh-medical"); localStorage.setItem("whg_dash_view", "overview"); });
 await page.goto("http://admin.test/admin.html?device=desktop");
 await page.waitForTimeout(500);
 const active = () => page.evaluate(() => { const a = document.activeElement; return { tag: a.tagName, text: a.textContent.replace(/\s+/g, " ").trim(), exp: a.getAttribute("aria-expanded") }; });

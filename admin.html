@@ -373,6 +373,85 @@
     .appt-item-meta { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
     .appt-unit { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; font-weight: 600; color: var(--navy); background: var(--teal, #E8F0F5); border-radius: 5px; padding: 0.05rem 0.4rem; }
     .appt-item-desc { font-size: 0.8rem; color: var(--text); margin-top: 0.3rem; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
+    /* Dashboard: Calendar | Overview */
+    .dash-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 1rem; background: var(--teal); border-radius: 10px; max-width: 360px; }
+    .dash-switch button { height: 38px; border: 0; border-radius: 7px; background: transparent; font: 600 0.88rem 'Inter', sans-serif; color: var(--navy); cursor: pointer; }
+    .dash-switch button[aria-pressed="true"] { background: var(--navy); color: #fff; }
+    .dash-switch button:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+    .cal-late { display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 48px; margin-bottom: 0.75rem; padding: 0.55rem 0.85rem; border: 1px solid #F1C4C4; border-radius: 10px;
+      background: #FDF1F1; color: var(--red); font: 600 0.9rem 'Inter', sans-serif; text-align: left; cursor: pointer; }
+    .cal-late[aria-pressed="true"] { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+    .cal-late-icon { flex: 0 0 22px; height: 22px; border-radius: 50%; background: var(--red); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+    .cal-late > span:nth-child(2) { flex: 1; }
+    .cal-late-go { font-size: 0.82rem; }
+    .cal-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 0.6rem; max-width: 720px; }
+    .cal-head { display: flex; align-items: center; justify-content: space-between; }
+    .cal-title { margin: 0; font-family: 'DM Serif Display', serif; font-weight: 400; font-size: 1.3rem; color: var(--navy); }
+    .cal-nav { width: 44px; height: 44px; border: 0; border-radius: 10px; background: none; font-size: 1.5rem; line-height: 1; color: var(--navy); cursor: pointer; }
+    .cal-nav:hover:not(:disabled) { background: var(--teal); }
+    .cal-nav:disabled { color: #B7C3CB; cursor: default; }
+    .cal-dow, .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+    .cal-dow { margin: 0.25rem 0; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); text-align: center; }
+    .cal-loading { grid-column: 1 / -1; }
+    .cal-day-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 64px; padding: 0.3rem 0 0.25rem; border: 0; border-radius: 8px; background: none;
+      font-family: inherit; color: var(--text); cursor: pointer; }
+    .cal-day-btn:hover:not(:disabled) { background: #F4F7F9; }
+    .cal-day-btn:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+    .cal-day-btn.out .cal-num { color: var(--muted); }
+    .cal-day-btn.past { cursor: default; min-height: 34px; } /* weeks already gone stay short */
+    .cal-day-btn.past .cal-num { color: var(--muted); font-weight: 400; }
+    .cal-day-btn.today { background: var(--teal); }
+    .cal-day-btn.today .cal-num { font-weight: 700; color: var(--navy); }
+    .cal-day-btn.sel, .cal-day-btn.sel:hover:not(:disabled) { background: var(--navy); }
+    .cal-day-btn.sel .cal-num { color: #fff; font-weight: 700; }
+    .cal-num { font-size: 0.82rem; font-weight: 500; line-height: 1.2; }
+    .cal-b { display: inline-block; min-width: 1.5rem; padding: 0 0.25rem; border-radius: 5px; font-size: 0.66rem; font-weight: 700; line-height: 1.05rem; text-align: center;
+      font-variant-numeric: tabular-nums; color: #fff; }
+    .cal-b.up { background: var(--navy); }
+    .cal-b.back { background: var(--green); }
+    .cal-b.appt { background: var(--amber); }
+    .cal-day-btn.sel .cal-b { background: #fff; }
+    .cal-day-btn.sel .cal-b.up { color: var(--navy); }
+    .cal-day-btn.sel .cal-b.back { color: var(--green); }
+    .cal-day-btn.sel .cal-b.appt { color: var(--amber); }
+    .cal-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem 1rem; margin-top: 0.4rem; padding-top: 0.5rem; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
+    .cal-legend .cal-b { min-width: 1.1rem; }
+    .cal-day { max-width: 720px; margin-top: 0.75rem; background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem; }
+    .cal-day-title { margin: 0; font-size: 1rem; font-weight: 700; }
+    .cal-day-sub { font-size: 0.8rem; color: var(--muted); margin-top: 0.1rem; }
+    .cal-sec { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin: 0.9rem 0 0.3rem; color: var(--navy); }
+    .cal-sec.return { color: var(--green); }
+    .cal-sec.appt { color: var(--amber); }
+    .cal-sec.late { color: var(--red); }
+    .cal-who { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+    .cal-who:last-child { border-bottom: 0; }
+    .cal-who-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.3rem 0.5rem; }
+    .cal-who-head .contact-actions, .cal-who-head > :not(.cal-who-name) { font-size: 0.8rem; }
+    .cal-who-name { font-weight: 600; font-size: 0.92rem; overflow-wrap: anywhere; }
+    .cal-who-sub { font-size: 0.75rem; color: var(--muted); }
+    .cal-who-sub.late { color: var(--red); }
+    .cal-item { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.2rem 0; font-size: 0.86rem; }
+    .cal-type { border-bottom: 1px solid var(--border); }
+    .cal-type summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; cursor: pointer; font-size: 0.9rem; font-weight: 500; list-style: none; }
+    .cal-type summary::-webkit-details-marker { display: none; }
+    .cal-type summary b { color: var(--navy); }
+    .cal-type summary::after { content: "▾"; color: var(--muted); margin-left: 0.5rem; }
+    .cal-type[open] summary::after { content: "▴"; }
+    .cal-type summary span { flex: 1; }
+    .cal-type .cal-who { padding-left: 0.6rem; }
+    .week-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-bottom: 1.25rem; max-width: 720px; }
+    .wk-day { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0.45rem 0; border: 1px solid var(--border); border-radius: 10px; background: var(--white);
+      font-family: inherit; color: var(--text); cursor: pointer; }
+    .wk-day:hover, .wk-day:focus-visible { border-color: var(--navy); }
+    .wk-day.today { border: 2px solid var(--navy); background: var(--teal); }
+    .wk-dow { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    .wk-num { font-size: 1.05rem; font-weight: 700; }
+    .wk-c { font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .wk-c.up { color: var(--navy); }
+    .wk-c.back { color: var(--green); }
+    .wk-c.appt { color: var(--amber); }
+    .wk-c.zero { color: var(--muted); font-weight: 500; }
+    .link-btn { border: 0; background: none; padding: 0.4rem 0; font: 600 0.82rem 'Inter', sans-serif; color: var(--navy); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
     /* Dashboard: quick actions + upcoming */
     .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
     .quick-action { display: flex; align-items: center; gap: 0.55rem; padding: 0.75rem 0.85rem; border-radius: 10px; border: 1px solid var(--border); background: var(--white);
@@ -1415,6 +1494,33 @@
     <!-- Dashboard -->
     <div class="screen active" id="screen-dashboard">
       <div class="quick-actions" id="quick-actions" role="group" aria-label="Quick actions"></div>
+      <div class="dash-switch" role="group" aria-label="Dashboard view">
+        <button type="button" id="dash-tab-calendar" aria-pressed="true" onclick="setDashView('calendar')">Calendar</button>
+        <button type="button" id="dash-tab-overview" aria-pressed="false" onclick="setDashView('overview')">Overview</button>
+      </div>
+
+      <div id="dash-calendar">
+        <button type="button" class="cal-late" id="cal-late" aria-pressed="false" onclick="calSelect('late', true)" hidden>
+          <span class="cal-late-icon" aria-hidden="true">!</span><span id="cal-late-text"></span><span class="cal-late-go">Review</span>
+        </button>
+        <div class="cal-card">
+          <div class="cal-head">
+            <button type="button" class="cal-nav" id="cal-prev" aria-label="Previous month" onclick="calMonth(-1)">‹</button>
+            <h2 class="cal-title" id="cal-title" aria-live="polite"></h2>
+            <button type="button" class="cal-nav" id="cal-next" aria-label="Next month" onclick="calMonth(1)">›</button>
+          </div>
+          <div class="cal-dow" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+          <div class="cal-grid" id="cal-grid"><div class="loading cal-loading">Loading…</div></div>
+          <div class="cal-legend">
+            <span><span class="cal-b up" aria-hidden="true">↑</span> Pickups</span>
+            <span><span class="cal-b back" aria-hidden="true">↓</span> Due back</span>
+            <span id="cal-legend-appt" hidden><span class="cal-b appt" aria-hidden="true">●</span> Appointments</span>
+          </div>
+        </div>
+        <div class="cal-day" id="cal-day"></div>
+      </div>
+
+      <div id="dash-overview" hidden>
       <div class="stat-grid" id="stat-grid">
         <button type="button" class="stat-card red" onclick="switchTab('requests')">
           <span class="stat-number" id="stat-new-requests">—</span>
@@ -1433,6 +1539,12 @@
           <span class="stat-label">Reservations</span>
         </button>
       </div>
+
+      <div class="stats-head">
+        <div class="section-label">Next 7 days</div>
+        <button type="button" class="link-btn" onclick="setDashView('calendar', { focus: true })">Full calendar</button>
+      </div>
+      <div class="week-strip" id="week-strip" role="group" aria-label="Next 7 days"></div>
 
       <div class="stats-head">
         <div class="section-label">Upcoming</div>
@@ -1454,6 +1566,7 @@
         </select>
       </div>
       <div id="stats-body"><div class="loading">Loading…</div></div>
+      </div>
     </div>
 
     <!-- Requests -->
@@ -3112,7 +3225,11 @@
   // ── Dashboard ─────────────────────────────────────────────────────────────
   async function loadDashboard() {
     renderQuickActions();
-    if (document.getElementById("screen-dashboard")?.classList.contains("active")) loadUpcoming();
+    applyDashView();
+    if (document.getElementById("screen-dashboard")?.classList.contains("active")) {
+      loadCalendar(); // the Calendar view and Overview's 7-day strip
+      if (dashView() === "overview") loadUpcoming();
+    }
     await snapLoad("/admin/dashboard", null, renderDashboard);
   }
   function renderDashboard(data) {
@@ -3122,7 +3239,7 @@
     document.getElementById("stat-active").textContent = data.activeLoans;
     document.getElementById("stat-reservations").textContent = data.upcomingReservations;
 
-    loadStats(false);
+    if (dashView() === "overview") loadStats(false);
 
     // Home Screen app icon: number of new requests (cleared when there are none)
     try { if (navigator.setAppBadge) (data.newRequests > 0 ? navigator.setAppBadge(data.newRequests) : navigator.clearAppBadge()).catch(() => {}); } catch (e) { /* ignore */ }
@@ -4947,6 +5064,237 @@
     }
     closeSheet("newbk-sheet");
     showToast(`${what}${res.requestId ? ` · ${res.requestId}` : ""}` + (res.emailSent === false ? emailFailText(choice) : ""), res.emailSent === false ? 8000 : undefined);
+  }
+
+  // ── Dashboard: Calendar | Overview (Oct 19, 2026) ───────────────────────────
+  // Calendar (default) is a month grid of what's coming: ↑ pickups (reservations starting), ↓ due back (loans'
+  // expected return, and reservations' end), ● appointments. Counts per day, never one bar per loan, so it reads
+  // the same for 35 items or 400. Tapping a day lists it below, by borrower — or by item type when the day is busy.
+  // Overview is the old dashboard (counts, Upcoming, stats) plus a 7-day strip. The chosen view is remembered.
+  // (Declared without values on purpose: the dashboard starts loading before this part of the script has run.)
+  var CAL, CAL_EVENTS, CAL_ROWS;
+  function dashViews() { return ["calendar", "overview"]; }
+  function calRollup() { return 6; }      // more borrowers than this in one section → grouped by item type
+  function dashView() {
+    let v = null;
+    try { v = localStorage.getItem("whg_dash_view"); } catch (e) { /* ignore */ }
+    return dashViews().includes(v) ? v : "calendar";
+  }
+  function setDashView(v, opts = {}) {
+    if (!dashViews().includes(v)) return;
+    try { localStorage.setItem("whg_dash_view", v); } catch (e) { /* ignore */ }
+    applyDashView();
+    if (opts.date) calSelect(opts.date, true);
+    if (v === "overview") { loadUpcoming(); loadStats(false); }
+    if (opts.focus) nbEl(`dash-${v}`)?.querySelector("button")?.focus();
+  }
+  function applyDashView() {
+    const v = dashView();
+    for (const k of dashViews()) {
+      nbEl(`dash-tab-${k}`).setAttribute("aria-pressed", String(k === v));
+      nbEl(`dash-${k}`).hidden = k !== v;
+    }
+  }
+
+  /** Reservations, active loans (and appointments) — shown at once from the saved copies, then refreshed. */
+  async function loadCalendar() {
+    await null; // the dashboard starts during page load: let the rest of the script (helpers it uses) run first
+    const appt = isApptGemach();
+    const paths = ["/admin/reservations", "/admin/loans", ...(appt ? ["/admin/appointments"] : [])];
+    const slug = gemachSlug;
+    if (!CAL || CAL.slug !== slug) { CAL = { loaded: false, res: [], loans: [], appts: [], month: null, sel: null, slug }; }
+    const saved = paths.map(p => snapGet(p));
+    if (saved.every(Array.isArray)) { calSet(saved, appt); renderCalendar(); }
+    else if (!CAL.loaded) { nbEl("cal-grid").innerHTML = '<div class="loading cal-loading">Loading…</div>'; nbEl("week-strip").innerHTML = ""; }
+    const fresh = await Promise.all(paths.map(p => api(p).catch(() => null)));
+    if (slug !== gemachSlug) return;
+    if (fresh.every(d => !Array.isArray(d)) && !CAL.loaded) {
+      nbEl("cal-grid").innerHTML = '<div class="up-empty cal-loading">Couldn’t load the calendar.</div>';
+      return;
+    }
+    fresh.forEach((d, i) => { if (Array.isArray(d)) snapPut(paths[i], d); });
+    calSet(fresh.map((d, i) => Array.isArray(d) ? d : saved[i] || []), appt);
+    renderCalendar();
+  }
+  function calSet([res, loans, appts], appt) {
+    CAL.res = res || []; CAL.loans = loans || []; CAL.appts = appt ? (appts || []) : []; CAL.loaded = true;
+  }
+
+  function nyDateOfIso(iso) { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(iso)); }
+  /** Every dated event: { date, kind: "pickup" | "return" | "appt", late, who, item, ...source } */
+  function calEvents() {
+    const t = nyTodayStr(), out = [];
+    const label = r => `${r.itemTypeName || "Item"}${r.quantity != null ? ` × ${r.quantity}` : ""}`;
+    for (const r of CAL.res) {
+      const start = r.reservationStart || t;
+      out.push({ date: start, kind: "pickup", late: start < t, who: r.borrowerName || "Unknown", item: label(r), unit: r.itemId || null, res: r });
+      if (r.reservationEnd && r.reservationEnd >= t)
+        out.push({ date: r.reservationEnd, kind: "return", late: false, who: r.borrowerName || "Unknown", item: label(r), unit: r.itemId || null, notOut: true, res: r });
+    }
+    for (const l of CAL.loans) {
+      if (l.expectedReturn && l.expectedReturn >= t && !l.overdue)
+        out.push({ date: l.expectedReturn, kind: "return", late: false, who: l.borrowerName || "Unknown", item: label(l), unit: l.itemId || null, loan: l });
+      else if (l.overdue)
+        out.push({ date: l.expectedReturn || t, kind: "return", late: true, who: l.borrowerName || "Unknown", item: label(l), unit: l.itemId || null, loan: l });
+    }
+    for (const a of CAL.appts) {
+      if (a.past || !a.appointmentAt) continue;
+      out.push({ date: nyDateOfIso(a.appointmentAt), kind: "appt", late: false, at: a.appointmentAt, who: a.name || "Unknown",
+        item: (a.itemNames || []).join(", ") || "Coming to look", appt: a });
+    }
+    return out;
+  }
+  function calCounts(events) {
+    const by = {};
+    for (const e of events) {
+      if (e.late) continue;
+      const c = by[e.date] || (by[e.date] = { pickup: 0, return: 0, appt: 0 });
+      c[e.kind]++;
+    }
+    return by;
+  }
+  function calCountText(c) {
+    const n = (k, one) => `${c[k]} ${c[k] === 1 ? one : one + "s"}`;
+    return [c.pickup && n("pickup", "pickup"), c.return && `${c.return} due back`, c.appt && n("appt", "appointment")].filter(Boolean).join(", ");
+  }
+
+  function renderCalendar() {
+    const t = nyTodayStr();
+    CAL_EVENTS = calEvents();
+    if (!CAL.month) CAL.month = t.slice(0, 7);
+    if (!CAL.sel) CAL.sel = t;
+    const counts = calCounts(CAL_EVENTS);
+
+    // Late: overdue returns + pickups not collected
+    const late = CAL_EVENTS.filter(e => e.late);
+    const lateRet = late.filter(e => e.kind === "return").length, latePick = late.filter(e => e.kind === "pickup").length;
+    const banner = nbEl("cal-late");
+    banner.hidden = !late.length;
+    banner.setAttribute("aria-pressed", String(CAL.sel === "late"));
+    nbEl("cal-late-text").textContent = [lateRet && `${lateRet} overdue`, latePick && `${plural(latePick, "pickup")} not collected`].filter(Boolean).join(" · ");
+    if (CAL.sel === "late" && !late.length) CAL.sel = t;
+
+    // Month grid (weeks start Sunday)
+    const [y, m] = CAL.month.split("-").map(Number);
+    const first = Date.UTC(y, m - 1, 1), lead = new Date(first).getUTCDay();
+    const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const weeks = Math.ceil((lead + daysIn) / 7);
+    nbEl("cal-title").textContent = new Date(first).toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" });
+    nbEl("cal-prev").disabled = CAL.month <= t.slice(0, 7);
+    nbEl("cal-next").disabled = CAL.month >= isoAddMonths(t, 11).slice(0, 7);
+    let html = "";
+    for (let i = 0; i < weeks * 7; i++) {
+      const ds = msDate(first + (i - lead) * DAY_MS);
+      const inMonth = ds.slice(0, 7) === CAL.month, past = ds < t;
+      const c = (!past && counts[ds]) || null;
+      const cls = ["cal-day-btn", inMonth ? "" : "out", past ? "past" : "", ds === t ? "today" : "", ds === CAL.sel ? "sel" : ""].filter(Boolean).join(" ");
+      const lbl = `${fmtDay(ds, true)}${ds === t ? " (today)" : ""}: ${c ? calCountText(c) : "nothing booked"}`;
+      html += `<button type="button" class="${cls}" data-date="${ds}" ${past ? "disabled" : ""} aria-pressed="${ds === CAL.sel}" aria-label="${esc(lbl)}" onclick="calSelect('${ds}')">
+        <span class="cal-num">${Number(ds.slice(8))}</span>
+        ${c?.pickup ? `<span class="cal-b up">↑${c.pickup}</span>` : ""}${c?.return ? `<span class="cal-b back">↓${c.return}</span>` : ""}${c?.appt ? `<span class="cal-b appt">●${c.appt}</span>` : ""}
+      </button>`;
+    }
+    nbEl("cal-grid").innerHTML = html;
+    nbEl("cal-legend-appt").hidden = !isApptGemach();
+    renderCalDay();
+    renderWeekStrip(counts, t);
+  }
+  function isoAddMonths(s, n) {
+    const [y, m] = s.split("-").map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + n, 1));
+    return msDate(d.getTime());
+  }
+  function calMonth(step) {
+    const t = nyTodayStr();
+    const next = isoAddMonths(`${CAL.month}-01`, step).slice(0, 7);
+    if (next < t.slice(0, 7) || next > isoAddMonths(t, 11).slice(0, 7)) return;
+    CAL.month = next;
+    renderCalendar();
+  }
+  function calSelect(date, scroll) {
+    CAL.sel = date;
+    if (date !== "late") CAL.month = date.slice(0, 7);
+    if (CAL?.loaded) renderCalendar();
+    if (scroll) nbEl("cal-day")?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** The selected day (or "late"), by borrower — or by item type when a section is busy. */
+  function renderCalDay() {
+    const box = nbEl("cal-day"), sel = CAL.sel, t = nyTodayStr();
+    const evs = CAL_EVENTS.filter(e => sel === "late" ? e.late : (!e.late && e.date === sel));
+    CAL_ROWS = [];
+    const title = sel === "late" ? "Needs attention" : sel === t ? `Today · ${fmtDay(sel, true)}` : fmtDay(sel, true);
+    if (!evs.length) {
+      box.innerHTML = `<h3 class="cal-day-title">${esc(title)}</h3><div class="up-empty">Nothing booked.</div>`;
+      return;
+    }
+    const sections = sel === "late"
+      ? [["return", "Overdue · still out"], ["pickup", "Pickup date passed · not collected"]]
+      : [["pickup", "Pickups"], ["return", "Due back"], ["appt", "Appointments"]];
+    const c = { pickup: 0, return: 0, appt: 0 };
+    evs.forEach(e => c[e.kind]++);
+    let html = `<h3 class="cal-day-title">${esc(title)}</h3><div class="cal-day-sub">${esc(calCountText(c))}</div>`;
+    for (const [kind, head] of sections) {
+      const list = evs.filter(e => e.kind === kind);
+      if (!list.length) continue;
+      if (kind === "appt") list.sort((a, b) => a.at.localeCompare(b.at));
+      html += `<div class="cal-sec ${kind}${sel === "late" ? " late" : ""}">${esc(head)}</div>`;
+      const groups = calGroup(list, e => e.who);
+      if (groups.length > calRollup() && kind !== "appt") {
+        // Busy day: one line per item type, opened to see who
+        const byType = calGroup(list, e => e.item.replace(/ × \d+$/, ""));
+        byType.sort((a, b) => b.list.length - a.list.length || a.key.localeCompare(b.key));
+        html += byType.map(g => `<details class="cal-type"><summary><span>${esc(g.key)}</span><b>×${g.list.length}</b></summary>
+          ${calGroup(g.list, e => e.who).map(calWhoRow).join("")}</details>`).join("");
+      } else {
+        html += groups.map(calWhoRow).join("");
+      }
+    }
+    box.innerHTML = html;
+  }
+  function calGroup(list, keyOf) {
+    const m = new Map();
+    for (const e of list) { const k = keyOf(e); (m.get(k) || m.set(k, []).get(k)).push(e); }
+    return [...m].map(([key, list]) => ({ key, list }));
+  }
+  function calWhoRow(g) {
+    const e0 = g.list[0];
+    const time = e0.kind === "appt" ? new Date(e0.at).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) + " · " : "";
+    const sub = e0.late ? (e0.kind === "return" ? (e0.loan?.expectedReturn ? `Was due ${fmtDay(e0.loan.expectedReturn)}` : "Out a long time") : `Pickup was ${fmtDay(e0.date)}`)
+      : e0.notOut ? "Reserved · not picked up yet" : "";
+    const items = g.list.map(e => {
+      const i = CAL_ROWS.push(e) - 1;
+      const act = e.kind === "pickup" ? `<button type="button" class="btn btn-ghost btn-sm" onclick="calAct(${i})">✓ ${e.res?.isAddon ? "Handed over" : "Picked up"}</button>`
+        : e.kind === "return" && e.loan ? `<button type="button" class="btn btn-ghost btn-sm" onclick="calAct(${i})">✓ Returned</button>`
+        : e.kind === "appt" ? `<button type="button" class="btn btn-ghost btn-sm" onclick="calAct(${i})">Check out</button>` : "";
+      return `<div class="cal-item"><span>${esc(e.item)}${e.unit ? ` <span class="appt-unit">${esc(e.unit)}</span>` : ""}</span>${act}</div>`;
+    }).join("");
+    const src = e0.loan || e0.res || e0.appt || {};
+    return `<div class="cal-who"><div class="cal-who-head"><span class="cal-who-name">${esc(time)}${esc(g.key)}</span>${contactActions(contactOf(src))}</div>
+      ${sub ? `<div class="cal-who-sub${e0.late ? " late" : ""}">${esc(sub)}</div>` : ""}${items}</div>`;
+  }
+  function calAct(i) {
+    const e = CAL_ROWS[i];
+    if (!e) return;
+    if (e.kind === "pickup" && e.res) openPickup(e.res);
+    else if (e.kind === "return" && e.loan) openReturn(e.loan);
+    else if (e.kind === "appt" && e.appt) openCheckout(safeId(e.appt.id));
+  }
+
+  /** Overview: the next 7 days as a strip; tapping a day opens it in the Calendar. */
+  function renderWeekStrip(counts, t) {
+    let html = "";
+    for (let i = 0; i < 7; i++) {
+      const ds = isoAddDays(t, i), c = counts[ds] || { pickup: 0, return: 0, appt: 0 };
+      const dow = new Date(dateMs(ds)).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" });
+      html += `<button type="button" class="wk-day${i === 0 ? " today" : ""}" onclick="setDashView('calendar', { date: '${ds}' })"
+        aria-label="${esc(`${fmtDay(ds, true)}${i === 0 ? " (today)" : ""}: ${calCountText(c) || "nothing booked"}. Open in calendar`)}">
+        <span class="wk-dow">${esc(dow)}</span><span class="wk-num">${Number(ds.slice(8))}</span>
+        <span class="wk-c up${c.pickup ? "" : " zero"}">↑${c.pickup || "–"}</span><span class="wk-c back${c.return ? "" : " zero"}">↓${c.return || "–"}</span>
+        ${isApptGemach() ? `<span class="wk-c appt${c.appt ? "" : " zero"}">●${c.appt || "–"}</span>` : ""}
+      </button>`;
+    }
+    nbEl("week-strip").innerHTML = html;
   }
 
   // ── Dashboard: quick actions + upcoming ─────────────────────────────────────
