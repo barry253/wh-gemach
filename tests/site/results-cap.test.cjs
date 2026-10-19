@@ -23,6 +23,8 @@ const colors = ['Navy', 'Black', 'Gold', 'Silver', 'Blue'];
 const bigItems = [];
 for (let i = 0; i < 12; i++) bigItems.push(it('Gown #' + (i + 1), 'catGW', 1, { Size: [String(2 + (i % 6) * 2)], Color: [colors[i % 5]] }));
 bigItems.push(it('Lace Tablecloth', 'catTC', 1));
+// A tall photo (like a cane) on the first gown: in the category rows it must show whole, not cropped
+bigItems[0].photoUrl = 'https://photos.test/tall.svg';
 const gemachs = [
   { id: 'recGBIG', slug: 'big-dresses', name: 'Big Dress Gemach', tagline: 'Lots of dresses', category: 'Simchas', mode: 'Full',
     phone: '(516) 555-0100', email: null, whatsapp: null, items: bigItems, ...V3,
@@ -46,6 +48,7 @@ const payload = slug => { const g = gemachs.find(x => x.slug === slug); if (!g) 
 async function setup(ctx) {
   await ctx.route('https://fonts.googleapis.com/**', r => r.fulfill({ contentType: 'text/css', body: '' }));
   await ctx.route('https://fonts.gstatic.com/**', r => r.fulfill({ status: 404, body: '' }));
+  await ctx.route('https://photos.test/**', r => r.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="400"><rect width="100" height="400" fill="#888"/></svg>' }));
   await ctx.route(API + '/**', r => {
     const req = r.request(), u = new URL(req.url());
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
@@ -90,6 +93,8 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     assert(big && big.moreHref === '/g/big-dresses?cat=dresses-and-gowns' && big.head === big.moreHref, 'See all links carry the category: ' + (big && big.moreHref));
     assert(big && big.meta === '12 items' && /See all/.test(big.all), 'row heading: item count (no available total), See all: ' + (big && big.meta));
     assert(small && small.tiles === 2 && !small.more, 'small gemach: its 2 tiles, no See-all tile');
+    const fit = await page.$eval('#rg-big-dresses .gem-tile-img img', el => ({ fit: getComputedStyle(el).objectFit, bg: getComputedStyle(el.parentNode).backgroundColor }));
+    assert(fit.fit === 'contain' && fit.bg === 'rgb(255, 255, 255)', 'tile photos fit whole on white, not cropped ' + JSON.stringify(fit));
     const strip = await page.$eval('#rg-big-dresses .gem-strip', el => ({ sw: el.scrollWidth, cw: el.clientWidth, ox: getComputedStyle(el).overflowX }));
     assert(strip.ox === 'auto' && strip.sw > strip.cw, 'tiles scroll sideways inside the row ' + JSON.stringify(strip));
     const hdr = await page.evaluate(() => ({

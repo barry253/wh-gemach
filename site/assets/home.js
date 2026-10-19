@@ -406,11 +406,12 @@
         : esc(g._soon ? "Coming soon" : (g.tagline || "Contact for details"));
       var tiles = grp.rows.slice(0, ROW_TILES).map(function (h) {
         var it = h.e.item, c = h.e.cat;
-        var img = it.photoUrl && W.safeUrl(it.photoUrl)
+        var hasPhoto = !!(it.photoUrl && W.safeUrl(it.photoUrl));
+        var img = hasPhoto
           ? '<img src="' + esc(it.photoUrl) + '" alt="" loading="lazy" decoding="async" />'
           : '<span aria-hidden="true">' + esc((c && c.icon) || "📦") + "</span>";
         return '<li><a class="gem-tile" href="' + W.gemachUrl(g.slug, it.id) + '">' +
-          '<span class="gem-tile-img">' + img + "</span>" +
+          '<span class="gem-tile-img' + (hasPhoto ? " has-photo" : "") + '">' + img + "</span>" +
           '<span class="gem-tile-name">' + esc(it.name) + '</span><span class="sr-only"> at ' + esc(g.name) + "</span>" +
           badge(g, it) + "</a></li>";
       }).join("");

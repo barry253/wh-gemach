@@ -1349,7 +1349,9 @@ fieldset { border: 0; }
   aspect-ratio: 4 / 3; background: var(--teal); display: flex; align-items: center; justify-content: center;
   overflow: hidden; font-size: 2rem;
 }
-.gem-tile-img img { width: 100%; height: 100%; object-fit: cover; }
+/* Whole photo, never cropped (tall canes and gowns, wide tablecloth shots); white around it */
+.gem-tile-img.has-photo { background: var(--white); }
+.gem-tile-img img { width: 100%; height: 100%; object-fit: contain; padding: .35rem; box-sizing: border-box; }
 .gem-tile-name {
   font-weight: 600; font-size: .875rem; line-height: 1.3; padding: .5rem .6rem .4rem;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
