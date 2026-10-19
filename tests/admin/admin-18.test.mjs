@@ -119,12 +119,18 @@ const BORROWERS = [
   await page.waitForFunction(() => window.BL && BL.list && BL.ids.name === "nb-name");
   await page.fill("#nb-name", "Mo");
   await page.dispatchEvent("#nb-name", "input");
+  await page.waitForSelector("#nb-name-matches .bl-result");
+  await page.focus("#nb-name");
+  await page.keyboard.press("Escape");
+  ok(!(await page.$("#nb-name-matches .bl-result")) && await page.evaluate(() => document.getElementById("newbk-sheet").classList.contains("open")), "Escape closes the match list, not the sheet");
+  await page.dispatchEvent("#nb-name", "input");
   await page.click("#nb-name-matches .bl-result");
   await page.click("#nb-name ~ .bl-note [data-bl='clear']");
   ok(await page.inputValue("#nb-name") === "" && await page.inputValue("#nb-phone") === "" && !(await page.textContent("#nb-name ~ .bl-note")), "Clear empties the details");
   await page.fill("#nb-name", "Moishe K");
   await page.dispatchEvent("#nb-name", "input");
-  await page.keyboard.press("Escape").catch(() => {});
+  // Escape closes the match list when one is showing (otherwise it would close the sheet, which asks first)
+  if (await page.$("#nb-name-matches .bl-result")) await page.keyboard.press("Escape");
   await page.fill("#nb-phone", "5165550500");
   await page.dispatchEvent("#nb-phone", "change");
   ok(/This number is on file for Moshe Klein/.test(await page.textContent("#nb-name ~ .bl-note")), "phone already on file → hint");

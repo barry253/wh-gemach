@@ -928,6 +928,7 @@
 
     .sheet-close {
       float: right;
+      min-width: 44px; min-height: 44px; margin: -0.5rem -0.5rem 0 0;
       background: none;
       border: none;
       font-size: 1.4rem;
@@ -936,6 +937,9 @@
       line-height: 1;
       margin-top: -0.25rem;
     }
+
+    .sheet-close:focus-visible { outline: 2px solid var(--navy); outline-offset: -4px; border-radius: 8px; }
+    .sheet h2[tabindex="-1"]:focus, .sheet h3[tabindex="-1"]:focus { outline: none; } /* focused only so screen readers start at the title */
 
     /* ── Form elements ── */
     .form-group { margin-bottom: 1rem; }
@@ -4636,7 +4640,7 @@
       if (e.key === "ArrowDown") { e.preventDefault(); mine.cur = Math.min(mine.cur + 1, mine.hits.length - 1); blRender(); }
       else if (e.key === "ArrowUp") { e.preventDefault(); mine.cur = Math.max(mine.cur - 1, -1); blRender(); }
       else if (e.key === "Enter" && mine.cur >= 0) { e.preventDefault(); blPick(mine.hits[mine.cur].id); }
-      else if (e.key === "Escape") { mine.hits = []; box.innerHTML = ""; }
+      else if (e.key === "Escape") { e.preventDefault(); mine.hits = []; box.innerHTML = ""; } // first Esc closes the list, not the sheet
     });
     ["phone", "email"].forEach(k => el(k)?.addEventListener("change", () => { if (BL === mine) blRender(); }));
     // Keep focus where it is while tapping a row or a note button: a blur would redraw them before the tap lands.
@@ -7788,19 +7792,75 @@
   }
 
   // ── Sheet helpers ─────────────────────────────────────────────────────────
+  // Sheets are modal dialogs for keyboard and screen-reader users: named by their heading, focus moves in on
+  // open (unless the opener already put it on a field), everything behind is inert, Escape closes the top one,
+  // and focus goes back to whatever opened it. Sheets can stack (one opened from another).
+  const sheetStack = [];   // [{ el, opener }]
+  function sheetA11y(el) {
+    if (el.dataset.a11y) return;
+    el.dataset.a11y = "1";
+    const box = el.querySelector(".sheet") || el;
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    const h = box.querySelector("h2, h3");
+    if (h) {
+      if (!h.id) h.id = el.id + "-title";
+      h.tabIndex = -1;
+      box.setAttribute("aria-labelledby", h.id);
+    }
+    box.querySelectorAll(".sheet-close").forEach(b => { b.type = "button"; if (!b.getAttribute("aria-label")) b.setAttribute("aria-label", "Close"); });
+  }
+  function syncSheetInert() {
+    const top = sheetStack.length ? sheetStack[sheetStack.length - 1].el : null;
+    const app = document.getElementById("app");
+    if (app) app.inert = !!top;
+    document.querySelectorAll(".sheet-overlay.open").forEach(o => { o.inert = o !== top; });
+    document.body.style.overflow = top ? "hidden" : "";
+  }
   function openSheet(id) {
     const el = document.getElementById(id);
+    sheetA11y(el);
     delete el.dataset.dirty;             // nothing typed yet in this opening of the sheet
+    const i = sheetStack.findIndex(s => s.el === el);
+    const opener = i >= 0 ? sheetStack[i].opener : document.activeElement;
+    if (i >= 0) sheetStack.splice(i, 1);
+    sheetStack.push({ el, opener });
     el.classList.add("open");
-    document.body.style.overflow = "hidden";
+    syncSheetInert();
+    // After the opener has filled the sheet (and maybe focused a field itself), make sure focus is inside.
+    setTimeout(() => {
+      if (!el.classList.contains("open") || el.contains(document.activeElement)) return;
+      const t = el.querySelector("[role=dialog] h2[tabindex], [role=dialog] h3[tabindex]") || el.querySelector("button, input, select, textarea");
+      t?.focus({ preventScroll: true });
+    }, 0);
   }
 
   function closeSheet(id) {
     const el = document.getElementById(id);
     delete el.dataset.dirty;
+    const hadFocus = el.contains(document.activeElement);
     el.classList.remove("open");
-    document.body.style.overflow = "";
+    el.inert = false;
+    const i = sheetStack.findIndex(s => s.el === el);
+    const entry = i >= 0 ? sheetStack.splice(i, 1)[0] : null;
+    syncSheetInert();
+    // Return focus to the opener when it's still on screen; else to the sheet below, if any.
+    if (hadFocus || document.activeElement === document.body) {
+      const o = entry?.opener;
+      const top = sheetStack.length ? sheetStack[sheetStack.length - 1].el : null;
+      if (o && o.isConnected && o !== document.body && o.getClientRects().length && (!top || top.contains(o))) o.focus({ preventScroll: true });
+      else if (top) (top.querySelector("[role=dialog] h3[tabindex], [role=dialog] h2[tabindex]") || top).focus?.({ preventScroll: true });
+    }
   }
+  document.querySelectorAll(".sheet-overlay").forEach(sheetA11y);
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape" || e.defaultPrevented || !sheetStack.length) return;
+    if (document.getElementById("photo-viewer")?.hidden === false) return;   // the viewer handles its own Escape
+    const el = sheetStack[sheetStack.length - 1].el;
+    e.preventDefault();
+    if (el.dataset.dirty && !confirm("Close without saving? What you entered here will be lost.")) return;
+    closeSheet(el.id);
+  });
 
   // Tapping the dark area outside a sheet closes it — but not once something has been typed or picked
   // in it (then it asks first), and only when the press also started outside: selecting text in a field

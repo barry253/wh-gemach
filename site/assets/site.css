@@ -1075,7 +1075,7 @@ fieldset { border: 0; }
 .m-confirm { background: var(--error-tint); border: 1px solid #E8C1B8; border-radius: 10px; padding: .85rem 1rem; margin-top: 1rem; }
 .m-confirm p { margin: 0 0 .3rem; }
 .btn-danger { background: var(--error); border-color: var(--error); color: #fff; }
-.btn-danger:hover { background: #8C3122; border-color: #8C3122; }
+.btn-danger:hover { background: #8C3122; border-color: #8C3122; color: #fff; }
 .notice-ok { background: var(--success-tint); border-color: #BFD9C8; color: #1E4D33; }
 .m-flash { margin-top: 1rem; }
 .m-help p { margin: 0 0 .7rem; }
