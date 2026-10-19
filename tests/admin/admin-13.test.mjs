@@ -69,6 +69,7 @@ await page.click(".nav-tab:has-text('Loans')");
 await page.waitForSelector("#loan-row-recLOAN0000000001 img.row-thumb");
 await page.waitForFunction(() => document.querySelector("#loan-row-recLOAN0000000001 img.row-thumb")?.naturalWidth > 0);
 ok(await loaded("#loan-row-recLOAN0000000001 img.row-thumb"), "loan row shows the item photo");
+ok(await page.$eval("#loan-row-recLOAN0000000001 img.row-thumb", el => getComputedStyle(el).objectFit) === "contain", "loan row photo fits whole, not cropped");
 ok(/of Wheelchair/.test(await page.getAttribute("#loan-row-recLOAN0000000001 .row-thumb-btn", "aria-label")), "photo button labelled with the item name");
 ok(!!(await page.$("#loan-row-recLOAN0000000002 .row-thumb-none")), "no photo: plain box keeps rows aligned");
 await page.screenshot({ path: "shot-loans-photos.png" });

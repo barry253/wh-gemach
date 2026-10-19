@@ -322,7 +322,8 @@ main { flex: 1; }
   width: 44px; height: 44px; border-radius: 8px; flex-shrink: 0; background: var(--teal);
   display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 1.3rem;
 }
-.result-thumb img { width: 100%; height: 100%; object-fit: cover; }
+/* Item photos are never cropped anywhere (Oct 18, Barry): whole photo, white around it */
+.result-thumb img { width: 100%; height: 100%; object-fit: contain; padding: 2px; box-sizing: border-box; background: var(--white); }
 .result-main { flex: 1; min-width: 0; }
 .result-name { display: block; font-weight: 600; font-size: 1rem; line-height: 1.3; }
 .result-sub { display: block; font-size: .875rem; color: var(--muted); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -605,7 +606,7 @@ main { flex: 1; }
   display: flex; align-items: center; justify-content: center; border: 0; padding: 0; color: var(--navy);
 }
 button.item-thumb { cursor: zoom-in; }
-.item-thumb img { width: 100%; height: 100%; object-fit: cover; transition: opacity .15s; }
+.item-thumb img { width: 100%; height: 100%; object-fit: contain; padding: 3px; box-sizing: border-box; background: var(--white); transition: opacity .15s; }
 button.item-thumb:hover img { opacity: .88; }
 .item-thumb .ph { opacity: .28; }
 .item-content { flex: 1; min-width: 0; }
@@ -1147,7 +1148,7 @@ fieldset { border: 0; }
   display: block; width: 100%; aspect-ratio: 1 / 1; border: 0; padding: 0; border-radius: 12px; overflow: hidden;
   background: var(--teal); cursor: zoom-in; transition: box-shadow .15s;
 }
-.tile-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tile-photo img { width: 100%; height: 100%; object-fit: contain; padding: 6px; box-sizing: border-box; background: var(--white); display: block; }
 .tile-nophoto { display: flex; align-items: center; justify-content: center; color: var(--navy); cursor: inherit; }
 
 .item-tile.selected .tile-photo { box-shadow: 0 0 0 3px var(--t-strong); }
@@ -1172,7 +1173,7 @@ fieldset { border: 0; }
 .post-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 4 / 5; overscroll-behavior-x: contain; }
 .post-track::-webkit-scrollbar { display: none; }
 .post-photo { flex: 0 0 100%; height: 100%; scroll-snap-align: start; border: 0; padding: 0; background: none; cursor: zoom-in; }
-.post-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.post-photo img { width: 100%; height: 100%; object-fit: contain; background: var(--white); display: block; }
 .post-nophoto { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; color: var(--navy); }
 
 .post-num { position: absolute; top: 10px; right: 10px; background: rgba(8,20,27,.72); color: #fff; font-size: .875rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; pointer-events: none; }
@@ -1251,7 +1252,7 @@ fieldset { border: 0; }
   background: var(--teal); color: var(--navy); box-shadow: var(--shadow); transition: transform .15s;
 }
 .photos-portrait .strip-cover { aspect-ratio: 3 / 4; }
-.strip-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.strip-cover img { width: 100%; height: 100%; object-fit: contain; background: var(--white); display: block; }
 .strip-cover .ph { opacity: .28; width: 34px; height: 34px; }
 .strip-card:hover .strip-cover { transform: translateY(-2px); }
 .strip-name {

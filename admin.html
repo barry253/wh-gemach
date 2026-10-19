@@ -657,7 +657,8 @@
     .loan-row.warning { border-left: 3px solid var(--amber); }
 
     /* Item photo on loan / reservation rows and request cards */
-    .row-thumb { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 7px; object-fit: cover; border: 1px solid var(--border); background: #F3F4F6; display: block; }
+    .row-thumb { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 7px; object-fit: contain; padding: 2px; box-sizing: border-box; border: 1px solid var(--border); background: #FFFFFF; display: block; }
+    .row-thumb.row-thumb-none { background: #F3F4F6; }
     .row-thumb-none { display: inline-flex; align-items: center; justify-content: center; color: #9CA3AF; font-size: 1rem; }
     .req-thumbs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.15rem 0 0.6rem; }
     .row-thumb-btn { position: relative; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 7px; line-height: 0; }
@@ -1027,7 +1028,7 @@
     .photo-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem; }
     .photo-tile { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
     .photo-tile.is-cover { border: 2px solid var(--navy); }
-    .photo-tile img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+    .photo-tile img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; }
     .photo-cover-tag { position: absolute; top: 4px; left: 4px; background: var(--navy); color: #fff; font-size: 0.62rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
     .photo-tools { display: flex; justify-content: space-between; border-top: 1px solid var(--border); }
     .photo-tools button { flex: 1; border: 0; background: #fff; padding: 0.3rem 0; font-size: 0.75rem; cursor: pointer; color: var(--navy); min-height: 32px; }
@@ -1035,7 +1036,7 @@
     .photo-tools button:hover:not(:disabled) { background: var(--teal); }
     .photo-tools .photo-del { color: var(--red); }
     .inv-photo-count { font-size: 0.68rem; color: var(--muted); font-weight: 600; }
-    .inv-thumb { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); background: var(--grey, #f4f5f7); display: block; }
+    .inv-thumb { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 6px; object-fit: contain; padding: 2px; box-sizing: border-box; border: 1px solid var(--border); background: #FFFFFF; display: block; }
     .inv-thumb-missing { display: inline-flex; align-items: center; justify-content: center; border: 1.5px dashed #D97706; background: #FFFBEB; color: #92400E;
       font-size: 0.55rem; font-weight: 600; line-height: 1.05; text-align: center; padding: 0; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: 0.02em; }
     .inventory-group--inactive .inv-thumb { opacity: 0.5; }

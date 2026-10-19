@@ -92,6 +92,7 @@ const cols = (p, sel) => p.$eval(sel, el => getComputedStyle(el).gridTemplateCol
     await page.goto(BASE + '/g/gowns', { waitUntil: 'networkidle' });
     assert(await page.$('.item-list.item-grid') && await page.getAttribute('.view-btn[data-view="Grid"]', 'aria-pressed') === 'true', 'gemach default Grid is used');
     assert(await cols(page, '.item-list.item-grid') === 2, 'phone grid: 2 across');
+    assert(await page.$eval('#row-recVw1 .tile-photo img', el => getComputedStyle(el).objectFit) === 'contain', 'grid photos fit whole, not cropped');
     assert((await page.textContent('.inv-head h2')).trim() === 'Gemach Inventory', 'heading says Gemach Inventory');
     assert(/3/.test(await page.textContent('#row-recVw1 .tile-count')) && !(await page.$('#row-recVw2 .tile-count')), 'photo count only on multi-photo tiles');
     assert(await page.$('#row-recVw3 .tile-nophoto'), 'item without a photo gets a plain tile');
@@ -120,6 +121,7 @@ const cols = (p, sel) => p.$eval(sel, el => getComputedStyle(el).gridTemplateCol
     assert(await page.$eval('#row-recVw2', el => el.classList.contains('selected')) && await page.$eval('#row-recVw2 .post-add input', i => i.checked), 'selection kept across views');
     assert(await page.$$eval('#row-recVw1 .post-photo', b => b.length) === 3 && await page.textContent('#row-recVw1 .post-num') === '1/3', 'post: 3 photos, 1/3');
     assert(await page.isHidden('#row-recVw1 .post-nav.next'), 'phone: no arrows (swipe instead)');
+    assert(await page.$eval('#row-recVw1 .post-photo img', el => getComputedStyle(el).objectFit) === 'contain', 'large photos fit whole, not cropped');
     const w = await page.$eval('#row-recVw1 .post-track', t => t.clientWidth);
     assert(w === 390, 'post photo spans the phone width: ' + w);
     await page.$eval('#row-recVw1 .post-track', t => { t.scrollLeft = t.clientWidth; });
@@ -144,6 +146,7 @@ const cols = (p, sel) => p.$eval(sel, el => getComputedStyle(el).gridTemplateCol
     assert(await page.$('.item-list.item-photos'), 'reload: still Large photos');
     await page.click('.view-btn[data-view="List"]');
     assert(await page.$('#row-recVw1.item-row .item-thumb') && await page.evaluate(() => localStorage.getItem('whg_view:gowns')) === 'List', 'switch to List');
+    assert(await page.$eval('#row-recVw1 .item-thumb img', el => getComputedStyle(el).objectFit) === 'contain', 'list thumbnails fit whole, not cropped');
 
     // A gemach without photos: no switcher, plain list even if its default is Grid
     await page.goto(BASE + '/g/wedding-shtick', { waitUntil: 'networkidle' });

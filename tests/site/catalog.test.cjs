@@ -118,6 +118,7 @@ const txt = (page, sel) => page.$$eval(sel, els => els.map(e => e.textContent.re
     const box = await page.locator('#row-recBK2 .item-thumb').boundingBox();
     assert(box && box.height > box.width, 'portrait thumbnails are taller than wide');
     await page.screenshot({ path: path.join(SHOTS, 'm-catalog-top.png') });
+    assert(await page.$eval('.strip-cover img', el => getComputedStyle(el).objectFit) === 'contain', 'strip covers fit whole, not cropped');
     await page.click('.strip-spotlight .strip-card');
     await page.waitForTimeout(150);
     assert(await page.locator('#row-recBK3.flash').count() === 1, 'tapping a strip card jumps to the book');

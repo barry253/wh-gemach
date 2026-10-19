@@ -154,6 +154,7 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
     await page.waitForSelector('#results .result-group');
     const s = await page.$eval('#rg-big-dresses', el => ({ rows: el.querySelectorAll('.result-row:not(.result-more)').length, href: el.querySelector('.result-more').getAttribute('href') }));
     assert(s.rows === 6, 'search: 6 rows before See all (' + s.rows + ')');
+    assert(await page.$eval('#rg-big-dresses .result-thumb img', el => getComputedStyle(el).objectFit) === 'contain', 'search result thumbnails fit whole, not cropped');
     assert(s.href === '/g/big-dresses?q=gown', 'search: See all carries the search text: ' + s.href);
     assert(await page.$$eval('.rg-summary', e => e.length) === 0, 'search without a category: no summary row');
 
