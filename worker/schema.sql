@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS gemachs (
   deposit_required INTEGER NOT NULL DEFAULT 0,  -- Deposit Required
   charge_type TEXT,  -- Charge Type
   deposit_info TEXT,  -- Deposit Info
+  local_deposit_info TEXT,  -- Local Deposit Info
+  local_places TEXT,  -- Local Places
   gemach_info TEXT,  -- Gemach Info
   request_form_url TEXT,  -- Request Form URL
   request_style TEXT,  -- Request Style
@@ -166,6 +168,8 @@ CREATE TABLE IF NOT EXISTS requests (
   appointment_at TEXT,  -- Appointment At
   deposit_acknowledged INTEGER NOT NULL DEFAULT 0,  -- Deposit Acknowledged
   item_quantities TEXT,  -- Item Quantities
+  town TEXT,  -- Town
+  payment_tier TEXT,  -- Payment Tier
   declined_items TEXT,  -- Declined Items
   visit_outcome TEXT,  -- Visit Outcome
   visited_at TEXT,  -- Visited At

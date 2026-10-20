@@ -10,6 +10,7 @@ import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, maxPerRequest, packageSize, packageUnit, qtyLabel, requestAvailability } from "./quantity.js";
 import { EMAIL_RE, emailSignature } from "./settings.js";
+import { MAX_TOWN, chargeTextFor, hasLocalTier, isLocalTown, townRequired } from "./places.js";
 import { manageUrl } from "./manage.js";
 import { notifyAdmins, requestMessage } from "./push.js";
 import { inTestMode, isLive } from "./testmode.js";
@@ -161,6 +162,13 @@ async function handleSubmitRequest(request, db, env, ctx) {
   if (g.depositRequired && !addonsOnly && body.depositAck !== true) {
     return json({ error: `Please confirm that you understand the ${g.chargeType === "Payment" ? "payment" : "deposit"} requirement.` }, 400);
   }
+  // Where the borrower lives: asked of everyone, required when the gemach charges a payment or has a local tier
+  // (not for an add-ons-only order, which has no charge). Local tier → "Local" / "Standard" (places.js).
+  if (body.town != null && typeof body.town !== "string") return json({ error: "Invalid town." }, 400);
+  const town = typeof body.town === "string" ? body.town.replace(/\s+/g, " ").trim() : "";
+  if (town.length > MAX_TOWN) return json({ error: `Please keep the town under ${MAX_TOWN} characters.` }, 400);
+  if (!town && townRequired(g) && !addonsOnly) return json({ error: "Please enter the town you live in." }, 400);
+  const paymentTier = town && hasLocalTier(g) ? (isLocalTown(g.localPlaces, town) ? "Local" : "Standard") : null;
 
   const requestId = await getNextRequestId(db);
   const fields = {
@@ -178,6 +186,8 @@ async function handleSubmitRequest(request, db, env, ctx) {
   fields["Preferred Contact"] = preferredContact; // validated against REQUEST_CONTACTS above
   if (g.depositRequired || body.depositAck === true) fields["Deposit Acknowledged"] = body.depositAck === true;
   if (eventDate) fields["Event Date"] = eventDate;
+  if (town) fields["Town"] = town;
+  if (paymentTier) fields["Payment Tier"] = paymentTier;
 
   let from = null, until = null, isOpen = false;
   if (style === "Event") {
@@ -229,7 +239,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   const notifyArgs = {
     requestId, name: fields["Name"], phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes: fields["Notes"] || null,
     requestType: isAppt ? "Appointment" : "Loan", eventDate, preferredTimes, partySize,
-    depositAck: fields["Deposit Acknowledged"],
+    depositAck: fields["Deposit Acknowledged"], town: town || null, paymentTier, addonsOnly,
     items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null,
       addon: isAddonType(typeMap[id]), price: isAddonType(typeMap[id]) ? addonPrice(typeMap[id]) : null })),
     availability, test,
@@ -261,7 +271,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
 
   const link = created?.id ? await manageUrl(env, created.id) : null;
   if (link && email) ctx.waitUntil(receiptAllowed(db, email, created.id)
-    .then(ok => ok ? sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test }) : console.warn(`receipt skipped: over ${RECEIPTS_PER_DAY} a day to one address`))
+    .then(ok => ok ? sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test, paymentTier: addonsOnly ? null : paymentTier }) : console.warn(`receipt skipped: over ${RECEIPTS_PER_DAY} a day to one address`))
     .catch(e => console.error("receipt email failed:", e.message)));
   return json({ success: true, requestId, ...(test ? { test: true } : {}), ...(link ? { manageUrl: link } : {}) });
 }
@@ -278,14 +288,19 @@ async function receiptAllowed(db, email, justSavedId) {
 }
 
 /** "We got your request" to the borrower (only when they gave an email), with their manage link. */
-async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test }) {
+async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test, paymentTier = null }) {
   const first = String(name || "").trim().split(/\s+/)[0] || "there";
   const what = isAppt ? "your appointment request" : `your request${itemNames.length ? ` for ${itemNames.join(", ")}` : ""}`;
+  // Gemachs with a local payment tier: tell them which amount applies to them.
+  const charge = paymentTier ? chargeTextFor(g, paymentTier === "Local") : "";
+  const chargeWord = g.chargeType === "Payment" ? "Payment" : "Deposit";
   const text = `Hi ${first},\n\nThanks — ${g.name || "the gemach"} received ${what} (${requestId}). They'll be in touch soon.\n\n` +
+    (charge ? `${chargeWord}: ${charge}\n\n` : "") +
     `To check on it or cancel, use your private link:\n${link}\n\nPlease don't share this link.`;
   const e = escHtml;
   const bodyHtml = `<p style="margin:0 0 12px;">Hi ${e(first)},</p>` +
     `<p style="margin:0 0 12px;">Thanks — ${e(g.name || "the gemach")} received ${e(what)} (${e(requestId)}). They'll be in touch soon.</p>` +
+    (charge ? `<p style="margin:0 0 12px;"><strong>${e(chargeWord)}:</strong> ${e(charge).replace(/\r\n?|\n/g, "<br>")}</p>` : "") +
     `<p style="margin:18px 0;"><a href="${e(link)}" style="display:inline-block;background:#1B3A4B;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">View or cancel your request</a></p>` +
     `<p style="margin:0;color:#5e6b72;font-size:13px;">This link is private to you — please don't share it.</p>`;
   return sendEmail(env, g, { to: email, subject: `${test ? "[TEST] " : ""}We got your request — ${g.name || "Gemach"} (${requestId})`, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true, bodyHtml }) });

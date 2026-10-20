@@ -69,6 +69,9 @@ const TABLES = {
       "Logo URL": t("logo_url"), "Logo On Dark URL": t("logo_on_dark_url"),
       "Theme Color": t("theme_color"), "Accent Color": t("accent_color"),
       "Deposit Required": b("deposit_required"), "Charge Type": t("charge_type"), "Deposit Info": t("deposit_info"),
+      // Local payment tier: a separate deposit/payment text for borrowers from these places (comma-separated, spellings
+      // included: "West Hempstead, WH, 11552, Franklin Square"). Both blank = one amount for everyone. places.js matches.
+      "Local Deposit Info": t("local_deposit_info"), "Local Places": t("local_places"),
       "Gemach Info": t("gemach_info"),
       "Request Form URL": t("request_form_url"), // optional: Listing-only gemachs send borrowers to their own form (e.g. a Google Form)
       "Request Style": t("request_style"), "Event Label": t("event_label"),
@@ -154,6 +157,9 @@ const TABLES = {
       "Preferred Times": t("preferred_times"), "Party Size": n("party_size"),
       "Appointment At": dt("appointment_at"), "Deposit Acknowledged": b("deposit_acknowledged"),
       "Item Quantities": t("item_quantities"),
+      // Where the borrower lives (typed on the request form) and, for gemachs with a local payment tier, whether that
+      // town counted as local when they sent it: Payment Tier "Local" / "Standard" (blank = no local tier then).
+      "Town": t("town"), "Payment Tier": t("payment_tier"), // "Local" / "Standard"
       // Items the gemach couldn't confirm when it confirmed the rest: JSON { "<item type id>": "optional note" }.
       "Declined Items": t("declined_items"),
       // Appointment visits: "Checked out" / "Nothing borrowed" / "No-show" (blank = not visited yet).

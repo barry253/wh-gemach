@@ -72,6 +72,10 @@ const base = { tagline: 'Tablecloths for every simcha.', description: '', catego
 directory.gemachs.push(
   { ...base, id: 'recPAY', slug: 'pay', name: 'Tablecloth Gemach', depositRequired: true, chargeType: 'Payment', depositInfo: '$15 per tablecloth, by Zelle.',
     items: [{ id: 'recPayIt1', name: 'Ivory Lace', description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catSH' }] },
+  { ...base, id: 'recTIER', slug: 'tier', name: 'Shulchan Test', depositRequired: true, chargeType: 'Payment', townRequired: true,
+    depositInfo: 'Non-West Hempstead fee: $75 for 24 tablecloths.', localDepositInfo: 'West Hempstead resident fee: $36 minimum donation.',
+    localPlaces: ['West Hempstead', 'W. Hempstead', 'WH', '11552', 'Franklin Square'],
+    items: [{ id: 'recTierIt1', name: 'Navy Round', description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catSH' }] },
   { ...base, id: 'recDEP', slug: 'dep', name: 'Deposit Gemach', depositRequired: true, depositInfo: '$50 check, returned.', // older API: no chargeType
     items: [{ id: 'recDepIt1', name: 'Chair', description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catSH' }] });
 
@@ -94,10 +98,48 @@ directory.gemachs.push(
     await page.click('#btn-submit');
     await page.waitForTimeout(200);
     assert(/understand payment is required/.test(await page.textContent('#form-view')) && !posts.length, 'must tick the payment box');
+    assert(await page.isVisible('#town-req') && !(await page.isVisible('#town-opt')), 'payment gemach: town is required');
+    assert(/town you live in/.test(await errs(page)), 'error asks for the town');
+    await page.check('#f-deposit');
+    await page.fill('#f-email', 't@example.com'); await page.fill('#f-town', '  Lynbrook ');
+    await page.click('#btn-submit');
+    await page.waitForTimeout(400);
+    assert(posts.length === 1 && posts[0].town === 'Lynbrook', 'town is sent (trimmed): ' + JSON.stringify(posts[0] && posts[0].town));
+    await page.goto(BASE + '/g/pay', { waitUntil: 'networkidle' });
+    await page.check('#row-recPayIt1 input[type=checkbox]');
+    await page.click('#btn-open-modal');
     await page.locator('#deposit-group').scrollIntoViewIfNeeded();
     await page.screenshot({ path: path.join(SHOTS, 'm-payment-form.png') });
+
+    // Local payment tier: both amounts on the page; on the form, the one for the town typed.
+    await page.goto(BASE + '/g/tier', { waitUntil: 'networkidle' });
+    const pageBox = await page.textContent('.deposit-callout');
+    assert(/\$36 minimum/.test(pageBox) && /\$75 for 24/.test(pageBox), 'page shows both amounts');
+    await page.check('#row-recTierIt1 input[type=checkbox]');
+    await page.click('#btn-open-modal');
+    const formBox = () => page.textContent('#deposit-form-info');
+    assert(/\$36/.test(await formBox()) && /\$75/.test(await formBox()), 'form shows both until a town is typed');
+    assert(await page.isVisible('#town-hint'), 'hint: payment depends on where you live');
+    await page.fill('#f-town', 'W. Hempstead, NY');
+    assert(/\$36/.test(await formBox()) && !/\$75/.test(await formBox()) && /Based on the town/.test(await formBox()), 'local town → local amount only');
+    await page.fill('#f-town', 'Franklin Square 11010');
+    assert(/\$36/.test(await formBox()) && !/\$75/.test(await formBox()), 'Franklin Square is local too');
+    await page.fill('#f-town', 'Lynbrook');
+    assert(/\$75/.test(await formBox()) && !/\$36/.test(await formBox()), 'other town → usual amount only');
+    await page.fill('#f-town', '');
+    assert(/\$36/.test(await formBox()) && /\$75/.test(await formBox()), 'cleared → both again');
+    await page.fill('#f-town', 'wh');
+    await page.locator('#deposit-group').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(SHOTS, 'm-payment-local-tier.png') });
+    const ok = await page.evaluate(() => [
+      ['West Hempstead', true], ['west hempstead ny', true], ['Hempstead NY 11552-1234', true], ['Hempstead', false], ['Woodmere 11598', false], ['Franklin', false],
+    ].every(([t, want]) => window.WHG.localMatch(['West Hempstead', 'WH', '11552', 'Franklin Square'], t) === want));
+    assert(ok, 'site matching rules agree with the worker');
     await page.goto(BASE + '/g/dep', { waitUntil: 'networkidle' });
     assert(/Deposit required/.test(await page.textContent('.deposit-callout')), 'no chargeType → still "Deposit required"');
+    await page.check('#row-recDepIt1 input[type=checkbox]');
+    await page.click('#btn-open-modal');
+    assert(await page.isVisible('#town-opt') && !(await page.isVisible('#town-req')), 'refundable deposit: town optional');
     await ctx.close();
     assert(!errors.length, 'no errors ' + errors.join(' | '));
   } finally { await browser.close(); srv.kill(); }

@@ -3479,12 +3479,105 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     const base = { gemach: G.slug, name: "Tova", phone: "5165557777", preferredContact: "Phone", itemsRequested: ["recPAYTYPE0000001"], quantities: { recPAYTYPE0000001: 3 }, neededFrom: soon(9) };
     let r = await post("/submit-request", base);
     assert.equal(r.status, 400); assert.match((await r.json()).error, /payment requirement/);
-    r = await post("/submit-request", { ...base, depositAck: true });
+    r = await post("/submit-request", { ...base, depositAck: true, town: "Lynbrook" });
     assert.equal(r.status, 200, await r.clone().text());
     await Promise.allSettled(waits);
     const m = resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1);
     assert.match(m.text, /Payment acknowledged: yes/); assert.ok(!/Deposit acknowledged/.test(m.text));
     assert.ok(m.html.includes(">Payment<"));
+  });
+
+  // ── Town on every request; required for a payment; local payment tier (places.js) ──
+  const lastReq = () => DB.Requests.filter(x => (x.fields.Gemach || [])[0] === G.id).at(-1).fields;
+  const payBase = { gemach: G.slug, name: "Tova Katz", email: "tova@example.com", itemsRequested: ["recPAYTYPE0000001"], quantities: { recPAYTYPE0000001: 3 }, neededFrom: soon(9), depositAck: true };
+
+  await t("town: required when the gemach charges a payment; stored as typed (tidied)", async () => {
+    __WHG_TEST__.clearMemo();
+    const pub = (await (await call(`/public/gemach/${G.slug}?town=1`)).json()).gemach;
+    assert.equal(pub.townRequired, true); assert.deepEqual(pub.localPlaces, []); assert.equal(pub.localDepositInfo, null);
+    let r = await post("/submit-request", payBase);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /town/);
+    r = await post("/submit-request", { ...payBase, town: "   " });
+    assert.equal(r.status, 400);
+    r = await post("/submit-request", { ...payBase, town: 12 });
+    assert.equal(r.status, 400);
+    r = await post("/submit-request", { ...payBase, town: "x".repeat(101) });
+    assert.equal(r.status, 400);
+    r = await post("/submit-request", { ...payBase, town: "  Lynbrook,   NY " });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(lastReq()["Town"], "Lynbrook, NY");
+    assert.equal(lastReq()["Payment Tier"], undefined, "no local tier set up yet");
+  });
+
+  await t("local tier: Settings saves the towns tidied with the local text; one without the other refused; admin sees both", async () => {
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ localPlaces: "West Hempstead" }) });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /local borrowers/);
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ localDepositInfo: "$36 minimum donation" }) });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /local town/);
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ localPlaces: "x".repeat(1001), localDepositInfo: "$36" }) });
+    assert.equal(r.status, 400);
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({
+      localPlaces: " West Hempstead, W. Hempstead,, WH ,11552,\nFranklin  Square, west hempstead ", localDepositInfo: "West Hempstead resident fee: $36 minimum donation" }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    const d = await r.json();
+    assert.deepEqual(d.localPlaces, ["West Hempstead", "W. Hempstead", "WH", "11552", "Franklin Square"]);
+    assert.equal(d.localDepositInfo, "West Hempstead resident fee: $36 minimum donation");
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Local Places"], "West Hempstead, W. Hempstead, WH, 11552, Franklin Square");
+    __WHG_TEST__.clearMemo();
+    const pub = (await (await call(`/public/gemach/${G.slug}?town=2`)).json()).gemach;
+    assert.deepEqual(pub.localPlaces, d.localPlaces); assert.equal(pub.localDepositInfo, d.localDepositInfo);
+  });
+
+  await t("local tier: local towns get the local rate, others the usual; both emails say which amount", async () => {
+    for (const [town, tier] of [["w. hempstead ny", "Local"], ["Franklin Square, NY 11010", "Local"], ["Hempstead 11552", "Local"], ["Lynbrook, NY 11563", "Standard"], ["Hempstead", "Standard"]]) {
+      const r = await post("/submit-request", { ...payBase, town });
+      assert.equal(r.status, 200, await r.clone().text());
+      assert.equal(lastReq()["Payment Tier"], tier, town);
+    }
+    await Promise.allSettled(waits);
+    await post("/submit-request", { ...payBase, email: "local@example.com", town: "WH" });
+    await Promise.allSettled(waits);
+    const gm = resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1);
+    assert.match(gm.text, /Town: WH · local rate/); assert.match(gm.text, /Payment for them: West Hempstead resident fee: \$36/);
+    assert.ok(gm.html.includes("local rate"));
+    const rc = resendCalls().filter(x => x.to[0] === "local@example.com").at(-1);
+    assert.match(rc.text, /Payment: West Hempstead resident fee: \$36/);
+    await post("/submit-request", { ...payBase, email: "away@example.com", town: "Teaneck, NJ" });
+    await Promise.allSettled(waits);
+    assert.match(resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1).text, /Town: Teaneck, NJ · not local[\s\S]*Payment for them: \$15 per tablecloth/);
+    assert.match(resendCalls().filter(x => x.to[0] === "away@example.com").at(-1).text, /Payment: \$15 per tablecloth/);
+    const list = await (await call("/admin/requests", { headers: H })).json();
+    const mine = list.find(x => x.email === "away@example.com");
+    assert.equal(mine.town, "Teaneck, NJ"); assert.equal(mine.paymentTier, "Standard");
+  });
+
+  await t("local tier: clearing both turns it off; no charge = town optional", async () => {
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ localPlaces: "", localDepositInfo: "" }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.deepEqual((await r.json()).localPlaces, []);
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ depositRequired: false }) });
+    assert.equal(r.status, 200);
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?town=3`)).json()).gemach.townRequired, false);
+    const { depositAck, ...noAck } = payBase;
+    r = await post("/submit-request", noAck);
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(lastReq()["Town"], undefined);
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ depositRequired: true }) });
+    assert.equal(r.status, 200);
+  });
+
+  await t("places: matching rules (case, punctuation, state, zip)", async () => {
+    const { isLocalTown, parseLocalPlaces } = await import("../src/places.js");
+    const P = "West Hempstead, W Hempstead, W. Hempstead, WH, 11552, Franklin Square";
+    for (const yes of ["West Hempstead", "west hempstead", "WEST HEMPSTEAD, NY", "West Hempstead New York", "W.Hempstead".replace(".", ". "), "wh", "W.H.".replace(/\./g, ""), "11552", "West Hempstead, NY 11552", "Hempstead NY 11552-1234", "Franklin Square", "franklin square ny", "Franklin Square, N.Y."]) {
+      assert.equal(isLocalTown(P, yes), true, yes);
+    }
+    for (const no of ["", "Hempstead", "Lakewood, NJ", "Franklin", "Square", "11553", "West Hempstead Avenue Brooklyn", "Woodmere 11598"]) {
+      assert.equal(isLocalTown(P, no), false, no);
+    }
+    assert.equal(isLocalTown("", "West Hempstead"), null);
+    assert.deepEqual(parseLocalPlaces(" a ,b,, A, c\nd "), ["a", "b", "c", "d"]);
   });
 }
 

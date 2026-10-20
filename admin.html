@@ -885,6 +885,7 @@
     .tag-green { background: #DCFCE7; color: var(--green); }
     .tag-test { background: #EDE9FE; color: #5B21B6; border: 1px dashed #A78BFA; }
     .tag-addon { background: #E0E7FF; color: #3730A3; }
+    .tag-gray { background: #EEF1F3; color: #334155; }
     /* Item filters (Size, Color…) */
     .attr-picker { margin-bottom: 0.55rem; }
     .attr-picker-name { font-size: 0.75rem; color: var(--muted); font-weight: 600; margin-bottom: 0.25rem; }
@@ -3052,7 +3053,8 @@
       borrowed_date: extra.borrowedDate ? fmtDay(extra.borrowedDate, true) : "",
       due_back: dueBackText(extra.returnDate),
       days_out: extra.daysOut != null ? String(extra.daysOut) : "",
-      deposit_info: g.depositRequired ? (g.depositInfo || "") : "",
+      // A request from a local town (Settings → Different amount for local borrowers) gets the local text.
+      deposit_info: g.depositRequired ? ((extra.paymentTier === "Local" && g.localDepositInfo ? g.localDepositInfo : g.depositInfo) || "") : "",
       event_date: extra.eventDate ? fmtDay(extra.eventDate, true) : "",
       first_name: firstName || "",
       items: items || "",
@@ -3384,6 +3386,7 @@
           ${isAppt && r.preferredTimes ? `<span>🕒 ${esc(r.preferredTimes)}</span>` : ""}
           ${r.partySize ? `<span>👥 Party of ${esc(r.partySize)}</span>` : ""}
           ${r.depositAcknowledged ? `<span>✓ ${GEMACH?.chargeType === "Payment" ? "Payment" : "Deposit"} acknowledged</span>` : ""}
+          ${r.town ? `<span>📍 ${esc(r.town)}${r.paymentTier ? ` <span class="tag ${r.paymentTier === "Local" ? "tag-green" : "tag-gray"}" title="Which ${GEMACH?.chargeType === "Payment" ? "payment" : "deposit"} applies (Settings → Different amount for local borrowers)">${r.paymentTier === "Local" ? "Local rate" : "Not local"}</span>` : ""}</span>` : ""}
           <span>📞 ${esc(r.phone)}</span>
           ${r.notes ? `<span>💬 ${esc(r.notes)}</span>` : ""}
         </div>
@@ -3449,7 +3452,7 @@
     // The one combined message: the usual confirmation for what's going out, then a short "not available" paragraph.
     const buildMessage = () => {
       const first = r.name.split(" ")[0];
-      let msg = renderMessage("confirm", first, confirmedText(), { eventDate: r.eventDate, manageUrl: r.manageUrl });
+      let msg = renderMessage("confirm", first, confirmedText(), { eventDate: r.eventDate, manageUrl: r.manageUrl, paymentTier: r.paymentTier });
       const na = notAvailable();
       if (!na.length) return msg;
       const item = d => d.note ? `${d.name} (${d.note.replace(/[.!\s]+$/, "")})` : d.name;
@@ -3539,7 +3542,7 @@
     let lastAuto = "";
     const refresh = () => {
       const when = fmtAppointment(dateEl.value, timeEl.value);
-      const auto = renderMessage("appointment", first, items, { appointmentTime: when || "[date & time]", eventDate: r.eventDate, manageUrl: r.manageUrl });
+      const auto = renderMessage("appointment", first, items, { appointmentTime: when || "[date & time]", eventDate: r.eventDate, manageUrl: r.manageUrl, paymentTier: r.paymentTier });
       // Only rewrite while the admin hasn't hand-edited the message.
       if (msgEl.value === lastAuto) msgEl.value = auto;
       lastAuto = auto;
@@ -3585,7 +3588,7 @@
       [(r.itemNames || []).join(", ") || (r.requestType === "Appointment" ? "Appointment" : ""), r.requestId].filter(Boolean).join(" · ");
 
     document.getElementById("decline-message").value =
-      renderMessage("decline", String(r.name || "").split(" ")[0], (r.itemNames || []).join(" and "), { eventDate: r.eventDate });
+      renderMessage("decline", String(r.name || "").split(" ")[0], (r.itemNames || []).join(" and "), { eventDate: r.eventDate, paymentTier: r.paymentTier });
 
     setupSendBy("decline", r, "decline-submit-btn", {
       whatsapp: "Decline & open WhatsApp", sms: "Decline & open text message", email: "Decline & email", none: "Decline without message",
@@ -6096,6 +6099,8 @@
     whatsapp:           { label: "WhatsApp",            type: "tel",   max: 200, hint: "Leave blank to use the phone number for WhatsApp." },
     email:              { label: "Email",               type: "email", max: 200, hint: "Request notifications go here; borrowers' replies too." },
     depositInfo:        { label: "Deposit / payment info", type: "area",  max: 2000, rows: 2, placeholder: "e.g. $100 refundable check, returned when the item comes back — or: $15 per tablecloth, paid by Zelle to …", hint: "Shown on your page and on the request form. Say how much, how to pay, and whether it comes back." },
+    localPlaces:        { label: "Local towns",         type: "area",  max: 1000, rows: 2, placeholder: "West Hempstead, W Hempstead, W. Hempstead, WH, 11552, Franklin Square", hint: "Separate with commas. Add the spellings people might type (WH, W. Hempstead) and zip codes. Capital letters and dots don't matter, and a trailing “NY” or zip is ignored." },
+    localDepositInfo:   { label: "Payment for local borrowers", type: "area", max: 2000, rows: 2, placeholder: "e.g. West Hempstead resident fee: $36 minimum donation", hint: "Borrowers who type one of the local towns see this instead of the text above. Your page shows both." },
     gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
     requestFormUrl:     { label: "Request form link",   type: "url",   max: 600, placeholder: "https://forms.gle/…", hint: "Only for Listing only gemachs that take requests through their own form (e.g. a Google Form). Your page shows an “Open the request form” button instead of live availability." },
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
@@ -6126,7 +6131,7 @@
   // Which area each saved key belongs to (for the "unsaved" dots).
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
-    info: ["depositRequired", "chargeType", "depositInfo", "gemachInfo"],
+    info: ["depositRequired", "chargeType", "depositInfo", "localPlaces", "localDepositInfo", "gemachInfo"],
     requests: ["requestFormUrl", "borrowNote", "requestStyle", "availabilityMode", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
     reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView", "photoShape"],
     attrs: ["itemAttributes", "groupBy", "spotlightFilter"], browsecats: ["browseCategoryIds"],
@@ -6250,6 +6255,14 @@
               <span>Payment (a fee)<small>Not given back, e.g. a rental or cleaning fee. Borrowers tick “I understand payment is required”.</small></span></label>
           </div>
           ${fieldHtml("depositInfo")}
+          <div class="checkbox-row">
+            <input type="checkbox" id="set-localTier" />
+            <label for="set-localTier">Different amount for local borrowers</label>
+          </div>
+          <div id="local-tier-wrap">
+            ${fieldHtml("localPlaces")}
+            ${fieldHtml("localDepositInfo")}
+          </div>
         </div>
         ${fieldHtml("gemachInfo")}`;
     }
@@ -6448,7 +6461,7 @@
 
     Object.entries(SETTINGS_FIELDS).forEach(([key, f]) => {
       const el = setEl(key);
-      el.value = g[key] || "";
+      el.value = Array.isArray(g[key]) ? g[key].join(", ") : g[key] || ""; // Local towns come back as a list
       if (f.placeholder) el.placeholder = f.placeholder;
       el.disabled = ro;
       el.addEventListener("input", onSettingsInput);
@@ -6468,6 +6481,7 @@
 
     setEl("depositRequired").checked = !!g.depositRequired;
     remember("depositRequired", !!g.depositRequired);
+    setEl("localTier").checked = !!(g.localPlaces && g.localPlaces.length);
     const charge = g.chargeType === "Payment" ? "Payment" : "Deposit";
     document.querySelectorAll('input[name="set-chargeType"]').forEach(r => { r.checked = r.value === charge; r.disabled = ro; });
     remember("chargeType", charge);
@@ -6504,7 +6518,7 @@
     remember("reminderDaysBefore", Number(g.reminderDaysBefore ?? 2));
     remember("reminderRepeatDays", Number(g.reminderRepeatDays ?? 7));
 
-    ["primaryContact", "secondaryContact", "themePicker", "themeHex", "accentPicker", "accentHex", "depositRequired",
+    ["primaryContact", "secondaryContact", "themePicker", "themeHex", "accentPicker", "accentHex", "depositRequired", "localTier",
      "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays", "autoReminders", "reminderDaysBefore", "reminderRepeatDays"].forEach(k => {
       const el = setEl(k);
       el.disabled = ro;
@@ -6605,6 +6619,10 @@
     updateContactNeeds();
     updateThemePreview();
     document.getElementById("deposit-info-wrap").style.display = setEl("depositRequired").checked ? "" : "none";
+    // Local payment tier: towns + local text; the main text becomes "everyone else".
+    const tier = setEl("localTier").checked;
+    document.getElementById("local-tier-wrap").style.display = tier ? "" : "none";
+    document.querySelector('label[for="set-depositInfo"]').textContent = tier ? "Deposit / payment for everyone else" : SETTINGS_FIELDS.depositInfo.label;
     updateRequestStyleUi();
   }
 
@@ -7049,6 +7067,11 @@
     put("themeColor", theme);
     put("accentColor", accent);
     put("depositRequired", setEl("depositRequired").checked);
+    if (!setEl("localTier").checked) { // unticked: clear both (only if something was saved)
+      for (const k of ["localPlaces", "localDepositInfo"]) { if (String(settingsOriginal[k] || "").trim()) patch[k] = ""; else delete patch[k]; }
+    } else if (!setEl("localPlaces").value.trim() || !setEl("localDepositInfo").value.trim()) {
+      return { error: "Different amount for local borrowers: add the local towns and the payment for local borrowers (or untick it)." };
+    }
     put("chargeType", document.querySelector('input[name="set-chargeType"]:checked')?.value || "Deposit");
     put("itemView", document.querySelector('input[name="set-itemView"]:checked')?.value || "List");
     put("photoShape", document.querySelector('input[name="set-photoShape"]:checked')?.value || "Landscape");

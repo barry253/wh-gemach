@@ -124,6 +124,12 @@
         </div>
       </div>
 
+      <div class="form-group" id="town-group">
+        <label for="f-town">Town you live in <span class="opt" id="town-opt">(optional)</span><span class="req" id="town-req" aria-hidden="true" hidden>*</span></label>
+        <input type="text" id="f-town" name="town" placeholder="e.g. West Hempstead" autocomplete="address-level2" maxlength="100" aria-describedby="town-hint" />
+        <p class="field-hint" id="town-hint" hidden>The payment depends on where you live.</p>
+      </div>
+
       <fieldset class="form-group" id="items-group">
         <legend id="items-legend">Items requested <span class="req" aria-hidden="true">*</span></legend>
         <div id="modal-items-grid"></div>
@@ -178,7 +184,7 @@
       </div>
 
       <label class="check-line remember-line"><input type="checkbox" id="f-remember" /> <span>Remember my details on this device
-        <small>Your name, phone and email, and a link to this request, are saved in this browser for next time.</small></span></label>
+        <small>Your name, phone, email and town, and a link to this request, are saved in this browser for next time.</small></span></label>
 
       <div class="hp-field" aria-hidden="true"><label for="f-hp">Leave this empty</label><input type="text" id="f-hp" name="hp" tabindex="-1" autocomplete="off" /></div>
       <div class="ts-box" id="ts-box"></div>

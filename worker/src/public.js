@@ -8,6 +8,7 @@ import { json } from "./http.js";
 import { itemAttrsFor } from "./attributes.js";
 import { publicTypeExtras } from "./extras.js";
 import { parseMorePhotos } from "./photos.js";
+import { hasLocalTier, townRequired } from "./places.js";
 import { inTestMode } from "./testmode.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, loanWindow, LOAN_WINDOW_FIELDS, maxPerRequest, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
 
@@ -143,6 +144,9 @@ function publicGemach(g, communityName, { withContact = true } = {}) {
     primaryContact: g.primaryContact ?? null, secondaryContact: g.secondaryContact ?? null,
     themeColor: g.themeColor || DEFAULT_THEME, accentColor: g.accentColor ?? null,
     depositRequired: !!g.depositRequired, chargeType: g.chargeType || "Deposit", itemView: g.itemView || "List", depositInfo: g.depositInfo ?? null, gemachInfo: g.gemachInfo ?? null,
+    // Local payment tier (places.js): only sent when it applies; the form matches the borrower's town against localPlaces.
+    localDepositInfo: hasLocalTier(g) ? g.localDepositInfo : null, localPlaces: hasLocalTier(g) ? g.localPlaces : [],
+    townRequired: townRequired(g),
     requestFormUrl: g.requestFormUrl ?? null,
     requestStyle: g.requestStyle || "Dates", eventLabel: g.eventLabel || DEFAULT_EVENT_LABEL,
     pickupDaysBefore: g.pickupDaysBefore ?? 1, returnDaysAfter: g.returnDaysAfter ?? 1, shabbosAdjust: !!g.shabbosAdjust,

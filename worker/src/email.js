@@ -3,6 +3,7 @@ import { DEFAULT_ADMIN_URL, DEFAULT_FROM_EMAIL } from "./config.js";
 import { dateToUtcMs, isValidDate } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, HEX_RE } from "./gemachs.js";
 import { money, qtyLabel } from "./quantity.js";
+import { chargeTextFor } from "./places.js";
 
 // ─── Email ────────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,12 @@ const TEST_NOTE = "TEST REQUEST: sent from the gemach's test link before it went
 
 async function sendNotificationEmail(env, g, data) {
   const { requestId, name, phone, email, preferredContact, itemNames, neededFrom, neededUntil, openEnded, notes,
-    requestType, eventDate, preferredTimes, partySize, depositAck, availability = null, test = false } = data;
+    requestType, eventDate, preferredTimes, partySize, depositAck, availability = null, test = false,
+    town = null, paymentTier = null, addonsOnly = false } = data;
+  // "Franklin Square · local rate" (gemachs with a local payment tier); the payment text that applies to them.
+  const tierText = paymentTier === "Local" ? "local rate" : paymentTier === "Standard" ? "not local" : "";
+  const townLine = town ? `${town}${tierText ? ` · ${tierText}` : ""}` : "not given";
+  const charge = paymentTier && !addonsOnly ? chargeTextFor(g, paymentTier === "Local") : "";
   const isAppt = requestType === "Appointment";
   const items = data.items || (Array.isArray(itemNames) ? itemNames : itemNames ? [itemNames] : []).map(n => ({ name: n, quantity: null }));
   const label = it => qtyLabel(it.name, it.quantity);
@@ -94,7 +100,7 @@ async function sendNotificationEmail(env, g, data) {
   if (test) lines.push(TEST_NOTE, "");
   if (fallback) lines.push(`ℹ ${fallbackNote}`, "");
   if (conflicts.length) lines.push(`⚠ ${conflicts.length} of ${items.length} item${items.length === 1 ? "" : "s"} may not be available for these dates — see below.`, "");
-  lines.push(`Name: ${name}`, `Phone: ${phone || "not provided"}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, "");
+  lines.push(`Name: ${name}`, `Phone: ${phone || "not provided"}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, `Town: ${townLine}`, "");
   if (isAppt) {
     lines.push(`Preferred times: ${preferredTimes || "not specified"}`);
     if (partySize != null) lines.push(`Party size: ${partySize}`);
@@ -115,6 +121,7 @@ async function sendNotificationEmail(env, g, data) {
   }
   const chargeWord = g.chargeType === "Payment" ? "Payment" : "Deposit";
   if (g.depositRequired) lines.push("", `${chargeWord} acknowledged: ${depositAck ? "yes" : "no"}`);
+  if (charge) lines.push(`${chargeWord} for them: ${charge}`);
   lines.push("", `Notes: ${notes || "none"}`, "", `Log in to review: ${link}`);
   const text = lines.join("\n").trim();
 
@@ -127,6 +134,7 @@ async function sendNotificationEmail(env, g, data) {
     row("Phone", tel ? `<a href="tel:${e(tel)}" style="color:#1B3A4B;">${e(phone)}</a>` : phone ? e(phone) : `<span style="color:#5e6b72;">not provided</span>`),
     row("Email", email ? `<a href="mailto:${e(email)}" style="color:#1B3A4B;">${e(email)}</a>` : `<span style="color:#5e6b72;">not provided</span>`),
     row("Prefers", e(preferredContact || "not specified")),
+    row("Town", town ? `${e(town)}${tierText ? ` <span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;${paymentTier === "Local" ? "background:#dcfce7;color:#166534;" : "background:#eef1f3;color:#334155;"}">${e(tierText)}</span>` : ""}` : `<span style="color:#5e6b72;">not given</span>`),
   ];
   if (isAppt) {
     details.push(row("Preferred times", e(preferredTimes || "not specified")));
@@ -137,6 +145,7 @@ async function sendNotificationEmail(env, g, data) {
     details.push(row("Dates", `<strong>${e(dateRange)}</strong>`));
   }
   if (g.depositRequired) details.push(row(chargeWord, depositAck ? "Acknowledged" : `<span style="color:#b91c1c;">Not acknowledged</span>`));
+  if (charge) details.push(row(`${chargeWord} for them`, e(charge).replace(/\r\n?|\n/g, "<br>")));
 
   const STATUS_STYLE = {
     ok: "background:#dcfce7;color:#166534;", short: "background:#fef3c7;color:#92400e;",

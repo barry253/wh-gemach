@@ -266,6 +266,7 @@
     var dep = !!gemach.depositRequired && !addonsOnly;
     $("deposit-group").hidden = !dep;
     $("f-deposit").required = dep;
+    updateTown();
     if (!qi.length || style() === "Appointment") { group.hidden = true; list.innerHTML = ""; return; }
     // keep what's typed; rebuild only when the set of rows changes
     var have = Array.prototype.map.call(list.querySelectorAll("[data-qty]"), function (i) { return i.getAttribute("data-qty"); }).join(",");
@@ -498,9 +499,35 @@
   function pkgChoices(it) { var ps = pkgSize(it), out = []; for (var n = ps; n <= maxAsk(it); n += ps) out.push(n); return out; }
 
   function isPayment(g) { return !!g && g.chargeType === "Payment"; } // a fee, not a refundable deposit
-  function depositHtml(g) {
-    return "<strong>" + W.ICONS.info + (isPayment(g) ? "Payment required" : "Deposit required") + "</strong>" +
-      (g.depositInfo ? '<div class="prose">' + W.formatText(g.depositInfo) + "</div>" : "");
+  // ── Local payment tier: a separate amount for borrowers from the gemach's local towns ──
+  // Same rules as worker/src/places.js isLocalTown (keep in step).
+  function normPlace(s) { return String(s || "").toLowerCase().replace(/[.,;:'’"()/#-]/g, " ").replace(/\s+/g, " ").trim(); }
+  var STATE_TAIL = /\s(ny|n y|new york|nj|new jersey|ct|pa|md|fl|ca)$/;
+  function localMatch(places, town) {
+    var list = (places || []).map(normPlace).filter(Boolean);
+    if (!list.length) return null;
+    var n = normPlace(town);
+    if (!n) return false;
+    var has = function (x) { return !!x && list.indexOf(x) >= 0; };
+    if ((n.match(/\b\d{5}\b/g) || []).some(has)) return true;
+    var noZip = n.replace(/\b\d{5}(\s\d{4})?\b/g, " ").replace(/\s+/g, " ").trim();
+    return has(n) || has(noZip) || has(noZip.replace(STATE_TAIL, "").trim());
+  }
+  W.localMatch = localMatch; // for tests
+  function hasLocalTier(g) { return !!(g && g.depositRequired && g.localDepositInfo && g.localPlaces && g.localPlaces.length); }
+  function townRequired(g) { return !!g && (g.townRequired === true || (g.depositRequired && (isPayment(g) || hasLocalTier(g)))); }
+  /**
+   * The deposit / payment box. With a local tier: both amounts (each text says who it's for); on the form,
+   * once a town is typed, just the one that applies to them.
+   */
+  function depositHtml(g, town) {
+    var head = "<strong>" + W.ICONS.info + (isPayment(g) ? "Payment required" : "Deposit required") + "</strong>";
+    var prose = function (t, cls) { return t ? '<div class="prose' + (cls ? " " + cls : "") + '">' + W.formatText(t) + "</div>" : ""; };
+    if (!hasLocalTier(g)) return head + prose(g.depositInfo);
+    var local = town == null ? null : localMatch(g.localPlaces, town);
+    if (local === true) return head + prose(g.localDepositInfo) + '<p class="tier-note">Based on the town you entered.</p>';
+    if (local === false && String(town).trim()) return head + prose(g.depositInfo) + '<p class="tier-note">Based on the town you entered.</p>';
+    return head + prose(g.localDepositInfo, "tier") + prose(g.depositInfo, "tier");
   }
   /** Short "Gemach Info" (a few brief lines, no hours or deposit) goes in the header instead of its own box. */
   function shortInfo(g) {
@@ -1565,12 +1592,15 @@
     if (!$("f-name").value) $("f-name").value = d.name || "";
     if (!$("f-phone").value) $("f-phone").value = d.phone || "";
     if (!$("f-email").value) $("f-email").value = d.email || "";
+    if (!$("f-town").value) $("f-town").value = d.town || "";
     if (d.preferredContact && $("f-contact").querySelector('option[value="' + d.preferredContact.replace(/[^A-Za-z]/g, "") + '"]')) $("f-contact").value = d.preferredContact;
     updateContactReq();
+    updateTown();
   }
   $("forget-me").addEventListener("click", function () {
     W.me.forget();
-    ["f-name", "f-phone", "f-email"].forEach(function (id) { $(id).value = ""; });
+    ["f-name", "f-phone", "f-email", "f-town"].forEach(function (id) { $(id).value = ""; });
+    updateTown();
     $("f-contact").value = "Email";
     $("f-remember").checked = false;
     $("remember-saved").hidden = true;
@@ -1640,7 +1670,7 @@
     var dep = !!gemach.depositRequired;
     $("deposit-group").hidden = !dep;
     $("f-deposit").required = dep;
-    if (dep) $("deposit-form-info").innerHTML = depositHtml(gemach);
+    updateTown();
     $("deposit-ack-text").textContent = isPayment(gemach) ? "I understand payment is required" : "I understand a deposit is required";
     $("form-note-purpose").textContent = appt ? "your appointment" : "the loan";
     $("f-notes").setAttribute("placeholder", appt ? "e.g. sizes, colors or styles you’re interested in"
@@ -1675,6 +1705,19 @@
   }
   $("f-from").addEventListener("input", updateDateMins);
   $("f-from").addEventListener("change", updateDateMins);
+
+  // ── Town: asked of everyone; required when the gemach charges a payment (not for add-ons only) ──
+  function townNeeded() { return townRequired(gemach) && !$("deposit-group").hidden; }
+  function updateTown() {
+    if (!gemach) return;
+    var need = townNeeded();
+    $("town-opt").hidden = need;
+    $("town-req").hidden = !need;
+    $("f-town").required = need;
+    $("town-hint").hidden = !(hasLocalTier(gemach) && !$("deposit-group").hidden);
+    if (gemach.depositRequired) $("deposit-form-info").innerHTML = depositHtml(gemach, $("f-town").value);
+  }
+  $("f-town").addEventListener("input", updateTown);
 
   // ── Email is always required; the phone becomes required when a call, text or WhatsApp is the best way ──
   var PHONE_CONTACTS = ["Phone", "SMS", "WhatsApp"];
@@ -1813,6 +1856,8 @@
     if (ph) { var pe = W.phoneError(ph); if (pe) bad($("f-phone"), pe); }
     else if (needsPhone()) bad($("f-phone"), "Please add your phone number, since that’s the best way to reach you.");
     if (!preferredContact) preferredContact = "Email";
+    var town = $("f-town").value.replace(/\s+/g, " ").trim();
+    if (!town && townNeeded()) bad($("f-town"), "Please enter the town you live in.");
 
     var body = { gemach: gemach.slug || slug, name: name, phone: ph, itemsRequested: ids };
     var firstItem = modal.querySelector('input[name="modal-items"]');
@@ -1879,6 +1924,7 @@
       return null;
     }
     if (email) body.email = email;
+    if (town) body.town = town;
     var hp = $("f-hp"); if (hp && hp.value) body.website = hp.value; // hidden field only bots fill in
     if (inTestMode()) body.testToken = testToken;
     body.preferredContact = preferredContact;
@@ -1909,7 +1955,7 @@
       if (!data || !data.success) throw new Error((data && data.error) || "failed");
       var link = typeof data.manageUrl === "string" && /^https:\/\//.test(data.manageUrl) ? data.manageUrl : null;
       if ($("f-remember").checked) {
-        W.me.save({ name: body.name, phone: $("f-phone").value.trim(), email: body.email || "", preferredContact: body.preferredContact });
+        W.me.save({ name: body.name, phone: $("f-phone").value.trim(), email: body.email || "", preferredContact: body.preferredContact, town: body.town || "" });
         if (link) W.me.addRequest({ url: link, gemach: gemach.name, requestId: data.requestId });
       } else if (W.me.load()) {
         W.me.forget(); // they unticked "Remember me"

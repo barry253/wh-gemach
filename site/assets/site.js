@@ -74,7 +74,8 @@
     },
     save: function (d) {
       lsSet(ME_KEY, { name: String(d.name || "").slice(0, 120), phone: String(d.phone || "").slice(0, 40),
-        email: String(d.email || "").slice(0, 200), preferredContact: String(d.preferredContact || "").slice(0, 20) });
+        email: String(d.email || "").slice(0, 200), preferredContact: String(d.preferredContact || "").slice(0, 20),
+        town: String(d.town || "").slice(0, 100) });
     },
     forget: function () { lsDel(ME_KEY); lsDel(MINE_KEY); },
     requests: function () {

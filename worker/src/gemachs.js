@@ -4,6 +4,7 @@ import { CACHE_TTL_MS, LEGACY_SLUG, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./con
 import { isLiveNetworkAdmin } from "./network.js";
 import { parseAttrDefs } from "./attributes.js";
 import { filterNameIn } from "./extras.js";
+import { parseLocalPlaces } from "./places.js";
 
 // ─── Gemach lookup ────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ const clampInt = (v, lo, hi, dflt) => {
 // Activity Log, lists that only grow — reading them costs the worker CPU for nothing, so reads name their fields.
 const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", "Website", "Donation URL", "Donation Info", "Hours",
   "Description", "Category", "Mode", "Primary Contact", "Secondary Contact", "Theme Color", "Accent Color", "Deposit Required",
-  "Charge Type", "Item View", "Deposit Info", "Gemach Info", "Request Form URL", "Request Style", "Event Label", "Pickup Days Before", "Return Days After", "Default Loan Days",
+  "Charge Type", "Item View", "Deposit Info", "Local Deposit Info", "Local Places", "Gemach Info", "Request Form URL", "Request Style", "Event Label", "Pickup Days Before", "Return Days After", "Default Loan Days",
   "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
   "Return Reminder Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories",
@@ -67,6 +68,9 @@ function gemachFromRecord(r) {
     chargeType: selName(f["Charge Type"]) === "Payment" ? "Payment" : "Deposit", // Deposit = refundable; Payment = a fee
     itemView: ITEM_VIEWS.includes(selName(f["Item View"])) ? selName(f["Item View"]) : "List", // how items first show on the public page
     depositInfo: nonBlank(f["Deposit Info"]),
+    // Local payment tier (places.js): its own text for borrowers from these places; both needed for it to apply.
+    localDepositInfo: nonBlank(f["Local Deposit Info"]),
+    localPlaces: parseLocalPlaces(f["Local Places"]),
     gemachInfo: nonBlank(f["Gemach Info"]),
     requestFormUrl: formUrl(f["Request Form URL"]),                         // optional; Listing-only page shows a "Request on our form" button
     requestStyle: REQUEST_STYLES.includes(selName(f["Request Style"])) ? selName(f["Request Style"]) : "Dates",
