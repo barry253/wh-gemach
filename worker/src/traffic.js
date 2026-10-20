@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-// GET /admin/network/traffic?days=30|90|365[&fresh=1] — visitor numbers and site errors from Cloudflare,
+// GET /admin/network/traffic?days=1|3|7|30|90|365[&fresh=1] — visitor numbers and site errors from Cloudflare,
 // for Network → Analytics (Network Admins only; routed through networkDispatch).
 //
 // Reads Cloudflare's GraphQL Analytics API with the secret CF_ANALYTICS_TOKEN (read-only:
@@ -13,6 +13,7 @@
 import { DAY_MS, addDays, nyToday } from "./dates.js";
 import { json } from "./http.js";
 import { cleanPage } from "./events.js";
+import { PERIODS } from "./analytics.js";
 
 const GRAPHQL = "https://api.cloudflare.com/client/v4/graphql";
 const DEFAULTS = {
@@ -26,7 +27,7 @@ const trafficMemo = new Map(); // days -> { data, at }
 let zoneIdMemo = null;
 
 async function handleNetworkTraffic({ env, url }) {
-  const days = [30, 90, 365].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 90;
+  const days = PERIODS.includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 90;
   if (!env.CF_ANALYTICS_TOKEN) return json({ configured: false, days });
   const hit = trafficMemo.get(days);
   if (hit && Date.now() - hit.at < TRAFFIC_TTL_MS && url.searchParams.get("fresh") !== "1") {
@@ -65,9 +66,10 @@ async function zoneId(env) {
 }
 
 // One request per 30-day window: totals by day plus the top lists, as aliases of the same dataset.
-const rumQuery = withBots => {
-  const f = `filter: { siteTag: $siteTag, date_geq: $from, date_leq: $to${withBots ? "" : ", bot: 0"} }`;
-  return `query Rum($account: string!, $siteTag: string!, $from: Date!, $to: Date!) {
+// byTime: short periods (up to a week) are cut by the hour (datetime), so "24 hours" means exactly that.
+const rumQuery = (withBots, byTime) => {
+  const f = `filter: { siteTag: $siteTag, ${byTime ? "datetime_geq: $from, datetime_leq: $to" : "date_geq: $from, date_leq: $to"}${withBots ? "" : ", bot: 0"} }`;
+  return `query Rum($account: string!, $siteTag: string!, $from: ${byTime ? "Time" : "Date"}!, $to: ${byTime ? "Time" : "Date"}!) {
   viewer { accounts(filter: { accountTag: $account }) {
     byDate: rumPageloadEventsAdaptiveGroups(${f}, limit: 40) { count sum { visits } dimensions { date } }
     bySource: rumPageloadEventsAdaptiveGroups(${f}, limit: 60, orderBy: [sum_visits_DESC]) { count sum { visits } dimensions { refererHost } }
@@ -117,7 +119,9 @@ async function buildTraffic(env, days, nowMs = Date.now()) {
   const account = env.CF_ACCOUNT_ID || DEFAULTS.account;
   const siteTag = env.CF_WEB_ANALYTICS_SITE_TAG || DEFAULTS.siteTag;
   const today = nyToday(nowMs);
-  const since = addDays(today, -days + 1);
+  const short = days <= 7;
+  // Short periods start part-way through a day (24 hours ago); longer ones are whole days ending today.
+  const since = short ? nyToday(nowMs - days * DAY_MS) : addDays(today, -days + 1);
   const problems = [];
 
   // Visitors, in 30-day windows (newest first).
@@ -126,13 +130,21 @@ async function buildTraffic(env, days, nowMs = Date.now()) {
     const start = addDays(end, -29) < since ? since : addDays(end, -29);
     windows.push({ start, end });
   }
-  let botFilter = true;
+  let botFilter = true, byTime = short;
   const rumWindow = async w => {
-    const vars = { account, siteTag, from: w.start, to: w.end };
-    try { return await gql(env, rumQuery(!botFilter), vars); }
+    const vars = () => byTime
+      ? { account, siteTag, from: new Date(nowMs - days * DAY_MS).toISOString(), to: new Date(nowMs).toISOString() }
+      : { account, siteTag, from: w.start, to: w.end };
+    const ask = () => gql(env, rumQuery(!botFilter, byTime), vars());
+    try { return await ask(); }
     catch (e) {
       // If Cloudflare doesn't accept the bot filter here, ask again without it (and say so).
-      if (botFilter && /\bbot\b/i.test(e.message)) { botFilter = false; return gql(env, rumQuery(true), vars); }
+      if (botFilter && /\bbot\b/i.test(e.message)) {
+        botFilter = false;
+        return ask().catch(e2 => { if (!byTime) throw e2; byTime = false; return ask(); });
+      }
+      // Cut by the hour not accepted: fall back to whole days.
+      if (byTime) { byTime = false; return ask(); }
       throw e;
     }
   };

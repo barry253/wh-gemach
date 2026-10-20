@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-// GET /admin/network/analytics?days=30|90|365[&fresh=1] — network-wide numbers for the admin Network → Analytics tab
+// GET /admin/network/analytics?days=1|3|7|30|90|365[&fresh=1] — network-wide numbers for the admin Network → Analytics tab
 // (Network Admins only; routed through networkDispatch, which checks the role).
 import { Q, linkedId } from "./airtable.js";
 import { T } from "./config.js";
@@ -8,7 +8,7 @@ import { selName } from "./gemachs.js";
 import { json } from "./http.js";
 import { isOverdue, median } from "./stats.js";
 
-// Covers 30–365 days, so a copy up to 5 minutes old is fine (per worker isolate). ?fresh=1 skips it.
+// Covers 1–365 days, so a copy up to 5 minutes old is fine (per worker isolate). ?fresh=1 skips it.
 const ANALYTICS_TTL_MS = 5 * 60 * 1000;
 const analyticsMemo = new Map(); // days -> { data, at }
 
@@ -17,11 +17,14 @@ const analyticsMemo = new Map(); // days -> { data, at }
 let NY_DATE = null;
 const nyDateOf = ms => (NY_DATE ||= new Intl.DateTimeFormat("en-CA", { timeZone: NY_TZ, year: "numeric", month: "2-digit", day: "2-digit" })).format(new Date(ms)); // "YYYY-MM-DD"
 
+// Period choices in days (1 = the last 24 hours).
+export const PERIODS = [1, 3, 7, 30, 90, 365];
+
 const DECISIONS = new Set(["Request Confirmed", "Request Declined"]);
 const first = v => linkedId((v || [])[0]);
 
 async function handleNetworkAnalytics({ db, url }) {
-  const days = [30, 90, 365].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 90;
+  const days = PERIODS.includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 90;
   const hit = analyticsMemo.get(days);
   if (hit && Date.now() - hit.at < ANALYTICS_TTL_MS && url.searchParams.get("fresh") !== "1") {
     return json({ ...hit.data, cachedAt: new Date(hit.at).toISOString() });
@@ -143,10 +146,11 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10)
     .map(x => ({ name: x.name, gemach: row(x.g)?.name || null, requests: x.n, ...(isAddon(x.id) ? { addon: true } : {}) }));
 
-  // Trend: online requests and loans started, by week (30/90 days) or by month (365 days).
-  const byMonth = days > 120;
+  // Trend: online requests and loans started, by day (up to 2 weeks), week (30/90 days) or month (365 days).
+  const byMonth = days > 120, byDay = days <= 14;
   const bucketOf = date => {
     if (byMonth) return date.slice(0, 7) + "-01";
+    if (byDay) return date;
     const back = Math.floor((dateToUtcMs(todayNy) - dateToUtcMs(date)) / DAY_MS / 7); // whole weeks back from today
     return addDays(todayNy, -7 * back - 6); // each week ends today, 7 days before, …
   };
@@ -154,6 +158,9 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
   if (byMonth) {
     let d = sinceDate.slice(0, 7) + "-01";
     while (d <= todayNy) { buckets.set(d, { start: d, requests: 0, loans: 0 }); const [y, m] = d.split("-").map(Number); d = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`; }
+  } else if (byDay) {
+    // The period reaches back into part of a day (24 hours = some of yesterday + today), so that day gets a bar too.
+    for (let d = sinceDate; d <= todayNy; d = addDays(d, 1)) buckets.set(d, { start: d, requests: 0, loans: 0 });
   } else {
     for (let w = Math.ceil(days / 7) - 1; w >= 0; w--) { const s = addDays(todayNy, -7 * w - 6); buckets.set(s, { start: s, requests: 0, loans: 0 }); }
   }
@@ -281,7 +288,7 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
       within24hPct: allHours.length ? Math.round(100 * allHours.filter(h => h <= 24).length / allHours.length) : null,
     },
     people,
-    trend: { by: byMonth ? "month" : "week", buckets: [...buckets.values()] },
+    trend: { by: byMonth ? "month" : byDay ? "day" : "week", buckets: [...buckets.values()] },
     topRequested,
     topLooked,
     siteHealth,

@@ -2571,6 +2571,18 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.ok(d.trend.buckets.reduce((n, b) => n + b.requests, 0) === d.period.requests, "trend adds up to the period total");
     const y = await (await call("/admin/network/analytics?days=365&fresh=1", { headers: auth(tokNet) })).json();
     assert.equal(y.trend.by, "month"); assert.equal(y.byGemach.find(x => x.id === N.id).requests, 4, "the 200-day-old request counts in 12 months");
+    // Short periods: cut by the hour, charted by day (a period starting part-way through a day gets that day's bar too).
+    const h24 = await (await call("/admin/network/analytics?days=1&fresh=1", { headers: auth(tokNet) })).json();
+    assert.equal(h24.days, 1); assert.equal(h24.trend.by, "day");
+    assert.deepEqual(h24.trend.buckets.map(b => b.start), [day(-1), day(0)]);
+    const g24 = h24.byGemach.find(x => x.id === N.id);
+    assert.equal(g24.requests, 1, "only the request from 10 hours ago"); assert.equal(g24.adminBookings, 1);
+    const w7 = await (await call("/admin/network/analytics?days=7&fresh=1", { headers: auth(tokNet) })).json();
+    assert.equal(w7.trend.by, "day"); assert.equal(w7.trend.buckets.length, 8); assert.equal(w7.trend.buckets.at(-1).start, day(0));
+    assert.equal(w7.byGemach.find(x => x.id === N.id).requests, 3);
+    assert.equal(w7.trend.buckets.reduce((n, b) => n + b.requests, 0), w7.period.requests, "daily bars add up to the period total");
+    assert.equal((await (await call("/admin/network/analytics?days=3&fresh=1", { headers: auth(tokNet) })).json()).days, 3);
+    assert.equal((await (await call("/admin/network/analytics?days=14&fresh=1", { headers: auth(tokNet) })).json()).days, 90, "other numbers fall back to 90");
     const again = await (await call("/admin/network/analytics?days=90", { headers: auth(tokNet) })).json();
     assert.ok(again.cachedAt, "second load within 5 minutes reuses the first");
     // Leave the shared data as it was for later tests.
@@ -2628,7 +2640,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     env.CF_ANALYTICS_TOKEN = "cf-test-token";
     const seen = [];
     const day = n => __WHG_TEST__.nyToday(Date.now() + n * 864e5);
-    let rejectBot = false;
+    let rejectBot = false, rejectTime = false;
     cfAnswer = (url, init) => {
       assert.equal(init.headers.Authorization, "Bearer cf-test-token");
       if (url.includes("/zones?name=whgemachs.org")) return new Response(JSON.stringify({ result: [{ id: "zone123" }] }));
@@ -2636,6 +2648,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
       const J = o => new Response(JSON.stringify(o));
       if (/query Rum/.test(b.query)) {
         if (rejectBot && /bot: 0/.test(b.query)) return J({ data: null, errors: [{ message: "unknown field \"bot\"" }] });
+        if (rejectTime && /datetime_geq/.test(b.query)) return J({ data: null, errors: [{ message: "unknown field \"datetime_geq\"" }] });
         if (b.variables.to < day(-40)) return J({ data: null, errors: [{ message: "cannot request data older than 31 days" }] });
         const g = (count, visits, dimensions) => ({ count, sum: { visits }, dimensions });
         return J({ data: { viewer: { accounts: [{
@@ -2676,6 +2689,22 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
       assert.deepEqual({ requests: d.worker.requests, errors: d.worker.errors, byStatus: d.worker.byStatus }, { requests: 905, errors: 5, byStatus: { exceededResources: 4, scriptThrewException: 1 } });
       assert.deepEqual({ site4xx: d.http.site4xx, api5xx: d.http.api5xx, api4xx: d.http.api4xx }, { site4xx: 7, api5xx: 2, api4xx: 30 });
       assert.deepEqual(d.http.top.map(x => x.path), ["/wp-login.php", "/r/…"]);
+      // Short periods: one window, cut by the hour (24 hours = exactly that).
+      for (const days of [1, 3, 7]) {
+        seen.length = 0;
+        d = await (await call(`/admin/network/traffic?days=${days}&fresh=1`, { headers: auth(tokNet) })).json();
+        const rum = seen.filter(b => /query Rum/.test(b.query));
+        assert.equal(rum.length, 1); assert.match(rum[0].query, /datetime_geq: \$from/); assert.match(rum[0].query, /\$from: Time!/);
+        assert.ok(Math.abs(Date.parse(rum[0].variables.from) - (Date.now() - days * 864e5)) < 60e3, "starts " + days + " × 24 hours ago");
+        assert.equal(d.days, days); assert.equal(d.since, day(-days)); assert.deepEqual(d.problems, []); assert.equal(d.visitors.visits, 20);
+        assert.equal(d.worker.days, days);
+      }
+      // Cloudflare refusing the hour filter: asked again by whole days.
+      rejectTime = true; seen.length = 0;
+      d = await (await call("/admin/network/traffic?days=1&fresh=1", { headers: auth(tokNet) })).json();
+      assert.deepEqual(d.problems, []); assert.equal(d.visitors.visits, 20);
+      assert.match(seen.filter(b => /query Rum/.test(b.query)).at(-1).query, /date_geq: \$from/);
+      rejectTime = false;
       // 12 months: 13 windows asked for; ones older than Cloudflare keeps are skipped quietly.
       seen.length = 0;
       d = await (await call("/admin/network/traffic?days=365&fresh=1", { headers: auth(tokNet) })).json();

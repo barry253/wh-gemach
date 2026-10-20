@@ -31,7 +31,9 @@ const ANALYTICS = days => ({
   period: { requests: 48, confirmed: 39, declined: 4, cancelled: 2, stillWaiting: 3, adminBookings: 6, loansStarted: 41, loansReturned: 30, answered: 43, medianReplyHours: 5.5, within24hPct: 88 },
   people: { total: 212, records: 230, withLoanNow: 19, withReservationNow: 6, overdue: 2, borrowedInPeriod: 37, newInPeriod: 22, returningInPeriod: 15,
     repeat: 41, multiGemach: 9, requesters: 44, requestersNeverBorrowed: 18, loansPerPerson: 1.8 },
-  trend: { by: days === 365 ? "month" : "week", buckets: Array.from({ length: days === 365 ? 13 : Math.ceil(days / 7) }, (_, i) => ({ start: plus(-7 * (12 - i) - 6), requests: i % 5, loans: (i * 2) % 4 })) },
+  trend: days <= 14
+    ? { by: "day", buckets: Array.from({ length: days + 1 }, (_, i) => ({ start: plus(i - days), requests: i + 1, loans: i })) }
+    : { by: days === 365 ? "month" : "week", buckets: Array.from({ length: days === 365 ? 13 : Math.ceil(days / 7) }, (_, i) => ({ start: plus(-7 * (12 - i) - 6), requests: i % 5, loans: (i * 2) % 4 })) },
   topRequested: [{ name: "Wheelchair", gemach: "WH Medical", requests: 14 }, { name: "Navy <b>gown</b> – size 8", gemach: "Simcha Dress", requests: 6 }],
   topLooked: [{ name: "Navy gown – size 8", gemach: "Simcha Dress", photos: 41, picks: 9, shares: 4, linkOpens: 7, requests: 6 }, { name: "Gold gown – size 12", gemach: "Simcha Dress", photos: 25, picks: 3, requests: 0 }],
   siteHealth: { jsErrors: 4, loadFails: 3, top: [
@@ -160,6 +162,25 @@ await page.locator("#net-area-analytics").screenshot({ path: "shot-net-analytics
 await page.selectOption("#net-an-days", "365");
 await page.waitForFunction(() => /by month/.test(document.getElementById("net-analytics").innerText));
 ok(reqs.some(r => r.path === "/admin/network/analytics" && r.search === "?days=365") && reqs.some(r => r.path === "/admin/network/searches" && r.search === "?days=365"), "period changes both");
+
+// Short periods: 24 hours / 3 / 7 days, charted by day.
+ok(JSON.stringify(await page.$$eval("#net-an-days option", o => o.map(x => [x.value, x.textContent])))
+  === JSON.stringify([["1", "Last 24 hours"], ["3", "Last 3 days"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"], ["365", "Last 12 months"]]), "period choices");
+await page.selectOption("#net-an-days", "1");
+await page.waitForFunction(() => /by day/.test(document.getElementById("net-analytics").innerText));
+ok(reqs.some(r => r.path === "/admin/network/analytics" && r.search === "?days=1") && reqs.some(r => r.path === "/admin/network/traffic" && r.search === "?days=1")
+  && reqs.some(r => r.path === "/admin/network/searches" && r.search === "?days=1"), "24 hours asks every part for days=1");
+{
+  const t1 = await page.textContent("#net-analytics");
+  ok(/the last 24 hours/i.test(t1) && /Borrowed in 24 hours/.test(t1) && !/1 days/.test(t1), "24 hours wording: " + t1.slice(0, 300));
+  ok(await page.locator("#net-analytics .net-an-chartcard >> nth=0 >> .net-an-col").count() === 2, "two daily bars (yesterday + today)");
+  await page.hover("#net-analytics .net-an-chartcard >> nth=0 >> .net-an-col >> nth=1");
+  ok(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d+: 2 requests, 1 loan went out/.test(await page.textContent(".net-an-tip >> nth=0")), "daily tip: " + await page.textContent(".net-an-tip >> nth=0"));
+  ok(/Day/.test(await page.textContent("#net-analytics .net-an-table th >> nth=0")), "table column says Day");
+}
+await page.selectOption("#net-an-days", "7");
+await page.waitForFunction(() => document.querySelectorAll("#net-analytics .net-an-chartcard")[0]?.querySelectorAll(".net-an-col").length === 8);
+ok(/the last 7 days/i.test(await page.textContent("#net-analytics")), "7 days wording");
 
 // The chosen sub-tab is remembered for the session.
 await page.reload();

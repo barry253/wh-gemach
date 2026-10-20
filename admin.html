@@ -1712,6 +1712,9 @@
         <div class="net-toolbar">
           <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-analytics">Across all gemachs</div>
           <select class="days" id="net-an-days" aria-label="Analytics period" onchange="loadNetAnalytics(); loadNetTraffic(); loadNetSearches()">
+            <option value="1">Last 24 hours</option>
+            <option value="3">Last 3 days</option>
+            <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
             <option value="90" selected>Last 90 days</option>
             <option value="365">Last 12 months</option>
@@ -7225,10 +7228,12 @@
     NET_AN.sort = NET_AN.sort === key && key !== "name" ? `-${key}` : key; // tap again: smallest first
     renderNetAnalytics();
   }
+  /** "24 hours" / "3 days" / "12 months" for an analytics period in days. */
+  function netSpan(days) { return days === 1 ? "24 hours" : days === 365 ? "12 months" : `${days} days`; }
   function renderNetAnalytics() {
     const d = NET_AN.data, el = document.getElementById("net-analytics");
     if (!d) return;
-    const period = d.days === 365 ? "the last 12 months" : `the last ${d.days} days`;
+    const period = `the last ${netSpan(d.days)}`;
     const n = d.now || {}, p = d.period || {}, gc = d.gemachs || {};
     let html = `<div class="section-label net-an-label">Right now</div>
       <div class="kpi-grid net-kpis-6">
@@ -7265,18 +7270,18 @@
           <div class="kpi-sub">${pp.overdue ? `<span class="net-an-warn">${esc(pp.overdue)} with an overdue loan</span>` : "none overdue"}</div></div>
         <div class="kpi"><div class="kpi-num">${esc(pp.withReservationNow)}</div><div class="kpi-label">Waiting to pick up</div>
           <div class="kpi-sub">reserved, nothing out yet</div></div>
-        <div class="kpi"><div class="kpi-num">${esc(pp.borrowedInPeriod)}</div><div class="kpi-label">Borrowed in ${esc(d.days === 365 ? "12 months" : d.days + " days")}</div>
+        <div class="kpi"><div class="kpi-num">${esc(pp.borrowedInPeriod)}</div><div class="kpi-label">Borrowed in ${esc(netSpan(d.days))}</div>
           <div class="kpi-sub">${esc(pp.newInPeriod)} new · ${esc(pp.returningInPeriod)} returning</div></div>
         <div class="kpi"><div class="kpi-num">${esc(pp.repeat)}</div><div class="kpi-label">Borrowed 2+ times</div>
           <div class="kpi-sub">${pp.loansPerPerson == null ? "no loans yet" : `${esc(pp.loansPerPerson)} loans per person on average`}</div></div>
-        <div class="kpi"><div class="kpi-num">${esc(pp.requesters)}</div><div class="kpi-label">Asked online in ${esc(d.days === 365 ? "12 months" : d.days + " days")}</div>
+        <div class="kpi"><div class="kpi-num">${esc(pp.requesters)}</div><div class="kpi-label">Asked online in ${esc(netSpan(d.days))}</div>
           <div class="kpi-sub">${esc(pp.requestersNeverBorrowed)} never borrowed before</div></div>
       </div>
       <p class="stat-note" style="margin:-.35rem 0 .9rem">A person is counted once even if they're on file at several gemachs (matched by phone or email). "New" means their first loan anywhere was in this period.</p>`;
 
     // Trend: requests and loans per week (or month), grouped bars on one count axis.
     const bk = d.trend?.buckets || [];
-    const by = d.trend?.by === "month" ? "month" : "week";
+    const by = ["month", "day"].includes(d.trend?.by) ? d.trend.by : "week";
     html += netBarChart({ title: `Requests and loans by ${by}`, by, period, buckets: bk,
       series: [{ key: "requests", label: "Requests", cls: "req", one: "request" }, { key: "loans", label: "Loans went out", cls: "loan", one: "loan", tail: " went out" }] });
 
@@ -7344,7 +7349,9 @@
   function netBarChart({ title, by, period, buckets, series }) {
     const max = Math.max(1, ...buckets.map(b => Math.max(...series.map(x => b[x.key] || 0))));
     const label = b => by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "short" }) : fmt(b.start);
-    const when = b => by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "Week of " + fmt(b.start);
+    const when = b => by === "month" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" })
+      : by === "day" ? new Date(b.start + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+      : "Week of " + fmt(b.start);
     const tip = b => `${when(b)}: ${series.map(x => plural(b[x.key] || 0, x.one) + (x.tail || "")).join(", ")}`;
     const every = Math.ceil(buckets.length / 6); // a few x labels, not one per bar
     return `<div class="card stat-block net-an-chartcard"><h4>${esc(title)}</h4>
@@ -7356,8 +7363,8 @@
         </div>`).join("")}</div>
       <div class="net-an-tip" aria-live="polite"></div>
       <details class="net-an-table"><summary>Show as a table</summary>
-        <table class="stat-table"><thead><tr><th>${by === "month" ? "Month" : "Week of"}</th>${series.map(x => `<th class="num">${esc(x.label)}</th>`).join("")}</tr></thead><tbody>${
-          buckets.map(b => `<tr><td>${esc(by === "month" ? label(b) + " " + b.start.slice(0, 4) : fmt(b.start))}</td>${series.map(x => `<td class="num">${esc(b[x.key] || 0)}</td>`).join("")}</tr>`).join("")}</tbody></table>
+        <table class="stat-table"><thead><tr><th>${by === "month" ? "Month" : by === "day" ? "Day" : "Week of"}</th>${series.map(x => `<th class="num">${esc(x.label)}</th>`).join("")}</tr></thead><tbody>${
+          buckets.map(b => `<tr><td>${esc(by === "month" ? label(b) + " " + b.start.slice(0, 4) : by === "day" ? when(b) : fmt(b.start))}</td>${series.map(x => `<td class="num">${esc(b[x.key] || 0)}</td>`).join("")}</tr>`).join("")}</tbody></table>
       </details></div>`;
   }
 
@@ -7439,9 +7446,9 @@
     const wBad = w ? Object.entries(w.byStatus || {}).filter(([k]) => NET_WORKER_STATUS[k]) : [];
     const wErr = wBad.reduce((n, [, c]) => n + c, 0);
     let html = `<div class="section-label net-an-label">Site health</div><div class="kpi-grid">
-      <div class="kpi"><div class="kpi-num${wErr ? " net-an-bad" : ""}">${w ? esc(wErr) : "—"}</div><div class="kpi-label">Server errors${w ? ` (${esc(w.days)} days)` : ""}</div>
+      <div class="kpi"><div class="kpi-num${wErr ? " net-an-bad" : ""}">${w ? esc(wErr) : "—"}</div><div class="kpi-label">Server errors${w ? ` (${esc(netSpan(w.days))})` : ""}</div>
         <div class="kpi-sub">${w ? (wErr ? esc(wBad.map(([k, c]) => `${c} ${NET_WORKER_STATUS[k]}`).join(" · ")) : `none in ${esc(plural(w.requests, "API call"))}`) : "needs the Cloudflare token"}</div></div>
-      <div class="kpi"><div class="kpi-num${h && h.site5xx ? " net-an-bad" : ""}">${h ? esc(h.site4xx + h.site5xx) : "—"}</div><div class="kpi-label">Pages not found or failed${h ? ` (${esc(h.days)} days)` : ""}</div>
+      <div class="kpi"><div class="kpi-num${h && h.site5xx ? " net-an-bad" : ""}">${h ? esc(h.site4xx + h.site5xx) : "—"}</div><div class="kpi-label">Pages not found or failed${h ? ` (${esc(netSpan(h.days))})` : ""}</div>
         <div class="kpi-sub">${h ? `${esc(h.site5xx)} failed · API ${esc(h.api5xx)} failed` : "needs the Cloudflare token"}</div></div>
       <div class="kpi"><div class="kpi-num${sh.jsErrors + sh.loadFails ? " net-an-bad" : ""}">${esc(sh.jsErrors + sh.loadFails)}</div><div class="kpi-label">Problems in visitors' browsers</div>
         <div class="kpi-sub">${esc(sh.loadFails)} couldn't load · ${esc(sh.jsErrors)} script errors</div></div>
