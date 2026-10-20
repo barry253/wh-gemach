@@ -443,7 +443,6 @@
     .wk-day { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0.45rem 0; border: 1px solid var(--border); border-radius: 10px; background: var(--white);
       font-family: inherit; color: var(--text); cursor: pointer; }
     .wk-day:hover, .wk-day:focus-visible { border-color: var(--navy); }
-    .wk-day.today { border: 2px solid var(--navy); background: var(--teal); }
     .wk-dow { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
     .wk-num { font-size: 1.05rem; font-weight: 700; }
     .wk-c { font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -5287,7 +5286,7 @@
     for (let i = 0; i < 7; i++) {
       const ds = isoAddDays(t, i), c = counts[ds] || { pickup: 0, return: 0, appt: 0 };
       const dow = new Date(dateMs(ds)).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" });
-      html += `<button type="button" class="wk-day${i === 0 ? " today" : ""}" onclick="setDashView('calendar', { date: '${ds}' })"
+      html += `<button type="button" class="wk-day" onclick="setDashView('calendar', { date: '${ds}' })"
         aria-label="${esc(`${fmtDay(ds, true)}${i === 0 ? " (today)" : ""}: ${calCountText(c) || "nothing booked"}. Open in calendar`)}">
         <span class="wk-dow">${esc(dow)}</span><span class="wk-num">${Number(ds.slice(8))}</span>
         <span class="wk-c up${c.pickup ? "" : " zero"}">↑${c.pickup || "–"}</span><span class="wk-c back${c.return ? "" : " zero"}">↓${c.return || "–"}</span>
