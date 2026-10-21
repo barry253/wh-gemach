@@ -29,6 +29,34 @@ function borrowerInfo(r) {
   };
 }
 
+// What the Loans / Reservations lists show about the request a loan came from (the request card's details).
+const SOURCE_REQUEST_FIELDS = ["Request ID", "Received At", "Source", "Test", "Event Date", "Deposit Acknowledged", "Town", "State", "Payment Tier"];
+
+/** Source request record id → the request-card details shown on a booking (one batched read). */
+async function sourceRequestMap(db, g, loans) {
+  const ids = loans.map(l => linkedId(firstLink(l.fields["Source Request"]))).filter(Boolean);
+  const recs = await fetchByIds(db, T.REQUESTS, ids, { g, fields: SOURCE_REQUEST_FIELDS });
+  return Object.fromEntries(recs.map(r => {
+    const f = r.fields;
+    return [r.id, {
+      requestId: f["Request ID"] || null,
+      receivedAt: f["Received At"] || null,
+      source: f["Source"] || null, // "Admin" = made in admin (New reservation / appointment); blank = the public form
+      eventDate: f["Event Date"] || null,
+      depositAcknowledged: !!f["Deposit Acknowledged"],
+      town: f["Town"] || null, state: f["State"] || null,
+      paymentTier: ["Local", "Standard"].includes(f["Payment Tier"]) ? f["Payment Tier"] : null,
+      ...(f["Test"] ? { test: true } : {}),
+    }];
+  }));
+}
+
+/** The booking a loan belongs to: its source request's id and details (both null for walk-ins / Inventory assigns). */
+function requestFields(f, reqMap) {
+  const id = linkedId(firstLink(f["Source Request"])) || null;
+  return { requestRecId: id, request: (id && reqMap[id]) || null };
+}
+
 /** Given loan records, batch-load borrowers, items, and item type names (all scoped). */
 async function loadLoanRelations(db, g, loans, { includeItemToReserve = false } = {}) {
   const borrowerIds = loans.map(l => linkedId(firstLink(l.fields["Borrower"]))).filter(Boolean);
@@ -71,7 +99,10 @@ async function handleGetLoans({ db, g, env }) {
     sort: [{ field: "Date Borrowed", direction: "asc" }],
     fields: LOAN_LIST_FIELDS,
   });
-  const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
+  const [{ borrowerMap, itemMap, itemTypeMap, typeInfo }, reqMap] = await Promise.all([
+    loadLoanRelations(db, g, loans, { includeItemToReserve: true }),
+    sourceRequestMap(db, g, loans),
+  ]);
   const now = new Date();
   const t = today();
 
@@ -109,6 +140,7 @@ async function handleGetLoans({ db, g, env }) {
       reminderSentAt: f["Reminder Sent At"] || null,     // last "time to return" reminder (manual or automatic)
       reminderSentVia: f["Reminder Sent Via"] || null,
       manageUrl: await sourceManageUrl(env, f),
+      ...requestFields(f, reqMap),
     };
   }));
   return json(records);
@@ -356,7 +388,10 @@ async function handleGetReservations({ db, g, env }) {
 
 /** Reserved loans → the rows the Reservations list (and Dashboard "Upcoming") show and act on. */
 async function reservationRecords(db, g, env, loans) {
-  const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, loans, { includeItemToReserve: true });
+  const [{ borrowerMap, itemMap, itemTypeMap, typeInfo }, reqMap] = await Promise.all([
+    loadLoanRelations(db, g, loans, { includeItemToReserve: true }),
+    sourceRequestMap(db, g, loans),
+  ]);
 
   return Promise.all(loans.map(async r => {
     const f = r.fields;
@@ -388,6 +423,7 @@ async function reservationRecords(db, g, env, loans) {
       notes: f["Notes"] || null,
       requestNote: (f["Request Note"] || []).join("") || null,
       manageUrl: await sourceManageUrl(env, f),
+      ...requestFields(f, reqMap),
     };
   }));
 }

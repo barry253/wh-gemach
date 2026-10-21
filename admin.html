@@ -808,6 +808,17 @@
       margin-top: -6px;
     }
     .loan-actions-panel.open { display: block; }
+    /* An opened booking reads like a request card (same lines, same photo strip) */
+    .loan-actions-panel.booking-panel { background: var(--white); padding: 0.65rem 0.85rem 0.75rem; }
+    .booking-panel .bk-head { margin-bottom: 0.45rem; }
+    .booking-panel .card-meta { margin-bottom: 0.6rem; }
+    .booking-panel .card-meta span { flex-wrap: wrap; }
+    .bk-items { border-top: 1px dashed var(--border); margin: 0 0 0.6rem; }
+    .bk-items .up-item .muted-small { display: block; font-size: 0.75rem; color: var(--muted); }
+    .late-text { color: var(--red); font-weight: 600; }
+    .bk-ready { color: var(--green); font-weight: 600; }
+    .loan-row-item.multi { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .loan-row-n { font-weight: 700; }
     .loan-actions-panel .card-actions {
       margin-top: 0;
       flex-wrap: wrap;
@@ -2387,7 +2398,7 @@
     <button class="sheet-close" onclick="closeSheet('cancel-res-sheet')">×</button>
     <h3>Cancel reservation</h3>
     <p class="sheet-subtitle" id="cancel-res-subtitle"></p>
-    <p style="font-size:0.85rem;color:var(--muted);margin:0.75rem 0 1.25rem">
+    <p id="cancel-res-explainer" style="font-size:0.85rem;color:var(--muted);margin:0.75rem 0 1.25rem">
       This will mark the reservation as cancelled. The item will become available for others.
     </p>
     <div class="sheet-actions">
@@ -2615,7 +2626,7 @@
     return String(v ?? "").replace(/[&<>"'`]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c]));
   }
   function safeId(id) { return String(id ?? "").replace(/[^A-Za-z0-9_-]/g, ""); }
-  const RECORDS = { req: new Map(), loan: new Map(), res: new Map(), item: new Map(), type: new Map() };
+  const RECORDS = { req: new Map(), loan: new Map(), res: new Map(), item: new Map(), type: new Map(), bk: new Map() };
   function keep(kind, obj) { const id = safeId(obj.id); RECORDS[kind].set(id, obj); return id; }
   function rec(kind, id) { return RECORDS[kind].get(id); }
   const SAFE_EMAIL_RE = /^[^\s@<>()"',;:\\]+@[^\s@<>()"',;:\\]+\.[^\s@<>()"',;:\\]+$/;
@@ -2702,7 +2713,7 @@
   /** Should the server email this message? (Email chosen, or WhatsApp / text with an email copy.) */
   function serverEmails(choice, c) { return choice === "email" || emailCopy(choice, c); }
   function emailFailText(choice) {
-    return choice === "whatsapp" || choice === "sms" ? " — but the email copy didn't send." : emailFailText(choice);
+    return choice === "whatsapp" || choice === "sms" ? " — but the email copy didn't send." : " — but the email didn't send.";
   }
   function copyNote(c) { const e = safeEmail(c && c.email); return e ? ` A copy is also emailed to ${e}.` : ""; }
   /** Email first (and the only one on a computer); WhatsApp / text only on a phone or tablet. */
@@ -3377,19 +3388,11 @@
           </div>
         </div>
         ${photos.length ? `<div class="req-thumbs">${photos.map(i => rowThumb(i.photo, i.name, i.photos, 56)).join("")}</div>` : ""}
-        <div class="card-meta">
-          ${items ? `<span>📦 ${esc(items)}</span>` : ""}
-          ${addonText ? `<span>🛍 ${esc(addonText)}</span>` : ""}
-          ${short.map(s => `<span class="qty-warn">⚠ ${esc(s)}</span>`).join("")}
-          ${r.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(r.eventDate, true))}</span>` : ""}
-          ${isAppt ? "" : `<span>📅 ${esc(dates)}</span>`}
-          ${isAppt && r.preferredTimes ? `<span>🕒 ${esc(r.preferredTimes)}</span>` : ""}
-          ${r.partySize ? `<span>👥 Party of ${esc(r.partySize)}</span>` : ""}
-          ${r.depositAcknowledged ? `<span>✓ ${GEMACH?.chargeType === "Payment" ? "Payment" : "Deposit"} acknowledged</span>` : ""}
-          ${r.town ? `<span>📍 ${esc([r.town, r.state].filter(Boolean).join(", "))}${r.paymentTier ? ` <span class="tag ${r.paymentTier === "Local" ? "tag-green" : "tag-gray"}" title="Which ${GEMACH?.chargeType === "Payment" ? "payment" : "deposit"} applies (Settings → Different amount for local borrowers)">${r.paymentTier === "Local" ? "Local rate" : "Not local"}</span>` : ""}</span>` : ""}
-          <span>📞 ${esc(r.phone)}</span>
-          ${r.notes ? `<span>💬 ${esc(r.notes)}</span>` : ""}
-        </div>
+        ${bookingMetaHtml({
+          items, addonText, warns: short, eventDate: r.eventDate, datesHtml: isAppt ? "" : esc(dates),
+          preferredTimes: isAppt ? r.preferredTimes : null, partySize: r.partySize, depositAcknowledged: r.depositAcknowledged,
+          town: r.town, state: r.state, paymentTier: r.paymentTier, phone: r.phone, email: r.email, notes: r.notes ? [r.notes] : [],
+        })}
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" onclick="openConfirm(rec('req','${rid}'))">✓ Confirm</button>
           ${isAppt ? `<button class="btn btn-ghost btn-sm" onclick="openCheckout('${rid}')" title="They're here now — lend what they take">Check out</button>` : ""}
@@ -3800,62 +3803,304 @@
       if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) showViewerPhoto(viewer.i + (dx < 0 ? 1 : -1));
     });
   })();
-  function loanRowHtml(l, lead) {
-    const lid = keep("loan", l);
-    // Warning: due within 3 days (if expectedReturn set), or out > 7 days (fallback)
-    const todayStr = nyTodayStr();
-    const dueSoon = l.expectedReturn
-      ? (l.expectedReturn >= todayStr && (new Date(l.expectedReturn) - new Date(todayStr)) / 86400000 <= 3)
-      : l.daysOut > 7;
-    const cls = l.overdue ? "overdue" : dueSoon ? "warning" : "";
-    const tag = l.overdue
-      ? `<span class="tag tag-red loan-row-tag">Overdue ${esc(l.daysOut)}d</span>`
-      : l.daysOut != null
-        ? `<span class="tag tag-navy loan-row-tag">${esc(l.daysOut)}d</span>`
-        : `<span class="tag tag-navy loan-row-tag">?</span>`;
-    const due = l.expectedReturn ? fmt(l.expectedReturn) : "";
-    const hasNote = l.notes || l.requestNote;
-    return `
-        <div class="loan-row ${cls}" id="loan-row-${lid}" onclick="toggleLoanActions('${lid}')">
-          ${rowThumb(l.photo, l.itemTypeName, l.photos)}
-          <button type="button" class="row-open" aria-expanded="false" aria-controls="loan-panel-${lid}">
-          <span class="loan-row-main">
-            ${lead ? "" : `<span class="loan-row-name">${esc(l.borrowerName)}</span>`}
-            <span class="loan-row-item${lead ? " lead" : ""}">${esc(l.itemTypeName || "")}</span>
-            ${l.itemId ? `<span class="loan-row-code">${esc(l.itemId)}</span>` : ""}
-            ${l.isQuantity ? `<span class="loan-row-code">× ${esc(l.quantity)}</span>` : ""}
-            ${hasNote ? `<span class="note-indicator" title="Has notes" role="img" aria-label="Has notes">💬</span>` : ""}
-            ${l.readyToReturnAt ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
-            ${l.reminderSentAt ? `<span class="tag tag-amber loan-row-tag" title="Return reminder ${esc(reminderVia(l.reminderSentVia))} ${esc(timeAgo(l.reminderSentAt))}">⏰ Reminded ${esc(timeAgo(l.reminderSentAt))}</span>` : ""}
-          </span>
-          <span class="loan-row-side">
-            <span class="loan-row-date" title="Date borrowed${due ? " · due back" : ""}">Out ${esc(fmt(l.dateBorrowed) || "—")}${due ? `<br>Due ${esc(due)}` : ""}</span>
+  // ── Bookings: a request and its loans, shown the same way on Requests, Reservations and Loans ──
+  /** (516) 555-1234 for a US number; anything else as it was typed. */
+  function fmtPhone(p) {
+    const s = String(p ?? "").trim();
+    let d = s.replace(/\D/g, "");
+    if (d.length === 11 && d[0] === "1") d = d.slice(1);
+    return d.length === 10 && !/^\+(?!1)/.test(s) ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : s;
+  }
+  /** The detail lines of a request card; reservation and loan bookings use the same ones. */
+  function bookingMetaHtml(m) {
+    const word = GEMACH?.chargeType === "Payment" ? "Payment" : "Deposit";
+    const tier = m.paymentTier
+      ? ` <span class="tag ${m.paymentTier === "Local" ? "tag-green" : "tag-gray"}" title="Which ${word.toLowerCase()} applies (Settings → Different amount for local borrowers)">${m.paymentTier === "Local" ? "Local rate" : "Not local"}</span>`
+      : "";
+    return `<div class="card-meta">
+          ${m.items ? `<span>📦 ${esc(m.items)}</span>` : ""}
+          ${m.addonText ? `<span>🛍 ${esc(m.addonText)}</span>` : ""}
+          ${(m.warns || []).map(s => `<span class="qty-warn">⚠ ${esc(s)}</span>`).join("")}
+          ${m.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(m.eventDate, true))}</span>` : ""}
+          ${m.datesHtml ? `<span>📅 ${m.datesHtml}</span>` : ""}
+          ${m.preferredTimes ? `<span>🕒 ${esc(m.preferredTimes)}</span>` : ""}
+          ${m.partySize ? `<span>👥 Party of ${esc(m.partySize)}</span>` : ""}
+          ${m.depositAcknowledged ? `<span>✓ ${word} acknowledged</span>` : ""}
+          ${m.town ? `<span>📍 ${esc([m.town, m.state].filter(Boolean).join(", "))}${tier}</span>` : ""}
+          ${m.phone ? `<span>📞 ${esc(fmtPhone(m.phone))}</span>` : ""}
+          ${m.email ? `<span>✉️ ${esc(m.email)}</span>` : ""}
+          ${(m.notes || []).map(n => `<span>💬 ${esc(n)}</span>`).join("")}
+          ${(m.extra || []).join("")}
+        </div>`;
+  }
+
+  /** One booking per request (several items), or per loan when there's no request (walk-ins, Inventory assigns). */
+  function bookingKey(l) {
+    if (l.requestRecId) return "q" + l.requestRecId;
+    if (l.requestRecId === undefined && l.manageUrl) return "m" + l.manageUrl; // older API: the manage link names the request
+    return "l" + l.id;
+  }
+  function groupBookings(rows) {
+    const out = [], at = new Map();
+    for (const l of rows || []) {
+      const k = bookingKey(l);
+      let b = at.get(k);
+      if (!b) { b = { key: k, loans: [] }; at.set(k, b); out.push(b); }
+      b.loans.push(l);
+    }
+    out.forEach(b => {
+      const f = b.loans[0];
+      b.id = safeId(f.id);
+      b.name = f.borrowerName;
+      b.requestRecId = f.requestRecId || null;
+      b.request = b.loans.find(l => l.request)?.request || null;
+    });
+    return out;
+  }
+  // Function declarations (not const): lists can render from a saved copy before this part of the script has run.
+  function bkLabel(l) { return `${l.itemTypeName || "Item"}${l.quantity != null ? ` × ${l.quantity}` : ""}`; }
+  function joinAndList(a) { return a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : (a[0] || ""); }
+  function bookingItemsText(b) { return joinAndList(b.loans.map(bkLabel)); }
+  function sameAll(ls, key) { return ls.every(l => (l[key] || null) === (ls[0][key] || null)); }
+  function minDate(list) { return list.filter(Boolean).sort()[0] || null; }
+  function maxDate(list) { return list.filter(Boolean).sort().at(-1) || null; }
+  function bk(p, id) { return RECORDS.bk.get(`${p}-${id}`); }
+  function clearBk(p) { for (const k of [...RECORDS.bk.keys()]) if (k.startsWith(p + "-")) RECORDS.bk.delete(k); }
+  function bkRef(b) { return b.requestRecId ? { request: b.requestRecId } : { loan: b.loans[0].id }; }
+
+  /** Reservation dates: "Oct 21 → Oct 28", "Oct 21 → open-ended", "For Oct 21" (add-ons). */
+  function resDatesText(l) {
+    const s = fmt(l.reservationStart);
+    if (l.isAddon) return s ? `For ${s}` : "Date TBD";
+    return s ? `${s} → ${fmt(l.reservationEnd) || "open-ended"}` : "Dates TBD";
+  }
+  /** Loan dates: "Out Oct 21 · due back Oct 28". */
+  function loanDatesHtml(l) {
+    const late = l.overdue ? ` <span class="late-text">· overdue${l.daysOut != null ? `, out ${esc(l.daysOut)} days` : ""}</span>` : "";
+    return `Out ${esc(fmt(l.dateBorrowed) || "—")} · ${l.expectedReturn ? `due back ${esc(fmt(l.expectedReturn))}` : "no due date"}${late}`;
+  }
+
+  /**
+   * One booking on the Reservations (p = "res") or Loans (p = "loan") list: a compact row, and when opened
+   * the request card's details with the actions. lead: shown under a borrower heading (Loans → group), no name.
+   */
+  function bookingRowHtml(b, p, lead) {
+    const isLoan = p === "loan";
+    b.loans.forEach(l => keep(p, l));
+    RECORDS.bk.set(`${p}-${b.id}`, b);
+    const ls = b.loans, one = ls.length === 1 ? ls[0] : null, f = ls[0], id = b.id, req = b.request;
+    const today = nyTodayStr();
+
+    // ── the row
+    let cls = "", side;
+    if (isLoan) {
+      const dueSoon = l => l.expectedReturn
+        ? (l.expectedReturn >= today && (new Date(l.expectedReturn) - new Date(today)) / 86400000 <= 3)
+        : l.daysOut > 7;
+      const late = ls.filter(l => l.overdue);
+      cls = late.length ? "overdue" : ls.some(dueSoon) ? "warning" : "";
+      const days = Math.max(...(late.length ? late : ls).map(l => l.daysOut ?? -1));
+      const tag = late.length
+        ? `<span class="tag tag-red loan-row-tag">Overdue ${esc(days)}d</span>`
+        : `<span class="tag tag-navy loan-row-tag">${days >= 0 ? `${esc(days)}d` : "?"}</span>`;
+      const due = minDate(ls.map(l => l.expectedReturn));
+      const out = minDate(ls.map(l => l.dateBorrowed));
+      side = `<span class="loan-row-side">
+            <span class="loan-row-date" title="Date borrowed${due ? " · due back" : ""}">Out ${esc(fmt(out) || "—")}${due ? `<br>Due ${esc(fmt(due))}` : ""}</span>
             ${tag}
+          </span>`;
+    } else {
+      const allAddon = ls.every(l => l.isAddon);
+      let dates;
+      if (one || (sameAll(ls, "reservationStart") && sameAll(ls, "reservationEnd") && sameAll(ls, "isAddon"))) dates = resDatesText(f);
+      else {
+        const s = minDate(ls.map(l => l.reservationStart)), ends = ls.filter(l => !l.isAddon).map(l => l.reservationEnd);
+        dates = s ? `${fmt(s)} → ${ends.some(e => !e) ? "open-ended" : fmt(maxDate(ends))}` : "Dates TBD";
+      }
+      side = `<span class="loan-row-date">${esc(dates)}</span>
+          ${allAddon ? `<span class="tag tag-addon loan-row-tag">Add-on</span>` : `<span class="tag tag-navy loan-row-tag">Reserved</span>`}`;
+    }
+    const itemSpans = one
+      ? `<span class="loan-row-item${lead ? " lead" : ""}">${esc(one.itemTypeName || (isLoan ? "" : "Item TBD"))}</span>
+            ${one.itemId ? `<span class="loan-row-code">${esc(one.itemId)}</span>` : ""}
+            ${one.isQuantity ? `<span class="loan-row-code">× ${esc(one.quantity)}</span>` : ""}
+            ${one.isAddon ? `<span class="loan-row-code">× ${esc(one.quantity)}${one.price != null ? ` · ${esc(fmtMoney(one.price * one.quantity))}` : ""}</span>` : ""}`
+      : `<span class="loan-row-item multi${lead ? " lead" : ""}"><span class="loan-row-n">${ls.length} items</span> ${esc(ls.map(bkLabel).join(", "))}</span>`;
+    const hasNote = ls.some(l => l.notes || l.requestNote);
+    const ready = ls.find(l => l.readyToReturnAt);
+    const reminded = ls.filter(l => l.reminderSentAt).sort((a, c) => (a.reminderSentAt < c.reminderSentAt ? 1 : -1))[0];
+    const photoLoan = ls.find(l => okPhoto(l.photo)) || f;
+
+    // ── the opened card: same lines as a request card
+    const thumbs = [];
+    const seenType = new Set();
+    for (const l of ls) {
+      const k = l.itemTypeId || l.itemTypeName;
+      if (!okPhoto(l.photo) || seenType.has(k)) continue;
+      seenType.add(k);
+      thumbs.push(rowThumb(l.photo, l.itemTypeName, l.photos, 56));
+    }
+    const items = ls.filter(l => !l.isAddon).map(l => `${l.itemTypeName || "Item"}${l.itemId ? ` (${l.itemId})` : ""}${l.quantity != null ? ` × ${l.quantity}` : ""}`).join(", ");
+    const addons = ls.filter(l => l.isAddon);
+    const addonTotal = addons.filter(l => l.price != null).reduce((s, l) => s + l.price * (l.quantity || 1), 0);
+    const addonText = addons.length
+      ? `Add-ons: ${addons.map(l => addonLine(l.itemTypeName, l.quantity, l.price)).join(", ")}${addons.length > 1 && addonTotal ? ` · total ${fmtMoney(addonTotal)}` : ""}`
+      : "";
+    const datesSame = isLoan ? sameAll(ls, "dateBorrowed") && sameAll(ls, "expectedReturn")
+      : sameAll(ls, "reservationStart") && sameAll(ls, "reservationEnd") && sameAll(ls, "isAddon");
+    const datesHtml = !datesSame
+      ? (isLoan && sameAll(ls, "dateBorrowed") ? `Out ${esc(fmt(f.dateBorrowed) || "—")} · due dates differ — see below` : "Dates differ by item — see below")
+      : isLoan ? loanDatesHtml({ ...f, overdue: ls.some(l => l.overdue), daysOut: Math.max(...ls.map(l => l.daysOut ?? -1)) })
+      : esc(resDatesText(f));
+    const notes = [...new Set(ls.map(l => l.requestNote).filter(Boolean))];
+    const loanNotes = [...new Set(ls.map(l => l.notes).filter(Boolean))];
+    const extra = [
+      ...loanNotes.map(n => `<span>📝 ${esc(n)}</span>`),
+      ready ? `<span class="bk-ready">✓ Ready to return — the borrower let us know ${esc(timeAgo(ready.readyToReturnAt))}</span>` : "",
+      reminded ? `<span>⏰ Return reminder ${esc(reminderVia(reminded.reminderSentVia))} ${esc(timeAgo(reminded.reminderSentAt))}</span>` : "",
+    ];
+    const head = req
+      ? [req.requestId, req.source === "Admin" ? "made in admin" : timeAgo(req.receivedAt)].filter(Boolean).join(" · ")
+      : b.requestRecId ? "" : isLoan ? "Lent from admin (no online request)" : "Reserved from admin (no online request)";
+    const act = (fn, args) => `event.stopPropagation();${fn}(${args})`;
+    const doneLabel = l => isLoan ? "Returned" : l.isAddon ? "Handed over" : "Picked up";
+    const itemList = one ? "" : `<div class="bk-items">${ls.map((l, j) => {
+      const sub = datesSame ? "" : isLoan ? loanDatesHtml(l) : esc(resDatesText(l));
+      return `<div class="up-item">
+            <span>${esc(bkLabel(l))}${l.itemId ? ` <span class="loan-row-code">${esc(l.itemId)}</span>` : ""}${sub ? `<span class="muted-small">${sub}</span>` : ""}</span>
+            <button class="btn btn-ghost btn-sm" onclick="${act("bkDone", `'${p}','${id}',${j}`)}">✓ ${doneLabel(l)}</button>
+          </div>`;
+    }).join("")}</div>`;
+    const buttons = isLoan
+      ? `${one ? `<button class="btn btn-primary btn-sm" onclick="${act("bkDone", `'loan','${id}',0`)}">✓ Returned</button>` : ""}
+            <button class="btn btn-ghost btn-sm" onclick="${act("bkReminder", `'${id}'`)}">⏰ Return reminder</button>
+            <button class="btn btn-ghost btn-sm" onclick="${act("bkEdit", `'loan','${id}'`)}">✏️ Edit</button>`
+      : `${one ? `<button class="btn btn-primary btn-sm" onclick="${act("bkDone", `'res','${id}',0`)}">✓ ${one.isAddon ? "Mark handed over" : "Mark picked up"}</button>` : ""}
+            <button class="btn btn-ghost btn-sm" onclick="${act("bkPickupInfo", `'${id}'`)}">📍 Send pickup info</button>
+            <button class="btn btn-ghost btn-sm" onclick="${act("bkEdit", `'res','${id}'`)}">✏️ Edit</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="${act("openCancelBooking", `'${id}'`)}">✕ Cancel</button>`;
+
+    return `
+        <div class="loan-row ${cls}" id="${p}-row-${id}" data-bk="${p}" data-loans="${esc(ls.map(l => safeId(l.id)).join(" "))}" onclick="toggleBooking('${p}','${id}')">
+          ${rowThumb(photoLoan.photo, photoLoan.itemTypeName, photoLoan.photos)}
+          <button type="button" class="row-open" aria-expanded="false" aria-controls="${p}-panel-${id}">
+          <span class="loan-row-main">
+            ${lead ? "" : `<span class="loan-row-name">${esc(f.borrowerName)}</span>`}
+            ${itemSpans}
+            ${hasNote ? `<span class="note-indicator" title="Has notes" role="img" aria-label="Has notes">💬</span>` : ""}
+            ${req?.test ? `<span class="tag tag-test loan-row-tag" title="Sent from the test link — not a real loan">Test</span>` : ""}
+            ${isLoan && ready ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
+            ${isLoan && reminded ? `<span class="tag tag-amber loan-row-tag" title="Return reminder ${esc(reminderVia(reminded.reminderSentVia))} ${esc(timeAgo(reminded.reminderSentAt))}">⏰ Reminded ${esc(timeAgo(reminded.reminderSentAt))}</span>` : ""}
           </span>
+          ${side}
           </button>
         </div>
-        <div class="loan-actions-panel" id="loan-panel-${lid}">
-          ${l.readyToReturnAt ? `<div class="loan-notes request-note"><span class="note-label">Ready to return:</span> the borrower let us know ${esc(timeAgo(l.readyToReturnAt))} — arrange the return.</div>` : ""}
-          ${l.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(l.requestNote)}</div>` : ""}
-          ${l.notes ? `<div class="loan-notes">💬 ${esc(l.notes)}</div>` : ""}
-          ${l.reminderSentAt ? `<div class="loan-notes">⏰ Return reminder ${esc(reminderVia(l.reminderSentVia))} ${esc(timeAgo(l.reminderSentAt))}</div>` : ""}
+        <div class="loan-actions-panel booking-panel" id="${p}-panel-${id}">
+          ${head ? `<div class="card-id bk-head">${esc(head)}</div>` : ""}
+          ${thumbs.length ? `<div class="req-thumbs">${thumbs.join("")}</div>` : ""}
+          ${bookingMetaHtml({
+            items, addonText, eventDate: req?.eventDate, datesHtml,
+            depositAcknowledged: req?.depositAcknowledged, town: req?.town, state: req?.state, paymentTier: req?.paymentTier,
+            phone: f.borrowerPhone, email: f.borrowerEmail, notes, extra,
+          })}
+          ${itemList}
           <div class="card-actions">
-            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openReturn(rec('loan','${lid}'))">✓ Returned</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openReturnReminder(rec('loan','${lid}'))">⏰ Return reminder</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openBooking({ loan: rec('loan','${lid}').id, from: 'loans' })">✏️ Edit</button>
-            ${contactActions(contactOf(l), true)}
+            ${buttons}
+            ${contactActions(contactOf(f), true)}
           </div>
         </div>`;
   }
 
+  function toggleBooking(p, id) {
+    const panel = document.getElementById(`${p}-panel-${id}`);
+    const row = document.getElementById(`${p}-row-${id}`);
+    if (!panel || !row) return;
+    const isOpen = panel.classList.contains("open");
+    document.querySelectorAll(".loan-actions-panel.open").forEach(x => x.classList.remove("open"));
+    document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
+    document.querySelectorAll(".loan-row .row-open[aria-expanded='true']").forEach(x => x.setAttribute("aria-expanded", "false"));
+    if (!isOpen) {
+      panel.classList.add("open");
+      row.style.borderRadius = "8px 8px 0 0";
+      row.querySelector(".row-open")?.setAttribute("aria-expanded", "true");
+    }
+  }
+  function toggleLoanActions(id) { toggleBooking("loan", id); }
+  function toggleResActions(id) { toggleBooking("res", id); }
+  /** ✓ Returned (Loans) / ✓ Picked up · Handed over (Reservations) for item j of a booking. */
+  function bkDone(p, id, j) {
+    const l = bk(p, id)?.loans?.[j];
+    if (!l) return;
+    if (p === "loan") openReturn(l); else openPickup(l);
+  }
+  function bkEdit(p, id) {
+    const b = bk(p, id);
+    if (b) openBooking({ ...bkRef(b), from: p === "loan" ? "loans" : "reservations" });
+  }
+  function bkPickupInfo(id) {
+    const b = bk("res", id);
+    if (b) openPickupInstructions(b.loans[0], bookingItemsText(b));
+  }
+  function bkReminder(id) {
+    const b = bk("loan", id);
+    if (!b) return;
+    // The reminder is noted on the item due back first (its due date goes in the message).
+    const l = [...b.loans].sort((a, c) => (a.expectedReturn || "9999") < (c.expectedReturn || "9999") ? -1 : 1)[0];
+    openReturnReminder(l, b.loans.length > 1 ? bookingItemsText(b) : null);
+  }
+  /** Cancel a whole reservation booking (asks first). Single items are removed through Edit. */
+  function openCancelBooking(id) {
+    const b = bk("res", id);
+    if (!b) return;
+    const n = b.loans.length;
+    document.getElementById("cancel-res-subtitle").textContent = `${b.name} · ${bookingItemsText(b)}`;
+    document.getElementById("cancel-res-explainer").textContent = n > 1
+      ? `This cancels the whole booking — all ${n} items become available for others. To cancel just one item, use Edit instead.`
+      : "This cancels the reservation. The item becomes available for others.";
+    const btn = document.getElementById("cancel-res-submit-btn");
+    btn.textContent = n > 1 ? `Yes, cancel all ${n}` : "Yes, cancel it";
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      const label = btn.textContent;
+      btn.textContent = "Cancelling…";
+      const res = await saveAction(btn, "/admin/booking/cancel", "POST", bkRef(b));
+      btn.textContent = label;
+      if (!res) return;
+      if (res.error) { showToast(res.error, 6000); closeSheet("cancel-res-sheet"); loadReservations(); loadDashboard(); return; }
+      closeSheet("cancel-res-sheet");
+      loadReservations();
+      loadDashboard();
+      showToast(n > 1 ? `Booking cancelled · ${n} items` : "Reservation cancelled");
+    };
+    openSheet("cancel-res-sheet");
+  }
+
+  /** A stand-in loan for sorting a booking: earliest out / due, first item name (latest out for "recent"). */
+  function bookingSortRep(b, kind) {
+    const ls = b.loans;
+    const byName = [...ls].sort((a, c) => String(a.itemTypeName || "").localeCompare(String(c.itemTypeName || ""), undefined, { sensitivity: "base", numeric: true }))[0];
+    return {
+      borrowerName: ls[0].borrowerName,
+      itemTypeName: byName.itemTypeName, itemId: byName.itemId,
+      dateBorrowed: kind === "recent" ? maxDate(ls.map(l => l.dateBorrowed)) : minDate(ls.map(l => l.dateBorrowed)),
+      expectedReturn: minDate(ls.map(l => l.expectedReturn)),
+    };
+  }
+
   function renderLoans() {
     const q = loanQuery.trim();
+    // A booking shows when any of its items matches the search / item filter / pill; the whole booking is shown.
+    const all = groupBookings(allLoans);
+    const base = all.filter(b => b.loans.some(l => (!loanFilterType || l.itemTypeName === loanFilterType) && loanMatches(l, q)));
+    const isLate = b => b.loans.some(l => l.overdue), isReady = b => b.loans.some(l => l.readyToReturnAt);
     // Counts on the pills follow the search and item filter, so each pill shows what tapping it would give.
-    const base = allLoans.filter(l => (!loanFilterType || l.itemTypeName === loanFilterType) && loanMatches(l, q));
-    const counts = { all: base.length, overdue: base.filter(l => l.overdue).length, ready: base.filter(l => l.readyToReturnAt).length };
-    const loans = base
-      .filter(l => loanStatus === "overdue" ? l.overdue : loanStatus === "ready" ? !!l.readyToReturnAt : true)
-      .sort(loanSortFn(loanSort));
+    const counts = { all: base.length, overdue: base.filter(isLate).length, ready: base.filter(isReady).length };
+    const sortFn = loanSortFn(loanSort);
+    const books = base
+      .filter(b => loanStatus === "overdue" ? isLate(b) : loanStatus === "ready" ? isReady(b) : true)
+      .map(b => ({ b, rep: bookingSortRep(b, loanSort) }))
+      .sort((x, y) => sortFn(x.rep, y.rep))
+      .map(x => x.b);
 
     const pill = (key, label, n, color) =>
       `<button type="button" class="loans-pill ${color}${loanStatus === key ? " active" : ""}" aria-pressed="${loanStatus === key}" onclick="setLoanStatus('${key}')">${label} <b>${n}</b></button>`;
@@ -3871,52 +4116,43 @@
 
     const filtered = !!(loanFilterType || q || loanStatus !== "all");
     const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-    let txt = filtered ? `${loans.length} of ${plural(allLoans.length, "loan")}` : plural(allLoans.length, "loan");
-    if (loanGroup) txt += ` · ${plural(new Set(loans.map(loanPersonKey)).size, "borrower")}`;
+    const nItems = list => list.reduce((s, b) => s + b.loans.length, 0);
+    let txt = filtered ? `${books.length} of ${plural(all.length, "loan")}` : plural(all.length, "loan");
+    const shownItems = filtered ? nItems(books) : allLoans.length;
+    if (shownItems !== (filtered ? books.length : all.length)) txt += ` · ${plural(shownItems, "item")}`;
+    if (loanGroup) txt += ` · ${plural(new Set(books.map(b => loanPersonKey(b.loans[0]))).size, "borrower")}`;
     document.getElementById("loans-count").innerHTML =
       esc(txt) + (filtered ? ` <button type="button" class="link-btn" onclick="clearLoanFilters()">Clear</button>` : "");
 
     const list = document.getElementById("loans-list");
     RECORDS.loan.clear();
-    if (!loans.length) {
+    clearBk("loan");
+    if (!books.length) {
       list.innerHTML = `<div class="empty-state" style="padding:1.5rem;text-align:center;color:var(--muted)">No loans match${filtered ? ` — <button type="button" class="link-btn" onclick="clearLoanFilters()">clear filters</button>` : ""}</div>`;
       return;
     }
-    if (!loanGroup) { list.innerHTML = loans.map(l => loanRowHtml(l, false)).join(""); return; }
+    if (!loanGroup) { list.innerHTML = books.map(b => bookingRowHtml(b, "loan", false)).join(""); return; }
 
-    // Grouped: a borrower with 2+ things out gets a header and their items under it; a single loan stays a normal row.
+    // Grouped: a borrower with 2+ bookings or items out gets a header and their bookings under it; otherwise a normal row.
     const groups = [], at = new Map();
-    for (const l of loans) {
-      const k = loanPersonKey(l);
+    for (const b of books) {
+      const k = loanPersonKey(b.loans[0]);
       let g = at.get(k);
-      if (!g) { g = { loans: [] }; at.set(k, g); groups.push(g); }
-      g.loans.push(l);
+      if (!g) { g = { books: [] }; at.set(k, g); groups.push(g); }
+      g.books.push(b);
     }
     list.innerHTML = groups.map(g => {
-      if (g.loans.length === 1) return loanRowHtml(g.loans[0], false);
-      const late = g.loans.filter(l => l.overdue).length;
+      const n = nItems(g.books);
+      if (n === 1 || g.books.length === 1) return bookingRowHtml(g.books[0], "loan", false);
+      const late = g.books.reduce((s, b) => s + b.loans.filter(l => l.overdue).length, 0);
       return `<div class="loan-group">
         <div class="loan-group-head">
-          <span class="loan-group-name">${esc(g.loans[0].borrowerName)}</span>
-          <span class="loan-group-sub">${g.loans.length} items out${late ? ` · <span class="late">${late} overdue</span>` : ""}</span>
+          <span class="loan-group-name">${esc(g.books[0].name)}</span>
+          <span class="loan-group-sub">${n} items out${late ? ` · <span class="late">${late} overdue</span>` : ""}</span>
         </div>
-        <div class="loan-group-rows">${g.loans.map(l => loanRowHtml(l, true)).join("")}</div>
+        <div class="loan-group-rows">${g.books.map(b => bookingRowHtml(b, "loan", true)).join("")}</div>
       </div>`;
     }).join("");
-  }
-
-  function toggleLoanActions(id) {
-    const panel = document.getElementById(`loan-panel-${id}`);
-    const row = document.getElementById(`loan-row-${id}`);
-    const isOpen = panel.classList.contains("open");
-    document.querySelectorAll(".loan-actions-panel.open").forEach(p => p.classList.remove("open"));
-    document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
-    document.querySelectorAll(".loan-row .row-open[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
-    if (!isOpen) {
-      panel.classList.add("open");
-      row.style.borderRadius = "8px 8px 0 0";
-      row.querySelector(".row-open")?.setAttribute("aria-expanded", "true");
-    }
   }
 
   // ── Return sheet ──────────────────────────────────────────────────────────
@@ -5448,86 +5684,17 @@
       return;
     }
 
+    // One row per booking (a request's items together); the count says bookings, plus items when that differs.
+    const books = groupBookings(data);
     document.getElementById("reservations-section-label").textContent =
-      `Upcoming reservations (${data.length})`;
+      `Upcoming reservations (${books.length}${books.length !== data.length ? ` · ${data.length} items` : ""})`;
 
     RECORDS.res.clear();
-    list.innerHTML = data.map(r => {
-      const rid = keep("res", r);
-      const resStart = fmt(r.reservationStart);
-      const dates = r.isAddon
-        ? (resStart ? `For ${resStart}` : "Date TBD")
-        : resStart ? `${resStart} → ${fmt(r.reservationEnd) || "Open return date"}` : "Dates TBD";
-
-      return `
-        <div class="loan-row" id="res-row-${rid}" onclick="toggleResActions('${rid}')">
-          ${rowThumb(r.photo, r.itemTypeName, r.photos)}
-          <button type="button" class="row-open" aria-expanded="false" aria-controls="res-panel-${rid}">
-          <span class="loan-row-main">
-            <span class="loan-row-name">${esc(r.borrowerName)}</span>
-            <span class="loan-row-item">${esc(r.itemTypeName || "Item TBD")}</span>
-            ${r.itemId ? `<span class="loan-row-code">${esc(r.itemId)}</span>` : ""}
-            ${r.isQuantity ? `<span class="loan-row-code">× ${esc(r.quantity)}</span>` : ""}
-            ${r.isAddon ? `<span class="loan-row-code">× ${esc(r.quantity)}${r.price != null ? ` · ${esc(fmtMoney(r.price * r.quantity))}` : ""}</span>` : ""}
-          </span>
-          <span class="loan-row-date">${esc(dates)}</span>
-          ${r.isAddon ? `<span class="tag tag-addon loan-row-tag">Add-on</span>` : `<span class="tag tag-navy loan-row-tag">Reserved</span>`}
-          </button>
-        </div>
-        <div class="loan-actions-panel" id="res-panel-${rid}">
-          ${r.requestNote ? `<div class="loan-notes request-note"><span class="note-label">From request:</span> ${esc(r.requestNote)}</div>` : ""}
-          ${r.notes ? `<div class="loan-notes">💬 ${esc(r.notes)}</div>` : ""}
-          <div class="card-actions">
-            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openPickup(rec('res','${rid}'))">✓ ${r.isAddon ? "Mark handed over" : "Mark picked up"}</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPickupInstructions(rec('res','${rid}'))">📍 Send pickup info</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditReservation(rec('res','${rid}'))">✏️ Edit</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="event.stopPropagation();openCancelReservation(rec('res','${rid}'))">✕ Cancel</button>
-            ${contactActions(contactOf(r), true)}
-          </div>
-        </div>`;
-    }).join("");
-  }
-
-  function toggleResActions(id) {
-    const panel = document.getElementById(`res-panel-${id}`);
-    const row = document.getElementById(`res-row-${id}`);
-    const isOpen = panel.classList.contains("open");
-    document.querySelectorAll(".loan-actions-panel.open").forEach(p => p.classList.remove("open"));
-    document.querySelectorAll(".loan-row").forEach(r => r.style.borderRadius = "");
-    document.querySelectorAll(".loan-row .row-open[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
-    if (!isOpen) {
-      panel.classList.add("open");
-      row.style.borderRadius = "8px 8px 0 0";
-      row.querySelector(".row-open")?.setAttribute("aria-expanded", "true");
-    }
+    clearBk("res");
+    list.innerHTML = books.map(b => bookingRowHtml(b, "res", false)).join("");
   }
 
   function openEditReservation(r) { openBooking({ loan: r.id, from: "reservations" }); }
-
-  function openCancelReservation(r) {
-    document.getElementById("cancel-res-subtitle").textContent = `${r.borrowerName} · ${r.itemTypeName}`;
-    document.getElementById("cancel-res-submit-btn").onclick = async () => {
-      const btn = document.getElementById("cancel-res-submit-btn");
-      if (btn.disabled) return;
-      btn.textContent = "Cancelling…";
-      const res = await saveAction(btn, `/admin/reservations/${r.id}/cancel`, "POST");
-      btn.textContent = "Yes, cancel it";
-      if (!res) return;
-      if (res.error) {
-        showToast(res.error, 6000);
-        if (res.current) { closeSheet("cancel-res-sheet"); loadReservations(); loadDashboard(); }
-        return;
-      }
-      closeSheet("cancel-res-sheet");
-      document.getElementById(`res-row-${safeId(r.id)}`)?.remove();
-      document.getElementById(`res-panel-${safeId(r.id)}`)?.remove();
-      loadDashboard();
-      showToast("Reservation cancelled");
-      const remaining = document.querySelectorAll("[id^='res-row-']").length;
-      if (!remaining) loadReservations(); // show empty state
-    };
-    openSheet("cancel-res-sheet");
-  }
 
   async function openPickup(r) {
     const counted = r.isQuantity || r.isAddon; // no unit to choose, just how many
@@ -5619,8 +5786,9 @@
   }
   // "Time to return" reminder: the gemach's Return reminder template filled with this loan's details,
   // editable, sent from the admin's own WhatsApp / texts / email; the server stamps the loan and logs it.
-  function openReturnReminder(l) {
-    const items = l.isQuantity && l.quantity ? `${l.itemTypeName} × ${l.quantity}` : (l.itemTypeName || "item");
+  /** itemsText: every item of the booking ("Toile × 12 and Navy × 6"); default = this one loan. */
+  function openReturnReminder(l, itemsText) {
+    const items = itemsText || (l.isQuantity && l.quantity ? `${l.itemTypeName} × ${l.quantity}` : (l.itemTypeName || "item"));
     document.getElementById("reminder-subtitle").textContent = [l.borrowerName, items,
       l.expectedReturn ? `due ${fmtDay(l.expectedReturn, true)}` : (l.dateBorrowed ? `out since ${fmtDay(l.dateBorrowed, true)}` : "")].filter(Boolean).join(" · ");
     document.getElementById("reminder-last").textContent = l.reminderSentAt ? `Last reminder ${reminderVia(l.reminderSentVia)} ${timeAgo(l.reminderSentAt)}.` : "";
@@ -7946,7 +8114,13 @@
   }
   /** Scroll to the first of these elements once the list has its fresh data, and outline it briefly. */
   function pointAt(ids, tries = 0) {
-    const el = ids.map(id => document.getElementById(id)).find(Boolean);
+    const find = id => {
+      const el = document.getElementById(id);
+      if (el) return el;
+      const m = /^(loan|res)-row-(.+)$/.exec(id); // a booking row lists every loan in it
+      return m ? document.querySelector(`.loan-row[data-bk="${m[1]}"][data-loans~="${CSS.escape(m[2])}"]`) : null;
+    };
+    const el = ids.map(find).find(Boolean);
     if (el && !el.closest(".is-stale")) {
       el.scrollIntoView({ block: "center", behavior: "smooth" });
       el.classList.add("deep-hl");

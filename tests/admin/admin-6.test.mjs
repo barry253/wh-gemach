@@ -186,7 +186,7 @@ ok(JSON.stringify(resBtns) === JSON.stringify([["Message on WhatsApp"], ["Email"
 const apptBtns = await page.$$eval("#appointments-list [data-contact]", as => as.map(a => a.textContent.trim()));
 ok(JSON.stringify(apptBtns) === JSON.stringify(["Email"]), "appointment card preferred only " + apptBtns);
 const resDates = await page.$$eval("#reservations-list .loan-row-date", s => s.map(x => x.textContent));
-ok(JSON.stringify(resDates) === JSON.stringify(["Dates TBD", "Oct 2 → Open return date"]), "reservation dates guarded " + resDates);
+ok(JSON.stringify(resDates) === JSON.stringify(["Dates TBD", "Oct 2 → open-ended"]), "reservation dates guarded " + resDates);
 // Pickup instructions sheet
 await page.evaluate(() => openPickupInstructions(rec("res", "recRES00000000002")));
 await page.waitForTimeout(200);

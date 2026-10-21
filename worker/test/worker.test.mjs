@@ -4978,6 +4978,41 @@ if (D1_MODE) {
   });
 }
 
+await t("bookings: loan and reservation rows carry their source request's card details (one batched read)", async () => {
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  const Af = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  DB["Item Types"].push(rec("recBKCTYPE0000001", { Name: "Toile cloth", Active: true, Tracking: "Quantity", "Quantity Owned": 24, ...Bf }));
+  DB.Requests.push(
+    rec("recBKCREQ00000001", { "Request ID": "R-990", Name: "Card Person", Status: "Converted", Town: "Cedarhurst", "Payment Tier": "Standard",
+      "Deposit Acknowledged": true, "Event Date": "2027-06-01", Test: true, ...Bf }),
+    rec("recBKCREQOTHERG01", { "Request ID": "R-991", Name: "Other Gemach", Status: "Converted", Town: "Elsewhere", ...Af }));
+  DB.Loans.push(
+    rec("recBKCLOANRES0001", { "Loan ID": "L-9990", Status: "Reserved", "Item to Reserve": ["recBKCTYPE0000001"], Quantity: 12,
+      "Reservation Start": "2027-05-30", "Reservation End": "2027-06-02", "Source Request": ["recBKCREQ00000001"], ...Bf }),
+    rec("recBKCLOANACT0001", { "Loan ID": "L-9991", Status: "Active", "Item to Reserve": ["recBKCTYPE0000001"], Quantity: 6,
+      "Date Borrowed": "2027-05-29", "Source Request": ["recBKCREQ00000001"], ...Bf }),
+    rec("recBKCLOANWALK001", { "Loan ID": "L-9992", Status: "Active", "Item to Reserve": ["recBKCTYPE0000001"], Quantity: 2, "Date Borrowed": "2027-05-29", ...Bf }),
+    // a link to another gemach's request is never followed
+    rec("recBKCLOANXGEM001", { "Loan ID": "L-9993", Status: "Reserved", "Item to Reserve": ["recBKCTYPE0000001"], Quantity: 1,
+      "Reservation Start": "2027-05-30", "Source Request": ["recBKCREQOTHERG01"], ...Bf }));
+
+  const res = await (await call("/admin/reservations", { headers: jsonB })).json();
+  const r = res.find(x => x.id === "recBKCLOANRES0001");
+  assert.equal(r.requestRecId, "recBKCREQ00000001");
+  assert.deepEqual({ ...r.request, receivedAt: undefined }, { requestId: "R-990", receivedAt: undefined, source: null, eventDate: "2027-06-01",
+    depositAcknowledged: true, town: "Cedarhurst", state: null, paymentTier: "Standard", test: true });
+  const x = res.find(y => y.id === "recBKCLOANXGEM001");
+  assert.equal(x.request, null, "another gemach's request isn't read");
+
+  const loans = await (await call("/admin/loans", { headers: jsonB })).json();
+  const a = loans.find(y => y.id === "recBKCLOANACT0001");
+  assert.equal(a.requestRecId, "recBKCREQ00000001", "picked-up items share the booking with what's still reserved");
+  assert.equal(a.request.town, "Cedarhurst");
+  const w = loans.find(y => y.id === "recBKCLOANWALK001");
+  assert.equal(w.requestRecId, null); assert.equal(w.request, null);
+  if (D1_MODE) assert.ok(d1Queries <= 8, `loans list used ${d1Queries} queries`);
+});
+
 if (D1_MODE) {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);
