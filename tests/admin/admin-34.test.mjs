@@ -67,7 +67,7 @@ ok(await page.isVisible("#set-localPlaces") && await page.isVisible("#set-localD
 ok((await page.textContent('label[for="set-depositInfo"]')).includes("everyone else"), "main text relabelled “for everyone else”");
 await page.click("#settings-save-btn");
 await page.waitForTimeout(300);
-ok(!lastPatch() && /local towns/.test(await page.textContent("body")), "can't save with the fields empty");
+ok(!lastPatch() && /local cities/.test(await page.textContent("body")), "can't save with the fields empty");
 await page.fill("#set-localPlaces", "West Hempstead, W. Hempstead, WH, 11552, Franklin Square");
 await page.fill("#set-localDepositInfo", "West Hempstead resident fee: $36 minimum donation.");
 await page.evaluate(() => document.getElementById("local-tier-wrap").scrollIntoView());

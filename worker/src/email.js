@@ -100,7 +100,7 @@ async function sendNotificationEmail(env, g, data) {
   if (test) lines.push(TEST_NOTE, "");
   if (fallback) lines.push(`ℹ ${fallbackNote}`, "");
   if (conflicts.length) lines.push(`⚠ ${conflicts.length} of ${items.length} item${items.length === 1 ? "" : "s"} may not be available for these dates — see below.`, "");
-  lines.push(`Name: ${name}`, `Phone: ${phone || "not provided"}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, `Town: ${townLine}`, "");
+  lines.push(`Name: ${name}`, `Phone: ${phone || "not provided"}`, `Email: ${email || "not provided"}`, `Preferred contact: ${preferredContact || "not specified"}`, `City: ${townLine}`, "");
   if (isAppt) {
     lines.push(`Preferred times: ${preferredTimes || "not specified"}`);
     if (partySize != null) lines.push(`Party size: ${partySize}`);
@@ -134,7 +134,7 @@ async function sendNotificationEmail(env, g, data) {
     row("Phone", tel ? `<a href="tel:${e(tel)}" style="color:#1B3A4B;">${e(phone)}</a>` : phone ? e(phone) : `<span style="color:#5e6b72;">not provided</span>`),
     row("Email", email ? `<a href="mailto:${e(email)}" style="color:#1B3A4B;">${e(email)}</a>` : `<span style="color:#5e6b72;">not provided</span>`),
     row("Prefers", e(preferredContact || "not specified")),
-    row("Town", town ? `${e(town)}${tierText ? ` <span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;${paymentTier === "Local" ? "background:#dcfce7;color:#166534;" : "background:#eef1f3;color:#334155;"}">${e(tierText)}</span>` : ""}` : `<span style="color:#5e6b72;">not given</span>`),
+    row("City", town ? `${e(town)}${tierText ? ` <span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;${paymentTier === "Local" ? "background:#dcfce7;color:#166534;" : "background:#eef1f3;color:#334155;"}">${e(tierText)}</span>` : ""}` : `<span style="color:#5e6b72;">not given</span>`),
   ];
   if (isAppt) {
     details.push(row("Preferred times", e(preferredTimes || "not specified")));

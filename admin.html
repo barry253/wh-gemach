@@ -3386,7 +3386,7 @@
           ${isAppt && r.preferredTimes ? `<span>🕒 ${esc(r.preferredTimes)}</span>` : ""}
           ${r.partySize ? `<span>👥 Party of ${esc(r.partySize)}</span>` : ""}
           ${r.depositAcknowledged ? `<span>✓ ${GEMACH?.chargeType === "Payment" ? "Payment" : "Deposit"} acknowledged</span>` : ""}
-          ${r.town ? `<span>📍 ${esc(r.town)}${r.paymentTier ? ` <span class="tag ${r.paymentTier === "Local" ? "tag-green" : "tag-gray"}" title="Which ${GEMACH?.chargeType === "Payment" ? "payment" : "deposit"} applies (Settings → Different amount for local borrowers)">${r.paymentTier === "Local" ? "Local rate" : "Not local"}</span>` : ""}</span>` : ""}
+          ${r.town ? `<span>📍 ${esc([r.town, r.state].filter(Boolean).join(", "))}${r.paymentTier ? ` <span class="tag ${r.paymentTier === "Local" ? "tag-green" : "tag-gray"}" title="Which ${GEMACH?.chargeType === "Payment" ? "payment" : "deposit"} applies (Settings → Different amount for local borrowers)">${r.paymentTier === "Local" ? "Local rate" : "Not local"}</span>` : ""}</span>` : ""}
           <span>📞 ${esc(r.phone)}</span>
           ${r.notes ? `<span>💬 ${esc(r.notes)}</span>` : ""}
         </div>
@@ -6099,8 +6099,8 @@
     whatsapp:           { label: "WhatsApp",            type: "tel",   max: 200, hint: "Leave blank to use the phone number for WhatsApp." },
     email:              { label: "Email",               type: "email", max: 200, hint: "Request notifications go here; borrowers' replies too." },
     depositInfo:        { label: "Deposit / payment info", type: "area",  max: 2000, rows: 2, placeholder: "e.g. $100 refundable check, returned when the item comes back — or: $15 per tablecloth, paid by Zelle to …", hint: "Shown on your page and on the request form. Say how much, how to pay, and whether it comes back." },
-    localPlaces:        { label: "Local towns",         type: "area",  max: 1000, rows: 2, placeholder: "West Hempstead, W Hempstead, W. Hempstead, WH, 11552, Franklin Square", hint: "Separate with commas. Add the spellings people might type (WH, W. Hempstead) and zip codes. Capital letters and dots don't matter, and a trailing “NY” or zip is ignored." },
-    localDepositInfo:   { label: "Payment for local borrowers", type: "area", max: 2000, rows: 2, placeholder: "e.g. West Hempstead resident fee: $36 minimum donation", hint: "Borrowers who type one of the local towns see this instead of the text above. Your page shows both." },
+    localPlaces:        { label: "Local cities",         type: "area",  max: 1000, rows: 2, placeholder: "West Hempstead, W Hempstead, W. Hempstead, WH, 11552, Franklin Square", hint: "Separate with commas. Add the spellings people might type (WH, W. Hempstead) and zip codes. Capital letters and dots don't matter, and a trailing “NY” or zip is ignored." },
+    localDepositInfo:   { label: "Payment for local borrowers", type: "area", max: 2000, rows: 2, placeholder: "e.g. West Hempstead resident fee: $36 minimum donation", hint: "Borrowers who enter one of the local cities see this instead of the text above. Your page shows both." },
     gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
     requestFormUrl:     { label: "Request form link",   type: "url",   max: 600, placeholder: "https://forms.gle/…", hint: "Only for Listing only gemachs that take requests through their own form (e.g. a Google Form). Your page shows an “Open the request form” button instead of live availability." },
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
@@ -6335,9 +6335,9 @@
         </div>
         <div class="checkbox-row" style="margin-top:0.9rem">
           <input type="checkbox" id="set-requireTown" />
-          <label for="set-requireTown">Make the borrower's town required</label>
+          <label for="set-requireTown">Make the borrower's city required</label>
         </div>
-        <p class="settings-help" id="require-town-help" style="margin:0.2rem 0 0">The request form always asks which town the borrower lives in. Tick this to make it required.</p>`;
+        <p class="settings-help" id="require-town-help" style="margin:0.2rem 0 0">The request form always asks which city and state the borrower lives in. Tick this to make the city required.</p>`;
     }
     if (group.extra === "browsecats") {
       inner += `
@@ -6633,7 +6633,7 @@
     const chargeNeedsTown = setEl("depositRequired").checked && (document.querySelector('input[name="set-chargeType"]:checked')?.value === "Payment" || tier);
     document.getElementById("require-town-help").textContent = chargeNeedsTown
       ? "It's already required on requests that include a payment (Your page → Gemach info). Tick this to require it on every request."
-      : "The request form always asks which town the borrower lives in. Tick this to make it required.";
+      : "The request form always asks which city and state the borrower lives in. Tick this to make the city required.";
     document.querySelector('label[for="set-depositInfo"]').textContent = tier ? "Deposit / payment for everyone else" : SETTINGS_FIELDS.depositInfo.label;
     updateRequestStyleUi();
   }
@@ -7082,7 +7082,7 @@
     if (!setEl("localTier").checked) { // unticked: clear both (only if something was saved)
       for (const k of ["localPlaces", "localDepositInfo"]) { if (String(settingsOriginal[k] || "").trim()) patch[k] = ""; else delete patch[k]; }
     } else if (!setEl("localPlaces").value.trim() || !setEl("localDepositInfo").value.trim()) {
-      return { error: "Different amount for local borrowers: add the local towns and the payment for local borrowers (or untick it)." };
+      return { error: "Different amount for local borrowers: add the local cities and the payment for local borrowers (or untick it)." };
     }
     put("chargeType", document.querySelector('input[name="set-chargeType"]:checked')?.value || "Deposit");
     put("itemView", document.querySelector('input[name="set-itemView"]:checked')?.value || "List");

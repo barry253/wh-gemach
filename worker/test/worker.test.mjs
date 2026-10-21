@@ -3529,7 +3529,7 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     const pub = (await (await call(`/public/gemach/${G.slug}?town=1`)).json()).gemach;
     assert.equal(pub.townRequired, true); assert.deepEqual(pub.localPlaces, []); assert.equal(pub.localDepositInfo, null);
     let r = await post("/submit-request", payBase);
-    assert.equal(r.status, 400); assert.match((await r.json()).error, /town/);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /city/);
     r = await post("/submit-request", { ...payBase, town: "   " });
     assert.equal(r.status, 400);
     r = await post("/submit-request", { ...payBase, town: 12 });
@@ -3546,7 +3546,7 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ localPlaces: "West Hempstead" }) });
     assert.equal(r.status, 400); assert.match((await r.json()).error, /local borrowers/);
     r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ localDepositInfo: "$36 minimum donation" }) });
-    assert.equal(r.status, 400); assert.match((await r.json()).error, /local town/);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /local city/);
     r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ localPlaces: "x".repeat(1001), localDepositInfo: "$36" }) });
     assert.equal(r.status, 400);
     r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({
@@ -3571,17 +3571,25 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     await post("/submit-request", { ...payBase, email: "local@example.com", town: "WH" });
     await Promise.allSettled(waits);
     const gm = resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1);
-    assert.match(gm.text, /Town: WH · local rate/); assert.match(gm.text, /Payment for them: West Hempstead resident fee: \$36/);
+    assert.match(gm.text, /City: WH · local rate/); assert.match(gm.text, /Payment for them: West Hempstead resident fee: \$36/);
     assert.ok(gm.html.includes("local rate"));
     const rc = resendCalls().filter(x => x.to[0] === "local@example.com").at(-1);
     assert.match(rc.text, /Payment: West Hempstead resident fee: \$36/);
     await post("/submit-request", { ...payBase, email: "away@example.com", town: "Teaneck, NJ" });
     await Promise.allSettled(waits);
-    assert.match(resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1).text, /Town: Teaneck, NJ · not local[\s\S]*Payment for them: \$15 per tablecloth/);
+    assert.match(resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1).text, /City: Teaneck, NJ · not local[\s\S]*Payment for them: \$15 per tablecloth/);
     assert.match(resendCalls().filter(x => x.to[0] === "away@example.com").at(-1).text, /Payment: \$15 per tablecloth/);
+    await post("/submit-request", { ...payBase, email: "st@example.com", town: "Lakewood", state: "nj" });
+    await Promise.allSettled(waits);
+    assert.equal(lastReq()["State"], "NJ"); assert.equal(lastReq()["Town"], "Lakewood");
+    assert.match(resendCalls().filter(x => x.to[0] === "pay@example.com").at(-1).text, /City: Lakewood, NJ · not local/);
+    assert.equal((await post("/submit-request", { ...payBase, town: "Lakewood", state: "XX" })).status, 400);
+    assert.equal((await post("/submit-request", { ...payBase, town: "Lakewood", state: 5 })).status, 400);
     const list = await (await call("/admin/requests", { headers: H })).json();
     const mine = list.find(x => x.email === "away@example.com");
     assert.equal(mine.town, "Teaneck, NJ"); assert.equal(mine.paymentTier, "Standard");
+    const st = list.find(x => x.email === "st@example.com");
+    assert.equal(st.town, "Lakewood"); assert.equal(st.state, "NJ");
   });
 
   await t("local tier: clearing both turns it off; no charge = town optional", async () => {
@@ -3610,7 +3618,7 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.equal(pub.townRequired, true); assert.equal(pub.requireTown, true);
     const { depositAck, ...noAck } = payBase;
     r = await post("/submit-request", noAck);
-    assert.equal(r.status, 400); assert.match((await r.json()).error, /town/);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /city/);
     r = await post("/submit-request", { ...noAck, town: "Malverne" });
     assert.equal(r.status, 200, await r.clone().text());
     assert.equal(lastReq()["Town"], "Malverne");

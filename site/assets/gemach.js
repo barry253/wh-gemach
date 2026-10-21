@@ -525,8 +525,8 @@
     var prose = function (t, cls) { return t ? '<div class="prose' + (cls ? " " + cls : "") + '">' + W.formatText(t) + "</div>" : ""; };
     if (!hasLocalTier(g)) return head + prose(g.depositInfo);
     var local = town == null ? null : localMatch(g.localPlaces, town);
-    if (local === true) return head + prose(g.localDepositInfo) + '<p class="tier-note">Based on the town you entered.</p>';
-    if (local === false && String(town).trim()) return head + prose(g.depositInfo) + '<p class="tier-note">Based on the town you entered.</p>';
+    if (local === true) return head + prose(g.localDepositInfo) + '<p class="tier-note">Based on the city you entered.</p>';
+    if (local === false && String(town).trim()) return head + prose(g.depositInfo) + '<p class="tier-note">Based on the city you entered.</p>';
     return head + prose(g.localDepositInfo, "tier") + prose(g.depositInfo, "tier");
   }
   /** Short "Gemach Info" (a few brief lines, no hours or deposit) goes in the header instead of its own box. */
@@ -1593,6 +1593,7 @@
     if (!$("f-phone").value) $("f-phone").value = d.phone || "";
     if (!$("f-email").value) $("f-email").value = d.email || "";
     if (!$("f-town").value) $("f-town").value = d.town || "";
+    if (d.state && $("f-state").querySelector('option[value="' + String(d.state).replace(/[^A-Z]/g, "") + '"]')) $("f-state").value = d.state;
     if (d.preferredContact && $("f-contact").querySelector('option[value="' + d.preferredContact.replace(/[^A-Za-z]/g, "") + '"]')) $("f-contact").value = d.preferredContact;
     updateContactReq();
     updateTown();
@@ -1600,6 +1601,7 @@
   $("forget-me").addEventListener("click", function () {
     W.me.forget();
     ["f-name", "f-phone", "f-email", "f-town"].forEach(function (id) { $(id).value = ""; });
+    $("f-state").value = "NY";
     updateTown();
     $("f-contact").value = "Email";
     $("f-remember").checked = false;
@@ -1858,7 +1860,7 @@
     else if (needsPhone()) bad($("f-phone"), "Please add your phone number, since that’s the best way to reach you.");
     if (!preferredContact) preferredContact = "Email";
     var town = $("f-town").value.replace(/\s+/g, " ").trim();
-    if (!town && townNeeded()) bad($("f-town"), "Please enter the town you live in.");
+    if (!town && townNeeded()) bad($("f-town"), "Please enter the city you live in.");
 
     var body = { gemach: gemach.slug || slug, name: name, phone: ph, itemsRequested: ids };
     var firstItem = modal.querySelector('input[name="modal-items"]');
@@ -1925,7 +1927,7 @@
       return null;
     }
     if (email) body.email = email;
-    if (town) body.town = town;
+    if (town) { body.town = town; body.state = $("f-state").value || "NY"; }
     var hp = $("f-hp"); if (hp && hp.value) body.website = hp.value; // hidden field only bots fill in
     if (inTestMode()) body.testToken = testToken;
     body.preferredContact = preferredContact;
@@ -1956,7 +1958,7 @@
       if (!data || !data.success) throw new Error((data && data.error) || "failed");
       var link = typeof data.manageUrl === "string" && /^https:\/\//.test(data.manageUrl) ? data.manageUrl : null;
       if ($("f-remember").checked) {
-        W.me.save({ name: body.name, phone: $("f-phone").value.trim(), email: body.email || "", preferredContact: body.preferredContact, town: body.town || "" });
+        W.me.save({ name: body.name, phone: $("f-phone").value.trim(), email: body.email || "", preferredContact: body.preferredContact, town: body.town || "", state: body.state || "" });
         if (link) W.me.addRequest({ url: link, gemach: gemach.name, requestId: data.requestId });
       } else if (W.me.load()) {
         W.me.forget(); // they unticked "Remember me"

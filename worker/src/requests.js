@@ -26,7 +26,7 @@ async function handleGetRequests({ db, g, env }) {
     scope: g, where: [Q.eq("Status", "New")],
     sort: [{ field: "Received At", direction: "asc" }],
     fields: ["Request ID", "Name", "Phone", "Email", "Preferred Contact", "Items Requested", "Item Quantities", "Needed From", "Needed Until",
-      "Open-ended duration", "Notes", "Received At", "Request Type", "Event Date", "Preferred Times", "Party Size", "Deposit Acknowledged", "Appointment At", "Test", "Town", "Payment Tier"],
+      "Open-ended duration", "Notes", "Received At", "Request Type", "Event Date", "Preferred Times", "Party Size", "Deposit Acknowledged", "Appointment At", "Test", "Town", "State", "Payment Tier"],
   });
   const info = await itemTypeInfoMap(db, reqs.flatMap(r => r.fields["Items Requested"] || []), g);
   const qtyTypeIds = Object.keys(info).filter(id => info[id].qty);
@@ -76,7 +76,7 @@ async function handleGetRequests({ db, g, env }) {
       preferredTimes: f["Preferred Times"] || null,
       partySize: f["Party Size"] ?? null,
       depositAcknowledged: !!f["Deposit Acknowledged"],
-      town: f["Town"] || null,
+      town: f["Town"] || null, state: f["State"] || null, // the form's City + State
       paymentTier: ["Local", "Standard"].includes(f["Payment Tier"]) ? f["Payment Tier"] : null, // gemachs with a local payment tier
       appointmentAt: f["Appointment At"] || null,
       manageUrl: await manageUrl(env, r.id), // for the {manage_link} template placeholder

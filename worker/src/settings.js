@@ -130,7 +130,7 @@ const GEMACH_LABELS = {
   pickupInstructions: "Pickup instructions", confirmMessage: "Confirm message", declineMessage: "Decline message",
   pickupMessage: "Pickup message", name: "Gemach name",
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
-  depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", localDepositInfo: "Payment for local borrowers", localPlaces: "Local towns", requireTown: "Town required", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
+  depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", localDepositInfo: "Payment for local borrowers", localPlaces: "Local cities", requireTown: "City required", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
   groupBy: "Sections", spotlightFilter: "Holiday spotlight", borrowNote: "How to borrow", photoShape: "Photo shape", availabilityMode: "Availability",
@@ -227,8 +227,8 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
       if (typeof v !== "string") return { error: `${label} must be text.` };
       if (v.length > MAX_PLACES_TEXT) return { error: `${label} is too long (max ${MAX_PLACES_TEXT} characters).` };
       const list = parseLocalPlaces(v);
-      if (list.length > 50) return { error: `${label}: up to 50 towns.` };
-      if (list.some(p => p.length > 60)) return { error: `${label}: separate the towns with commas.` };
+      if (list.length > 50) return { error: `${label}: up to 50 cities.` };
+      if (list.some(p => p.length > 60)) return { error: `${label}: separate the cities with commas.` };
       fields[field] = list.length ? list.join(", ") : null;
       continue;
     }
@@ -302,8 +302,8 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
   {
     const places = "Local Places" in fields ? fields["Local Places"] : (current?.localPlaces || []).join(", ");
     const local = "Local Deposit Info" in fields ? fields["Local Deposit Info"] : current?.localDepositInfo;
-    if (places && !local) return { error: "Add the payment text for local borrowers, or clear the local towns." };
-    if (local && !places) return { error: "Add at least one local town, or clear the payment for local borrowers." };
+    if (places && !local) return { error: "Add the payment text for local borrowers, or clear the local cities." };
+    if (local && !places) return { error: "Add at least one local city, or clear the payment for local borrowers." };
   }
 
   // Cross-field: contact methods must have the details they need (after applying the patch).

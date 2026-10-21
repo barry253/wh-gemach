@@ -101,12 +101,14 @@ directory.gemachs.push(
     await page.waitForTimeout(200);
     assert(/understand payment is required/.test(await page.textContent('#form-view')) && !posts.length, 'must tick the payment box');
     assert(await page.isVisible('#town-req') && !(await page.isVisible('#town-opt')), 'payment gemach: town is required');
-    assert(/town you live in/.test(await errs(page)), 'error asks for the town');
+    assert(/city you live in/.test(await errs(page)), 'error asks for the city');
     await page.check('#f-deposit');
+    assert(await page.inputValue('#f-state') === 'NY' && (await page.$$eval('#f-state option', o => o.length)) === 52, 'state dropdown: 2-letter codes, NY preselected');
+    assert((await page.textContent('label[for=f-town]')).trim().startsWith('City'), 'field is called City');
     await page.fill('#f-email', 't@example.com'); await page.fill('#f-town', '  Lynbrook ');
     await page.click('#btn-submit');
     await page.waitForTimeout(400);
-    assert(posts.length === 1 && posts[0].town === 'Lynbrook', 'town is sent (trimmed): ' + JSON.stringify(posts[0] && posts[0].town));
+    assert(posts.length === 1 && posts[0].town === 'Lynbrook' && posts[0].state === 'NY', 'city + state (NY by default) are sent: ' + JSON.stringify(posts[0] && [posts[0].town, posts[0].state]));
     await page.goto(BASE + '/g/pay', { waitUntil: 'networkidle' });
     await page.check('#row-recPayIt1 input[type=checkbox]');
     await page.click('#btn-open-modal');
@@ -123,7 +125,7 @@ directory.gemachs.push(
     assert(/\$36/.test(await formBox()) && /\$75/.test(await formBox()), 'form shows both until a town is typed');
     assert(await page.isVisible('#town-hint'), 'hint: payment depends on where you live');
     await page.fill('#f-town', 'W. Hempstead, NY');
-    assert(/\$36/.test(await formBox()) && !/\$75/.test(await formBox()) && /Based on the town/.test(await formBox()), 'local town → local amount only');
+    assert(/\$36/.test(await formBox()) && !/\$75/.test(await formBox()) && /Based on the city/.test(await formBox()), 'local town → local amount only');
     await page.fill('#f-town', 'Franklin Square 11010');
     assert(/\$36/.test(await formBox()) && !/\$75/.test(await formBox()), 'Franklin Square is local too');
     await page.fill('#f-town', 'Lynbrook');
@@ -150,7 +152,7 @@ directory.gemachs.push(
     const d2 = new Date(); d2.setDate(d2.getDate() + 9); await page.fill('#f-from', d2.toISOString().slice(0, 10));
     const before = posts.length;
     await page.click('#btn-submit'); await page.waitForTimeout(300);
-    assert(posts.length === before && /town you live in/.test(await errs(page)), 'blank town blocked');
+    assert(posts.length === before && /city you live in/.test(await errs(page)), 'blank city blocked');
     await ctx.close();
     assert(!errors.length, 'no errors ' + errors.join(' | '));
   } finally { await browser.close(); srv.kill(); }

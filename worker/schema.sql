@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS requests (
   deposit_acknowledged INTEGER NOT NULL DEFAULT 0,  -- Deposit Acknowledged
   item_quantities TEXT,  -- Item Quantities
   town TEXT,  -- Town
+  state TEXT,  -- State
   payment_tier TEXT,  -- Payment Tier
   declined_items TEXT,  -- Declined Items
   visit_outcome TEXT,  -- Visit Outcome

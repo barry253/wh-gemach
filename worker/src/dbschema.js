@@ -160,7 +160,7 @@ const TABLES = {
       "Item Quantities": t("item_quantities"),
       // Where the borrower lives (typed on the request form) and, for gemachs with a local payment tier, whether that
       // town counted as local when they sent it: Payment Tier "Local" / "Standard" (blank = no local tier then).
-      "Town": t("town"), "Payment Tier": t("payment_tier"), // "Local" / "Standard"
+      "Town": t("town"), "State": t("state"), "Payment Tier": t("payment_tier"), // Town = the City field on the form // "Local" / "Standard"
       // Items the gemach couldn't confirm when it confirmed the rest: JSON { "<item type id>": "optional note" }.
       "Declined Items": t("declined_items"),
       // Appointment visits: "Checked out" / "Nothing borrowed" / "No-show" (blank = not visited yet).

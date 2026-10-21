@@ -7,6 +7,8 @@
 // the right payment as they type; keep the two in step (tests use the same cases).
 
 const MAX_PLACES_TEXT = 1000;
+/** State dropdown on the request form (2-letter codes; the form preselects NY). */
+const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
 const MAX_TOWN = 100;
 
 /** Lower case, punctuation as spaces, single spaces: "W. Hempstead," → "w hempstead". */
@@ -67,4 +69,4 @@ function chargeTextFor(g, local) {
   return (local === true && hasLocalTier(g) ? g.localDepositInfo : g.depositInfo) || "";
 }
 
-export { MAX_PLACES_TEXT, MAX_TOWN, normPlace, parseLocalPlaces, isLocalTown, hasLocalTier, townRequired, townRequiredForCharge, chargeTextFor };
+export { US_STATES, MAX_PLACES_TEXT, MAX_TOWN, normPlace, parseLocalPlaces, isLocalTown, hasLocalTier, townRequired, townRequiredForCharge, chargeTextFor };

@@ -958,6 +958,8 @@ fieldset { border: 0; }
 .deposit-callout strong { display: flex; align-items: center; gap: .4rem; color: #7A3A05; font-size: 1rem; margin-bottom: .2rem; }
 .deposit-callout .prose { font-size: .9375rem; }
 .deposit-callout .prose.tier + .prose.tier { margin-top: .45rem; padding-top: .45rem; border-top: 1px solid rgba(122, 58, 5, .2); }
+.city-row { grid-template-columns: minmax(0, 1fr) 6.5rem; }
+.town-hint { margin: -.6rem 0 1rem; }
 .deposit-callout .tier-note { font-size: .8125rem; color: var(--muted); margin: .3rem 0 0; }
 
 /* Request form (v3) */

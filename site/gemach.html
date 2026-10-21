@@ -124,11 +124,70 @@
         </div>
       </div>
 
-      <div class="form-group" id="town-group">
-        <label for="f-town">Town you live in <span class="opt" id="town-opt">(optional)</span><span class="req" id="town-req" aria-hidden="true" hidden>*</span></label>
-        <input type="text" id="f-town" name="town" placeholder="e.g. West Hempstead" autocomplete="address-level2" maxlength="100" aria-describedby="town-hint" />
-        <p class="field-hint" id="town-hint" hidden>The payment depends on where you live.</p>
+      <div class="form-row city-row" id="town-group">
+        <div class="form-group">
+          <label for="f-town">City <span class="opt" id="town-opt">(optional)</span><span class="req" id="town-req" aria-hidden="true" hidden>*</span></label>
+          <input type="text" id="f-town" name="city" placeholder="e.g. West Hempstead" autocomplete="address-level2" maxlength="100" aria-describedby="town-hint" />
+        </div>
+        <div class="form-group">
+          <label for="f-state">State</label>
+          <select id="f-state" name="state" autocomplete="address-level1">
+            <option value="AL">AL</option>
+            <option value="AK">AK</option>
+            <option value="AZ">AZ</option>
+            <option value="AR">AR</option>
+            <option value="CA">CA</option>
+            <option value="CO">CO</option>
+            <option value="CT">CT</option>
+            <option value="DE">DE</option>
+            <option value="DC">DC</option>
+            <option value="FL">FL</option>
+            <option value="GA">GA</option>
+            <option value="HI">HI</option>
+            <option value="ID">ID</option>
+            <option value="IL">IL</option>
+            <option value="IN">IN</option>
+            <option value="IA">IA</option>
+            <option value="KS">KS</option>
+            <option value="KY">KY</option>
+            <option value="LA">LA</option>
+            <option value="ME">ME</option>
+            <option value="MD">MD</option>
+            <option value="MA">MA</option>
+            <option value="MI">MI</option>
+            <option value="MN">MN</option>
+            <option value="MS">MS</option>
+            <option value="MO">MO</option>
+            <option value="MT">MT</option>
+            <option value="NE">NE</option>
+            <option value="NV">NV</option>
+            <option value="NH">NH</option>
+            <option value="NJ">NJ</option>
+            <option value="NM">NM</option>
+            <option value="NY" selected>NY</option>
+            <option value="NC">NC</option>
+            <option value="ND">ND</option>
+            <option value="OH">OH</option>
+            <option value="OK">OK</option>
+            <option value="OR">OR</option>
+            <option value="PA">PA</option>
+            <option value="RI">RI</option>
+            <option value="SC">SC</option>
+            <option value="SD">SD</option>
+            <option value="TN">TN</option>
+            <option value="TX">TX</option>
+            <option value="UT">UT</option>
+            <option value="VT">VT</option>
+            <option value="VA">VA</option>
+            <option value="WA">WA</option>
+            <option value="WV">WV</option>
+            <option value="WI">WI</option>
+            <option value="WY">WY</option>
+            <option value="PR">PR</option>
+          </select>
+        </div>
       </div>
+      <p class="field-hint town-hint" id="town-hint" hidden>The payment depends on where you live.</p>
 
       <fieldset class="form-group" id="items-group">
         <legend id="items-legend">Items requested <span class="req" aria-hidden="true">*</span></legend>
@@ -184,7 +243,7 @@
       </div>
 
       <label class="check-line remember-line"><input type="checkbox" id="f-remember" /> <span>Remember my details on this device
-        <small>Your name, phone, email and town, and a link to this request, are saved in this browser for next time.</small></span></label>
+        <small>Your name, phone, email and city, and a link to this request, are saved in this browser for next time.</small></span></label>
 
       <div class="hp-field" aria-hidden="true"><label for="f-hp">Leave this empty</label><input type="text" id="f-hp" name="hp" tabindex="-1" autocomplete="off" /></div>
       <div class="ts-box" id="ts-box"></div>

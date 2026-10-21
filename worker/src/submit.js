@@ -10,7 +10,7 @@ import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, maxPerRequest, packageSize, packageUnit, qtyLabel, requestAvailability } from "./quantity.js";
 import { EMAIL_RE, emailSignature } from "./settings.js";
-import { MAX_TOWN, chargeTextFor, hasLocalTier, isLocalTown, townRequiredForCharge } from "./places.js";
+import { MAX_TOWN, US_STATES, chargeTextFor, hasLocalTier, isLocalTown, townRequiredForCharge } from "./places.js";
 import { manageUrl } from "./manage.js";
 import { notifyAdmins, requestMessage } from "./push.js";
 import { inTestMode, isLive } from "./testmode.js";
@@ -166,8 +166,12 @@ async function handleSubmitRequest(request, db, env, ctx) {
   // (not for an add-ons-only order, which has no charge). Local tier → "Local" / "Standard" (places.js).
   if (body.town != null && typeof body.town !== "string") return json({ error: "Invalid town." }, 400);
   const town = typeof body.town === "string" ? body.town.replace(/\s+/g, " ").trim() : "";
-  if (town.length > MAX_TOWN) return json({ error: `Please keep the town under ${MAX_TOWN} characters.` }, 400);
-  if (!town && (g.requireTown || (townRequiredForCharge(g) && !addonsOnly))) return json({ error: "Please enter the town you live in." }, 400);
+  if (town.length > MAX_TOWN) return json({ error: `Please keep the city under ${MAX_TOWN} characters.` }, 400);
+  if (!town && (g.requireTown || (townRequiredForCharge(g) && !addonsOnly))) return json({ error: "Please enter the city you live in." }, 400);
+  // State: a 2-letter code from the form's dropdown (older pages send none).
+  if (body.state != null && typeof body.state !== "string") return json({ error: "Invalid state." }, 400);
+  const state = typeof body.state === "string" ? body.state.trim().toUpperCase() : "";
+  if (state && !US_STATES.includes(state)) return json({ error: "Please choose a state." }, 400);
   const paymentTier = town && hasLocalTier(g) ? (isLocalTown(g.localPlaces, town) ? "Local" : "Standard") : null;
 
   const requestId = await getNextRequestId(db);
@@ -187,6 +191,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   if (g.depositRequired || body.depositAck === true) fields["Deposit Acknowledged"] = body.depositAck === true;
   if (eventDate) fields["Event Date"] = eventDate;
   if (town) fields["Town"] = town;
+  if (town && state) fields["State"] = state;
   if (paymentTier) fields["Payment Tier"] = paymentTier;
 
   let from = null, until = null, isOpen = false;
@@ -239,7 +244,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   const notifyArgs = {
     requestId, name: fields["Name"], phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes: fields["Notes"] || null,
     requestType: isAppt ? "Appointment" : "Loan", eventDate, preferredTimes, partySize,
-    depositAck: fields["Deposit Acknowledged"], town: town || null, paymentTier, addonsOnly,
+    depositAck: fields["Deposit Acknowledged"], town: town ? [town, state].filter(Boolean).join(", ") : null, paymentTier, addonsOnly,
     items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null,
       addon: isAddonType(typeMap[id]), price: isAddonType(typeMap[id]) ? addonPrice(typeMap[id]) : null })),
     availability, test,
