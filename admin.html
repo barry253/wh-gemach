@@ -6132,7 +6132,7 @@
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
     info: ["depositRequired", "chargeType", "depositInfo", "localPlaces", "localDepositInfo", "gemachInfo"],
-    requests: ["requestFormUrl", "borrowNote", "requestStyle", "availabilityMode", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays"],
+    requests: ["requestFormUrl", "borrowNote", "requestStyle", "availabilityMode", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays", "requireTown"],
     reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView", "photoShape"],
     attrs: ["itemAttributes", "groupBy", "spotlightFilter"], browsecats: ["browseCategoryIds"],
   };
@@ -6332,7 +6332,12 @@
           <label for="set-defaultLoanDays">Usual loan length (days) <span class="muted-small">— optional</span></label>
           <input type="number" id="set-defaultLoanDays" min="1" max="365" step="1" inputmode="numeric" placeholder="Choose each time" style="max-width:11rem" />
           <p class="settings-help" style="margin:0.35rem 0 0">Fills in the due-back date when you lend something at an appointment (<b>Check out</b>) or to a walk-in (<b>New loan</b>). Leave blank to pick the date each time.</p>
-        </div>`;
+        </div>
+        <div class="checkbox-row" style="margin-top:0.9rem">
+          <input type="checkbox" id="set-requireTown" />
+          <label for="set-requireTown">Make the borrower's town required</label>
+        </div>
+        <p class="settings-help" id="require-town-help" style="margin:0.2rem 0 0">The request form always asks which town the borrower lives in. Tick this to make it required.</p>`;
     }
     if (group.extra === "browsecats") {
       inner += `
@@ -6509,6 +6514,8 @@
     remember("pickupDaysBefore", Number(g.pickupDaysBefore ?? 1));
     remember("returnDaysAfter", Number(g.returnDaysAfter ?? 1));
     remember("shabbosAdjust", !!g.shabbosAdjust);
+    setEl("requireTown").checked = !!g.requireTown;
+    remember("requireTown", !!g.requireTown);
     setEl("defaultLoanDays").value = g.defaultLoanDays ?? "";
     remember("defaultLoanDays", g.defaultLoanDays ?? null);
     setEl("autoReminders").checked = !!g.autoReminders; setEl("autoReminders").disabled = ro;
@@ -6519,7 +6526,7 @@
     remember("reminderRepeatDays", Number(g.reminderRepeatDays ?? 7));
 
     ["primaryContact", "secondaryContact", "themePicker", "themeHex", "accentPicker", "accentHex", "depositRequired", "localTier",
-     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays", "autoReminders", "reminderDaysBefore", "reminderRepeatDays"].forEach(k => {
+     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "requireTown", "defaultLoanDays", "autoReminders", "reminderDaysBefore", "reminderRepeatDays"].forEach(k => {
       const el = setEl(k);
       el.disabled = ro;
       el.addEventListener("input", onSettingsInput);
@@ -6622,6 +6629,11 @@
     // Local payment tier: towns + local text; the main text becomes "everyone else".
     const tier = setEl("localTier").checked;
     document.getElementById("local-tier-wrap").style.display = tier ? "" : "none";
+    // Town: already required whenever a payment (or a local amount) depends on it.
+    const chargeNeedsTown = setEl("depositRequired").checked && (document.querySelector('input[name="set-chargeType"]:checked')?.value === "Payment" || tier);
+    document.getElementById("require-town-help").textContent = chargeNeedsTown
+      ? "It's already required on requests that include a payment (Your page → Gemach info). Tick this to require it on every request."
+      : "The request form always asks which town the borrower lives in. Tick this to make it required.";
     document.querySelector('label[for="set-depositInfo"]').textContent = tier ? "Deposit / payment for everyone else" : SETTINGS_FIELDS.depositInfo.label;
     updateRequestStyleUi();
   }
@@ -7086,6 +7098,7 @@
       put(k, n);
     }
     put("shabbosAdjust", setEl("shabbosAdjust").checked);
+    put("requireTown", setEl("requireTown").checked);
     {
       const raw = setEl("defaultLoanDays").value.trim(), n = Number(raw);
       if (raw !== "" && !(Number.isInteger(n) && n >= 1 && n <= 365)) return { error: "Usual loan length must be a whole number of days from 1 to 365, or blank." };

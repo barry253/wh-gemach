@@ -105,5 +105,19 @@ await page.waitForFunction(() => document.body.textContent.includes("Settings sa
 sp = lastPatch();
 ok(sp && sp.body.localPlaces === "" && sp.body.localDepositInfo === "", "unticking clears both " + JSON.stringify(sp && sp.body));
 
+// Requests & pickup → "Make the borrower's town required"
+await page.waitForTimeout(400);
+await page.click("#set-tab-requests");
+await page.waitForSelector("#set-requireTown");
+ok(!(await page.isChecked("#set-requireTown")), "town not required by default");
+ok(/already required/.test(await page.textContent("#require-town-help")), "help says a payment already requires it");
+await page.check("#set-requireTown");
+await page.click("#settings-save-btn");
+await page.waitForFunction(() => document.body.textContent.includes("Settings saved"));
+sp = lastPatch();
+ok(sp && sp.body.requireTown === true && Object.keys(sp.body).length === 1, "PATCH sends requireTown " + JSON.stringify(sp && sp.body));
+await page.waitForTimeout(400);
+ok(await page.isChecked("#set-requireTown"), "kept after save");
+
 ok(!errors.length, "no page errors " + errors.join(" | "));
 await browser.close();

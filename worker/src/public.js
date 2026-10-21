@@ -146,7 +146,7 @@ function publicGemach(g, communityName, { withContact = true } = {}) {
     depositRequired: !!g.depositRequired, chargeType: g.chargeType || "Deposit", itemView: g.itemView || "List", depositInfo: g.depositInfo ?? null, gemachInfo: g.gemachInfo ?? null,
     // Local payment tier (places.js): only sent when it applies; the form matches the borrower's town against localPlaces.
     localDepositInfo: hasLocalTier(g) ? g.localDepositInfo : null, localPlaces: hasLocalTier(g) ? g.localPlaces : [],
-    townRequired: townRequired(g),
+    townRequired: townRequired(g), requireTown: !!g.requireTown,
     requestFormUrl: g.requestFormUrl ?? null,
     requestStyle: g.requestStyle || "Dates", eventLabel: g.eventLabel || DEFAULT_EVENT_LABEL,
     pickupDaysBefore: g.pickupDaysBefore ?? 1, returnDaysAfter: g.returnDaysAfter ?? 1, shabbosAdjust: !!g.shabbosAdjust,

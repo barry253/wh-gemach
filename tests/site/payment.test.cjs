@@ -76,6 +76,8 @@ directory.gemachs.push(
     depositInfo: 'Non-West Hempstead fee: $75 for 24 tablecloths.', localDepositInfo: 'West Hempstead resident fee: $36 minimum donation.',
     localPlaces: ['West Hempstead', 'W. Hempstead', 'WH', '11552', 'Franklin Square'],
     items: [{ id: 'recTierIt1', name: 'Navy Round', description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catSH' }] },
+  { ...base, id: 'recRQT', slug: 'rqt', name: 'Free Gemach', depositRequired: false, requireTown: true, townRequired: true,
+    items: [{ id: 'recRqtIt1', name: 'Crib', description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catSH' }] },
   { ...base, id: 'recDEP', slug: 'dep', name: 'Deposit Gemach', depositRequired: true, depositInfo: '$50 check, returned.', // older API: no chargeType
     items: [{ id: 'recDepIt1', name: 'Chair', description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catSH' }] });
 
@@ -140,6 +142,15 @@ directory.gemachs.push(
     await page.check('#row-recDepIt1 input[type=checkbox]');
     await page.click('#btn-open-modal');
     assert(await page.isVisible('#town-opt') && !(await page.isVisible('#town-req')), 'refundable deposit: town optional');
+    await page.goto(BASE + '/g/rqt', { waitUntil: 'networkidle' });
+    await page.check('#row-recRqtIt1 input[type=checkbox]');
+    await page.click('#btn-open-modal');
+    assert(await page.isVisible('#town-req') && !(await page.isVisible('#town-opt')), 'no payment but Settings requires the town');
+    await page.fill('#f-name', 'T'); await page.fill('#f-email', 't@example.com');
+    const d2 = new Date(); d2.setDate(d2.getDate() + 9); await page.fill('#f-from', d2.toISOString().slice(0, 10));
+    const before = posts.length;
+    await page.click('#btn-submit'); await page.waitForTimeout(300);
+    assert(posts.length === before && /town you live in/.test(await errs(page)), 'blank town blocked');
     await ctx.close();
     assert(!errors.length, 'no errors ' + errors.join(' | '));
   } finally { await browser.close(); srv.kill(); }

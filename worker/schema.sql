@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS gemachs (
   deposit_info TEXT,  -- Deposit Info
   local_deposit_info TEXT,  -- Local Deposit Info
   local_places TEXT,  -- Local Places
+  require_town INTEGER NOT NULL DEFAULT 0,  -- Require Town
   gemach_info TEXT,  -- Gemach Info
   request_form_url TEXT,  -- Request Form URL
   request_style TEXT,  -- Request Style

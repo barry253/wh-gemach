@@ -72,6 +72,7 @@ const TABLES = {
       // Local payment tier: a separate deposit/payment text for borrowers from these places (comma-separated, spellings
       // included: "West Hempstead, WH, 11552, Franklin Square"). Both blank = one amount for everyone. places.js matches.
       "Local Deposit Info": t("local_deposit_info"), "Local Places": t("local_places"),
+      "Require Town": b("require_town"), // the request form's town question is required even without a payment
       "Gemach Info": t("gemach_info"),
       "Request Form URL": t("request_form_url"), // optional: Listing-only gemachs send borrowers to their own form (e.g. a Google Form)
       "Request Style": t("request_style"), "Event Label": t("event_label"),

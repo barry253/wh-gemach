@@ -3567,6 +3567,25 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.equal(r.status, 200);
   });
 
+  await t("town: Settings can make it required without any payment", async () => {
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ depositRequired: false, requireTown: true }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).requireTown, true);
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Require Town"], true);
+    __WHG_TEST__.clearMemo();
+    const pub = (await (await call(`/public/gemach/${G.slug}?town=4`)).json()).gemach;
+    assert.equal(pub.townRequired, true); assert.equal(pub.requireTown, true);
+    const { depositAck, ...noAck } = payBase;
+    r = await post("/submit-request", noAck);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /town/);
+    r = await post("/submit-request", { ...noAck, town: "Malverne" });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(lastReq()["Town"], "Malverne");
+    assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ requireTown: "yes" }) })).status, 400);
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ depositRequired: true, requireTown: false }) });
+    assert.equal(r.status, 200);
+  });
+
   await t("places: matching rules (case, punctuation, state, zip)", async () => {
     const { isLocalTown, parseLocalPlaces } = await import("../src/places.js");
     const P = "West Hempstead, W Hempstead, W. Hempstead, WH, 11552, Franklin Square";

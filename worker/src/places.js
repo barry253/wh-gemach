@@ -52,9 +52,13 @@ function hasLocalTier(g) {
   return !!(g?.depositRequired && g.localDepositInfo && g.localPlaces?.length);
 }
 
-/** Town is required when the gemach charges a payment (fee), or has a local tier. */
-function townRequired(g) {
+/** Town is required when the gemach charges a payment (fee) or has a local tier (not for add-ons-only orders). */
+function townRequiredForCharge(g) {
   return !!(g?.depositRequired && (g.chargeType === "Payment" || hasLocalTier(g)));
+}
+/** Settings → "Make the borrower's town required", or a charge that depends on it. */
+function townRequired(g) {
+  return !!g?.requireTown || townRequiredForCharge(g);
 }
 
 /** The payment / deposit text for this borrower: local text when they're local, else the usual. */
@@ -63,4 +67,4 @@ function chargeTextFor(g, local) {
   return (local === true && hasLocalTier(g) ? g.localDepositInfo : g.depositInfo) || "";
 }
 
-export { MAX_PLACES_TEXT, MAX_TOWN, normPlace, parseLocalPlaces, isLocalTown, hasLocalTier, townRequired, chargeTextFor };
+export { MAX_PLACES_TEXT, MAX_TOWN, normPlace, parseLocalPlaces, isLocalTown, hasLocalTier, townRequired, townRequiredForCharge, chargeTextFor };

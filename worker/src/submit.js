@@ -10,7 +10,7 @@ import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, maxPerRequest, packageSize, packageUnit, qtyLabel, requestAvailability } from "./quantity.js";
 import { EMAIL_RE, emailSignature } from "./settings.js";
-import { MAX_TOWN, chargeTextFor, hasLocalTier, isLocalTown, townRequired } from "./places.js";
+import { MAX_TOWN, chargeTextFor, hasLocalTier, isLocalTown, townRequiredForCharge } from "./places.js";
 import { manageUrl } from "./manage.js";
 import { notifyAdmins, requestMessage } from "./push.js";
 import { inTestMode, isLive } from "./testmode.js";
@@ -167,7 +167,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   if (body.town != null && typeof body.town !== "string") return json({ error: "Invalid town." }, 400);
   const town = typeof body.town === "string" ? body.town.replace(/\s+/g, " ").trim() : "";
   if (town.length > MAX_TOWN) return json({ error: `Please keep the town under ${MAX_TOWN} characters.` }, 400);
-  if (!town && townRequired(g) && !addonsOnly) return json({ error: "Please enter the town you live in." }, 400);
+  if (!town && (g.requireTown || (townRequiredForCharge(g) && !addonsOnly))) return json({ error: "Please enter the town you live in." }, 400);
   const paymentTier = town && hasLocalTier(g) ? (isLocalTown(g.localPlaces, town) ? "Local" : "Standard") : null;
 
   const requestId = await getNextRequestId(db);

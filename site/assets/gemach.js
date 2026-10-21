@@ -1707,7 +1707,8 @@
   $("f-from").addEventListener("change", updateDateMins);
 
   // ── Town: asked of everyone; required when the gemach charges a payment (not for add-ons only) ──
-  function townNeeded() { return townRequired(gemach) && !$("deposit-group").hidden; }
+  // Settings → "Make the borrower's town required" always applies; a payment only when it's shown (not add-ons only).
+  function townNeeded() { return !!gemach && (gemach.requireTown === true || (townRequired(gemach) && !$("deposit-group").hidden)); }
   function updateTown() {
     if (!gemach) return;
     var need = townNeeded();
