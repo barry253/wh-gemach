@@ -80,9 +80,9 @@ const { page, errors, calls } = await setup();
 // Request card
 await page.evaluate(() => switchTab("requests"));
 await page.waitForSelector("#requests-list .card");
-const meta = await page.$eval("#requests-list .card .card-meta", e => e.innerText);
-ok(/📦 Arch/.test(meta) && !/📦[^\n]*Sweatshirt/.test(meta), "loan items listed without add-ons: " + meta.replace(/\n/g, " / "));
-ok(/🛍 Add-ons: Family Sweatshirt × 4 · \$160 \(separate payment\)/.test(meta), "add-on line with price total");
+const lines = await page.$$eval("#requests-list .card .bk-line", e => e.map(x => x.innerText.replace(/\s+/g, " ").trim()));
+ok(lines.some(l => /^(▫ )?Arch/.test(l)) && !lines.some(l => /Arch.*Sweatshirt/.test(l)), "one line per item: " + lines.join(" / "));
+ok(lines.some(l => /Family Sweatshirt × 4 Add-on \$40 each · \$160 · separate payment/i.test(l)), "add-on line with price total: " + lines.join(" / "));
 await page.click("#requests-list .card button.btn-primary");
 await page.waitForSelector("#confirm-qty-list .ci-row");
 const cq = await page.$eval("#confirm-qty-list", e => e.innerText);

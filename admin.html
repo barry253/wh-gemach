@@ -813,8 +813,20 @@
     .booking-panel .bk-head { margin-bottom: 0.45rem; }
     .booking-panel .card-meta { margin-bottom: 0.6rem; }
     .booking-panel .card-meta span { flex-wrap: wrap; }
-    .bk-items { border-top: 1px dashed var(--border); margin: 0 0 0.6rem; }
-    .bk-items .up-item .muted-small { display: block; font-size: 0.75rem; color: var(--muted); }
+    /* One line per item on request / reservation / loan cards */
+    .bk-lines { margin: 0.1rem 0 0.6rem; }
+    .bk-line { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0; }
+    .bk-line + .bk-line { border-top: 1px dashed var(--border); }
+    .bk-line .row-thumb { width: 44px; height: 44px; flex: 0 0 44px; }
+    .bk-line-main { flex: 1; min-width: 0; }
+    .bk-line-name { font-size: 0.88rem; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+    .bk-line-name .tag { margin-left: 0.25rem; vertical-align: 1px; }
+    .bk-qty { font-weight: 600; color: var(--navy); white-space: nowrap; }
+    .bk-line-sub { font-size: 0.75rem; color: var(--muted); margin-top: 1px; }
+    .bk-line-sub.warn { color: var(--amber); font-weight: 600; }
+    .bk-line-sub.good { color: var(--green); }
+    .bk-line > .btn { flex-shrink: 0; }
+    .card-meta .bk-pair { flex-wrap: wrap; gap: 0.25rem 0.9rem; }
     .late-text { color: var(--red); font-weight: 600; }
     .bk-ready { color: var(--green); font-weight: 600; }
     .loan-row-item.multi { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -2690,7 +2702,7 @@
     if (pref && avail.includes(pref)) { show = [pref]; caption = `Prefers ${METHOD_PREFERS[pref]}`; }
     else if (!IS_MOBILE && phoneDigits(c.phone) && (PHONE_METHODS.includes(pref) || !avail.length)) {
       show = avail;
-      caption = `${PHONE_METHODS.includes(pref) ? `Prefers ${METHOD_PREFERS[pref]}` : avail.length ? "Phone" : "No email on file"} · ${c.phone}`;
+      caption = `${PHONE_METHODS.includes(pref) ? `Prefers ${METHOD_PREFERS[pref]}` : avail.length ? "Phone" : "No email on file"} · ${fmtPhone(c.phone)}`;
     }
     else {
       show = avail;
@@ -2698,6 +2710,10 @@
         : pref ? `Prefers ${METHOD_PREFERS[pref]} — not on file`
         : c.pref ? `Prefers ${c.pref}` : "No contact preference given";
     }
+    // The card's only contact line: also the number and email address (each once), or "no email".
+    if (phoneDigits(c.phone) && !caption.includes(fmtPhone(c.phone))) caption += ` · ${fmtPhone(c.phone)}`;
+    if (safeEmail(c.email)) caption += ` · ${c.email}`;
+    else if (phoneDigits(c.phone) && !/No email/.test(caption)) caption += " · no email";
     return show.map(m => `<a class="btn ${m === "whatsapp" ? "btn-whatsapp" : "btn-ghost"} btn-sm" data-contact="${m}" href="${esc(methodHref(m, c))}"${m === "whatsapp" ? ` target="_blank" rel="noopener"` : ""}${stop ? ` onclick="event.stopPropagation()"` : ""}>${METHOD_ACTION[m]}</a>`).join("")
       + `<span class="contact-caption">${esc(caption)}</span>`;
   }
@@ -3362,20 +3378,10 @@
       const neededOn = fmt(r.neededFrom), returnOn = fmt(r.neededUntil);
       const dates = `${neededOn ? `Needed ${neededOn}` : "Needed date not given"} · ${
         r.openEnded ? "open-ended" : returnOn ? `return ~${returnOn}` : "return date not given"}`;
-      const addons = (r.items || []).filter(i => i.addon);
-      const items = r.items && r.items.length
-        ? r.items.filter(i => !i.addon).map(i => i.quantity != null ? `${i.name} × ${i.quantity}` : i.name).join(", ")
-        : (r.itemNames || []).join(", ");
-      const addonTotal = addons.filter(i => i.price != null).reduce((s, i) => s + i.price * (i.quantity || 1), 0);
-      const addonText = addons.length
-        ? `Add-ons: ${addons.map(i => addonLine(i.name, i.quantity, i.price)).join(", ")}${addons.length > 1 && addonTotal ? ` · total ${fmtMoney(addonTotal)}` : ""} (separate payment)`
-        : "";
-      // Quantity items asking for more than is free for those dates: say so (the request can still be confirmed).
-      const short = (r.items || []).filter(i => i.quantity != null && i.available != null && i.quantity > i.available)
-        .map(i => `Only ${i.available} ${i.name} free for these dates (asked for ${i.quantity})`);
-      // whatsappUrl removed — using waUrl() instead
-
-      const photos = (r.items || []).filter(i => okPhoto(i.photo));
+      // One line per item: photo, name, count, and how it stands for these dates (problems in amber).
+      const lines = r.items && r.items.length
+        ? r.items.map(i => itemLineHtml({ photo: i.photo, photos: i.photos, name: i.name, qty: i.quantity, ...reqItemStatus(i) }))
+        : (r.itemNames || []).map(n => itemLineHtml({ name: n }));
       return `<div class="card" id="req-${rid}">
         <div class="card-header">
           <div>
@@ -3387,11 +3393,11 @@
             <span class="tag ${isAppt ? "tag-amber" : "tag-green"}">${isAppt ? "Appointment" : "Loan"}</span>
           </div>
         </div>
-        ${photos.length ? `<div class="req-thumbs">${photos.map(i => rowThumb(i.photo, i.name, i.photos, 56)).join("")}</div>` : ""}
+        ${lines.length ? `<div class="bk-lines">${lines.join("")}</div>` : ""}
         ${bookingMetaHtml({
-          items, addonText, warns: short, eventDate: r.eventDate, datesHtml: isAppt ? "" : esc(dates),
+          eventDate: r.eventDate, datesHtml: isAppt ? "" : esc(dates),
           preferredTimes: isAppt ? r.preferredTimes : null, partySize: r.partySize, depositAcknowledged: r.depositAcknowledged,
-          town: r.town, state: r.state, paymentTier: r.paymentTier, phone: r.phone, email: r.email, notes: r.notes ? [r.notes] : [],
+          town: r.town, state: r.state, paymentTier: r.paymentTier, notes: r.notes ? [r.notes] : [],
         })}
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" onclick="openConfirm(rec('req','${rid}'))">✓ Confirm</button>
@@ -3811,27 +3817,57 @@
     if (d.length === 11 && d[0] === "1") d = d.slice(1);
     return d.length === 10 && !/^\+(?!1)/.test(s) ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : s;
   }
-  /** The detail lines of a request card; reservation and loan bookings use the same ones. */
+  /**
+   * One item on a request / reservation / loan card: photo (tap for all photos), name, count, unit number,
+   * an optional line under it (availability, its own dates, add-on price) and an optional button.
+   */
+  function itemLineHtml(o) {
+    return `<div class="bk-line">
+            ${rowThumb(o.photo, o.name, o.photos, 44)}
+            <div class="bk-line-main">
+              <div class="bk-line-name">${esc(o.name || "Item")}${o.qty != null ? ` <span class="bk-qty">× ${esc(o.qty)}</span>` : ""}${o.code ? ` <span class="loan-row-code">${esc(o.code)}</span>` : ""}${o.tag || ""}</div>
+              ${o.sub ? `<div class="bk-line-sub${o.warn ? " warn" : o.good ? " good" : ""}">${o.sub}</div>` : ""}
+            </div>
+            ${o.button || ""}
+          </div>`;
+  }
+  /** Request card: how an item stands for the requested dates. */
+  function reqItemStatus(i) {
+    if (i.addon) return { tag: ` <span class="tag tag-addon">Add-on</span>`,
+      sub: i.price != null ? esc(`${fmtMoney(i.price)} each${i.quantity > 1 ? ` · ${fmtMoney(i.price * i.quantity)}` : ""} · separate payment`) : "Made to order · separate payment" };
+    const a = i.availability;
+    if (i.quantity != null && i.available != null) {
+      const short = i.quantity > i.available;
+      const of = i.owned != null ? ` of ${i.owned}` : "";
+      return { warn: short, good: !short, sub: esc(short
+        ? `Only ${i.available}${of} free for these dates${a?.backBy && i.available === 0 ? ` · next back ${fmt(a.backBy)}` : ""}`
+        : `✓ ${i.available}${of} free for these dates`) };
+    }
+    if (!a) return {};
+    if (a.status === "none-owned") return { warn: true, sub: "None listed in your inventory" };
+    if (a.status === "none") return { warn: true, sub: esc(`None free for these dates${a.backBy ? ` · next back ${fmt(a.backBy)}` : ""}`) };
+    return { good: true, sub: "✓ Free for these dates" };
+  }
+  /** The details under the items (only what applies): event, dates, times, payment and town, notes. */
   function bookingMetaHtml(m) {
     const word = GEMACH?.chargeType === "Payment" ? "Payment" : "Deposit";
     const tier = m.paymentTier
       ? ` <span class="tag ${m.paymentTier === "Local" ? "tag-green" : "tag-gray"}" title="Which ${word.toLowerCase()} applies (Settings → Different amount for local borrowers)">${m.paymentTier === "Local" ? "Local rate" : "Not local"}</span>`
       : "";
-    return `<div class="card-meta">
-          ${m.items ? `<span>📦 ${esc(m.items)}</span>` : ""}
-          ${m.addonText ? `<span>🛍 ${esc(m.addonText)}</span>` : ""}
-          ${(m.warns || []).map(s => `<span class="qty-warn">⚠ ${esc(s)}</span>`).join("")}
-          ${m.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(m.eventDate, true))}</span>` : ""}
-          ${m.datesHtml ? `<span>📅 ${m.datesHtml}</span>` : ""}
-          ${m.preferredTimes ? `<span>🕒 ${esc(m.preferredTimes)}</span>` : ""}
-          ${m.partySize ? `<span>👥 Party of ${esc(m.partySize)}</span>` : ""}
-          ${m.depositAcknowledged ? `<span>✓ ${word} acknowledged</span>` : ""}
-          ${m.town ? `<span>📍 ${esc([m.town, m.state].filter(Boolean).join(", "))}${tier}</span>` : ""}
-          ${m.phone ? `<span>📞 ${esc(fmtPhone(m.phone))}</span>` : ""}
-          ${m.email ? `<span>✉️ ${esc(m.email)}</span>` : ""}
-          ${(m.notes || []).map(n => `<span>💬 ${esc(n)}</span>`).join("")}
-          ${(m.extra || []).join("")}
-        </div>`;
+    const money = [
+      m.depositAcknowledged ? `<span>✓ ${word} acknowledged</span>` : "",
+      m.town ? `<span>📍 ${esc([m.town, m.state].filter(Boolean).join(", "))}${tier}</span>` : "",
+    ].filter(Boolean);
+    const lines = [
+      m.eventDate ? `<span>🎉 ${esc(GEMACH?.eventLabel || "Event date")}: ${esc(fmtDay(m.eventDate, true))}</span>` : "",
+      m.datesHtml ? `<span>📅 ${m.datesHtml}</span>` : "",
+      m.preferredTimes ? `<span>🕒 ${esc(m.preferredTimes)}</span>` : "",
+      m.partySize ? `<span>👥 Party of ${esc(m.partySize)}</span>` : "",
+      money.length ? `<span class="bk-pair">${money.join("")}</span>` : "",
+      ...(m.notes || []).map(n => `<span>💬 ${esc(n)}</span>`),
+      ...(m.extra || []),
+    ].filter(Boolean);
+    return lines.length ? `<div class="card-meta">${lines.join("")}</div>` : "";
   }
 
   /** One booking per request (several items), or per loan when there's no request (walk-ins, Inventory assigns). */
@@ -3931,27 +3967,10 @@
     const reminded = ls.filter(l => l.reminderSentAt).sort((a, c) => (a.reminderSentAt < c.reminderSentAt ? 1 : -1))[0];
     const photoLoan = ls.find(l => okPhoto(l.photo)) || f;
 
-    // ── the opened card: same lines as a request card
-    const thumbs = [];
-    const seenType = new Set();
-    for (const l of ls) {
-      const k = l.itemTypeId || l.itemTypeName;
-      if (!okPhoto(l.photo) || seenType.has(k)) continue;
-      seenType.add(k);
-      thumbs.push(rowThumb(l.photo, l.itemTypeName, l.photos, 56));
-    }
-    const items = ls.filter(l => !l.isAddon).map(l => `${l.itemTypeName || "Item"}${l.itemId ? ` (${l.itemId})` : ""}${l.quantity != null ? ` × ${l.quantity}` : ""}`).join(", ");
-    const addons = ls.filter(l => l.isAddon);
-    const addonTotal = addons.filter(l => l.price != null).reduce((s, l) => s + l.price * (l.quantity || 1), 0);
-    const addonText = addons.length
-      ? `Add-ons: ${addons.map(l => addonLine(l.itemTypeName, l.quantity, l.price)).join(", ")}${addons.length > 1 && addonTotal ? ` · total ${fmtMoney(addonTotal)}` : ""}`
-      : "";
+    // ── the opened card, laid out like a request card: one line per item (photo, name, its button), then details.
+    // The dates are in the row header; an item's own dates show on its line only when the items differ.
     const datesSame = isLoan ? sameAll(ls, "dateBorrowed") && sameAll(ls, "expectedReturn")
       : sameAll(ls, "reservationStart") && sameAll(ls, "reservationEnd") && sameAll(ls, "isAddon");
-    const datesHtml = !datesSame
-      ? (isLoan && sameAll(ls, "dateBorrowed") ? `Out ${esc(fmt(f.dateBorrowed) || "—")} · due dates differ — see below` : "Dates differ by item — see below")
-      : isLoan ? loanDatesHtml({ ...f, overdue: ls.some(l => l.overdue), daysOut: Math.max(...ls.map(l => l.daysOut ?? -1)) })
-      : esc(resDatesText(f));
     const notes = [...new Set(ls.map(l => l.requestNote).filter(Boolean))];
     const loanNotes = [...new Set(ls.map(l => l.notes).filter(Boolean))];
     const extra = [
@@ -3963,20 +3982,22 @@
       ? [req.requestId, req.source === "Admin" ? "made in admin" : timeAgo(req.receivedAt)].filter(Boolean).join(" · ")
       : b.requestRecId ? "" : isLoan ? "Lent from admin (no online request)" : "Reserved from admin (no online request)";
     const act = (fn, args) => `event.stopPropagation();${fn}(${args})`;
-    const doneLabel = l => isLoan ? "Returned" : l.isAddon ? "Handed over" : "Picked up";
-    const itemList = one ? "" : `<div class="bk-items">${ls.map((l, j) => {
-      const sub = datesSame ? "" : isLoan ? loanDatesHtml(l) : esc(resDatesText(l));
-      return `<div class="up-item">
-            <span>${esc(bkLabel(l))}${l.itemId ? ` <span class="loan-row-code">${esc(l.itemId)}</span>` : ""}${sub ? `<span class="muted-small">${sub}</span>` : ""}</span>
-            <button class="btn btn-ghost btn-sm" onclick="${act("bkDone", `'${p}','${id}',${j}`)}">✓ ${doneLabel(l)}</button>
-          </div>`;
-    }).join("")}</div>`;
+    const doneLabel = l => isLoan ? "Returned" : l.isAddon ? (one ? "Mark handed over" : "Handed over") : (one ? "Mark picked up" : "Picked up");
+    const lines = ls.map((l, j) => {
+      const subs = [];
+      if (l.isAddon && l.price != null) subs.push(esc(`${fmtMoney(l.price)} each${l.quantity > 1 ? ` · ${fmtMoney(l.price * l.quantity)}` : ""}`));
+      if (!datesSame) subs.push(isLoan ? loanDatesHtml(l) : esc(resDatesText(l)));
+      return itemLineHtml({
+        photo: l.photo, photos: l.photos, name: l.itemTypeName, qty: l.quantity, code: l.itemId,
+        tag: l.isAddon ? ` <span class="tag tag-addon">Add-on</span>` : "",
+        sub: subs.join(" · "),
+        button: `<button class="btn ${one ? "btn-primary" : "btn-ghost"} btn-sm" onclick="${act("bkDone", `'${p}','${id}',${j}`)}">✓ ${doneLabel(l)}</button>`,
+      });
+    });
     const buttons = isLoan
-      ? `${one ? `<button class="btn btn-primary btn-sm" onclick="${act("bkDone", `'loan','${id}',0`)}">✓ Returned</button>` : ""}
-            <button class="btn btn-ghost btn-sm" onclick="${act("bkReminder", `'${id}'`)}">⏰ Return reminder</button>
+      ? `<button class="btn btn-ghost btn-sm" onclick="${act("bkReminder", `'${id}'`)}">⏰ Return reminder</button>
             <button class="btn btn-ghost btn-sm" onclick="${act("bkEdit", `'loan','${id}'`)}">✏️ Edit</button>`
-      : `${one ? `<button class="btn btn-primary btn-sm" onclick="${act("bkDone", `'res','${id}',0`)}">✓ ${one.isAddon ? "Mark handed over" : "Mark picked up"}</button>` : ""}
-            <button class="btn btn-ghost btn-sm" onclick="${act("bkPickupInfo", `'${id}'`)}">📍 Send pickup info</button>
+      : `<button class="btn btn-ghost btn-sm" onclick="${act("bkPickupInfo", `'${id}'`)}">📍 Send pickup info</button>
             <button class="btn btn-ghost btn-sm" onclick="${act("bkEdit", `'res','${id}'`)}">✏️ Edit</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="${act("openCancelBooking", `'${id}'`)}">✕ Cancel</button>`;
 
@@ -3997,13 +4018,11 @@
         </div>
         <div class="loan-actions-panel booking-panel" id="${p}-panel-${id}">
           ${head ? `<div class="card-id bk-head">${esc(head)}</div>` : ""}
-          ${thumbs.length ? `<div class="req-thumbs">${thumbs.join("")}</div>` : ""}
+          <div class="bk-lines">${lines.join("")}</div>
           ${bookingMetaHtml({
-            items, addonText, eventDate: req?.eventDate, datesHtml,
-            depositAcknowledged: req?.depositAcknowledged, town: req?.town, state: req?.state, paymentTier: req?.paymentTier,
-            phone: f.borrowerPhone, email: f.borrowerEmail, notes, extra,
+            eventDate: req?.eventDate, depositAcknowledged: req?.depositAcknowledged,
+            town: req?.town, state: req?.state, paymentTier: req?.paymentTier, notes, extra,
           })}
-          ${itemList}
           <div class="card-actions">
             ${buttons}
             ${contactActions(contactOf(f), true)}

@@ -94,11 +94,11 @@ ok(true, "reservation row shows the item photo");
 await page.screenshot({ path: "shot-reservations-photos.png" });
 
 await page.click(".nav-tab:has-text('Requests')");
-await page.waitForSelector("#requests-list .req-thumbs img");
-await page.waitForFunction(() => [...document.querySelectorAll("#requests-list .req-thumbs img")].every(i => i.naturalWidth > 0));
-ok((await page.$$eval("#requests-list .req-thumbs .row-thumb-btn", bs => bs.map(b => b.getAttribute("aria-label")))).join("|") === "View photo of Wheelchair|View photo of Folding Chair", "request card: one photo per requested item that has one");
+await page.waitForSelector("#requests-list .bk-lines img");
+await page.waitForFunction(() => [...document.querySelectorAll("#requests-list .bk-lines img")].every(i => i.naturalWidth > 0));
+ok((await page.$$eval("#requests-list .bk-lines .row-thumb-btn", bs => bs.map(b => b.getAttribute("aria-label")))).join("|") === "View photo of Wheelchair|View photo of Folding Chair", "request card: one photo per requested item that has one");
 await page.screenshot({ path: "shot-requests-photos.png" });
-await page.click("#requests-list .req-thumbs .row-thumb-btn >> nth=1");
+await page.click("#requests-list .bk-lines .row-thumb-btn >> nth=1");
 ok(await page.isVisible("#photo-viewer") && (await page.textContent("#pv-name")) === "Folding Chair" && await page.isHidden("#pv-next"), "request photo opens the viewer (single photo: no arrows)");
 await page.click("#pv-close");
 ok(await page.isHidden("#photo-viewer"), "close button");

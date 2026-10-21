@@ -69,12 +69,13 @@ await page.click("#res-row-recRESTOVA000001");
 const panel = "#res-panel-recRESTOVA000001";
 const pt = (await page.innerText(panel)).replace(/\s+/g, " ");
 ok(/R-092 · 3d ago/.test(pt), "request number and when it came in: " + pt.slice(0, 40));
-ok(await page.$$eval(`${panel} .req-thumbs .row-thumb-btn`, e => e.length) === 2, "photo strip, one per item");
-ok(/📦 Blue & White Toile · Round × 12, Solid Navy · Rectangle × 6/.test(pt), "items line like a request card");
+ok(await page.$$eval(`${panel} .bk-line .row-thumb-btn`, e => e.length) === 2, "each item line has its photo");
+ok(!/📦/.test(pt) && !/📅/.test(pt) && !/📞/.test(pt) && (pt.match(/Blue & White Toile/g) || []).length === 1, "each item, date and number appears once in the opened card");
+ok(await page.$$eval(`${panel} .bk-line`, e => e.map(x => x.innerText.replace(/\s+/g, " ").trim()).join("|")) === "2 Blue & White Toile · Round × 12 ✓ Picked up|Solid Navy · Rectangle × 6 ✓ Picked up", "one line per item with its button: " + await page.$$eval(`${panel} .bk-line`, e => e.map(x => x.innerText.replace(/\s+/g, " ").trim()).join("|")));
 ok(/✓ Payment acknowledged/.test(pt) && /📍 Cedarhurst/.test(pt) && /Not local/i.test(pt), "payment and town with the tier tag");
-ok(/📞 \(917\) 282-8486/.test(pt), "phone formatted");
+ok(/\(917\) 282-8486 · no email/.test(await page.textContent(`${panel} .contact-caption`)), "number (formatted) and 'no email' in the contact line");
 ok(/💬 For a sheva brachos/.test(pt), "the request's note");
-ok(await page.$$eval(`${panel} .bk-items .up-item button`, e => e.map(b => b.textContent.trim()).join("|")) === "✓ Picked up|✓ Picked up", "a Picked up button per item");
+
 ok(/Send pickup info/.test(pt) && /Edit/.test(pt) && /Cancel/.test(pt), "booking actions");
 await page.screenshot({ path: "shot-booking-reservation.png", fullPage: true });
 
@@ -97,8 +98,8 @@ ok(c && c.body.request === "recREQTOVA00001", "cancel posts the booking by reque
 // A reservation with no request
 await page.click("#res-row-recRESWALK000001");
 const wt = (await page.innerText("#res-panel-recRESWALK000001")).replace(/\s+/g, " ");
-ok(/Reserved from admin/.test(wt) && /✉️ chana@example.com/.test(wt) && /open-ended/.test(wt), "walk-in booking: says so, shows email and dates");
-ok(await page.$$eval("#res-panel-recRESWALK000001 .card-actions .btn-primary", e => e.map(b => b.textContent.trim()).join()) === "✓ Mark picked up", "one item: Mark picked up is the main button");
+ok(/Reserved from admin/.test(wt) && /chana@example.com/.test(await page.textContent("#res-panel-recRESWALK000001 .contact-caption")) && /open-ended/.test(await page.textContent("#res-row-recRESWALK000001")), "walk-in booking: says so; email in the contact line, dates in the header");
+ok(await page.$$eval("#res-panel-recRESWALK000001 .btn-primary", e => e.map(b => b.textContent.trim()).join()) === "✓ Mark picked up", "one item: Mark picked up is the main button");
 
 // ── Loans
 await page.evaluate(() => switchTab("loans"));
@@ -109,8 +110,8 @@ ok(/Overdue\s*1/.test(await page.textContent("#loans-pills")), "a booking with a
 await page.click("#loans-list .loan-row:has-text('Devorah')");
 const lp = (await page.innerText("#loan-panel-recLOANDEV000001")).replace(/\s+/g, " ");
 ok(/R-080/.test(lp) && /Local rate/i.test(lp) && /\(561\) 322-9454/.test(lp), "loan booking shows the request card lines");
-ok(/due dates differ/.test(lp) && /overdue/.test(lp), "different due dates are listed per item");
-ok(await page.$$eval("#loan-panel-recLOANDEV000001 .bk-items .up-item button", e => e.length) === 2, "a Returned button per gown");
+ok(await page.$$eval("#loan-panel-recLOANDEV000001 .bk-line-sub", e => e.length) === 2 && /overdue/.test(lp), "different due dates: each gown's line has its own");
+ok(await page.$$eval("#loan-panel-recLOANDEV000001 .bk-line button", e => e.length) === 2, "a Returned button per gown");
 await page.screenshot({ path: "shot-booking-loan.png", fullPage: true });
 // The search still finds a booking by any of its items
 await page.fill("#loans-search", "navy");
