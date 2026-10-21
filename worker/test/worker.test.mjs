@@ -689,7 +689,7 @@ await t("email footer: contact links follow the gemach's Primary/Secondary conta
   const foot = g => X.buildEmailHtml(g, "Hi", { signature: true });
   // Scher: WhatsApp then Text, no separate WhatsApp number → both on the phone; the number is shown once
   let h = foot({ ...base, primaryContact: "WhatsApp", secondaryContact: "Text" });
-  assert.ok(h.includes(L("https://wa.me/15166597136", "WhatsApp 516-659-7136") + " · " + L("sms:+15166597136", "Text")), h);
+  assert.ok(h.includes(L("https://wa.me/15166597136", "WhatsApp 516-659-7136") + " · " + L("https://whgemachs.org/text/15166597136", "Text")), h);
   assert.ok(!h.includes("tel:") && !h.includes("mailto:"), "only the chosen methods");
   // Its own WhatsApp number wins; Email shows the address
   h = foot({ ...base, whatsapp: "(718) 986-7345", primaryContact: "WhatsApp", secondaryContact: "Email" });
@@ -699,13 +699,16 @@ await t("email footer: contact links follow the gemach's Primary/Secondary conta
   assert.ok(h.includes(L("tel:+15166597136", "Call 516-659-7136") + " · " + L("https://wa.me/15166597136", "WhatsApp")));
   // Primary only
   h = foot({ ...base, primaryContact: "Text", secondaryContact: null });
-  assert.ok(h.includes(L("sms:+15166597136", "Text 516-659-7136")) && !h.includes(" · <a"));
+  assert.ok(h.includes(L("https://whgemachs.org/text/15166597136", "Text 516-659-7136")) && !h.includes(" · <a"));
   // Nothing chosen → same fallback as the site: WhatsApp only with its own number, else Call, then Email
   h = foot(base);
   assert.ok(h.includes(L("tel:+15166597136", "Call 516-659-7136") + " · " + L("mailto:m@example.com", "m@example.com")) && !h.includes("wa.me"));
   // Chosen method with nothing to reach it by is skipped; international numbers keep their code
   h = foot({ name: "X", email: "m@example.com", primaryContact: "Text", secondaryContact: "Email" });
-  assert.ok(!h.includes("sms:") && h.includes(L("mailto:m@example.com", "m@example.com")));
+  assert.ok(!h.includes("/text/") && h.includes(L("mailto:m@example.com", "m@example.com")));
+  // Bare-digit numbers are shown formatted; Gmail drops sms: links, so none are used
+  h = foot({ name: "T", phone: "7189867345", primaryContact: "WhatsApp", secondaryContact: "Text" });
+  assert.ok(h.includes(L("https://wa.me/17189867345", "WhatsApp 718-986-7345") + " · " + L("https://whgemachs.org/text/17189867345", "Text")) && !h.includes("sms:"), h);
   assert.ok(foot({ ...base, phone: "+972 52 123 4567", primaryContact: "Call" }).includes('href="tel:+972521234567"'));
   assert.deepEqual(X.contactActions({ ...base, primaryContact: "WhatsApp", secondaryContact: "Text" }).map(a => a.type), ["WhatsApp", "Text"]);
   for (const g of [base, { name: "Y" }]) for (const signature of [true, false]) {

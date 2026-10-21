@@ -283,6 +283,13 @@ function intlDigits(phone) {
 
 const CONTACT_TYPES = ["Call", "Text", "WhatsApp", "Email"];
 
+/** A phone saved as bare digits ("7189867345") shown as 718-986-7345; anything typed with punctuation is kept. */
+function prettyPhone(p) {
+  const s = String(p || "").trim();
+  const m = /^1?(\d{3})(\d{3})(\d{4})$/.exec(s);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : s;
+}
+
 /** One contact method as { type, href, number } or null when the gemach has nothing to reach it by (same rules as the site). */
 function contactAction(g, type, { strictWhatsApp = false } = {}) {
   const phone = String(g?.phone || "").trim(), ph = intlDigits(phone);
@@ -291,7 +298,8 @@ function contactAction(g, type, { strictWhatsApp = false } = {}) {
   const email = String(g?.email || "").trim();
   switch (type) {
     case "Call": return ph ? { type, href: `tel:+${ph}`, number: phone } : null;
-    case "Text": return ph ? { type, href: `sms:+${ph}`, number: phone } : null;
+    // Gmail drops sms: links, so Text goes through a whgemachs.org page that opens the messaging app (functions/text).
+    case "Text": return ph ? { type, href: `${NETWORK_URL}/text/${ph}`, number: phone } : null;
     case "WhatsApp": return intlDigits(waNum) ? { type, href: `https://wa.me/${intlDigits(waNum)}`, number: waNum } : null;
     case "Email": return email ? { type, href: `mailto:${email}`, number: null, email } : null;
   }
@@ -330,7 +338,7 @@ function contactLinksHtml(g) {
     if (a.type === "Email") label = a.email;
     else {
       const key = intlDigits(a.number);
-      label = shown.has(key) ? a.type : `${a.type} ${a.number}`;
+      label = shown.has(key) ? a.type : `${a.type} ${prettyPhone(a.number)}`;
       shown.add(key);
     }
     return `<a href="${escHtml(a.href)}" style="${LINK_STYLE}">${escHtml(label)}</a>`;
