@@ -91,7 +91,7 @@ import { purgePublicCache, refreshCache } from "./cache.js";
 import { handleCreateItem, handleCreateItemType, handleDeleteItem, handleGetCatalogItems, handleGetItemTypes, handleUpdateItem, handleUpdateItemType, handleUploadPhoto, handleFetchPhoto } from "./catalog.js";
 import { JWT_REFRESH_MS, safeDecode } from "./config.js";
 import { buildIcs, eventDates, formatNy, nyLocalToUtc, nyToday } from "./dates.js";
-import { buildEmailHtml, contrastRatio, textColorFor } from "./email.js";
+import { buildEmailHtml, contactActions, contrastRatio, textColorFor } from "./email.js";
 import { forgetAllLiveAdmins, gemachMemo, liveNetMemo, resolveAdminGemach } from "./gemachs.js";
 import { teamDispatch } from "./team.js";
 import { json, withCors } from "./http.js";
@@ -170,7 +170,7 @@ if (globalThis.__WHG_TEST__) {
   Object.assign(globalThis.__WHG_TEST__, {
     eventDates: (...a) => eventDates(...a), buildIcs: (...a) => buildIcs(...a), nyLocalToUtc: (...a) => nyLocalToUtc(...a),
     nyToday: (...a) => nyToday(...a), formatNy: (...a) => formatNy(...a), textColorFor: (...a) => textColorFor(...a),
-    contrastRatio: (...a) => contrastRatio(...a), buildEmailHtml: (...a) => buildEmailHtml(...a),
+    contrastRatio: (...a) => contrastRatio(...a), buildEmailHtml: (...a) => buildEmailHtml(...a), contactActions: (...a) => contactActions(...a),
     makeDbForTest: e => makeDb(e),
     refreshCache: (...a) => refreshCache(...a),
     clearMemo: () => { gemachMemo.clear(); liveNetMemo.clear(); forgetAllLiveAdmins(); },

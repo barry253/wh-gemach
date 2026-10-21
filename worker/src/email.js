@@ -281,26 +281,60 @@ function intlDigits(phone) {
   return d.length >= 11 && d.length <= 15 ? d : "";
 }
 
+const CONTACT_TYPES = ["Call", "Text", "WhatsApp", "Email"];
+
+/** One contact method as { type, href, number } or null when the gemach has nothing to reach it by (same rules as the site). */
+function contactAction(g, type, { strictWhatsApp = false } = {}) {
+  const phone = String(g?.phone || "").trim(), ph = intlDigits(phone);
+  const waOwn = String(g?.whatsapp || "").trim();
+  const waNum = intlDigits(waOwn) ? waOwn : strictWhatsApp ? "" : phone; // a plain phone may be a landline
+  const email = String(g?.email || "").trim();
+  switch (type) {
+    case "Call": return ph ? { type, href: `tel:+${ph}`, number: phone } : null;
+    case "Text": return ph ? { type, href: `sms:+${ph}`, number: phone } : null;
+    case "WhatsApp": return intlDigits(waNum) ? { type, href: `https://wa.me/${intlDigits(waNum)}`, number: waNum } : null;
+    case "Email": return email ? { type, href: `mailto:${email}`, number: null, email } : null;
+  }
+  return null;
+}
+
 /**
- * The gemach's contact line as links: the phone number dials (tel:), "Text" opens the messaging app (sms:),
- * "WhatsApp" opens a chat (only when the gemach has a WhatsApp number), the email opens a new message.
+ * The gemach's chosen ways to be reached (Settings → Primary / Secondary contact), in that order — the same
+ * choice and fallback as the contact buttons on its page (site.js contactActions). At most two.
+ */
+function contactActions(g) {
+  const p = CONTACT_TYPES.includes(g?.primaryContact) ? g.primaryContact : null;
+  const s = CONTACT_TYPES.includes(g?.secondaryContact) ? g.secondaryContact : null;
+  const want = [];
+  if (p) want.push(p);
+  else {
+    // Nothing chosen: first available of WhatsApp (only with a WhatsApp number), Call, Email — and the next one too
+    // when no secondary is set either.
+    const avail = ["WhatsApp", "Call", "Email"].filter(t => contactAction(g, t, { strictWhatsApp: true }));
+    if (avail[0]) want.push(avail[0]);
+    if (!s && avail[1]) want.push(avail[1]);
+  }
+  if (s && !want.includes(s)) want.push(s);
+  return want.map(t => contactAction(g, t)).filter(Boolean).slice(0, 2);
+}
+
+/**
+ * The gemach's contact line as tappable links, following its contact settings: "WhatsApp 516-659-7136 · Text",
+ * "Call 516-445-1553 · email@x.org". A number is shown once; a second method on the same number shows just its name.
  * Gmail on Android doesn't reliably auto-link phone numbers, so we link them ourselves.
  */
 function contactLinksHtml(g) {
-  const parts = [];
-  const phone = String(g?.phone || "").trim();
-  const intl = intlDigits(phone);
-  if (phone && intl) {
-    parts.push(`<a href="tel:+${intl}" style="${LINK_STYLE}">${escHtml(phone)}</a>`);
-    parts.push(`<a href="sms:+${intl}" style="${LINK_STYLE}">Text</a>`);
-  } else if (phone) {
-    parts.push(escHtml(phone));
-  }
-  const wa = intlDigits(g?.whatsapp);
-  if (wa) parts.push(`<a href="https://wa.me/${wa}" style="${LINK_STYLE}">WhatsApp</a>`);
-  const email = String(g?.email || "").trim();
-  if (email) parts.push(`<a href="mailto:${escHtml(email)}" style="${LINK_STYLE}">${escHtml(email)}</a>`);
-  return parts.join(" · ");
+  const shown = new Set();
+  return contactActions(g).map(a => {
+    let label;
+    if (a.type === "Email") label = a.email;
+    else {
+      const key = intlDigits(a.number);
+      label = shown.has(key) ? a.type : `${a.type} ${a.number}`;
+      shown.add(key);
+    }
+    return `<a href="${escHtml(a.href)}" style="${LINK_STYLE}">${escHtml(label)}</a>`;
+  }).join(" · ");
 }
 
 const NETWORK_URL = "https://whgemachs.org";
@@ -318,4 +352,4 @@ function networkBarHtml() {
     `</tr></table></td></tr>`;
 }
 
-export { messageHtml, sendEmail, longDate, shortDate, availabilityText, sendNotificationEmail, escHtml, relLuminance, contrastRatio, textColorFor, buildEmailHtml };
+export { contactActions, messageHtml, sendEmail, longDate, shortDate, availabilityText, sendNotificationEmail, escHtml, relLuminance, contrastRatio, textColorFor, buildEmailHtml };
