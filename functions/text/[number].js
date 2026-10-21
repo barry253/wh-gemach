@@ -1,8 +1,9 @@
 // Cloudflare Pages Function for /text/<digits> — the "Text" link in gemach emails.
 //
-// Gmail drops sms: links from emails (tel: and https: links survive), so the email links here instead and
-// this page opens the phone's messaging app: a meta refresh and a small script try sms: straight away, and a
-// big button does it on a tap if the phone wants one. On a computer it just shows the number.
+// Gmail drops sms: links from emails (tel: and https: links survive), so the email links here instead.
+// On a phone it redirects straight to sms: (Chrome then closes the tab it opened, so nothing is left behind).
+// Elsewhere it serves a small page: a meta refresh and script try sms:, a big button does it on a tap, and on
+// a computer it just shows the number.
 // Only digits are accepted (10–15, with country code), so this can't be used to send anyone anywhere else.
 
 export const NUMBER_RE = /^\d{10,15}$/;
@@ -30,14 +31,20 @@ export function textPage(digits, nonce) {
     `</main><script nonce="${nonce}">location.href=${JSON.stringify(sms)};</script></body></html>`;
 }
 
-export function onRequestGet({ params }) {
+/** Phones and tablets: hand straight to the messaging app with a redirect, so no page is left open behind it. */
+export const MOBILE_RE = /Android|iPhone|iPad|iPod|Mobile/i;
+
+export function onRequestGet({ params, request }) {
   const digits = String(params.number || "");
   if (!NUMBER_RE.test(digits)) return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  if (MOBILE_RE.test(request?.headers?.get("User-Agent") || "")) {
+    return new Response(null, { status: 302, headers: { "Location": "sms:+" + digits, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow", "Vary": "User-Agent" } });
+  }
   const nonce = crypto.randomUUID().replace(/-/g, "");
   return new Response(textPage(digits, nonce), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "no-store", // the answer depends on the device
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       "X-Frame-Options": "DENY",

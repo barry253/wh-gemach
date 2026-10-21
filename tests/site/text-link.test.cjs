@@ -11,7 +11,13 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
   const fn = await import('data:text/javascript,' + encodeURIComponent(src));
   globalThis.crypto ??= require('crypto').webcrypto;
 
-  const r = fn.onRequestGet({ params: { number: '17189867345' } });
+  const req = ua => ({ headers: new Headers({ 'User-Agent': ua }) });
+  for (const ua of ['Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36',
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148']) {
+    const m = fn.onRequestGet({ params: { number: '17189867345' }, request: req(ua) });
+    assert(m.status === 302 && m.headers.get('Location') === 'sms:+17189867345', 'phone: straight redirect to sms: (' + ua.slice(13, 30) + ')');
+  }
+  const r = fn.onRequestGet({ params: { number: '17189867345' }, request: req('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130 Safari/537.36') });
   const html = await r.text();
   assert(r.status === 200 && /text\/html/.test(r.headers.get('Content-Type')), 'valid number: HTML page');
   assert(html.includes('content="0;url=sms:+17189867345"'), 'meta refresh to sms:');
@@ -25,7 +31,7 @@ function assert(c, msg) { if (!c) { fails++; console.log('ASSERT FAIL:', msg); p
   assert(fn.displayNumber('972521234567') === '+972521234567', 'other countries shown with +');
 
   for (const bad of ['123', 'abc', '1718986734512345678', '+17189867345', '1718986%3Bx', '17189867345?body=x'])
-    assert(fn.onRequestGet({ params: { number: bad } }).status === 404, 'rejected: ' + bad);
+    assert(fn.onRequestGet({ params: { number: bad }, request: req('Android Mobile') }).status === 404, 'rejected: ' + bad);
 
   const redirects = fs.readFileSync(path.join(ROOT, 'site/_redirects'), 'utf8');
   assert(!/^\/text/m.test(redirects), 'no _redirects rule shadows /text');
