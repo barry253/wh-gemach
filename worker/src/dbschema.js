@@ -140,6 +140,7 @@ const TABLES = {
     fields: {
       "Name": t("name"), "Phone": phone("phone"), "Email": t("email"),
       "Preferred Contact": t("preferred_contact"), "Notes": t("notes"),
+      "City": t("city"), "State": t("state"), // where they live: from their latest request, or typed in admin
       "Gemach": link("gemach_id", "Gemachs"),
       "Gemach Slug": gemachSlug(),
     },

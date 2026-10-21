@@ -1108,10 +1108,12 @@ await t("walk-in loan: borrower details checked; unit already out refused; creat
   await bad({ borrower: { phone: "5165550199" }, items }, /name/);
   await bad({ borrower: { name: "Leah" }, items }, /phone number or email/);
   await bad({ borrower: { name: "Leah", email: "nope" }, items }, /email/);
+  await bad({ borrower: { name: "Leah", phone: "5165550199", city: "Teaneck", state: "ZZ" }, items }, /state/);
+  await bad({ borrower: { name: "Leah", phone: "5165550199", city: "x".repeat(101) }, items }, /city/);
   const out = await postB(`/admin/loans`, { borrower: { name: "Leah", phone: "5165550199" }, items: [{ itemTypeId: "recCOGOWNA0000001", itemId: "recCOUNITA0000001" }] });
   assert.equal(out.status, 409);
   assert.match((await out.json()).error, /SD-001 .* already out on loan/);
-  const r = await postB(`/admin/loans`, { borrower: { name: "Leah Gold", phone: "516-555-0199", preferredContact: "WhatsApp" }, items, dueBack: plusDays(7), notes: "Walked in Sunday" });
+  const r = await postB(`/admin/loans`, { borrower: { name: "Leah Gold", phone: "516-555-0199", preferredContact: "WhatsApp", city: "  Teaneck ", state: "nj" }, items, dueBack: plusDays(7), notes: "Walked in Sunday" });
   assert.equal(r.status, 200);
   const d = await r.json();
   const f = DB.Loans.find(x => x.id === d.loans[0].id).fields;
@@ -1119,6 +1121,10 @@ await t("walk-in loan: borrower details checked; unit already out refused; creat
   assert.equal(f["Expected Return"], plusDays(7));
   const bor = DB.Borrowers.find(x => x.id === f.Borrower[0]).fields;
   assert.equal(bor.Name, "Leah Gold"); assert.equal(bor["Preferred Contact"], "WhatsApp");
+  assert.deepEqual([bor.City, bor.State], ["Teaneck", "NJ"], "city + state saved on the borrower (optional for admins)");
+  const list = await (await call(`/admin/loans`, { headers: jsonB })).json();
+  const mine = list.find(l => l.id === d.loans[0].id);
+  assert.deepEqual([mine.borrowerCity, mine.borrowerState], ["Teaneck", "NJ"]);
 });
 
 await t("walk-in loan: 20 items at once stays well inside D1's 50-queries-per-request limit", async () => {
@@ -1638,7 +1644,7 @@ await t("new reservation: validation", async () => {
 
 await t("new reservation: confirmed request (Source Admin) + reserved items + manage link + History + email with the link", async () => {
   const r = await postB(`/admin/reservations`, {
-    borrower: { name: "Phone Caller", phone: "516-555-0401", email: "caller@example.com", preferredContact: "Text" },
+    borrower: { name: "Phone Caller", phone: "516-555-0401", email: "caller@example.com", preferredContact: "Text", city: "West Hempstead", state: "NY" },
     items: [{ itemTypeId: "recCOGOWNB0000001" }, { itemTypeId: "recCOCHAIRS000001", quantity: 3 }],
     reservationStart: plusDays(2), reservationEnd: plusDays(6), eventDate: plusDays(4), notes: "Called Sunday",
     message: "Hi, you're all set. Manage it here: {manage_link}", sendMessage: true,
@@ -1658,6 +1664,8 @@ await t("new reservation: confirmed request (Source Admin) + reserved items + ma
   assert.equal(loans.find(f => f["Item to Reserve"][0] === "recCOCHAIRS000001").Quantity, 3);
   const bor = DB.Borrowers.find(b => b.id === loans[0].Borrower[0]).fields;
   assert.deepEqual([bor.Name, bor["Preferred Contact"]], ["Phone Caller", "Text"]);
+  assert.deepEqual([rq.Town, rq.State, rq["Payment Tier"]], ["West Hempstead", "NY", undefined], "request keeps the city like the public form");
+  assert.deepEqual([bor.City, bor.State], ["West Hempstead", "NY"]);
   await Promise.allSettled(waits);
   const log = DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields["Loan ID"] === d.requestId).map(x => x.fields);
   assert.equal(log.find(x => x["Event Type"] === "Reservation Made").Notes, `${plusDays(2)} → ${plusDays(6)}; Called Sunday`);
@@ -1746,6 +1754,7 @@ await t("borrower lookup: this gemach's borrowers, most recent first, with loan 
   const leah = borrowers.find(b => b.name === "Leah Gold");
   assert.ok(leah, "walk-in borrower listed");
   assert.equal(leah.phone, "516-555-0199"); assert.equal(leah.preferredContact, "WhatsApp");
+  assert.deepEqual([leah.city, leah.state], ["Teaneck", "NJ"], "lookup fills the city too");
   assert.ok(leah.loans >= 1 && leah.out >= 1, JSON.stringify(leah));
   assert.equal(leah.dueBack, plusDays(7));
   const caller = borrowers.find(b => b.name === "Phone Caller");
@@ -2121,6 +2130,25 @@ await t("inventory sheet: item notes save on the item for every status; /assign 
   // Back to Available for later tests.
   assert.equal((await assign({ status: "Available", existingLoanId: loan.id })).status, 200);
   await patch({ condition: "Good", notes: "" });
+});
+
+await t("inventory sheet: city + state saved on the borrower and shown on the unit (optional; bad state refused)", async () => {
+  const H = J(tokenA, { "X-Gemach": A.slug });
+  const mk = await call("/admin/catalog/items", { method: "POST", headers: H, body: JSON.stringify({ itemTypeId: "recTYPEA000000001", itemId: "WC-CITY" }) });
+  const unitId = (await mk.json()).id;
+  const assign = b => call(`/admin/inventory/${unitId}/assign`, { method: "POST", headers: H, body: JSON.stringify(b) });
+  const who = { borrowerName: "Shira Weiss", borrowerPhone: "5165550333" };
+  assert.equal((await assign({ status: "On Loan", ...who, borrowerCity: "Malverne", borrowerState: "XX" })).status, 400);
+  const r = await assign({ status: "On Loan", ...who, borrowerCity: "Malverne", borrowerState: "NY" });
+  assert.equal(r.status, 200, await r.clone().text());
+  const label = (await r.json()).loanId;
+  const inv = await (await call("/admin/inventory", { headers: H })).json();
+  const cl = inv.find(i => i.id === unitId).currentLoan;
+  assert.deepEqual([cl.borrowerName, cl.borrowerCity, cl.borrowerState], ["Shira Weiss", "Malverne", "NY"]);
+  const loan = DB.Loans.find(l => l.fields["Loan ID"] === label);
+  const bor = DB.Borrowers.find(b => b.id === loan.fields.Borrower[0]).fields;
+  assert.deepEqual([bor.City, bor.State], ["Malverne", "NY"]);
+  assert.equal((await assign({ status: "Available", existingLoanId: loan.id })).status, 200);
 });
 
 await t("inventory sheet: expected return date on a manual loan (saved, validated, editable, clearable)", async () => {
@@ -3628,6 +3656,16 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.equal((await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ requireTown: "yes" }) })).status, 400);
     r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ depositRequired: true, requireTown: false }) });
     assert.equal(r.status, 200);
+  });
+
+  await t("city: confirming a public request saves its city + state on the borrower", async () => {
+    const r = await post("/submit-request", { ...payBase, email: "conf@example.com", name: "Chana Conf", town: "Cedarhurst", state: "NY" });
+    assert.equal(r.status, 200, await r.clone().text());
+    const reqRec = DB.Requests.filter(x => x.fields.Email === "conf@example.com").at(-1);
+    const c = await call(`/admin/requests/${reqRec.id}/confirm`, { method: "POST", headers: H, body: JSON.stringify({ sendMessage: false }) });
+    assert.equal(c.status, 200, await c.clone().text());
+    const bor = DB.Borrowers.find(b => b.fields.Name === "Chana Conf").fields;
+    assert.deepEqual([bor.City, bor.State], ["Cedarhurst", "NY"]);
   });
 
   await t("places: matching rules (case, punctuation, state, zip)", async () => {

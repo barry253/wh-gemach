@@ -17,6 +17,7 @@ import { Q, belongs, fetchByIds, firstLink, linkedId, linkedName } from "./airta
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { checkBorrower, checkDate, checkRequestedItems, checkReservedAdds, createReserved, REQUEST_CONTACT, sendNote } from "./booking.js";
 import { useOrFindBorrower } from "./borrowers.js";
+import { cleanCityState, hasLocalTier, isLocalTown } from "./places.js";
 import { T } from "./config.js";
 import { addDays, formatNy, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
 import { selName } from "./gemachs.js";
@@ -35,8 +36,11 @@ const ADMIN_SOURCE = "Admin";
 async function borrowerFrom(db, g, raw) {
   const v = checkBorrower(raw || {}, { name: "", phone: "", email: "" });
   if (v.error) return v;
+  const place = cleanCityState(raw?.city, raw?.state); // optional for admins
+  if (place.error) return { error: place.error, status: 400 };
+  Object.assign(v, place);
   // raw.id: a borrower picked from the lookup — that record is used (and its details updated).
-  const id = await useOrFindBorrower(db, g, { id: raw?.id ?? null, name: v.name, phone: v.phone || null, email: v.email || null, preferredContact: v.pref || null });
+  const id = await useOrFindBorrower(db, g, { id: raw?.id ?? null, name: v.name, phone: v.phone || null, email: v.email || null, preferredContact: v.pref || null, city: v.city, state: v.state });
   return { ...v, id };
 }
 
@@ -52,6 +56,12 @@ function requestFields(g, v, { requestId, type, ids, qty, eventDate, notes }) {
   if (Object.keys(qty || {}).length) f["Item Quantities"] = JSON.stringify(qty);
   if (eventDate) f["Event Date"] = eventDate;
   if (notes) f["Notes"] = notes;
+  // Where they live, as on the public form (Town = the City field); with a local amount, which one applies.
+  if (v.city) {
+    f["Town"] = v.city;
+    if (v.state) f["State"] = v.state;
+    if (hasLocalTier(g)) f["Payment Tier"] = isLocalTown(g.localPlaces, v.city) ? "Local" : "Standard";
+  }
   return f;
 }
 

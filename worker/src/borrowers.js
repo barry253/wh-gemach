@@ -13,7 +13,7 @@ function normPersonName(n) {
     .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
-async function findOrCreateBorrower(db, g, { name, phone, email, preferredContact }) {
+async function findOrCreateBorrower(db, g, { name, phone, email, preferredContact, city = null, state = null }) {
   const digits = String(phone || "").replace(/\D/g, "");
   const emailNorm = String(email || "").trim().toLowerCase();
   const conds = [];
@@ -29,17 +29,23 @@ async function findOrCreateBorrower(db, g, { name, phone, email, preferredContac
     const found = await db.listPage(T.BORROWERS, {
       scope: g, where: [conds.length > 1 ? Q.or(...conds) : conds[0]],
       maxRecords: 20,
-      fields: ["Name"],
+      fields: ["Name", "City", "State"],
     });
     const want = normPersonName(name);
     const same = want && found.records.find(r => normPersonName(r.fields["Name"]) === want);
-    if (same) return same.id;
+    if (same) {
+      // Keep where they live up to date (their latest request or what the admin typed); blank never clears it.
+      const patch = cityPatch(same.fields, city, state);
+      if (patch) await db.update(T.BORROWERS, same.id, patch);
+      return same.id;
+    }
   }
   const fields = { "Name": name, "Gemach": [g.id] };
   if (phone) fields["Phone"] = phone;
   if (email) fields["Email"] = email;
   const mapped = preferredContact ? CONTACT_MAP[preferredContact] : null;
   if (mapped) fields["Preferred Contact"] = mapped;
+  if (city) { fields["City"] = city; if (state) fields["State"] = state; }
   try {
     const data = await db.create(T.BORROWERS, fields);
     return data.id;
@@ -54,15 +60,24 @@ async function findOrCreateBorrower(db, g, { name, phone, email, preferredContac
  * that record — or, without a usable id, the usual find-or-create match. Blank fields never clear a
  * stored value (the sheet only needs a phone or an email).
  */
-async function useOrFindBorrower(db, g, { id = null, name, phone, email, preferredContact }) {
+async function useOrFindBorrower(db, g, { id = null, name, phone, email, preferredContact, city = null, state = null }) {
   const rec = typeof id === "string" && id ? await getOwned(db, T.BORROWERS, id, g) : null;
-  if (!rec) return findOrCreateBorrower(db, g, { name, phone, email, preferredContact });
+  if (!rec) return findOrCreateBorrower(db, g, { name, phone, email, preferredContact, city, state });
   const f = rec.fields, patch = {};
   const put = (field, v) => { if (v && String(v) !== String(f[field] || "")) patch[field] = v; };
   put("Name", name); put("Phone", phone); put("Email", email);
   put("Preferred Contact", preferredContact ? CONTACT_MAP[preferredContact] : null);
+  Object.assign(patch, cityPatch(f, city, state) || {});
   if (Object.keys(patch).length) await db.update(T.BORROWERS, rec.id, patch);
   return rec.id;
+}
+
+/** { City, State } to save when a city is given and differs from what's stored (state follows the city); else null. */
+function cityPatch(f, city, state) {
+  if (!city) return null;
+  const st = state || null;
+  if (String(f["City"] || "") === city && String(f["State"] || "") === String(st || "")) return null;
+  return { "City": city, "State": st };
 }
 
 // ─── Lookup for the admin sheets (New reservation / appointment / loan) ─────────
@@ -73,7 +88,7 @@ const COUNTED = new Set(["Reserved", "Active", "Returned"]);
 
 async function handleListBorrowers({ db, g }) {
   const [people, loans] = await Promise.all([
-    db.listAll(T.BORROWERS, { scope: g, fields: ["Name", "Phone", "Email", "Preferred Contact"] }),
+    db.listAll(T.BORROWERS, { scope: g, fields: ["Name", "Phone", "Email", "Preferred Contact", "City", "State"] }),
     db.listAll(T.LOANS, { scope: g, where: [Q.notBlank("Borrower")],
       fields: ["Borrower", "Status", "Date Borrowed", "Reservation Start", "Expected Return"] }),
   ]);
@@ -96,7 +111,7 @@ async function handleListBorrowers({ db, g }) {
   const list = people.filter(r => String(r.fields.Name || "").trim()).map(r => {
     const f = r.fields, s = stats.get(r.id) || { loans: 0, lastAt: null, out: 0, dueBack: null };
     const pref = typeof f["Preferred Contact"] === "string" ? f["Preferred Contact"] : f["Preferred Contact"]?.name;
-    return { id: r.id, name: String(f.Name).trim(), phone: f.Phone || null, email: f.Email || null, preferredContact: pref || null, ...s };
+    return { id: r.id, name: String(f.Name).trim(), phone: f.Phone || null, email: f.Email || null, preferredContact: pref || null, city: f.City || null, state: f.State || null, ...s };
   }).sort((a, b) => String(b.lastAt || "").localeCompare(String(a.lastAt || "")) || a.name.localeCompare(b.name));
   return json({ borrowers: list });
 }

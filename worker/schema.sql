@@ -145,6 +145,8 @@ CREATE TABLE IF NOT EXISTS borrowers (
   email TEXT,  -- Email
   preferred_contact TEXT,  -- Preferred Contact
   notes TEXT,  -- Notes
+  city TEXT,  -- City
+  state TEXT,  -- State
   gemach_id TEXT REFERENCES gemachs(id) ON DELETE SET NULL  -- Gemach
 );
 

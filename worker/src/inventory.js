@@ -63,6 +63,7 @@ async function handleAdminInventory({ db, g, url }) {
         reservationEnd: loan.reservationEnd, notes: loan.notes,
         borrowerName: b.name || null, borrowerPhone: b.phone || null,
         borrowerEmail: b.email || null, borrowerContact: b.preferredContact || null,
+        borrowerCity: b.city || null, borrowerState: b.state || null,
       };
     }
     return {
@@ -84,7 +85,7 @@ async function handleAdminInventory({ db, g, url }) {
     return {
       loanRecId: l.id, loanId: l.fields["Loan ID"] || null,
       itemTypeId: typeId, itemTypeName: itemTypeMap[typeId] || null,
-      borrowerName: b.name || null,
+      borrowerName: b.name || null, borrowerCity: b.city || null, borrowerState: b.state || null,
       reservationStart: l.fields["Reservation Start"] || null,
       reservationEnd: l.fields["Reservation End"] || null,
     };

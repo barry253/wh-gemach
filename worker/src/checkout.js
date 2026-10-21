@@ -20,6 +20,7 @@ import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName } fro
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { itemAttrsFor } from "./attributes.js";
 import { findOrCreateBorrower, useOrFindBorrower } from "./borrowers.js";
+import { cleanCityState } from "./places.js";
 import { REC_RE, T } from "./config.js";
 import { addDays, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
@@ -278,7 +279,8 @@ async function handleRequestCheckout(c, id) {
 
   let borrowerId;
   try {
-    borrowerId = await findOrCreateBorrower(db, g, { name: f.Name || "Unknown", phone: f.Phone || null, email: f.Email || null, preferredContact: f["Preferred Contact"] || null });
+    borrowerId = await findOrCreateBorrower(db, g, { name: f.Name || "Unknown", phone: f.Phone || null, email: f.Email || null, preferredContact: f["Preferred Contact"] || null,
+      city: f.Town || null, state: f.Town ? f.State || null : null });
   } catch (e) {
     return json({ error: e.message || "Couldn't save the borrower." }, 500);
   }
@@ -350,13 +352,15 @@ async function handleWalkInLoan(c) {
   if (!phone && !email) return json({ error: "Enter a phone number or email so the gemach can reach them." }, 400);
   if (phone && phone.replace(/\D/g, "").length < 7) return json({ error: "That phone number looks too short." }, 400);
   if (email && !EMAIL_RE.test(email)) return json({ error: "That email address doesn't look right." }, 400);
+  const place = cleanCityState(b.city, b.state); // optional for admins
+  if (place.error) return json({ error: place.error }, 400);
   const notes = String(body.notes || "").trim().slice(0, 1000) || null;
 
   const v = await validateLending(db, g, body);
   if (v.error) return json({ error: v.error }, v.status);
   let borrowerId;
   try {
-    borrowerId = await useOrFindBorrower(db, g, { id: b.id ?? null, name, phone: phone || null, email: email || null, preferredContact: pref });
+    borrowerId = await useOrFindBorrower(db, g, { id: b.id ?? null, name, phone: phone || null, email: email || null, preferredContact: pref, city: place.city, state: place.state });
   } catch (e) {
     return json({ error: e.message || "Couldn't save the borrower." }, 500);
   }

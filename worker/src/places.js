@@ -11,6 +11,17 @@ const MAX_PLACES_TEXT = 1000;
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
 const MAX_TOWN = 100;
 
+/** City + State as typed (admin forms, API): tidied city, 2-letter state (only with a city), or { error }. */
+function cleanCityState(city, state) {
+  if (city != null && typeof city !== "string") return { error: "Invalid city." };
+  if (state != null && typeof state !== "string") return { error: "Invalid state." };
+  const c = String(city || "").replace(/\s+/g, " ").trim();
+  const s = String(state || "").trim().toUpperCase();
+  if (c.length > MAX_TOWN) return { error: `Please keep the city under ${MAX_TOWN} characters.` };
+  if (s && !US_STATES.includes(s)) return { error: "Please choose a state." };
+  return { city: c || null, state: c && s ? s : null };
+}
+
 /** Lower case, punctuation as spaces, single spaces: "W. Hempstead," → "w hempstead". */
 function normPlace(s) {
   return String(s || "").toLowerCase().replace(/[.,;:'’"()/#-]/g, " ").replace(/\s+/g, " ").trim();
@@ -69,4 +80,4 @@ function chargeTextFor(g, local) {
   return (local === true && hasLocalTier(g) ? g.localDepositInfo : g.depositInfo) || "";
 }
 
-export { US_STATES, MAX_PLACES_TEXT, MAX_TOWN, normPlace, parseLocalPlaces, isLocalTown, hasLocalTier, townRequired, townRequiredForCharge, chargeTextFor };
+export { cleanCityState, US_STATES, MAX_PLACES_TEXT, MAX_TOWN, normPlace, parseLocalPlaces, isLocalTown, hasLocalTier, townRequired, townRequiredForCharge, chargeTextFor };

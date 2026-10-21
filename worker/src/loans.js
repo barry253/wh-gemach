@@ -2,6 +2,7 @@
 import { logEvent } from "./activity.js";
 import { AirtableError, Q, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./airtable.js";
 import { findOrCreateBorrower } from "./borrowers.js";
+import { cleanCityState } from "./places.js";
 import { DATE_RE, T } from "./config.js";
 import { selName } from "./gemachs.js";
 import { isValidDate } from "./dates.js";
@@ -15,7 +16,7 @@ import { emailSignature } from "./settings.js";
 
 // ─── Loans / reservations shared lookups ──────────────────────────────────────
 
-const BORROWER_FIELDS = ["Name", "Phone", "Email", "Preferred Contact"]; // what borrowerInfo reads
+const BORROWER_FIELDS = ["Name", "Phone", "Email", "Preferred Contact", "City", "State"]; // what borrowerInfo reads
 // What the Loans / Reservations lists read from each loan (incl. loanQtyInfo and the manage link).
 const LOAN_LIST_FIELDS = ["Loan ID", "Item", "Item to Reserve", "Borrower", "Status", "Quantity", "Date Borrowed", "Expected Return",
   "Reservation Start", "Reservation End", "Notes", "Request Note", "Ready To Return At", "Reminder Sent At", "Reminder Sent Via", "Source Request"];
@@ -26,6 +27,7 @@ function borrowerInfo(r) {
     phone: r.fields["Phone"] || null,
     email: r.fields["Email"] || null,
     preferredContact: r.fields["Preferred Contact"] || null,
+    city: r.fields["City"] || null, state: r.fields["State"] || null,
   };
 }
 
@@ -130,6 +132,7 @@ async function handleGetLoans({ db, g, env }) {
       borrowerPhone: borrower.phone || null,
       borrowerEmail: borrower.email || null,
       borrowerContact: borrower.preferredContact || null,
+      borrowerCity: borrower.city || null, borrowerState: borrower.state || null,
       dateBorrowed: borrowed || null,
       expectedReturn,
       daysOut: daysDiff,
@@ -408,6 +411,7 @@ async function reservationRecords(db, g, env, loans) {
       borrowerPhone: borrower.phone || null,
       borrowerEmail: borrower.email || null,
       borrowerContact: borrower.preferredContact || null,
+      borrowerCity: borrower.city || null, borrowerState: borrower.state || null,
       itemTypeName: item.itemTypeName || itemTypeMap[linkedId(itRaw)] || linkedName(itRaw) || linkedName(iRaw) || "Unknown",
       itemId: item.itemId || null,
       itemRecId: linkedId(iRaw) || null,
@@ -477,7 +481,7 @@ async function handleCancelReservation(c, id) {
 async function handleAssignItem(c, itemRecId) {
   const { db, g, ctx } = c;
   const body = await readJson(c.request);
-  const { status, borrowerName, borrowerPhone, borrowerEmail, borrowerContact,
+  const { status, borrowerName, borrowerPhone, borrowerEmail, borrowerContact, borrowerCity, borrowerState,
           dateBorrowed, reservationStart, reservationEnd, notes, existingLoanId } = body;
   const hasExpected = Object.prototype.hasOwnProperty.call(body, "expectedReturn");
   const expectedReturn = hasExpected && body.expectedReturn ? String(body.expectedReturn) : null;
@@ -529,6 +533,8 @@ async function handleAssignItem(c, itemRecId) {
   }
 
   if (!borrowerName) return json({ error: "Borrower name required" }, 400);
+  const place = cleanCityState(borrowerCity, borrowerState); // optional
+  if (place.error) return json({ error: place.error }, 400);
   // Projected return date (On Loan only; optional). Must be a real date, not before the day it went out.
   if (status === "On Loan" && expectedReturn) {
     if (!isValidDate(expectedReturn)) return json({ error: "Choose a valid expected return date." }, 400);
@@ -538,7 +544,7 @@ async function handleAssignItem(c, itemRecId) {
 
   let borrowerId;
   try {
-    borrowerId = await findOrCreateBorrower(db, g, { name: borrowerName, phone: borrowerPhone, email: borrowerEmail, preferredContact: borrowerContact });
+    borrowerId = await findOrCreateBorrower(db, g, { name: borrowerName, phone: borrowerPhone, email: borrowerEmail, preferredContact: borrowerContact, city: place.city, state: place.state });
   } catch (e) {
     return json({ success: false, error: e.message }, 500);
   }

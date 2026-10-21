@@ -533,6 +533,12 @@
     .bl-note.picked { color: var(--green); }
     .bl-note .link-btn { font-size: 0.78rem; margin-left: 0.25rem; }
     .co-borrower { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6rem; }
+    /* City + State (admin forms): side by side on every screen; optional for admins */
+    .city-row { display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem; gap: 0 0.6rem; grid-column: 1 / -1; }
+    .city-row .form-group { grid-column: auto !important; }
+    .row-city { display: block; flex-basis: 100%; width: 100%; font-size: 0.75rem; color: var(--muted); font-weight: 500; margin-top: 1px; }
+    .inventory-item.has-who { flex-wrap: wrap; row-gap: 0.15rem; }
+    .inventory-item .row-city { text-align: left; margin-top: 0; }
     .co-borrower .form-group:first-child { grid-column: 1 / -1; }
     @media (max-width: 480px) { .co-borrower { grid-template-columns: 1fr; } }
     .screen-toolbar { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
@@ -2299,6 +2305,10 @@
           <input type="email" id="assign-borrower-email" placeholder="email@example.com" />
         </div>
       </div>
+      <div class="city-row">
+        <div class="form-group"><label for="assign-borrower-city">City</label><input type="text" id="assign-borrower-city" maxlength="100" autocomplete="off" /></div>
+        <div class="form-group"><label for="assign-borrower-state">State</label><select id="assign-borrower-state"></select></div>
+      </div>
       <div class="form-group">
         <label>Preferred contact</label>
         <select id="assign-borrower-contact">
@@ -4008,6 +4018,7 @@
           <span class="loan-row-main">
             ${lead ? "" : `<span class="loan-row-name">${esc(f.borrowerName)}</span>`}
             ${itemSpans}
+            ${loanCity(f) ? `<span class="row-city">📍 ${esc(loanCity(f))}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes" role="img" aria-label="Has notes">💬</span>` : ""}
             ${req?.test ? `<span class="tag tag-test loan-row-tag" title="Sent from the test link — not a real loan">Test</span>` : ""}
             ${isLoan && ready ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
@@ -4021,7 +4032,7 @@
           <div class="bk-lines">${lines.join("")}</div>
           ${bookingMetaHtml({
             eventDate: req?.eventDate, depositAcknowledged: req?.depositAcknowledged,
-            town: req?.town, state: req?.state, paymentTier: req?.paymentTier, notes, extra,
+            town: req?.town || f.borrowerCity, state: req?.town ? req?.state : f.borrowerState, paymentTier: req?.paymentTier, notes, extra,
           })}
           <div class="card-actions">
             ${buttons}
@@ -4573,6 +4584,7 @@
         <div class="form-group"><label for="co-phone">Phone</label><input type="tel" id="co-phone" maxlength="40" autocomplete="off" /></div>
         <div class="form-group"><label for="co-email">Email</label><input type="email" id="co-email" maxlength="200" autocomplete="off" /></div>
         <div class="form-group"><label for="co-pref">Prefers</label><select id="co-pref"><option value="">—</option><option>WhatsApp</option><option value="Text">Text message</option><option value="Phone">Phone call</option><option>Email</option></select></div>
+        ${cityStateHtml("co")}
       </div>` : `
       <div class="form-group">
         <div class="co-section-head"><label>Asked to see — untick what isn't going out</label><button type="button" class="link-btn" id="co-toggle-all" onclick="coToggleAll()">Untick all</button></div>
@@ -4597,7 +4609,7 @@
     coRenderRows();
     document.getElementById("checkout-submit-btn").onclick = coSubmit;
     if (walkIn) {
-      attachBorrowerLookup({ name: "co-name", phone: "co-phone", email: "co-email", pref: "co-pref" }, () => { coSetupSendBy(); coUpdateFoot(); });
+      attachBorrowerLookup({ name: "co-name", phone: "co-phone", email: "co-email", pref: "co-pref", city: "co-city", state: "co-state" }, () => { coSetupSendBy(); coUpdateFoot(); });
       document.getElementById("co-name").focus();
     }
   }
@@ -4621,7 +4633,7 @@
       const name = String(document.getElementById("co-name").value || "").trim();
       if (!name) { fail("Enter the borrower's name."); document.getElementById("co-name").focus(); return; }
       if (!c.phone && !c.email) { fail("Enter a phone number or email so the gemach can reach them."); return; }
-      body.borrower = { name, phone: c.phone, email: c.email, preferredContact: c.preferredContact || null };
+      body.borrower = { name, phone: c.phone, email: c.email, preferredContact: c.preferredContact || null, ...cityStateVal("co") };
       if (blPickedId("co-name")) body.borrower.id = blPickedId("co-name");
       body.notes = String(document.getElementById("checkout-notes").value || "").trim();
     }
@@ -4979,6 +4991,26 @@
     refreshAfterLending();
   }
 
+  // ── City + State (admin forms; always optional here) ──────────────────────────
+  var US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
+  /** City input + State dropdown (NY preselected) with ids <prefix>-city / <prefix>-state. */
+  function cityStateHtml(prefix, city, state) {
+    const st = US_STATES.includes(state) ? state : "NY";
+    return `<div class="city-row">
+          <div class="form-group"><label for="${prefix}-city">City</label><input type="text" id="${prefix}-city" maxlength="100" autocomplete="off" value="${esc(city || "")}" /></div>
+          <div class="form-group"><label for="${prefix}-state">State</label><select id="${prefix}-state">${US_STATES.map(c => `<option${c === st ? " selected" : ""}>${c}</option>`).join("")}</select></div>
+        </div>`;
+  }
+  /** { city, state } from a City/State pair (state only with a city). */
+  function cityStateVal(prefix) {
+    const city = String(document.getElementById(`${prefix}-city`)?.value || "").replace(/\s+/g, " ").trim();
+    return city ? { city, state: document.getElementById(`${prefix}-state`)?.value || null } : {};
+  }
+  /** "West Hempstead, NY" (blank without a city). */
+  function cityText(city, state) { return city ? [city, state].filter(Boolean).join(", ") : ""; }
+  /** Where a loan's borrower lives: the request's City/State, else the borrower record's. */
+  function loanCity(l) { return l.request?.town ? cityText(l.request.town, l.request.state) : cityText(l.borrowerCity, l.borrowerState); }
+
   // ── Borrower lookup (New reservation / New appointment / New loan) ──────────────
   // Typing 2+ letters in Name lists this gemach's borrowers (GET /admin/borrowers, loaded once per sheet,
   // searched here on the device). Picking one fills phone / email / prefers and sends borrower.id with the
@@ -5073,6 +5105,7 @@
     if (el("phone")) el("phone").value = b.phone || "";
     if (el("email")) el("email").value = b.email || "";
     if (el("pref")) el("pref").value = blPref(b.preferredContact);
+    if (el("city")) { el("city").value = b.city || ""; if (el("state")) el("state").value = US_STATES.includes(b.state) ? b.state : "NY"; }
     blRender();
     BL.onPick?.();
   }
@@ -5080,7 +5113,8 @@
     if (!BL) return;
     const el = k => document.getElementById(BL.ids[k]);
     BL.picked = null;
-    ["name", "phone", "email", "pref"].forEach(k => { if (el(k)) el(k).value = ""; });
+    ["name", "phone", "email", "pref", "city"].forEach(k => { if (el(k)) el(k).value = ""; });
+    if (el("state")) el("state").value = "NY";
     blRender();
     BL.onPick?.();
     el("name").focus();
@@ -5138,6 +5172,7 @@
           <div class="form-group"><label for="nb-phone">Phone</label><input type="tel" id="nb-phone" maxlength="40" autocomplete="off" /></div>
           <div class="form-group"><label for="nb-email">Email</label><input type="email" id="nb-email" maxlength="200" autocomplete="off" /></div>
           <div class="form-group"><label for="nb-pref">Prefers</label><select id="nb-pref"><option value="">—</option><option>WhatsApp</option><option value="Text">Text message</option><option value="Phone">Phone call</option><option>Email</option></select></div>
+          ${cityStateHtml("nb")}
         </div>
       </div>
       <div class="bk-section"><p class="bk-h">${appt ? "Appointment" : "Dates"}</p>${dates}</div>
@@ -5158,7 +5193,7 @@
     nbSetupSendBy();
     nbRender();
     nbEl("nb-save-btn").onclick = nbSave;
-    attachBorrowerLookup({ name: "nb-name", phone: "nb-phone", email: "nb-email", pref: "nb-pref" }, () => { nbSetupSendBy(); nbAutoMessage(); });
+    attachBorrowerLookup({ name: "nb-name", phone: "nb-phone", email: "nb-email", pref: "nb-pref", city: "nb-city", state: "nb-state" }, () => { nbSetupSendBy(); nbAutoMessage(); });
     nbEl("nb-name").focus();
   }
   function nbEventChanged() {
@@ -5281,7 +5316,7 @@
   async function nbSave() {
     const fail = m => { nbEl("nb-error").textContent = m; nbEl("nb-error").style.display = "block"; };
     nbEl("nb-error").style.display = "none";
-    const borrower = { name: nbVal("nb-name"), phone: nbVal("nb-phone"), email: nbVal("nb-email"), preferredContact: nbVal("nb-pref") || null };
+    const borrower = { name: nbVal("nb-name"), phone: nbVal("nb-phone"), email: nbVal("nb-email"), preferredContact: nbVal("nb-pref") || null, ...cityStateVal("nb") };
     if (blPickedId("nb-name")) borrower.id = blPickedId("nb-name");
     if (!borrower.name) { fail("Enter the borrower's name."); nbEl("nb-name").focus(); return; }
     if (!borrower.phone && !borrower.email) { fail("Enter a phone number or email so the gemach can reach them."); return; }
@@ -5996,8 +6031,10 @@
       const inactive = !type.active;
       const itemsHtml = items.length ? items.map(item => {
           const iid = keep("item", item);
+          const cl = item.currentLoan;
+          const who = cl?.borrowerName ? [cl.borrowerName, cityText(cl.borrowerCity, cl.borrowerState)].filter(Boolean).join(" · ") : "";
           return `
-          <button type="button" class="inventory-item" onclick="openAssignItem(rec('item','${iid}'))">
+          <button type="button" class="inventory-item${who ? " has-who" : ""}" onclick="openAssignItem(rec('item','${iid}'))">
             <span>
               <strong>${esc(item.itemId)}</strong>
               ${item.notes ? `<span style="color:var(--muted);font-size:0.75rem"> · ${esc(item.notes)}</span>` : ""}
@@ -6009,6 +6046,7 @@
               <span class="tag ${item.condition === "Good" ? "tag-green" : "tag-amber"}">${esc(item.condition)}</span>
               <span style="color:var(--muted);font-size:1rem" aria-hidden="true">›</span>
             </span>
+            ${who ? `<span class="row-city">${esc(who)}</span>` : ""}
           </button>`;
         }).join("") : '<div style="color:var(--muted);font-size:0.8rem;padding:0.5rem 0">No items yet</div>';
       if (type.tracking === "Add-on") {
@@ -6120,6 +6158,10 @@
     $("assign-borrower-phone").value   = loan?.borrowerPhone   || "";
     $("assign-borrower-email").value   = loan?.borrowerEmail   || "";
     $("assign-borrower-contact").value = loan?.borrowerContact || "";
+    const stSel = $("assign-borrower-state");
+    if (!stSel.options.length) stSel.innerHTML = US_STATES.map(c => `<option>${c}</option>`).join("");
+    $("assign-borrower-city").value = loan?.borrowerCity || "";
+    stSel.value = US_STATES.includes(loan?.borrowerState) ? loan.borrowerState : "NY";
     $("assign-date-borrowed").value    = loan?.dateBorrowed || nyTodayStr();
     // Projected return: the loan's due date, or (for a reservation being picked up) the day the reservation ends.
     $("assign-expected-return").value  = loan?.expectedReturn || (loan?.status === "Reserved" ? loan?.reservationEnd : "") || "";
@@ -6150,7 +6192,7 @@
   let assignOrigStatus = null, assignOrigLoan = "";
   // What the status / borrower / date fields say right now; compared with the opening values to see if the loan changed.
   function assignLoanSnapshot() {
-    return JSON.stringify(["assign-borrower-name", "assign-borrower-phone", "assign-borrower-email", "assign-borrower-contact",
+    return JSON.stringify(["assign-borrower-name", "assign-borrower-phone", "assign-borrower-email", "assign-borrower-contact", "assign-borrower-city", "assign-borrower-state",
       "assign-date-borrowed", "assign-expected-return", "assign-res-start", "assign-res-end"].map(id => document.getElementById(id).value.trim()));
   }
 
@@ -6218,6 +6260,9 @@
         payload.borrowerPhone   = $("assign-borrower-phone").value.trim() || null;
         payload.borrowerEmail   = $("assign-borrower-email").value.trim() || null;
         payload.borrowerContact = $("assign-borrower-contact").value || null;
+        const place = cityStateVal("assign-borrower");
+        payload.borrowerCity = place.city || null;
+        payload.borrowerState = place.state || null;
       }
       if (assignStatus === "On Loan") {
         payload.dateBorrowed = $("assign-date-borrowed").value || null;

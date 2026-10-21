@@ -317,6 +317,7 @@ async function createReservationsFromRequest(c, rec, typeIds, nameMap, qtyMap = 
     phone: f["Phone"] || null,
     email: f["Email"] || null,
     preferredContact: f["Preferred Contact"] || null,
+    city: f["Town"] || null, state: f["Town"] ? f["State"] || null : null,
   });
   const start = DATE_RE.test(f["Needed From"] || "") ? f["Needed From"] : today();
   const end = !f["Open-ended duration"] && DATE_RE.test(f["Needed Until"] || "") ? f["Needed Until"] : null;
