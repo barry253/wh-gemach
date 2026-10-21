@@ -677,9 +677,26 @@ await t("v3 unit: contrast-picked header text + HTML email escaping", async () =
   assert.ok(html.includes("A&amp;B &lt;script&gt;"));
   assert.ok(html.includes('src="https://assets/x/logo/1.png&quot;onerror="'));
   assert.ok(html.includes("background:#F5E6A8;color:#111111"));
-  assert.ok(html.includes("1 · e@x.co"));
-  assert.ok(!/<link|<style|https?:\/\/(?!assets)/i.test(html.replace(/src="[^"]*"/g, "")), "no external css/links");
-  assert.ok(!X.buildEmailHtml({ name: "x", logoUrl: "javascript:alert(1)" }, "m").includes("<img"));
+  assert.ok(html.includes('1 · <a href="mailto:e@x.co" style="color:#1B3A4B;">e@x.co</a>'), "unusable phone stays plain text; email is a mailto link");
+  assert.ok(!/<link|<style|https?:\/\/(?!assets|whgemachs\.org)/i.test(html.replace(/src="[^"]*"/g, "")), "no external css/links");
+  const noLogo = X.buildEmailHtml({ name: "x", logoUrl: "javascript:alert(1)" }, "m");
+  assert.ok(!noLogo.includes("javascript:") && (noLogo.match(/<img/g) || []).length === 1, "unsafe gemach logo dropped (only the network bar logo remains)");
+});
+
+await t("email footer: phone dials/texts, WhatsApp only when set; network bar on every email", async () => {
+  const g = { name: "Scher Chair & Table Gemach", phone: "516-659-7136", email: "m@example.com" };
+  const html = X.buildEmailHtml(g, "Hi", { signature: true });
+  assert.ok(html.includes('<a href="tel:+15166597136" style="color:#1B3A4B;">516-659-7136</a>'), "phone is a tel: link");
+  assert.ok(html.includes('<a href="sms:+15166597136" style="color:#1B3A4B;">Text</a>'), "Text opens the messaging app");
+  assert.ok(!html.includes("wa.me"), "no WhatsApp link without a WhatsApp number");
+  assert.ok(html.includes('<a href="mailto:m@example.com"'));
+  const wa = X.buildEmailHtml({ ...g, whatsapp: "(718) 986-7345" }, "Hi", { signature: true });
+  assert.ok(wa.includes('<a href="https://wa.me/17189867345" style="color:#1B3A4B;">WhatsApp</a>'));
+  assert.ok(X.buildEmailHtml({ ...g, phone: "+972 52 123 4567" }, "Hi").includes('href="tel:+972521234567"'), "international numbers keep their code");
+  for (const h of [html, X.buildEmailHtml(g, "Hi", { signature: false })]) {
+    assert.ok(h.includes('src="https://whgemachs.org/assets/brand/wh-gemachs-icon-180.png"'), "network logo");
+    assert.ok(h.includes('<a href="https://whgemachs.org" style="color:#ffffff;text-decoration:none;"><span style="font-size:14px;font-weight:bold;color:#ffffff;">West Hempstead Gemachs</span>'), "network bar links to the site");
+  }
 });
 
 /** Same decoding as the site (site.js W.decodeContact): reversed base64 of UTF-8 JSON. */

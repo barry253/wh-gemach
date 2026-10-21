@@ -259,7 +259,7 @@ function buildEmailHtml(g, message, { signature = true, bodyHtml = null } = {}) 
     logo = `<img src="${escHtml(g.logoUrl)}" width="64" height="64" alt="" style="display:block;width:64px;height:64px;border-radius:12px;border:0;margin:0 0 10px 0;background:#ffffff;">`;
   }
   const body = bodyHtml ?? messageHtml(message, g); // bodyHtml: pre-escaped markup built by the caller
-  const contact = [g?.phone, g?.email].map(v => String(v || "").trim()).filter(Boolean).map(escHtml).join(" · ");
+  const contact = contactLinksHtml(g);
   const footer = signature
     ? `<tr><td style="padding:16px 24px;border-top:1px solid #e5e7eb;color:#555555;font-size:13px;line-height:1.5;">${name}${contact ? `<br>${contact}` : ""}</td></tr>`
     : "";
@@ -270,7 +270,52 @@ function buildEmailHtml(g, message, { signature = true, bodyHtml = null } = {}) 
     `<tr><td style="background:${bg};color:${fg};padding:20px 24px;">${logo}<div style="font-size:20px;font-weight:bold;color:${fg};">${name}</div></td></tr>` +
     `<tr><td style="padding:24px;color:#1a1a1a;font-size:15px;line-height:1.6;">${body}</td></tr>` +
     footer +
+    networkBarHtml() +
     `</table></td></tr></table></body></html>`;
+}
+
+/** "5165551234" / "+15165551234" → digits with a US country code for wa.me ("15165551234"), or "" if unusable. */
+function intlDigits(phone) {
+  const d = String(phone || "").replace(/\D/g, "");
+  if (d.length === 10) return "1" + d;
+  return d.length >= 11 && d.length <= 15 ? d : "";
+}
+
+/**
+ * The gemach's contact line as links: the phone number dials (tel:), "Text" opens the messaging app (sms:),
+ * "WhatsApp" opens a chat (only when the gemach has a WhatsApp number), the email opens a new message.
+ * Gmail on Android doesn't reliably auto-link phone numbers, so we link them ourselves.
+ */
+function contactLinksHtml(g) {
+  const parts = [];
+  const phone = String(g?.phone || "").trim();
+  const intl = intlDigits(phone);
+  if (phone && intl) {
+    parts.push(`<a href="tel:+${intl}" style="${LINK_STYLE}">${escHtml(phone)}</a>`);
+    parts.push(`<a href="sms:+${intl}" style="${LINK_STYLE}">Text</a>`);
+  } else if (phone) {
+    parts.push(escHtml(phone));
+  }
+  const wa = intlDigits(g?.whatsapp);
+  if (wa) parts.push(`<a href="https://wa.me/${wa}" style="${LINK_STYLE}">WhatsApp</a>`);
+  const email = String(g?.email || "").trim();
+  if (email) parts.push(`<a href="mailto:${escHtml(email)}" style="${LINK_STYLE}">${escHtml(email)}</a>`);
+  return parts.join(" · ");
+}
+
+const NETWORK_URL = "https://whgemachs.org";
+const NETWORK_LOGO = `${NETWORK_URL}/assets/brand/wh-gemachs-icon-180.png`; // opaque PNG: Gmail shows neither SVG nor embedded images
+
+/** The "West Hempstead Gemachs" bar at the bottom of every email, linking to whgemachs.org. */
+function networkBarHtml() {
+  const a = `href="${NETWORK_URL}" style="color:#ffffff;text-decoration:none;"`;
+  return `<tr><td bgcolor="#222828" style="background:#222828;padding:12px 24px;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>` +
+    `<td width="40" style="width:40px;vertical-align:middle;"><a ${a}><img src="${NETWORK_LOGO}" width="32" height="32" alt="West Hempstead Gemachs" style="display:block;width:32px;height:32px;border:0;border-radius:7px;"></a></td>` +
+    `<td style="vertical-align:middle;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">` +
+    `<a ${a}><span style="font-size:14px;font-weight:bold;color:#ffffff;">West Hempstead Gemachs</span><br>` +
+    `<span style="font-size:12px;color:#b8c2c8;">whgemachs.org&nbsp;›</span></a></td>` +
+    `</tr></table></td></tr>`;
 }
 
 export { messageHtml, sendEmail, longDate, shortDate, availabilityText, sendNotificationEmail, escHtml, relLuminance, contrastRatio, textColorFor, buildEmailHtml };
