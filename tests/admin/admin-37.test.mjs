@@ -1,4 +1,4 @@
-// Reservations search and filters (Oct 22, 2026): the same search box, item filter, sort and Group by borrower as
+// Reservations search and filters (Oct 22, 2026): the same search box, item filter and sort as
 // Loans, with reservation pills (All upcoming / This week / Pickup passed). The search also narrows the appointments;
 // pills, item filter and sort apply to reservations only. Filters reset when the tab is opened, not after a pickup.
 import { chromium } from "playwright";
@@ -105,12 +105,6 @@ ok(JSON.stringify(await apptShown()) === JSON.stringify(["appt-recAPPTMIRI00001"
 await page.fill("#res-search", "rivka");
 ok((await rows()).length === 2, "borrower name");
 
-// ── Group by borrower
-await page.check("#res-group");
-ok(await page.$$eval("#reservations-list .loan-group", e => e.length) === 1, "Rivka's two bookings are grouped");
-ok(/3 items reserved/.test(await page.textContent("#reservations-list .loan-group-sub")), "group heading counts items");
-ok(/1 borrower/.test(await count()), "count adds borrowers");
-await page.uncheck("#res-group");
 await page.click("#res-count .link-btn");
 ok(await page.$eval("#res-search", e => e.value) === "" && (await rows()).length === 4 && (await apptShown()).length === 2, "Clear resets search and shows everything");
 
@@ -140,7 +134,8 @@ ok(await sortRows("borrower") === "recRESAVIVA00001,recRESBRACHA0001,recRESRIVKA
 ok(await sortRows("item") === "recRESRIVKA00001,recRESRIVKA00003,recRESBRACHA0001,recRESAVIVA00001", "item A–Z");
 ok(await sortRows("recent") === "recRESRIVKA00003,recRESRIVKA00001,recRESBRACHA0001,recRESAVIVA00001", "recently made (no request last)");
 const saved = await page.evaluate(() => ({ r: localStorage.getItem("whg_res_view"), l: localStorage.getItem("whg_loans_view") }));
-ok(JSON.parse(saved.r).sort === "recent" && !saved.l, "sort saved for Reservations only");
+ok(JSON.stringify(JSON.parse(saved.r)) === '{"sort":"recent"}' && !saved.l, "sort saved for Reservations only");
+ok(!(await page.$("#res-group")) && !(await page.$("#loans-group")), "no Group by borrower on either tab");
 await page.screenshot({ path: "shot-res-search.png", fullPage: true });
 
 // ── Nothing reserved, but appointments: search still shows, tools don't

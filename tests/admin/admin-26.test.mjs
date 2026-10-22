@@ -1,4 +1,4 @@
-// Loans tab: sticky search + status pills, item filter sheet, sort, group by borrower, row layout, top bar fit.
+// Loans tab: sticky search + status pills, item filter sheet, sort, row layout, top bar fit.
 import { chromium } from "playwright";
 import fs from "node:fs";
 const html = fs.readFileSync(new URL("../../admin.html", import.meta.url), "utf8");
@@ -40,7 +40,7 @@ await page.addInitScript(() => {
   if (!localStorage.getItem("gemach_token")) localStorage.setItem("gemach_token", "fake.token.x");
   localStorage.setItem("gemach_slug", "wh-medical");
 });
-const names = () => page.$$eval("#loans-list .loan-row .loan-row-name, #loans-list .loan-group-name", e => e.map(x => x.textContent.trim()));
+const names = () => page.$$eval("#loans-list .loan-row .loan-row-name", e => e.map(x => x.textContent.trim()));
 const rows = () => page.$$eval("#loans-list .loan-row", e => e.length);
 const count = () => page.textContent("#loans-count");
 
@@ -108,23 +108,7 @@ ok((await page.inputValue("#loans-sort")) === "recent", "sort remembered after r
 await page.selectOption("#loans-sort", "out");
 ok((await names())[0] === "Debbie Edelman", "Longest out first is the default order");
 
-// 6. Group by borrower.
-await page.check("#loans-group");
-const head = await page.textContent(".loan-group-head");
-ok(/Debbie Edelman/.test(head) && /2 items out/.test(head) && /1 overdue/.test(head), "header for a borrower with 2 items: " + head.replace(/\s+/g, " "));
-ok((await page.$$eval(".loan-group-rows .loan-row", e => e.length)) === 2 && (await page.$$eval(".loan-group-rows .loan-row-name", e => e.length)) === 0, "their items sit under it without repeating the name");
-ok((await rows()) === 19 && /18 borrowers/.test(await count()), "single loans stay normal rows; count shows borrowers: " + (await count()));
-await page.click("#loans-list .loan-group-rows .loan-row");
-ok(await page.$eval("#loans-list .loan-group-rows .loan-actions-panel.open", e => /Returned/.test(e.innerText)), "row actions still open inside a group");
-await page.reload();
-await page.waitForTimeout(300);
-await page.click(".nav-tab:has-text('Loans')");
-await page.waitForSelector("#loans-list .loan-row");
-ok(await page.isChecked("#loans-group"), "grouping remembered after reload");
-await page.screenshot({ path: "shot-loans-grouped.png" });
-await page.uncheck("#loans-group");
-
-// 7. The bar stays put while scrolling the list.
+// 6. The bar stays put while scrolling the list.
 await page.evaluate(() => window.scrollTo(0, 900));
 await page.waitForTimeout(150);
 const pos = await page.evaluate(() => ({ bar: document.getElementById("loans-bar").getBoundingClientRect(), top: document.querySelector(".topbar").getBoundingClientRect(), y: window.scrollY }));
@@ -136,7 +120,7 @@ await page.screenshot({ path: "shot-loans-sticky.png" });
 await page.fill("#loans-search", "");
 await page.evaluate(() => window.scrollTo(0, 0));
 
-// 8. Long item names wrap instead of running under the date.
+// 7. Long item names wrap instead of running under the date.
 await page.evaluate(() => { allLoans[0].itemTypeName = "Wheelchair — Transport Extra Wide With Elevating Leg Rests"; renderLoans(); });
 const clash = await page.evaluate(() => {
   const row = document.querySelector("#loans-list .loan-row");
@@ -146,7 +130,7 @@ const clash = await page.evaluate(() => {
 ok(!clash.overlap, "item name does not overlap the date");
 ok(/Out Sep 6/.test(clash.date) && /Due Sep 20/.test(clash.date), "date is labelled: " + clash.date);
 
-// 9. Top bar: the gemach picker stays clear of the admin's name and the buttons.
+// 8. Top bar: the gemach picker stays clear of the admin's name and the buttons.
 const tb = await page.evaluate(() => {
   const r = id => document.querySelector(id)?.getBoundingClientRect();
   return { sw: r("#gemach-switcher"), name: r("#admin-name"), bell: r("#btn-bell"), vw: innerWidth };

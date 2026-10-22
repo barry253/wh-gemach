@@ -721,14 +721,6 @@
     .loans-meta { justify-content: space-between; margin-top: 0.5rem; }
     .loans-count { font-size: 0.78rem; color: var(--muted); }
     .loans-count .link-btn { margin-left: 0.35rem; }
-    .loans-toggle { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
-    .loans-toggle input { width: 18px; height: 18px; accent-color: var(--navy); }
-    .loan-group { display: flex; flex-direction: column; gap: 0.4rem; }
-    .loan-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.25rem 0; }
-    .loan-group-name { font-weight: 700; font-size: 0.92rem; overflow-wrap: anywhere; }
-    .loan-group-sub { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
-    .loan-group-sub .late { color: var(--red); font-weight: 600; }
-    .loan-group-rows { display: flex; flex-direction: column; gap: 0.4rem; margin-left: 0.5rem; padding-left: 0.5rem; border-left: 2px solid var(--border); }
     .loan-item-opt { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; width: 100%; min-height: 46px; padding: 0 0.8rem; margin-bottom: 0.35rem; font: inherit; font-size: 0.92rem; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--white); color: var(--text); cursor: pointer; }
     .loan-item-opt b { font-weight: 600; color: var(--muted); font-size: 0.82rem; }
     .loan-item-opt.on { border-color: var(--navy); background: #F3F7F9; font-weight: 600; }
@@ -787,7 +779,6 @@
       font-weight: 500;
       overflow-wrap: break-word;
     }
-    .loan-row-item.lead { font-size: 0.88rem; font-weight: 600; color: var(--text); }
     .loan-row-code {
       font-size: 0.78rem;
       color: var(--muted);
@@ -1631,7 +1622,6 @@
         </div>
         <div class="loans-tools-row loans-meta">
           <span class="loans-count" id="loans-count" aria-live="polite"></span>
-          <label class="loans-toggle"><input type="checkbox" id="loans-group" onchange="setLoanGroup(this.checked)" /> Group by borrower</label>
         </div>
       </div>
       <div class="card-list" id="loans-list">
@@ -1667,7 +1657,6 @@
         </div>
         <div class="loans-tools-row loans-meta">
           <span class="loans-count" id="res-count" aria-live="polite"></span>
-          <label class="loans-toggle"><input type="checkbox" id="res-group" onchange="bklSet('res', 'group', this.checked)" /> Group by borrower</label>
         </div>
       </div>
       <div id="reservations-list">
@@ -3676,17 +3665,16 @@
   function bklList(p) {
     if (BOOKING_LISTS[p]) return BOOKING_LISTS[p];
     const cfg = p === "loan" ? loanListCfg() : resListCfg();
-    const L = { p, cfg, rows: [], type: null, status: "all", query: "", sort: cfg.sorts[0], group: false };
-    try { // sort and grouping are remembered on this device, separately per tab
+    const L = { p, cfg, rows: [], type: null, status: "all", query: "", sort: cfg.sorts[0] };
+    try { // the sort is remembered on this device, separately per tab
       const v = JSON.parse(localStorage.getItem(cfg.store) || "null");
       if (v && cfg.sorts.includes(v.sort)) L.sort = v.sort;
-      if (v && v.group) L.group = true;
     } catch (e) { /* ignore */ }
     return (BOOKING_LISTS[p] = L);
   }
   function bklEl(L, part) { return document.getElementById(part === "list" ? L.cfg.listId : `${L.cfg.ids}-${part}`); }
   function bklSave(L) {
-    try { localStorage.setItem(L.cfg.store, JSON.stringify({ sort: L.sort, group: L.group })); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(L.cfg.store, JSON.stringify({ sort: L.sort })); } catch (e) { /* ignore */ }
   }
   /** resetFilters: opening the tab (search and filters start empty); otherwise they stay as they are. */
   function bklShow(L, data, resetFilters) {
@@ -3698,7 +3686,6 @@
     }
     if (L.type && !L.rows.some(l => l.itemTypeName === L.type)) L.type = null; // all of that type went
     bklEl(L, "sort").value = L.sort;
-    bklEl(L, "group").checked = L.group;
     bklRender(L);
   }
   function bklSet(p, key, v) {
@@ -3707,7 +3694,6 @@
     else if (key === "type") L.type = v || null;
     else if (key === "status") L.status = v;
     else if (key === "sort") { if (!L.cfg.sorts.includes(v)) return; L.sort = v; bklSave(L); }
-    else if (key === "group") { L.group = !!v; bklSave(L); }
     bklRender(L);
   }
   function bklClear(p) {
@@ -3757,11 +3743,6 @@
       ],
       sortRep: bookingSortRep,
       sortFn: loanSortFn,
-      groupSub: books => {
-        const n = books.reduce((s, b) => s + b.loans.length, 0);
-        const late = books.reduce((s, b) => s + b.loans.filter(l => l.overdue).length, 0);
-        return `${n} items out${late ? ` · <span class="late">${late} overdue</span>` : ""}`;
-      },
       emptyHtml: '<div class="empty-state"><div class="icon">✓</div>No active loans</div>',
     };
   }
@@ -3785,19 +3766,10 @@
   function setLoanTypeFilter(type) { bklSet("loan", "type", type); }
   function setLoanStatus(s) { bklSet("loan", "status", s); }
   function setLoanSort(v) { bklSet("loan", "sort", v); }
-  function setLoanGroup(on) { bklSet("loan", "group", on); }
   function clearLoanFilters() { bklClear("loan"); }
   function openLoanItemSheet() { openBklItemSheet("loan"); }
 
   const loanDigits = v => String(v ?? "").replace(/\D/g, "");
-  /** One person across rows: phone (last 10 digits), else email, else name. */
-  function loanPersonKey(l) {
-    const p = loanDigits(l.borrowerPhone).slice(-10);
-    if (p.length >= 7) return "p" + p;
-    const e = String(l.borrowerEmail || "").trim().toLowerCase();
-    if (e) return "e" + e;
-    return "n" + String(l.borrowerName || "").trim().toLowerCase();
-  }
   /** Every word typed must match: start of a name / item word, part of the unit number or email, digits of the phone. */
   function loanMatches(l, q) {
     if (!q) return true;
@@ -3996,9 +3968,9 @@
 
   /**
    * One booking on the Reservations (p = "res") or Loans (p = "loan") list: a compact row, and when opened
-   * the request card's details with the actions. lead: shown under a borrower heading (Loans → group), no name.
+   * the request card's details with the actions.
    */
-  function bookingRowHtml(b, p, lead) {
+  function bookingRowHtml(b, p) {
     const isLoan = p === "loan";
     b.loans.forEach(l => keep(p, l));
     RECORDS.bk.set(`${p}-${b.id}`, b);
@@ -4035,11 +4007,11 @@
           ${allAddon ? `<span class="tag tag-addon loan-row-tag">Add-on</span>` : `<span class="tag tag-navy loan-row-tag">Reserved</span>`}`;
     }
     const itemSpans = one
-      ? `<span class="loan-row-item${lead ? " lead" : ""}">${esc(one.itemTypeName || (isLoan ? "" : "Item TBD"))}</span>
+      ? `<span class="loan-row-item">${esc(one.itemTypeName || (isLoan ? "" : "Item TBD"))}</span>
             ${one.itemId ? `<span class="loan-row-code">${esc(one.itemId)}</span>` : ""}
             ${one.isQuantity ? `<span class="loan-row-code">× ${esc(one.quantity)}</span>` : ""}
             ${one.isAddon ? `<span class="loan-row-code">× ${esc(one.quantity)}${one.price != null ? ` · ${esc(fmtMoney(one.price * one.quantity))}` : ""}</span>` : ""}`
-      : `<span class="loan-row-item multi${lead ? " lead" : ""}"><span class="loan-row-n">${ls.length} items</span> ${esc(ls.map(bkLabel).join(", "))}</span>`;
+      : `<span class="loan-row-item multi"><span class="loan-row-n">${ls.length} items</span> ${esc(ls.map(bkLabel).join(", "))}</span>`;
     const hasNote = ls.some(l => l.notes || l.requestNote);
     const ready = ls.find(l => l.readyToReturnAt);
     const reminded = ls.filter(l => l.reminderSentAt).sort((a, c) => (a.reminderSentAt < c.reminderSentAt ? 1 : -1))[0];
@@ -4084,7 +4056,7 @@
           ${rowThumb(photoLoan.photo, photoLoan.itemTypeName, photoLoan.photos)}
           <button type="button" class="row-open" aria-expanded="false" aria-controls="${p}-panel-${id}">
           <span class="loan-row-main">
-            ${lead ? "" : `<span class="loan-row-name">${esc(f.borrowerName)}</span>`}
+            <span class="loan-row-name">${esc(f.borrowerName)}</span>
             ${itemSpans}
             ${loanCity(f) ? `<span class="row-city">📍 ${esc(loanCity(f))}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes" role="img" aria-label="Has notes">💬</span>` : ""}
@@ -4228,7 +4200,6 @@
     let txt = filtered ? `${books.length} of ${plural(all.length, cfg.noun)}` : plural(all.length, cfg.noun);
     const shownItems = filtered ? nItems(books) : L.rows.length;
     if (shownItems !== (filtered ? books.length : all.length)) txt += ` · ${plural(shownItems, "item")}`;
-    if (L.group) txt += ` · ${plural(new Set(books.map(b => loanPersonKey(b.loans[0]))).size, "borrower")}`;
     bklEl(L, "count").innerHTML =
       esc(txt) + (filtered ? ` <button type="button" class="link-btn" onclick="bklClear('${L.p}')">Clear</button>` : "");
 
@@ -4237,26 +4208,7 @@
       list.innerHTML = `<div class="empty-state" style="padding:1.5rem;text-align:center;color:var(--muted)">No ${cfg.noun}s match${filtered ? ` — <button type="button" class="link-btn" onclick="bklClear('${L.p}')">clear filters</button>` : ""}</div>`;
       return;
     }
-    if (!L.group) { list.innerHTML = books.map(b => bookingRowHtml(b, L.p, false)).join(""); return; }
-
-    // Grouped: a borrower with 2+ bookings gets a header and their bookings under it; otherwise a normal row.
-    const groups = [], at = new Map();
-    for (const b of books) {
-      const k = loanPersonKey(b.loans[0]);
-      let g = at.get(k);
-      if (!g) { g = { books: [] }; at.set(k, g); groups.push(g); }
-      g.books.push(b);
-    }
-    list.innerHTML = groups.map(g => {
-      if (nItems(g.books) === 1 || g.books.length === 1) return bookingRowHtml(g.books[0], L.p, false);
-      return `<div class="loan-group">
-        <div class="loan-group-head">
-          <span class="loan-group-name">${esc(g.books[0].name)}</span>
-          <span class="loan-group-sub">${cfg.groupSub(g.books)}</span>
-        </div>
-        <div class="loan-group-rows">${g.books.map(b => bookingRowHtml(b, L.p, true)).join("")}</div>
-      </div>`;
-    }).join("");
+    list.innerHTML = books.map(b => bookingRowHtml(b, L.p)).join("");
   }
 
   // ── Return sheet ──────────────────────────────────────────────────────────
@@ -5852,7 +5804,6 @@
         };
       },
       sortFn: resSortFn,
-      groupSub: books => `${books.reduce((s, b) => s + b.loans.length, 0)} items reserved`,
       emptyHtml: '<div class="empty-state"><div class="icon">📅</div>No upcoming reservations</div>',
       after: L => { resBarState(); filterAppointments(L.query); },
     };
