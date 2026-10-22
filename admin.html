@@ -5865,7 +5865,8 @@
     if (kind === "borrower") return (a, b) => str(a.borrowerName, b.borrowerName) || dateAsc(a.start, b.start);
     if (kind === "item") return (a, b) => str(a.itemTypeName, b.itemTypeName) || str(a.itemId, b.itemId) || dateAsc(a.start, b.start);
     if (kind === "recent") return (a, b) => dateDesc(a.received, b.received) || dateAsc(a.start, b.start);
-    return (a, b) => dateAsc(a.start, b.start); // soonest pickup first (the order the server sends)
+    // Soonest pickup first; no pickup date yet comes first, as the server sends them (a date still needs setting).
+    return (a, b) => (!a.start && !b.start) ? 0 : !a.start ? -1 : !b.start ? 1 : a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
   }
   function renderReservations(data, resetFilters) { bklShow(bklList("res"), data, resetFilters); }
   /** The search shows when there are reservations or appointments; the pills, item filter and sort only with reservations. */
