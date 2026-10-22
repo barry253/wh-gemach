@@ -62,7 +62,7 @@ async function run(G) {
     if (p === "/admin/appointments" && M === "POST") return J({ success: true, request: "recNEWAPPT000001", requestId: "R-201", manageUrl: "https://whgemachs.org/r/recNEWAPPT000001.sig" });
     return J([]);
   });
-  await page.addInitScript(slug => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", slug); localStorage.setItem("whg_dash_view", "overview"); }, G.slug);
+  await page.addInitScript(slug => { localStorage.setItem("gemach_token", "fake.token.x"); localStorage.setItem("gemach_slug", slug); }, G.slug);
   await page.goto("http://admin.test/admin.html?device=mobile"); // WhatsApp / text flows are phone-only (Oct 2026)
   await page.waitForSelector("#quick-actions .quick-action");
   return { page, reqs, errors };
@@ -128,7 +128,7 @@ async function run(G) {
   await page.selectOption("#upcoming-days", "14");
   await page.waitForFunction(() => true);
   await page.waitForTimeout(200);
-  ok(reqs.some(r => r.path === "/admin/upcoming" && r.search === "?days=14"), "changing the period reloads");
+  ok((await page.textContent("#upcoming-range")) === `Today – ${await page.evaluate(d => fmtDay(d), plus(13))}`, "changing the period widens the list: " + await page.textContent("#upcoming-range"));
   ok(await page.evaluate(() => localStorage.getItem("whg_upcoming_days")) === "14", "period remembered on this device");
 
   // New reservation from Quick actions

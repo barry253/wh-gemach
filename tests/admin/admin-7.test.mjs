@@ -64,7 +64,6 @@ async function setup() {
   await page.addInitScript(() => {
     localStorage.setItem("gemach_token", "fake.token.x");
     localStorage.setItem("gemach_slug", "wh-medical");
-    localStorage.setItem("whg_dash_view", "overview"); // these checks are about the Overview view (Calendar is the default)
     window.__opened = [];
     window.open = (u, t, f) => { window.__opened.push({ how: "window.open", url: String(u) }); return null; };
     document.addEventListener("click", e => {
