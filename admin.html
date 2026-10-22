@@ -711,6 +711,9 @@
     .loans-pill.active { background: var(--navy); border-color: var(--navy); color: #fff; }
     .loans-pill.red.active { background: var(--red); border-color: var(--red); }
     .loans-pill.green.active { background: var(--green); border-color: var(--green); }
+    .loans-pill.amber.active { background: var(--amber); border-color: var(--amber); color: #fff; }
+    .res-pills { margin: 0 0 0.5rem; }
+    @media (max-width: 560px) { .res-bar.has-appt .loans-row { flex-wrap: wrap; } .res-bar.has-appt .loans-search:not([hidden]) { flex-basis: 100%; } }
     .loans-tools { margin-bottom: 0.75rem; }
     .loans-tools-row { display: flex; align-items: center; gap: 0.5rem; }
     .loans-select { flex: 1 1 0; min-width: 0; height: 38px; padding: 0 0.7rem; font: inherit; font-size: 0.85rem; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--white); color: var(--text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1638,15 +1641,35 @@
 
     <!-- Reservations -->
     <div class="screen" id="screen-reservations">
-      <div class="screen-toolbar" id="res-toolbar" style="gap:0.4rem">
-        <button class="btn btn-ghost btn-sm" id="new-appt-btn" style="display:none" onclick="openNewBooking('appointment')">+ New appointment</button>
-        <button class="btn btn-primary btn-sm" id="new-res-btn" onclick="openNewBooking('reservation')">+ New reservation</button>
+      <div class="loans-bar res-bar is-empty" id="res-bar">
+        <div class="loans-row">
+          <input type="search" id="res-search" class="loans-search" placeholder="Search name, item or unit #" aria-label="Search reservations and appointments by borrower, item or unit number" autocomplete="off" enterkeyhint="search" oninput="onResSearch(this.value)" hidden />
+          <button class="btn btn-ghost btn-sm" id="new-appt-btn" style="display:none" onclick="openNewBooking('appointment')">+ New appointment</button>
+          <button class="btn btn-primary btn-sm" id="new-res-btn" onclick="openNewBooking('reservation')">+ New reservation</button>
+        </div>
       </div>
       <div id="appointments-block" style="display:none;margin-bottom:1.25rem">
         <div class="section-label" id="appointments-section-label">Upcoming appointments</div>
         <div class="card-list" id="appointments-list"></div>
       </div>
       <div class="section-label" id="reservations-section-label">Upcoming reservations</div>
+      <div class="loans-tools" id="res-tools" hidden>
+        <div class="loans-pills res-pills" id="res-pills"></div>
+        <div class="loans-tools-row">
+          <button type="button" class="loans-select" id="res-item-btn" onclick="openBklItemSheet('res')" aria-haspopup="dialog">Item: All ▾</button>
+          <select class="loans-select" id="res-sort" aria-label="Sort reservations" onchange="bklSet('res', 'sort', this.value)">
+            <option value="start">Sort: Pickup date</option>
+            <option value="end">Sort: Return date</option>
+            <option value="borrower">Sort: Borrower A–Z</option>
+            <option value="item">Sort: Item A–Z</option>
+            <option value="recent">Sort: Recently made</option>
+          </select>
+        </div>
+        <div class="loans-tools-row loans-meta">
+          <span class="loans-count" id="res-count" aria-live="polite"></span>
+          <label class="loans-toggle"><input type="checkbox" id="res-group" onchange="bklSet('res', 'group', this.checked)" /> Group by borrower</label>
+        </div>
+      </div>
       <div id="reservations-list">
         <div class="loading">Loading…</div>
       </div>
@@ -2110,7 +2133,7 @@
     <div class="sheet-handle"></div>
     <button class="sheet-close" onclick="closeSheet('loan-item-sheet')">×</button>
     <h3>Filter by item</h3>
-    <p class="sheet-subtitle">What's out right now</p>
+    <p class="sheet-subtitle" id="loan-item-sub">What's out right now</p>
     <input type="search" id="loan-item-search" placeholder="Search item types…" aria-label="Search item types" autocomplete="off" hidden />
     <div id="loan-item-list"></div>
   </div>
@@ -3256,7 +3279,7 @@
     if (name === "dashboard")    loadDashboard();
     if (name === "requests")     loadRequests();
     if (name === "loans")        loadLoans();
-    if (name === "reservations") loadReservations();
+    if (name === "reservations") loadReservations(true);
     if (name === "inventory")    loadInventory();
     if (name === "history")      initHistory();
     if (name === "settings")     loadSettings();
@@ -3635,23 +3658,6 @@
     openSheet("decline-sheet");
   }
 
-  // ── Loans ─────────────────────────────────────────────────────────────────
-  let allLoans = [];
-  let loanFilterType = null;   // item type name; null = every type
-  let loanStatus = "all";      // "all" | "overdue" | "ready"
-  let loanQuery = "";
-  let loanSort = "out";        // sort and grouping are remembered on this device
-  let loanGroup = false;
-  const LOAN_SORTS = ["out", "due", "borrower", "item", "recent"];
-  try {
-    const v = JSON.parse(localStorage.getItem("whg_loans_view") || "null");
-    if (v && LOAN_SORTS.includes(v.sort)) loanSort = v.sort;
-    if (v && v.group) loanGroup = true;
-  } catch (e) { /* ignore */ }
-  function saveLoanView() {
-    try { localStorage.setItem("whg_loans_view", JSON.stringify({ sort: loanSort, group: loanGroup })); } catch (e) { /* ignore */ }
-  }
-
   // The sticky bar sits under the top bar, whatever height that has on this screen.
   (function trackTopbarHeight() {
     const tb = document.querySelector(".topbar");
@@ -3662,64 +3668,126 @@
     window.addEventListener("resize", set);
   })();
 
-  /** keepFilters: refreshing after a change (a return), so the search and filters stay as they are. */
-  async function loadLoans(keepFilters) {
-    let first = !keepFilters;
-    await snapLoad("/admin/loans", document.getElementById("loans-list"), data => { showLoans(data, first); first = false; });
+  // ── Booking lists: Loans and Reservations share search, pills, item filter, sort and grouping ──
+  // Function declarations and var (not const / let): a list can render from a saved copy before this part
+  // of the script has run.
+  var BOOKING_LISTS = {};
+  /** The list state for "loan" (Loans tab) or "res" (Reservations tab), made on first use. */
+  function bklList(p) {
+    if (BOOKING_LISTS[p]) return BOOKING_LISTS[p];
+    const cfg = p === "loan" ? loanListCfg() : resListCfg();
+    const L = { p, cfg, rows: [], type: null, status: "all", query: "", sort: cfg.sorts[0], group: false };
+    try { // sort and grouping are remembered on this device, separately per tab
+      const v = JSON.parse(localStorage.getItem(cfg.store) || "null");
+      if (v && cfg.sorts.includes(v.sort)) L.sort = v.sort;
+      if (v && v.group) L.group = true;
+    } catch (e) { /* ignore */ }
+    return (BOOKING_LISTS[p] = L);
   }
-  function showLoans(data, resetFilters) {
-    const list = document.getElementById("loans-list");
+  function bklEl(L, part) { return document.getElementById(part === "list" ? L.cfg.listId : `${L.cfg.ids}-${part}`); }
+  function bklSave(L) {
+    try { localStorage.setItem(L.cfg.store, JSON.stringify({ sort: L.sort, group: L.group })); } catch (e) { /* ignore */ }
+  }
+  /** resetFilters: opening the tab (search and filters start empty); otherwise they stay as they are. */
+  function bklShow(L, data, resetFilters) {
     const show = !!data?.length;
-    document.getElementById("loans-bar").classList.toggle("is-empty", !show);
-    for (const id of ["loans-search", "loans-pills", "loans-tools"]) document.getElementById(id).hidden = !show;
-    if (!show) {
-      allLoans = [];
-      list.innerHTML = '<div class="empty-state"><div class="icon">✓</div>No active loans</div>';
-      return;
-    }
-    allLoans = data;
+    L.rows = show ? data : [];
     if (resetFilters) {
-      loanFilterType = null; loanStatus = "all"; loanQuery = "";
-      document.getElementById("loans-search").value = "";
+      L.type = null; L.status = "all"; L.query = "";
+      bklEl(L, "search").value = "";
     }
-    if (loanFilterType && !allLoans.some(l => l.itemTypeName === loanFilterType)) loanFilterType = null; // all of that type came back
-    document.getElementById("loans-sort").value = loanSort;
-    document.getElementById("loans-group").checked = loanGroup;
-    renderLoans();
+    if (L.type && !L.rows.some(l => l.itemTypeName === L.type)) L.type = null; // all of that type went
+    bklEl(L, "sort").value = L.sort;
+    bklEl(L, "group").checked = L.group;
+    bklRender(L);
+  }
+  function bklSet(p, key, v) {
+    const L = bklList(p);
+    if (key === "query") L.query = v || "";
+    else if (key === "type") L.type = v || null;
+    else if (key === "status") L.status = v;
+    else if (key === "sort") { if (!L.cfg.sorts.includes(v)) return; L.sort = v; bklSave(L); }
+    else if (key === "group") { L.group = !!v; bklSave(L); }
+    bklRender(L);
+  }
+  function bklClear(p) {
+    const L = bklList(p);
+    L.type = null; L.status = "all"; L.query = "";
+    bklEl(L, "search").value = "";
+    bklRender(L);
   }
 
-  function onLoanSearch(v) { loanQuery = v || ""; renderLoans(); }
-  function setLoanTypeFilter(type) { loanFilterType = type || null; renderLoans(); }
-  function setLoanStatus(s) { loanStatus = s; renderLoans(); }
-  function setLoanSort(v) { if (LOAN_SORTS.includes(v)) { loanSort = v; saveLoanView(); renderLoans(); } }
-  function setLoanGroup(on) { loanGroup = !!on; saveLoanView(); renderLoans(); }
-  function clearLoanFilters() {
-    loanFilterType = null; loanStatus = "all"; loanQuery = "";
-    document.getElementById("loans-search").value = "";
-    renderLoans();
-  }
-
-  /** Item-type picker: every type that has something out, with how many. */
-  function openLoanItemSheet() {
+  /** Item-type picker: every type on the list, with how many. */
+  var ITEM_SHEET_FOR = "loan";
+  function openBklItemSheet(p) {
+    const L = bklList(p);
+    ITEM_SHEET_FOR = p;
     const counts = new Map();
-    allLoans.forEach(l => { if (l.itemTypeName) counts.set(l.itemTypeName, (counts.get(l.itemTypeName) || 0) + 1); });
+    L.rows.forEach(l => { if (l.itemTypeName) counts.set(l.itemTypeName, (counts.get(l.itemTypeName) || 0) + 1); });
     const types = [...counts.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+    document.getElementById("loan-item-sub").textContent = L.cfg.sheetSub;
     const search = document.getElementById("loan-item-search");
     search.hidden = types.length < 9;
     search.value = "";
     const opt = (type, label, n) =>
-      `<button type="button" class="loan-item-opt${(loanFilterType || "") === type ? " on" : ""}" data-type="${esc(type)}" onclick="pickLoanItem(this.dataset.type)"><span>${esc(label)}</span><b>${n}</b></button>`;
+      `<button type="button" class="loan-item-opt${(L.type || "") === type ? " on" : ""}" data-type="${esc(type)}" onclick="pickLoanItem(this.dataset.type)"><span>${esc(label)}</span><b>${n}</b></button>`;
     const draw = () => {
       const f = search.value.trim().toLowerCase();
       document.getElementById("loan-item-list").innerHTML =
-        (f ? "" : opt("", "All item types", allLoans.length)) +
+        (f ? "" : opt("", "All item types", L.rows.length)) +
         types.filter(t => !f || t.toLowerCase().includes(f)).map(t => opt(t, t, counts.get(t))).join("");
     };
     search.oninput = draw;
     draw();
     openSheet("loan-item-sheet");
   }
-  function pickLoanItem(type) { closeSheet("loan-item-sheet"); setLoanTypeFilter(type); }
+  function pickLoanItem(type) { closeSheet("loan-item-sheet"); bklSet(ITEM_SHEET_FOR, "type", type); }
+
+  // ── Loans ─────────────────────────────────────────────────────────────────
+  let allLoans = []; // the same array as bklList("loan").rows
+  function loanListCfg() {
+    return {
+      ids: "loans", listId: "loans-list", store: "whg_loans_view", noun: "loan",
+      sorts: ["out", "due", "borrower", "item", "recent"],
+      sheetSub: "What's out right now",
+      pills: [
+        { key: "all", label: "All out", test: () => true, always: true },
+        { key: "overdue", label: "Overdue", color: "red", test: b => b.loans.some(l => l.overdue), always: true },
+        { key: "ready", label: "Ready to return", color: "green", test: b => b.loans.some(l => l.readyToReturnAt) },
+      ],
+      sortRep: bookingSortRep,
+      sortFn: loanSortFn,
+      groupSub: books => {
+        const n = books.reduce((s, b) => s + b.loans.length, 0);
+        const late = books.reduce((s, b) => s + b.loans.filter(l => l.overdue).length, 0);
+        return `${n} items out${late ? ` · <span class="late">${late} overdue</span>` : ""}`;
+      },
+      emptyHtml: '<div class="empty-state"><div class="icon">✓</div>No active loans</div>',
+    };
+  }
+
+  /** keepFilters: refreshing after a change (a return), so the search and filters stay as they are. */
+  async function loadLoans(keepFilters) {
+    let first = !keepFilters;
+    await snapLoad("/admin/loans", document.getElementById("loans-list"), data => { showLoans(data, first); first = false; });
+  }
+  function showLoans(data, resetFilters) {
+    const L = bklList("loan");
+    const show = !!data?.length;
+    document.getElementById("loans-bar").classList.toggle("is-empty", !show);
+    for (const id of ["loans-search", "loans-pills", "loans-tools"]) document.getElementById(id).hidden = !show;
+    bklShow(L, data, resetFilters);
+    allLoans = L.rows;
+  }
+  // Older names, still used by some buttons and tests.
+  function renderLoans() { bklRender(bklList("loan")); }
+  function onLoanSearch(v) { bklSet("loan", "query", v); }
+  function setLoanTypeFilter(type) { bklSet("loan", "type", type); }
+  function setLoanStatus(s) { bklSet("loan", "status", s); }
+  function setLoanSort(v) { bklSet("loan", "sort", v); }
+  function setLoanGroup(on) { bklSet("loan", "group", on); }
+  function clearLoanFilters() { bklClear("loan"); }
+  function openLoanItemSheet() { openBklItemSheet("loan"); }
 
   const loanDigits = v => String(v ?? "").replace(/\D/g, "");
   /** One person across rows: phone (last 10 digits), else email, else name. */
@@ -4117,53 +4185,61 @@
     };
   }
 
-  function renderLoans() {
-    const q = loanQuery.trim();
+  function bklRender(L) {
+    const cfg = L.cfg, q = L.query.trim();
+    const list = bklEl(L, "list");
+    RECORDS[L.p].clear();
+    clearBk(L.p);
+    if (!L.rows.length) {
+      list.innerHTML = cfg.emptyHtml;
+      cfg.after?.(L);
+      return;
+    }
     // A booking shows when any of its items matches the search / item filter / pill; the whole booking is shown.
-    const all = groupBookings(allLoans);
-    const base = all.filter(b => b.loans.some(l => (!loanFilterType || l.itemTypeName === loanFilterType) && loanMatches(l, q)));
-    const isLate = b => b.loans.some(l => l.overdue), isReady = b => b.loans.some(l => l.readyToReturnAt);
+    const all = groupBookings(L.rows);
+    const base = all.filter(b => b.loans.some(l => (!L.type || l.itemTypeName === L.type) && loanMatches(l, q)));
+    const today = nyTodayStr();
+    const pills = cfg.pills;
+    const pillOf = key => pills.find(x => x.key === key) || pills[0];
+    if (!pills.some(x => x.key === L.status)) L.status = "all";
     // Counts on the pills follow the search and item filter, so each pill shows what tapping it would give.
-    const counts = { all: base.length, overdue: base.filter(isLate).length, ready: base.filter(isReady).length };
-    const sortFn = loanSortFn(loanSort);
+    const counts = Object.fromEntries(pills.map(x => [x.key, base.filter(b => x.test(b, today)).length]));
+    const sortFn = cfg.sortFn(L.sort);
     const books = base
-      .filter(b => loanStatus === "overdue" ? isLate(b) : loanStatus === "ready" ? isReady(b) : true)
-      .map(b => ({ b, rep: bookingSortRep(b, loanSort) }))
+      .filter(b => pillOf(L.status).test(b, today))
+      .map(b => ({ b, rep: cfg.sortRep(b, L.sort) }))
       .sort((x, y) => sortFn(x.rep, y.rep))
       .map(x => x.b);
 
-    const pill = (key, label, n, color) =>
-      `<button type="button" class="loans-pill ${color}${loanStatus === key ? " active" : ""}" aria-pressed="${loanStatus === key}" onclick="setLoanStatus('${key}')">${label} <b>${n}</b></button>`;
-    document.getElementById("loans-pills").innerHTML =
-      pill("all", "All out", counts.all, "") + pill("overdue", "Overdue", counts.overdue, "red") +
-      (counts.ready || loanStatus === "ready" ? pill("ready", "Ready to return", counts.ready, "green") : "");
+    bklEl(L, "pills").innerHTML = pills
+      .filter(x => x.always || counts[x.key] || L.status === x.key)
+      .map(x => `<button type="button" class="loans-pill ${x.color || ""}${L.status === x.key ? " active" : ""}" aria-pressed="${L.status === x.key}" onclick="bklSet('${L.p}', 'status', '${x.key}')">${esc(x.label)} <b>${counts[x.key]}</b></button>`)
+      .join("");
 
-    const types = new Set(allLoans.map(l => l.itemTypeName).filter(Boolean));
-    const itemBtn = document.getElementById("loans-item-btn");
-    itemBtn.hidden = types.size < 2 && !loanFilterType;
-    itemBtn.textContent = `Item: ${loanFilterType || "All"} ▾`;
-    itemBtn.classList.toggle("on", !!loanFilterType);
+    const types = new Set(L.rows.map(l => l.itemTypeName).filter(Boolean));
+    const itemBtn = bklEl(L, "item-btn");
+    itemBtn.hidden = types.size < 2 && !L.type;
+    itemBtn.textContent = `Item: ${L.type || "All"} ▾`;
+    itemBtn.classList.toggle("on", !!L.type);
 
-    const filtered = !!(loanFilterType || q || loanStatus !== "all");
+    const filtered = !!(L.type || q || L.status !== "all");
     const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-    const nItems = list => list.reduce((s, b) => s + b.loans.length, 0);
-    let txt = filtered ? `${books.length} of ${plural(all.length, "loan")}` : plural(all.length, "loan");
-    const shownItems = filtered ? nItems(books) : allLoans.length;
+    const nItems = bs => bs.reduce((s, b) => s + b.loans.length, 0);
+    let txt = filtered ? `${books.length} of ${plural(all.length, cfg.noun)}` : plural(all.length, cfg.noun);
+    const shownItems = filtered ? nItems(books) : L.rows.length;
     if (shownItems !== (filtered ? books.length : all.length)) txt += ` · ${plural(shownItems, "item")}`;
-    if (loanGroup) txt += ` · ${plural(new Set(books.map(b => loanPersonKey(b.loans[0]))).size, "borrower")}`;
-    document.getElementById("loans-count").innerHTML =
-      esc(txt) + (filtered ? ` <button type="button" class="link-btn" onclick="clearLoanFilters()">Clear</button>` : "");
+    if (L.group) txt += ` · ${plural(new Set(books.map(b => loanPersonKey(b.loans[0]))).size, "borrower")}`;
+    bklEl(L, "count").innerHTML =
+      esc(txt) + (filtered ? ` <button type="button" class="link-btn" onclick="bklClear('${L.p}')">Clear</button>` : "");
 
-    const list = document.getElementById("loans-list");
-    RECORDS.loan.clear();
-    clearBk("loan");
+    cfg.after?.(L);
     if (!books.length) {
-      list.innerHTML = `<div class="empty-state" style="padding:1.5rem;text-align:center;color:var(--muted)">No loans match${filtered ? ` — <button type="button" class="link-btn" onclick="clearLoanFilters()">clear filters</button>` : ""}</div>`;
+      list.innerHTML = `<div class="empty-state" style="padding:1.5rem;text-align:center;color:var(--muted)">No ${cfg.noun}s match${filtered ? ` — <button type="button" class="link-btn" onclick="bklClear('${L.p}')">clear filters</button>` : ""}</div>`;
       return;
     }
-    if (!loanGroup) { list.innerHTML = books.map(b => bookingRowHtml(b, "loan", false)).join(""); return; }
+    if (!L.group) { list.innerHTML = books.map(b => bookingRowHtml(b, L.p, false)).join(""); return; }
 
-    // Grouped: a borrower with 2+ bookings or items out gets a header and their bookings under it; otherwise a normal row.
+    // Grouped: a borrower with 2+ bookings gets a header and their bookings under it; otherwise a normal row.
     const groups = [], at = new Map();
     for (const b of books) {
       const k = loanPersonKey(b.loans[0]);
@@ -4172,15 +4248,13 @@
       g.books.push(b);
     }
     list.innerHTML = groups.map(g => {
-      const n = nItems(g.books);
-      if (n === 1 || g.books.length === 1) return bookingRowHtml(g.books[0], "loan", false);
-      const late = g.books.reduce((s, b) => s + b.loans.filter(l => l.overdue).length, 0);
+      if (nItems(g.books) === 1 || g.books.length === 1) return bookingRowHtml(g.books[0], L.p, false);
       return `<div class="loan-group">
         <div class="loan-group-head">
           <span class="loan-group-name">${esc(g.books[0].name)}</span>
-          <span class="loan-group-sub">${n} items out${late ? ` · <span class="late">${late} overdue</span>` : ""}</span>
+          <span class="loan-group-sub">${cfg.groupSub(g.books)}</span>
         </div>
-        <div class="loan-group-rows">${g.books.map(b => bookingRowHtml(b, "loan", true)).join("")}</div>
+        <div class="loan-group-rows">${g.books.map(b => bookingRowHtml(b, L.p, true)).join("")}</div>
       </div>`;
     }).join("");
   }
@@ -4246,10 +4320,8 @@
     const block = document.getElementById("appointments-block");
     let data = null;
     try { data = await api("/admin/appointments"); } catch (e) { console.warn("Appointments failed:", e); }
-    if (!Array.isArray(data) || !data.length) { block.style.display = "none"; return; }
-    const past = data.filter(a => a.past).length;
-    document.getElementById("appointments-section-label").textContent =
-      `Appointments (${data.length})${past ? ` · ${past} to close` : ""}`;
+    APPTS = Array.isArray(data) ? data : [];
+    if (!APPTS.length) { block.style.display = "none"; resBarState(); return; }
     document.getElementById("appointments-list").innerHTML = data.map(a => {
       const items = (a.itemNames || []).join(", ");
       const id = safeId(a.id);
@@ -4279,6 +4351,28 @@
       </div>`;
     }).join("");
     block.style.display = "";
+    resBarState();
+    filterAppointments(bklList("res").query);
+  }
+  var APPTS = [];
+  /** The Reservations search also narrows the appointments (name, items, unit numbers, phone, email). */
+  function filterAppointments(query) {
+    if (!APPTS.length) return;
+    const q = String(query || "").trim();
+    let shown = 0;
+    for (const a of APPTS) {
+      const names = [...(a.itemNames || []), ...(a.items || []).map(i => i.name)];
+      const units = (a.items || []).flatMap(i => i.units || []);
+      const row = { borrowerName: a.name, itemTypeName: names.join(" "), itemId: units.join(" "), borrowerEmail: a.email, borrowerPhone: a.phone };
+      const ok = loanMatches(row, q);
+      const card = document.getElementById(`appt-${safeId(a.id)}`);
+      if (card) card.hidden = !ok;
+      if (ok) shown++;
+    }
+    const past = APPTS.filter(a => a.past).length;
+    document.getElementById("appointments-section-label").textContent = q
+      ? (shown ? `Appointments (${shown} of ${APPTS.length})` : `Appointments — none match`)
+      : `Appointments (${APPTS.length})${past ? ` · ${past} to close` : ""}`;
   }
 
   /**
@@ -5725,28 +5819,66 @@
     if (screen === "screen-inventory") loadInventory();
   }
 
-  async function loadReservations() {
+  /** resetFilters: opening the tab; refreshes after a pickup / edit / cancel keep the search and filters. */
+  async function loadReservations(resetFilters) {
     renderQuickActions();
     loadAppointments();
-    await snapLoad("/admin/reservations", document.getElementById("reservations-list"), renderReservations);
+    let first = !!resetFilters;
+    await snapLoad("/admin/reservations", document.getElementById("reservations-list"), data => { renderReservations(data, first); first = false; });
   }
-  function renderReservations(data) {
-    const list = document.getElementById("reservations-list");
-    if (!data?.length) {
-      list.innerHTML = '<div class="empty-state"><div class="icon">📅</div>No upcoming reservations</div>';
-      document.getElementById("reservations-section-label").textContent = "Upcoming reservations";
-      return;
-    }
-
-    // One row per booking (a request's items together); the count says bookings, plus items when that differs.
-    const books = groupBookings(data);
-    document.getElementById("reservations-section-label").textContent =
-      `Upcoming reservations (${books.length}${books.length !== data.length ? ` · ${data.length} items` : ""})`;
-
-    RECORDS.res.clear();
-    clearBk("res");
-    list.innerHTML = books.map(b => bookingRowHtml(b, "res", false)).join("");
+  function isoPlusDays(iso, n) {
+    const d = new Date(iso + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
   }
+  function resListCfg() {
+    const start = b => minDate(b.loans.map(l => l.reservationStart));
+    return {
+      ids: "res", listId: "reservations-list", store: "whg_res_view", noun: "reservation",
+      sorts: ["start", "end", "borrower", "item", "recent"],
+      sheetSub: "What's reserved",
+      pills: [
+        { key: "all", label: "All upcoming", test: () => true, always: true },
+        { key: "week", label: "This week", test: (b, t) => { const s = start(b); return !!s && s >= t && s <= isoPlusDays(t, 6); }, always: true },
+        // A start date gone by and still only reserved: not picked up yet.
+        { key: "passed", label: "Pickup passed", color: "amber", test: (b, t) => b.loans.some(l => l.reservationStart && l.reservationStart < t) },
+      ],
+      sortRep: (b, kind) => {
+        const ls = b.loans;
+        const byName = [...ls].sort((a, c) => String(a.itemTypeName || "").localeCompare(String(c.itemTypeName || ""), undefined, { sensitivity: "base", numeric: true }))[0];
+        return {
+          borrowerName: ls[0].borrowerName, itemTypeName: byName.itemTypeName, itemId: byName.itemId,
+          start: start(b), end: minDate(ls.map(l => l.reservationEnd)), received: b.request?.receivedAt || null,
+        };
+      },
+      sortFn: resSortFn,
+      groupSub: books => `${books.reduce((s, b) => s + b.loans.length, 0)} items reserved`,
+      emptyHtml: '<div class="empty-state"><div class="icon">📅</div>No upcoming reservations</div>',
+      after: L => { resBarState(); filterAppointments(L.query); },
+    };
+  }
+  function resSortFn(kind) {
+    const str = (a, b) => String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base", numeric: true });
+    const dateAsc = (a, b) => (!a && !b) ? 0 : !a ? 1 : !b ? -1 : a < b ? -1 : a > b ? 1 : 0; // no date goes last
+    const dateDesc = (a, b) => (!a && !b) ? 0 : !a ? 1 : !b ? -1 : a > b ? -1 : a < b ? 1 : 0;
+    if (kind === "end") return (a, b) => dateAsc(a.end, b.end) || dateAsc(a.start, b.start);
+    if (kind === "borrower") return (a, b) => str(a.borrowerName, b.borrowerName) || dateAsc(a.start, b.start);
+    if (kind === "item") return (a, b) => str(a.itemTypeName, b.itemTypeName) || str(a.itemId, b.itemId) || dateAsc(a.start, b.start);
+    if (kind === "recent") return (a, b) => dateDesc(a.received, b.received) || dateAsc(a.start, b.start);
+    return (a, b) => dateAsc(a.start, b.start); // soonest pickup first (the order the server sends)
+  }
+  function renderReservations(data, resetFilters) { bklShow(bklList("res"), data, resetFilters); }
+  /** The search shows when there are reservations or appointments; the pills, item filter and sort only with reservations. */
+  function resBarState() {
+    const L = bklList("res");
+    const has = L.rows.length > 0, any = has || APPTS.length > 0;
+    const bar = document.getElementById("res-bar");
+    bar.classList.toggle("is-empty", !any);
+    bar.classList.toggle("has-appt", isApptGemach());
+    document.getElementById("res-search").hidden = !any;
+    document.getElementById("res-tools").hidden = !has;
+  }
+  function onResSearch(v) { bklSet("res", "query", v); }
 
   function openEditReservation(r) { openBooking({ loan: r.id, from: "reservations" }); }
 

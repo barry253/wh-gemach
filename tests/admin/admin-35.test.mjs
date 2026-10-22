@@ -62,7 +62,7 @@ await page.waitForTimeout(400);
 await page.evaluate(() => switchTab("reservations"));
 await page.waitForSelector("#reservations-list .loan-row");
 ok(await page.$$eval("#reservations-list .loan-row", e => e.length) === 2, "Tova's two items are one booking row (plus the walk-in reservation)");
-ok(/Upcoming reservations \(2 · 3 items\)/.test(await page.textContent("#reservations-section-label")), "count says bookings, then items");
+ok(/2 reservations · 3 items/.test(await page.textContent("#res-count")), "count says bookings, then items: " + await page.textContent("#res-count"));
 const row = await page.textContent("#res-row-recRESTOVA000001");
 ok(/2 items/.test(row) && /Toile · Round × 12/.test(row) && /Navy · Rectangle × 6/.test(row), "row names both items");
 await page.click("#res-row-recRESTOVA000001");
