@@ -37,4 +37,9 @@ const before = sha10(g);
 assert(before === sha10(g), 'same file, same stamp');
 assert(crypto.createHash('sha256').update(fs.readFileSync(g, 'utf8') + ' ').digest('hex').slice(0, 10) !== before, 'changed file, new stamp');
 
+// version.txt names the commit, so the live check can wait for this exact deploy (Oct 22, 2026).
+const ver = path.join(DIST, 'version.txt');
+const v = fs.existsSync(ver) ? fs.readFileSync(ver, 'utf8').trim() : '';
+assert(/^([0-9a-f]{40}|local)$/.test(v), `dist/version.txt holds the commit (${v || 'missing'})`);
+
 console.log(fails ? `${fails} FAILED` : 'ALL PASSED');

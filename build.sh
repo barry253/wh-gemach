@@ -22,5 +22,10 @@ for f in $(cd dist && find assets -type f \( -name '*.js' -o -name '*.css' \) | 
 done
 find dist -name '*.html.bak' -exec rm -f {} +
 
+# Which commit this build is (Oct 22, 2026): the live check waits until whgemachs.org/version.txt shows the
+# commit it was started for, so it never tests the previous deploy. Cloudflare Pages sets CF_PAGES_COMMIT_SHA.
+sha="${CF_PAGES_COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo local)}"
+printf '%s\n' "$sha" > dist/version.txt
+
 echo "Built dist/:"
 ls dist
