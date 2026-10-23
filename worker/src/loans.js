@@ -285,12 +285,12 @@ async function handleReturnLoan(c, id) {
   // email copy of a WhatsApp / text sent from the admin's phone. The return stands even if the email fails.
   let emailSent, emailError;
   const via = { whatsapp: "WhatsApp", sms: "text message", email: "email" }[body.via] || null;
-  if ((body.via === "email" || ((body.via === "whatsapp" || body.via === "sms") && body.emailCopy === true)) && String(body.message ?? "").trim()) {
+  if (g.returnedMessageOn && (body.via === "email" || ((body.via === "whatsapp" || body.via === "sms") && body.emailCopy === true)) && String(body.message ?? "").trim()) {
     const sent = await emailBorrower(c, loan, body.message, `Thank you for returning the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`);
     emailSent = !!sent.ok;
     if (!sent.ok) emailError = sent.error;
   }
-  const sentNote = via ? `Thank-you sent by ${via}${body.via !== "email" && emailSent ? " (copy emailed)" : ""}${body.via === "email" && !emailSent ? " — email failed" : ""}` : null;
+  const sentNote = g.returnedMessageOn && via ? `Thank-you sent by ${via}${body.via !== "email" && emailSent ? " (copy emailed)" : ""}${body.via === "email" && !emailSent ? " — email failed" : ""}` : null;
 
   logEvent(ctx, db, g, {
     eventType: "Item Returned",

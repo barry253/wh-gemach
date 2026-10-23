@@ -4200,14 +4200,19 @@
 
     // "Item returned" message (Settings → Message templates), with the gemach's donation details.
     // When other items from the same booking are still out, start on "Don't send" (thank them with the last one).
-    const stillOut = (allLoans || []).filter(x => x.id !== l.id && bookingKey(x) === bookingKey(l)).length;
+    // Off (Settings → Messages → When an item comes back): just mark it returned, as before.
+    const msgOn = !!GEMACH?.returnedMessageOn;
+    document.getElementById("return-msg-group").hidden = !msgOn;
+    document.getElementById("return-send-by").hidden = !msgOn;
+    const stillOut = !msgOn ? 0 : (allLoans || []).filter(x => x.id !== l.id && bookingKey(x) === bookingKey(l)).length;
     document.getElementById("return-message").value = renderMessage("returned", String(l.borrowerName || "").split(" ")[0], l.itemTypeName || "item", {});
     const msgNote = document.getElementById("return-msg-note");
     msgNote.hidden = !stillOut;
     msgNote.textContent = stillOut ? `${stillOut} other item${stillOut === 1 ? " is" : "s are"} from this booking still out — you may want to send this with the last one.` : "";
     const retLabels = { email: "Return & email", whatsapp: "Return & open WhatsApp", sms: "Return & open text", none: "Confirm return" };
-    setupSendBy("return", { ...l, phone: l.borrowerPhone, email: l.borrowerEmail, preferredContact: l.borrowerContact },
+    if (msgOn) setupSendBy("return", { ...l, phone: l.borrowerPhone, email: l.borrowerEmail, preferredContact: l.borrowerContact },
       "return-submit-btn", retLabels, stillOut ? { initial: "none" } : {});
+    else { SEND_BY.return = { c: {}, choice: "none" }; document.getElementById("return-submit-btn").textContent = "Confirm return"; }
 
     document.getElementById("return-submit-btn").onclick = async () => {
       const returnDate = document.getElementById("return-date").value;
@@ -6358,13 +6363,14 @@
     { area: "requests", title: "Requests", extra: "requests" },
     { area: "requests", title: "Pickup", fields: ["pickupAddress", "pickupInstructions"] },
     { area: "messages", title: "Return reminders", extra: "reminders" },
+    { area: "messages", title: "When an item comes back", extra: "returned" },
   ];
   // Which area each saved key belongs to (for the "unsaved" dots).
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
     info: ["depositRequired", "chargeType", "depositInfo", "localPlaces", "localDepositInfo", "gemachInfo"],
     requests: ["requestFormUrl", "borrowNote", "requestStyle", "availabilityMode", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays", "requireTown"],
-    reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], view: ["itemView", "photoShape"],
+    reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], returned: ["returnedMessageOn"], view: ["itemView", "photoShape"],
     attrs: ["itemAttributes", "groupBy", "spotlightFilter"], browsecats: ["browseCategoryIds"],
   };
   function settingsKeyArea(key) {
@@ -6497,6 +6503,14 @@
           </div>
         </div>
         ${fieldHtml("gemachInfo")}`;
+    }
+    if (group.extra === "returned") {
+      inner += `
+        <div class="checkbox-row">
+          <input type="checkbox" id="set-returnedMessageOn" />
+          <label for="set-returnedMessageOn">Offer a thank-you message when an item is marked returned</label>
+        </div>
+        <p class="settings-help" style="margin:0.3rem 0 0">The Return sheet then shows the “Item returned” message (Message templates below), with your donation details from Profile → Donations, ready to send by email, WhatsApp or text. Off: items are just marked returned.</p>`;
     }
     if (group.extra === "reminders") {
       inner += `
@@ -6754,11 +6768,13 @@
     setEl("reminderDaysBefore").value = g.reminderDaysBefore ?? 2; setEl("reminderDaysBefore").disabled = ro;
     setEl("reminderRepeatDays").value = g.reminderRepeatDays ?? 7; setEl("reminderRepeatDays").disabled = ro;
     remember("autoReminders", !!g.autoReminders);
+    setEl("returnedMessageOn").checked = !!g.returnedMessageOn;
+    remember("returnedMessageOn", !!g.returnedMessageOn);
     remember("reminderDaysBefore", Number(g.reminderDaysBefore ?? 2));
     remember("reminderRepeatDays", Number(g.reminderRepeatDays ?? 7));
 
     ["primaryContact", "secondaryContact", "themePicker", "themeHex", "accentPicker", "accentHex", "depositRequired", "localTier",
-     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "requireTown", "defaultLoanDays", "autoReminders", "reminderDaysBefore", "reminderRepeatDays"].forEach(k => {
+     "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "requireTown", "defaultLoanDays", "autoReminders", "reminderDaysBefore", "reminderRepeatDays", "returnedMessageOn"].forEach(k => {
       const el = setEl(k);
       el.disabled = ro;
       el.addEventListener("input", onSettingsInput);
@@ -7337,6 +7353,7 @@
       put("defaultLoanDays", raw === "" ? null : n);
     }
     put("autoReminders", setEl("autoReminders").checked);
+    put("returnedMessageOn", setEl("returnedMessageOn").checked);
     for (const [k, max, label] of [["reminderDaysBefore", 14, "Days before the due date"], ["reminderRepeatDays", 30, "Overdue reminder days"]]) {
       const raw = setEl(k).value.trim(), n = Number(raw);
       if (raw === "" || !Number.isInteger(n) || n < 0 || n > max) return { error: `${label} must be a whole number from 0 to ${max}.` };

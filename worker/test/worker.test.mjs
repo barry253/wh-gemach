@@ -3938,6 +3938,11 @@ await t("returned message: template in Settings; return can email a thank-you (o
   assert.equal((await r.json()).templates.returned, "Thanks {first_name}! {donation_info}");
   assert.equal(DB.Gemachs.find(g => g.id === A.id).fields["Returned Message"], "Thanks {first_name}! {donation_info}");
 
+  // Off by default (Settings → "Thank-you when returned"); turned on here
+  assert.equal(gj.returnedMessageOn, false);
+  r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ returnedMessageOn: true }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal((await r.json()).returnedMessageOn, true);
   DB.Borrowers.push(rec("recBORRRETMAIL001", { Name: "Ret Person", Email: "ret.person@example.com", ...sc }));
   DB.Loans.push(rec("recLOANRETMSG0001", { "Loan ID": "L-961", Status: "Active", Borrower: ["recBORRRETMAIL001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }),
     rec("recLOANRETMSG0002", { "Loan ID": "L-962", Status: "Active", Borrower: ["recBORRRETMAIL001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }),
@@ -3974,6 +3979,15 @@ await t("returned message: template in Settings; return can email a thank-you (o
   r = await call("/admin/loans/recLOANRETMSG0004/return", { method: "POST", headers: H, body: "{}" });
   assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, undefined);
   assert.equal(resendCalls().length, n);
+  // Turned off: a message sent with the return is ignored (older admin page, or a stale sheet)
+  r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ returnedMessageOn: false }) });
+  assert.equal(r.status, 200);
+  DB.Loans.push(rec("recLOANRETMSG0005", { "Loan ID": "L-965", Status: "Active", Borrower: ["recBORRRETMAIL001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }));
+  n = resendCalls().length;
+  r = await call("/admin/loans/recLOANRETMSG0005/return", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Thanks!" }) });
+  assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, undefined, "nothing sent while off");
+  assert.equal(resendCalls().length, n);
+  assert.equal(DB.Loans.find(l => l.id === "recLOANRETMSG0005").fields.Status, "Returned");
   DB.Loans = DB.Loans.filter(l => !/^recLOANRETMSG/.test(l.id));
   await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ returnedMessage: "" }) });
 });

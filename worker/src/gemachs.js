@@ -30,7 +30,7 @@ const clampInt = (v, lo, hi, dflt) => {
 const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", "Website", "Donation URL", "Donation Info", "Hours",
   "Description", "Category", "Mode", "Primary Contact", "Secondary Contact", "Theme Color", "Accent Color", "Deposit Required",
   "Charge Type", "Item View", "Deposit Info", "Local Deposit Info", "Local Places", "Require Town", "Gemach Info", "Request Form URL", "Request Style", "Event Label", "Pickup Days Before", "Return Days After", "Default Loan Days",
-  "Shabbos Adjust", "Auto Reminders", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
+  "Shabbos Adjust", "Auto Reminders", "Returned Message On", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
   "Return Reminder Message", "Returned Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories",
   "Group By", "Spotlight Filter", "Borrow Note", "Photo Shape", "Availability Mode"];
@@ -80,6 +80,7 @@ function gemachFromRecord(r) {
     returnDaysAfter: clampInt(f["Return Days After"], 0, 14, 1),
     shabbosAdjust: !!f["Shabbos Adjust"],
     defaultLoanDays: loanDays(f["Default Loan Days"]),                       // optional; fills in the due date when lending
+    returnedMessageOn: !!f["Returned Message On"],                         // Return sheet offers the "Item returned" message (off by default)
     autoReminders: !!f["Auto Reminders"],                                   // emailed return reminders (reminders.js)
     reminderDaysBefore: clampInt(f["Reminder Days Before"], 0, 14, 2),
     reminderRepeatDays: clampInt(f["Reminder Repeat Days"], 0, 30, 7),

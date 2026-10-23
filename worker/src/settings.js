@@ -65,6 +65,7 @@ async function adminGemachPayload(db, g, user) {
     placeholders: TEMPLATE_PLACEHOLDERS,
     canEdit: canEditGemach(user),
     canManageTeam: canManageTeam(user),
+    returnedMessageOn: !!g.returnedMessageOn,
     autoReminders: !!g.autoReminders, reminderDaysBefore: g.reminderDaysBefore, reminderRepeatDays: g.reminderRepeatDays,
   };
 }
@@ -117,6 +118,7 @@ const GEMACH_EDITABLE = {
   returnReminderMessage: ["Return Reminder Message", "long"],
   returnedMessage:    ["Returned Message", "long"],
   autoReminders:      ["Auto Reminders", "bool"],
+  returnedMessageOn:  ["Returned Message On", "bool"],
   reminderDaysBefore: ["Reminder Days Before", "days"],
   reminderRepeatDays: ["Reminder Repeat Days", "repeat"],
   logoUrl:            ["Logo URL", "logo"],
@@ -136,7 +138,7 @@ const GEMACH_LABELS = {
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
   depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", localDepositInfo: "Payment for local borrowers", localPlaces: "Local cities", requireTown: "City required", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
-  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", returnedMessage: "Item returned message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
+  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", returnedMessage: "Item returned message", autoReminders: "Automatic reminders", returnedMessageOn: "Thank-you when returned", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
   groupBy: "Sections", spotlightFilter: "Holiday spotlight", borrowNote: "How to borrow", photoShape: "Photo shape", availabilityMode: "Availability",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };

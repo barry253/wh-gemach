@@ -23,7 +23,7 @@ const LOANS = [
 ];
 const G = { id: "recA", slug: "wh-medical", name: "WH Medical Gemach", requestStyle: "Dates", templates: {}, rawTemplates: {}, canEdit: true,
   placeholders: ["first_name", "items", "gemach", "donation_info", "donation_link"],
-  donationInfo: "Donations of any amount help us buy new equipment.", donationUrl: "https://example.org/donate" };
+  donationInfo: "Donations of any amount help us buy new equipment.", donationUrl: "https://example.org/donate", returnedMessageOn: true };
 
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 const errors = [];
@@ -99,10 +99,22 @@ ok(post && post.body.via === "whatsapp" && post.body.emailCopy === true && /^Hi 
 const plain = await page.evaluate(() => { GEMACH.donationInfo = null; GEMACH.donationUrl = null; return renderMessage("returned", "Dina", "Shower chair", {}); });
 ok(!/Donate|donation|\{/.test(plain) && /We hope it helped!\n\nThank you!$/.test(plain), "without donation details the message is a plain thank-you: " + JSON.stringify(plain));
 
-// 5. Settings lists the template (default shown as placeholder)
+// 5. Setting off (the default): the sheet just marks it returned, as before
+await page.evaluate(() => { GEMACH.returnedMessageOn = false; openReturn(allLoans.find(l => l.id === "recLOANDINA00001")); });
+await page.waitForTimeout(150);
+ok(await page.isHidden("#return-msg-group") && await page.isHidden("#return-send-by"), "off: no message or send choice");
+ok(await page.textContent("#return-submit-btn") === "Confirm return", "off: button says Confirm return");
+posts.length = 0;
+await page.click("#return-submit-btn");
+await page.waitForTimeout(400);
+post = posts.find(x => x.p === "/admin/loans/recLOANDINA00001/return");
+ok(post && !post.body.via && !post.body.message, "off: plain return posted " + JSON.stringify(post?.body));
+
+// 6. Settings lists the template (default shown as placeholder) and the on/off switch
 await page.evaluate(() => { switchTab("settings"); });
 await page.waitForSelector("#set-returnedMessage", { state: "attached", timeout: 8000 });
 ok(/\{donation_info\}/.test(await page.getAttribute("#set-returnedMessage", "placeholder")), "Settings has the Item returned template");
+ok(await page.$("#set-returnedMessageOn") && await page.isChecked("#set-returnedMessageOn"), "Settings switch shows the saved value (on)");
 
 ok(errors.length === 0, "no page errors " + errors.join(" | "));
 await browser.close();

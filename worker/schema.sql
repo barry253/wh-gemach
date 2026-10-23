@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS gemachs (
   return_reminder_message TEXT,  -- Return Reminder Message
   returned_message TEXT,  -- Returned Message
   auto_reminders INTEGER NOT NULL DEFAULT 0,  -- Auto Reminders
+  returned_message_on INTEGER NOT NULL DEFAULT 0,  -- Returned Message On
   reminder_days_before REAL,  -- Reminder Days Before
   reminder_repeat_days REAL,  -- Reminder Repeat Days
   item_attributes TEXT,  -- Item Attributes
