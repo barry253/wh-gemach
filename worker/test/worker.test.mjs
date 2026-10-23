@@ -5118,6 +5118,74 @@ await t("bookings: loan and reservation rows carry their source request's card d
   if (D1_MODE) assert.ok(d1Queries <= 8, `loans list used ${d1Queries} queries`);
 });
 
+await t("backup watch: alerts when the nightly export or an off-site copy is late; quiet when fresh or not set up", async () => {
+  const B = await import("../src/backupwatch.js");
+  const NOW = Date.parse("2026-11-02T14:00:00Z");
+  const H = 3600e3;
+  // fake private backups bucket
+  const objs = new Map();
+  const put = (key, uploaded, body = "") => objs.set(key, { uploaded: new Date(uploaded), body });
+  const bucket = {
+    list: async ({ prefix, cursor, limit }) => {
+      const all = [...objs].filter(([k]) => k.startsWith(prefix)).map(([key, o]) => ({ key, uploaded: o.uploaded }));
+      const start = cursor ? Number(cursor) : 0, page = all.slice(start, start + Math.min(limit || 1000, 2));
+      return { objects: page, truncated: start + page.length < all.length, cursor: String(start + page.length) };
+    },
+    get: async key => objs.has(key) ? { json: async () => JSON.parse(objs.get(key).body) } : null,
+  };
+  const mail = () => resendCalls().filter(m => /backup/i.test(m.subject || ""));
+  const before = mail().length;
+  const e = { ...env, BACKUPS_BUCKET: bucket };
+
+  // last night's export is in the previous month's folder (Nov 2 run looks back into October); paged list
+  put("d1/2026/10/wh-gemach-2026-10-30T0717Z.sql.gz", NOW - 3 * 24 * H);
+  put("d1/2026/10/wh-gemach-2026-10-31T0717Z.sql.gz", NOW - 2 * 24 * H);
+  put("d1/2026/11/wh-gemach-2026-11-01T0717Z.sql.gz", NOW - 31 * H);
+  put("d1/2026/11/wh-gemach-2026-11-02T0717Z.sql.gz", NOW - 7 * H);
+  let r = await B.runBackupWatch(e, { now: NOW });
+  assert.deepEqual(r.late, [], "fresh export, off-site not set up yet: quiet");
+  assert.equal(mail().length, before);
+
+  // off-site copies set up and fresh
+  put("status/offsite-db.json", NOW, JSON.stringify({ at: new Date(NOW - 6 * H).toISOString() }));
+  put("status/offsite-photos.json", NOW, JSON.stringify({ at: new Date(NOW - 5 * 24 * H).toISOString() }));
+  r = await B.runBackupWatch(e, { now: NOW });
+  assert.deepEqual(r.late, []);
+
+  // nightly stopped two days ago, off-site db copy too, photos 10 days old
+  objs.delete("d1/2026/11/wh-gemach-2026-11-02T0717Z.sql.gz"); objs.delete("d1/2026/11/wh-gemach-2026-11-01T0717Z.sql.gz");
+  put("status/offsite-db.json", NOW, JSON.stringify({ at: new Date(NOW - 50 * H).toISOString() }));
+  put("status/offsite-photos.json", NOW, JSON.stringify({ at: new Date(NOW - 10 * 24 * H).toISOString() }));
+  r = await B.runBackupWatch(e, { now: NOW });
+  await Promise.allSettled(waits);
+  assert.deepEqual(r.late.map(l => l.id).sort(), ["database", "offsiteDb", "offsitePhotos"]);
+  const m = mail().slice(before);
+  assert.equal(m.length, 1, "one email for everything late");
+  assert.equal(m[0].subject, "[whgemachs] 3 backups are late");
+  assert.match(m[0].text, /Nightly database backup \(Cloudflare R2\): last one 2 days ago/);
+  assert.match(m[0].text, /Weekly photo backup \(GitHub\): last one 10 days ago/);
+  assert.match(m[0].text, /Enable workflow/);
+  assert.ok(!/\n\n\n/.test(m[0].text), "no stray blank lines");
+
+  // no exports at all; unreadable status file
+  objs.clear(); put("status/offsite-db.json", NOW, "not json");
+  r = await B.runBackupWatch(e, { now: NOW + 600e3 + 1 });
+  assert.deepEqual(r.late.map(l => [l.id, l.at]), [["database", null], ["offsiteDb", null]]);
+
+  // pure part, boundaries
+  assert.deepEqual(B.lateChecks({ database: NOW - 30 * H, offsiteDb: null, offsitePhotos: null }, NOW), []);
+  assert.deepEqual(B.lateChecks({ database: NOW - 30 * H - 1, offsiteDb: null, offsitePhotos: null }, NOW).map(l => l.id), ["database"]);
+
+  // off / no binding / the daily cron runs it
+  assert.deepEqual(await B.runBackupWatch({ ...e, BACKUP_WATCH: "off" }), { skipped: "off" });
+  assert.deepEqual(await B.runBackupWatch(env), { skipped: "no bucket" });
+  let listed = 0;
+  const cw = [];
+  await worker.scheduled({ cron: "0 14 * * *" }, { ...e, BACKUPS_BUCKET: { ...bucket, list: async a => { listed++; return bucket.list(a); } } }, { waitUntil: p => cw.push(p) });
+  await Promise.allSettled(cw);
+  assert.ok(listed > 0, "daily cron checks the backups");
+});
+
 if (D1_MODE) {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);

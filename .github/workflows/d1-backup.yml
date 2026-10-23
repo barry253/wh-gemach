@@ -6,6 +6,14 @@ name: D1 nightly backup
 #   npx wrangler d1 create wh-gemach-restore && npx wrangler d1 execute wh-gemach-restore --remote --file=<file>.sql
 # or, for the last 7 days, use Time Travel instead: npx wrangler d1 time-travel restore wh-gemach --timestamp=<time>
 # Needs CLOUDFLARE_API_TOKEN with D1 edit + R2 edit. Nothing from the backup is ever written to the log.
+#
+# Off-site copy (outside Cloudflare): the same file, encrypted with age, is also attached to a monthly release
+# (db-YYYY-MM) in the PRIVATE repo BACKUP_REPO (default barry253/wh-gemach-backups). Kept: 90 days of nightlies,
+# then the first of each month forever (scripts/offsite.mjs db-prune). Skipped with a warning until set up:
+#   repo variable AGE_RECIPIENTS = the age public key(s), "age1…" (space-separated for more than one)
+#   repo secret  BACKUP_REPO_TOKEN = fine-grained token, Contents read/write on BACKUP_REPO only
+# After a successful copy, status/offsite-db.json in the backups bucket records it (the worker's daily check
+# emails an alert if it gets old). Decrypt: age -d -i key.txt file.sql.gz.age | gunzip > file.sql
 on:
   schedule:
     - cron: "17 7 * * *"   # ~3:17 am New York (7:17 UTC)
@@ -57,4 +65,33 @@ jobs:
           key="d1/$(date -u +%Y/%m)/wh-gemach-$stamp.sql.gz"
           scripts/step.sh "Store" npx wrangler r2 object put "wh-gemach-backups/$key" --remote --file="$file.gz" --content-type=application/gzip
           echo "::notice title=Backup stored::$key ($(stat -c %s "$file.gz") bytes)"
-          rm -f "$file.gz"
+          echo "BACKUP_GZ=$file.gz" >> "$GITHUB_ENV"
+          echo "BACKUP_STAMP=$stamp" >> "$GITHUB_ENV"
+      - name: Off-site copy (encrypted, GitHub)
+        if: github.event_name == 'schedule' || inputs.task == 'backup'
+        env:
+          GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          BACKUP_REPO: ${{ vars.BACKUP_REPO || 'barry253/wh-gemach-backups' }}
+          AGE_RECIPIENTS: ${{ vars.AGE_RECIPIENTS }}
+        run: |
+          set -e
+          if [ -z "$GH_TOKEN" ] || [ -z "$AGE_RECIPIENTS" ]; then
+            echo "::warning title=Off-site copy not set up::Add the AGE_RECIPIENTS variable and BACKUP_REPO_TOKEN secret (see the top of this file). The R2 backup above was stored."
+            rm -f "$BACKUP_GZ"; exit 0
+          fi
+          sudo apt-get install -y -qq age > /dev/null
+          args=""; for r in $AGE_RECIPIENTS; do args="$args -r $r"; done
+          enc="$RUNNER_TEMP/wh-gemach-$BACKUP_STAMP.sql.gz.age"
+          age $args -o "$enc" "$BACKUP_GZ"
+          rm -f "$BACKUP_GZ"
+          tag="db-$(date -u +%Y-%m)"
+          if ! gh release view "$tag" --repo "$BACKUP_REPO" > /dev/null 2>&1; then
+            gh release create "$tag" --repo "$BACKUP_REPO" --title "Database $(date -u +%Y-%m)" \
+              --notes "Nightly encrypted D1 backups. Decrypt: age -d -i key.txt FILE.sql.gz.age | gunzip > FILE.sql — then load it into a new D1 database (see .github/workflows/d1-backup.yml in wh-gemach)."
+          fi
+          gh release upload "$tag" "$enc" --repo "$BACKUP_REPO" --clobber
+          echo "::notice title=Off-site copy stored::$BACKUP_REPO $tag $(basename "$enc") ($(stat -c %s "$enc") bytes)"
+          rm -f "$enc"
+          node scripts/offsite.mjs db-prune
+          printf '{"at":"%s","release":"%s","file":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tag" "wh-gemach-$BACKUP_STAMP.sql.gz.age" > "$RUNNER_TEMP/offsite-db.json"
+          scripts/step.sh "Record off-site copy" npx wrangler r2 object put "wh-gemach-backups/status/offsite-db.json" --remote --file="$RUNNER_TEMP/offsite-db.json" --content-type=application/json

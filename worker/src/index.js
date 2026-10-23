@@ -86,6 +86,7 @@ import { handleGetHistory } from "./activity.js";
 import { makeDb } from "./db.js";
 import { alertServerError, handleHealth, sendAlert } from "./alerts.js";
 import { USAGE_CRON, runUsageWatch } from "./usagewatch.js";
+import { runBackupWatch } from "./backupwatch.js";
 import { handleLogin, handleMe, lookupAdminSession, signJWT, verifyJWT } from "./auth.js";
 import { purgePublicCache, refreshCache } from "./cache.js";
 import { handleCreateItem, handleCreateItemType, handleDeleteItem, handleGetCatalogItems, handleGetItemTypes, handleUpdateItem, handleUpdateItemType, handleUploadPhoto, handleFetchPhoto } from "./catalog.js";
@@ -149,12 +150,14 @@ export default {
     }
     return withCors(res, request, isPublicRoute);
   },
-  // Crons (wrangler.toml [triggers]): hourly free-limit usage check; daily automatic return reminder emails.
+  // Crons (wrangler.toml [triggers]): hourly free-limit usage check; daily automatic return reminder emails
+  // and the "are the backups still happening?" check (src/backupwatch.js).
   async scheduled(event, env, ctx) {
     if (event && event.cron === USAGE_CRON) {
       ctx.waitUntil(runUsageWatch(env).catch(e => console.error("usage watch failed:", e && (e.stack || e.message))));
       return;
     }
+    ctx.waitUntil(runBackupWatch(env).catch(e => console.error("backup watch failed:", e && (e.stack || e.message))));
     ctx.waitUntil(runReminders(env, ctx).catch(e => {
       console.error("reminders failed:", e && (e.stack || e.message));
       return sendAlert(env, { key: "reminders-crash", subject: "Daily return reminders didn't run",

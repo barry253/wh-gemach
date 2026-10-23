@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Gemach Network API (Cloudflare Worker) for whgemachs.org",
   "scripts": {
-    "test": "node test/worker.test.mjs && node --no-warnings test/run-d1.mjs",
+    "test": "node test/worker.test.mjs && node --no-warnings test/run-d1.mjs && node test/offsite.test.mjs",
     "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "deploy": "wrangler deploy",
     "schema": "node -e \"import('./src/dbschema.js').then(m => process.stdout.write(m.schemaSql()))\" > schema.sql"

@@ -1,0 +1,107 @@
+name: Photos off-site backup
+# Weekly: copies the photo/logo bucket (R2 wh-gemach-assets) to releases in the PRIVATE repo BACKUP_REPO
+# (default barry253/wh-gemach-backups), outside Cloudflare. Photos are already public on the site, so they
+# are not encrypted. See scripts/offsite.mjs for what each release holds and what is kept.
+#   photos-full-YYYY-MM-DD-HHMM  every file (first run, every 91 days, or "Run workflow" → full)
+#   photos-inc-YYYY-MM-DD-HHMM   only files new or changed since the previous release (none = no release)
+# Each release: manifest.json (every key, size, ETag at that time) + part-NNN.tar (under 1.9 GB each).
+#
+# Restore: download the newest photos-full release and every photos-inc after it; extract the tars in date
+# order into one folder (later files win); then upload that folder back to the bucket, e.g.
+#   aws s3 sync ./photos s3://wh-gemach-assets --endpoint-url https://<account>.r2.cloudflarestorage.com
+#
+# Needs: repo secrets R2_BACKUP_ACCESS_KEY_ID / R2_BACKUP_SECRET_ACCESS_KEY (an R2 API token with Object Read
+# only on wh-gemach-assets), BACKUP_REPO_TOKEN (Contents read/write on BACKUP_REPO only), CLOUDFLARE_API_TOKEN
+# (already used by the nightly backup; records status/offsite-photos.json for the worker's daily check).
+on:
+  schedule:
+    - cron: "23 8 * * 0"   # Sundays ~4:23 am New York (8:23 UTC)
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Copy every file (a new full set), not just what changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assets-backup
+  cancel-in-progress: false
+
+jobs:
+  photos:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 30f51b1774b3c34eac1847d23240b759
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+      BACKUP_REPO: ${{ vars.BACKUP_REPO || 'barry253/wh-gemach-backups' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      R2_ENDPOINT: https://30f51b1774b3c34eac1847d23240b759.r2.cloudflarestorage.com
+      BUCKET: wh-gemach-assets
+    steps:
+      - name: Set up?
+        id: ready
+        run: |
+          if [ -z "$GH_TOKEN" ] || [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::warning title=Photo backup not set up::Add the BACKUP_REPO_TOKEN, R2_BACKUP_ACCESS_KEY_ID and R2_BACKUP_SECRET_ACCESS_KEY secrets (see the top of this file)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+        working-directory: .
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+        if: steps.ready.outputs.ok == 'true'
+      - name: List the bucket and plan the release
+        id: plan
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          set -e
+          work="$RUNNER_TEMP/photos"; mkdir -p "$work/files" "$work/out"
+          echo "WORK=$work" >> "$GITHUB_ENV"
+          aws s3api list-objects-v2 --bucket "$BUCKET" --endpoint-url "$R2_ENDPOINT" --output json > "$work/listing.json"
+          node scripts/offsite.mjs photos-prev "$work/prev.json"
+          node scripts/offsite.mjs photos-plan "$work/prev.json" "$work/listing.json" "$work/out" ${{ inputs.full && '--full' || '' }}
+      - name: Download and pack
+        if: steps.ready.outputs.ok == 'true' && steps.plan.outputs.kind != 'none'
+        run: |
+          set -e
+          aws s3 sync "s3://$BUCKET" "$WORK/files" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          for list in "$WORK"/out/part-*.list; do
+            tar -cf "${list%.list}.tar" -C "$WORK/files" -T "$list"
+            rm "$list"
+          done
+          ls -l "$WORK/out"
+      - name: Upload the release
+        if: steps.ready.outputs.ok == 'true' && steps.plan.outputs.kind != 'none'
+        run: |
+          set -e
+          kind="${{ steps.plan.outputs.kind }}"
+          tag="photos-$kind-$(date -u +%Y-%m-%d-%H%M)"
+          title="Photos $( [ "$kind" = full ] && echo "full set" || echo "changes" ) $(date -u +%Y-%m-%d)"
+          notes="${{ steps.plan.outputs.files }} file(s) in this release; bucket had ${{ steps.plan.outputs.count }} files (${{ steps.plan.outputs.bytes }} bytes). manifest.json lists every file at this time. Restore: the newest full set, then every later 'changes' release, extracted in date order."
+          gh release create "$tag" --repo "$BACKUP_REPO" --title "$title" --notes "$notes" "$WORK"/out/manifest.json "$WORK"/out/part-*.tar
+          echo "::notice title=Photo backup stored::$tag (${{ steps.plan.outputs.files }} files, ${{ steps.plan.outputs.parts }} part(s))"
+          node scripts/offsite.mjs photos-prune
+      - name: Record the check
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          printf '{"at":"%s","kind":"%s","files":"%s","count":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${{ steps.plan.outputs.kind }}" "${{ steps.plan.outputs.files }}" "${{ steps.plan.outputs.count }}" > "$RUNNER_TEMP/offsite-photos.json"
+          scripts/step.sh "Record photo backup" npx wrangler r2 object put "wh-gemach-backups/status/offsite-photos.json" --remote --file="$RUNNER_TEMP/offsite-photos.json" --content-type=application/json

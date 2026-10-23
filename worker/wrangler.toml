@@ -36,7 +36,14 @@ namespace_id = "2002"
 binding = "ASSETS_BUCKET"
 bucket_name = "wh-gemach-assets"
 
-# Daily at 14:00 UTC (10am New York in summer, 9am in winter): automatic return reminder emails (src/reminders.js).
+# Private backups bucket (nightly D1 exports, written by .github/workflows/d1-backup.yml). The worker only
+# reads it: the daily cron checks the backups are still happening (src/backupwatch.js).
+[[r2_buckets]]
+binding = "BACKUPS_BUCKET"
+bucket_name = "wh-gemach-backups"
+
+# Daily at 14:00 UTC (10am New York in summer, 9am in winter): automatic return reminder emails (src/reminders.js)
+# and the backup check (src/backupwatch.js).
 # Hourly at :07: warns by email + push when today's Worker requests or D1 rows near the free daily limits
 # (src/usagewatch.js; the string must match USAGE_CRON there).
 [triggers]
