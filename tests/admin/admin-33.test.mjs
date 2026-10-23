@@ -92,6 +92,7 @@ ok(await cell(iso(8)).getAttribute("aria-pressed") === "true", "tapped date is s
 ok(!(await page.isHidden("#up-today")) && !(await page.textContent("#upcoming-range")).startsWith("Today"), "range starts at the tapped date; Today link shown: " + await page.textContent("#upcoming-range"));
 const body2 = await page.textContent("#upcoming-body");
 ok(/Next Week/.test(body2) && /Far Away/.test(body2) && !/Chana Klein/.test(body2) && !/Overdue/.test(body2), "list: day 8 onward, no late section");
+await toMonth(iso(9)); // day 9 can be in the next month (e.g. tapped Oct 31)
 ok(await page.$$eval(".cal-day-btn.inrange", e => e.length) >= 1 && await cell(iso(9)).evaluate(e => e.classList.contains("inrange")), "the following days are shaded");
 await page.selectOption("#upcoming-days", "3");
 ok((await page.textContent("#upcoming-range")).endsWith(await page.evaluate(d => fmtDay(d), iso(10))), "3 days: tapped date + 2");
