@@ -2096,9 +2096,16 @@
         <input type="checkbox" id="return-reduce" /> <span id="return-reduce-label">Take the missing ones out of inventory</span>
       </label>
     </div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1.25rem" id="return-explainer">
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:0.75rem" id="return-explainer">
       This will mark the item as returned and make it available for other borrowers.
     </p>
+    <div class="form-group" id="return-msg-group">
+      <label for="return-message">Message to the borrower</label>
+      <p class="muted-small" id="return-msg-note" style="margin:0 0 0.35rem" hidden></p>
+      <textarea id="return-message" rows="7"></textarea>
+      <div class="settings-help" style="margin:0.3rem 0 0">Change the wording for every return in Settings → Message templates → Item returned. Your donation details come from Settings → Donations.</div>
+    </div>
+    <div class="form-group" id="return-send-by"></div>
     <div class="sheet-actions">
       <button class="btn btn-ghost" onclick="closeSheet('return-sheet')">Cancel</button>
       <button class="btn btn-primary" id="return-submit-btn">Confirm return</button>
@@ -2586,6 +2593,8 @@
     pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
     returnReminder: "Hi {first_name}, a friendly reminder from the {gemach}: the {items} you borrowed on {borrowed_date} {due_back}. Please let us know when you can return it, or if you need it a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
+    // Admin Return sheet. {donation_info} / {donation_link} = Settings → Donations; their lines drop out when blank.
+    returned: "Hi {first_name}, thank you for returning the {items} to the {gemach} — it's been marked as returned. We hope it helped!\n\n{donation_info}\n\nDonate online: {donation_link}\n\nThank you!",
     // Lending at the counter (Check out / New loan). {return_by} = "Fri, Oct 24" (the line drops out without a date).
     checkout: "Hi {first_name}, thank you for coming to the {gemach}! You're borrowing {items}.\n\nDue back: {return_by}. {deposit_info}\n\nManage your loan: {manage_link}\n\nThank you!",
   };
@@ -2596,6 +2605,7 @@
     pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
     returnReminder: DEFAULT_TEMPLATES.returnReminder,
+    returned: DEFAULT_TEMPLATES.returned,
     checkout: DEFAULT_TEMPLATES.checkout,
   };
   function defaultTemplate(kind) {
@@ -2995,7 +3005,7 @@
 
   // ── Message templates ─────────────────────────────────────────────────────
   // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
-  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "return_by"]);
+  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "return_by", "donation_info", "donation_link"]);
 
   function fillTemplate(template, vars) {
     const has = k => Object.prototype.hasOwnProperty.call(vars, k);
@@ -3062,6 +3072,8 @@
       hours: g.hours || "",
       phone: g.phone || "",
       email: g.email || "",
+      donation_info: g.donationInfo || "",
+      donation_link: g.donationUrl || "",
     };
   }
 
@@ -4186,19 +4198,38 @@
     if (l.isQuantity) { qIn.max = l.quantity; qIn.value = l.quantity; syncReturnQty(); }
     qIn.oninput = syncReturnQty;
 
+    // "Item returned" message (Settings → Message templates), with the gemach's donation details.
+    // When other items from the same booking are still out, start on "Don't send" (thank them with the last one).
+    const stillOut = (allLoans || []).filter(x => x.id !== l.id && bookingKey(x) === bookingKey(l)).length;
+    document.getElementById("return-message").value = renderMessage("returned", String(l.borrowerName || "").split(" ")[0], l.itemTypeName || "item", {});
+    const msgNote = document.getElementById("return-msg-note");
+    msgNote.hidden = !stillOut;
+    msgNote.textContent = stillOut ? `${stillOut} other item${stillOut === 1 ? " is" : "s are"} from this booking still out — you may want to send this with the last one.` : "";
+    const retLabels = { email: "Return & email", whatsapp: "Return & open WhatsApp", sms: "Return & open text", none: "Confirm return" };
+    setupSendBy("return", { ...l, phone: l.borrowerPhone, email: l.borrowerEmail, preferredContact: l.borrowerContact },
+      "return-submit-btn", retLabels, stillOut ? { initial: "none" } : {});
+
     document.getElementById("return-submit-btn").onclick = async () => {
       const returnDate = document.getElementById("return-date").value;
       const body = { returnDate };
+      const { choice, c } = SEND_BY["return"];
+      const message = document.getElementById("return-message").value;
+      if (choice !== "none" && !message.trim()) { showToast("Write a message first, or choose Don't send"); return; }
       if (l.isQuantity) {
         const back = parseInt(qIn.value, 10);
         if (!(Number.isInteger(back) && back >= 0 && back <= l.quantity)) { showToast(`Enter how many came back (0–${l.quantity})`); return; }
         body.quantityReturned = back;
         if (back < l.quantity && reduce.checked) body.reduceOwned = true;
       }
+      if (choice !== "none") {
+        body.via = choice; body.message = message;
+        if (emailCopy(choice, c)) body.emailCopy = true;
+        if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
+      }
       const res = await saveAction(document.getElementById("return-submit-btn"), `/admin/loans/${l.id}/return`, "POST", body);
       if (!res) return;
       if (res.error) {
-        showToast(res.error, 6000);
+        showToast(res.error + (choice !== "none" ? outboundNotSaved(choice) : ""), 6000);
         if (res.current) { closeSheet("return-sheet"); loadLoans(true); loadDashboard(); }
         return;
       }
@@ -4206,7 +4237,9 @@
       document.getElementById(`loan-row-${safeId(l.id)}`)?.remove();
       loadDashboard();
       loadLoans(true);
-      showToast(res.missing ? `Returned · ${res.missing} missing (noted)` : "Item marked as returned");
+      const base = res.missing ? `Returned · ${res.missing} missing (noted)` : "Item marked as returned";
+      if (res.emailSent === false) showToast(base + emailFailText(choice), 8000);
+      else showToast(base + (res.emailSent ? (choice === "email" ? " · thank-you emailed" : " · copy emailed") : ""));
     };
 
     openSheet("return-sheet");
@@ -6348,6 +6381,7 @@
     { kind: "pickup",      key: "pickupMessage",      label: "Ready for pickup" },
     { kind: "appointment", key: "appointmentMessage", label: "Appointment confirmed" },
     { kind: "returnReminder", key: "returnReminderMessage", label: "Return reminder" },
+    { kind: "returned",    key: "returnedMessage",    label: "Item returned" },
   ];
   const CONTACT_METHODS = ["Call", "Text", "WhatsApp", "Email"];
   const CONTACT_NEEDS = { Call: "Phone", Text: "Phone", WhatsApp: "WhatsApp (or Phone)", Email: "Email" };

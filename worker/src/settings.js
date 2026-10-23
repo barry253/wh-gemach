@@ -11,7 +11,7 @@ import { MAX_PLACES_TEXT, parseLocalPlaces } from "./places.js";
 
 // ─── Gemach profile & message templates (admin) ───────────────────────────────
 
-const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out"];
+const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link"];
 const DEFAULT_TEMPLATES = {
   confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
   confirmNoAddress: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
@@ -21,6 +21,8 @@ const DEFAULT_TEMPLATES = {
   appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
   // Return reminder (admin Loans). {due_back} = "is due back on Fri, Oct 9" / "is due back today" / "was due back on Fri, Oct 2" (blank if no date).
   returnReminder: "Hi {first_name}, a friendly reminder from the {gemach}: the {items} you borrowed on {borrowed_date} {due_back}. Please let us know when you can return it, or if you need it a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
+  // Item returned (admin Return sheet). {donation_info} / {donation_link} come from Settings → Donations; their lines drop out when blank.
+  returned: "Hi {first_name}, thank you for returning the {items} to the {gemach} — it's been marked as returned. We hope it helped!\n\n{donation_info}\n\nDonate online: {donation_link}\n\nThank you!",
   appointmentNoAddress: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
 };
 
@@ -33,6 +35,7 @@ function effectiveTemplates(g) {
     pickup: raw.pickup || (g.pickupAddress ? DEFAULT_TEMPLATES.pickup : DEFAULT_TEMPLATES.pickupNoAddress),
     appointment: raw.appointment || (g.pickupAddress ? DEFAULT_TEMPLATES.appointment : DEFAULT_TEMPLATES.appointmentNoAddress),
     returnReminder: raw.returnReminder || DEFAULT_TEMPLATES.returnReminder,
+    returned: raw.returned || DEFAULT_TEMPLATES.returned,
   };
 }
 
@@ -112,6 +115,7 @@ const GEMACH_EDITABLE = {
   shabbosAdjust:      ["Shabbos Adjust", "bool"],
   appointmentMessage: ["Appointment Message", "long"],
   returnReminderMessage: ["Return Reminder Message", "long"],
+  returnedMessage:    ["Returned Message", "long"],
   autoReminders:      ["Auto Reminders", "bool"],
   reminderDaysBefore: ["Reminder Days Before", "days"],
   reminderRepeatDays: ["Reminder Repeat Days", "repeat"],
@@ -132,7 +136,7 @@ const GEMACH_LABELS = {
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
   depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", localDepositInfo: "Payment for local borrowers", localPlaces: "Local cities", requireTown: "City required", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
-  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
+  shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", returnedMessage: "Item returned message", autoReminders: "Automatic reminders", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
   groupBy: "Sections", spotlightFilter: "Holiday spotlight", borrowNote: "How to borrow", photoShape: "Photo shape", availabilityMode: "Availability",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };

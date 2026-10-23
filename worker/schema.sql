@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS gemachs (
   pickup_message TEXT,  -- Pickup Message
   appointment_message TEXT,  -- Appointment Message
   return_reminder_message TEXT,  -- Return Reminder Message
+  returned_message TEXT,  -- Returned Message
   auto_reminders INTEGER NOT NULL DEFAULT 0,  -- Auto Reminders
   reminder_days_before REAL,  -- Reminder Days Before
   reminder_repeat_days REAL,  -- Reminder Repeat Days

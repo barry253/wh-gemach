@@ -79,7 +79,7 @@ const TABLES = {
       "Pickup Days Before": n("pickup_days_before"), "Return Days After": n("return_days_after"), "Shabbos Adjust": b("shabbos_adjust"),
       "Default Loan Days": n("default_loan_days"), // optional: fills in the due date when lending (blank = ask each time)
       "Confirm Message": t("confirm_message"), "Decline Message": t("decline_message"), "Pickup Message": t("pickup_message"),
-      "Appointment Message": t("appointment_message"), "Return Reminder Message": t("return_reminder_message"),
+      "Appointment Message": t("appointment_message"), "Return Reminder Message": t("return_reminder_message"), "Returned Message": t("returned_message"),
       "Auto Reminders": b("auto_reminders"), "Reminder Days Before": n("reminder_days_before"), "Reminder Repeat Days": n("reminder_repeat_days"),
       "Item Attributes": t("item_attributes"),
       "Item View": t("item_view"),

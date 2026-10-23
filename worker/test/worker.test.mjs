@@ -518,8 +518,8 @@ await t("v2 GET /admin/gemach: private fields, default templates, placeholders, 
   assert.match(d.templates.confirm, /^Hi \{first_name\}, great news/);
   assert.match(d.templates.confirm, /Pickup is at \{pickup_address\}\. \{pickup_instructions\}/);
   assert.equal(d.templates.pickup, "SECRET TPL {first_name}");
-  assert.deepEqual(d.rawTemplates, { confirm: null, decline: null, pickup: "SECRET TPL {first_name}", appointment: null, returnReminder: null });
-  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out"]);
+  assert.deepEqual(d.rawTemplates, { confirm: null, decline: null, pickup: "SECRET TPL {first_name}", appointment: null, returnReminder: null, returned: null });
+  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link"]);
   assert.match(d.templates.returnReminder, /^Hi \{first_name\}, a friendly reminder .*\{due_back\}/);
   assert.equal(d.canEdit, true);
   const v = await (await call(`/admin/gemach`, { headers: { ...auth(tokenVol), "X-Gemach": A.slug } })).json();
@@ -3923,6 +3923,59 @@ await t("return reminder: stamps the loan, logs it, only for loans that are out;
   assert.equal((await call("/admin/loans/recLOANREMIND0002/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ message: "x" }) })).status, 409, "returned loan");
   assert.equal((await call("/admin/loans/recLOANREMIND0004/pickup-email", { method: "POST", headers: { ...auth(tokenA), "X-Gemach": B.slug, "Content-Type": "application/json" }, body: JSON.stringify({ message: "x" }) })).status >= 400, true, "other gemach can't");
   DB.Loans = DB.Loans.filter(l => !/^recLOANREMIND/.test(l.id));
+});
+
+await t("returned message: template in Settings; return can email a thank-you (or its copy); return stands if the email fails", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  // Default template carries the donation placeholders; Settings saves a custom one
+  let r = await call("/admin/gemach", { headers: H });
+  const gj = await r.json();
+  assert.match(gj.templates.returned, /\{donation_info\}/); assert.match(gj.templates.returned, /\{donation_link\}/);
+  assert.ok(gj.placeholders.includes("donation_info") && gj.placeholders.includes("donation_link"));
+  r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ returnedMessage: "Thanks {first_name}! {donation_info}" }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal((await r.json()).templates.returned, "Thanks {first_name}! {donation_info}");
+  assert.equal(DB.Gemachs.find(g => g.id === A.id).fields["Returned Message"], "Thanks {first_name}! {donation_info}");
+
+  DB.Borrowers.push(rec("recBORRRETMAIL001", { Name: "Ret Person", Email: "ret.person@example.com", ...sc }));
+  DB.Loans.push(rec("recLOANRETMSG0001", { "Loan ID": "L-961", Status: "Active", Borrower: ["recBORRRETMAIL001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }),
+    rec("recLOANRETMSG0002", { "Loan ID": "L-962", Status: "Active", Borrower: ["recBORRRETMAIL001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }),
+    rec("recLOANRETMSG0003", { "Loan ID": "L-963", Status: "Active", Borrower: ["recBORRRETMAIL001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }),
+    rec("recLOANRETMSG0004", { "Loan ID": "L-964", Status: "Active", Borrower: ["recBORRRETMAIL001"], "Item to Reserve": ["recTYPEA000000001"], ...sc }));
+  // Email: sent to the address on file
+  let n = resendCalls().length;
+  r = await call("/admin/loans/recLOANRETMSG0001/return", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Thanks Ret! Donate at example.org." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal((await r.json()).emailSent, true);
+  let mail = resendCalls().slice(n).filter(m => m.to[0] !== "alerts@example.com");
+  assert.equal(mail.length, 1); assert.equal(mail[0].to[0], "ret.person@example.com");
+  assert.match(mail[0].subject, /^Thank you for returning the Wheelchair — /); assert.match(mail[0].text, /^Thanks Ret! Donate at example\.org\./);
+  assert.equal(DB.Loans.find(l => l.id === "recLOANRETMSG0001").fields.Status, "Returned");
+  await Promise.allSettled(waits);
+  assert.ok(DB["tblC3PY7f5sXQDMJK"].some(l => l.fields["Loan ID"] === "L-961" && l.fields["Event Type"] === "Item Returned" && l.fields.Notes === "Thank-you sent by email"));
+  // WhatsApp + email copy
+  n = resendCalls().length;
+  r = await call("/admin/loans/recLOANRETMSG0002/return", { method: "POST", headers: H, body: JSON.stringify({ via: "whatsapp", emailCopy: true, message: "Thanks!" }) });
+  assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, true);
+  assert.equal(resendCalls().slice(n).filter(m => m.to[0] !== "alerts@example.com").length, 1);
+  await Promise.allSettled(waits);
+  assert.ok(DB["tblC3PY7f5sXQDMJK"].some(l => l.fields["Loan ID"] === "L-962" && l.fields.Notes === "Thank-you sent by WhatsApp (copy emailed)"));
+  // Email fails: still returned, admin told
+  resendFail = true;
+  r = await call("/admin/loans/recLOANRETMSG0003/return", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Thanks!" }) });
+  resendFail = false;
+  assert.equal(r.status, 200);
+  const fj = await r.json();
+  assert.equal(fj.emailSent, false); assert.match(fj.emailError, /didn't go through/);
+  assert.equal(DB.Loans.find(l => l.id === "recLOANRETMSG0003").fields.Status, "Returned");
+  // No message (Don't send / older admin page): nothing emailed, no emailSent key
+  n = resendCalls().length;
+  r = await call("/admin/loans/recLOANRETMSG0004/return", { method: "POST", headers: H, body: "{}" });
+  assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, undefined);
+  assert.equal(resendCalls().length, n);
+  DB.Loans = DB.Loans.filter(l => !/^recLOANRETMSG/.test(l.id));
+  await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ returnedMessage: "" }) });
 });
 
 {
