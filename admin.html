@@ -796,6 +796,7 @@
     .bk-ready { color: var(--green); font-weight: 600; }
     .loan-row-item.multi { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .loan-row-n { font-weight: 700; }
+    .nw { white-space: nowrap; }
     .loan-actions-panel .card-actions {
       margin-top: 0;
       flex-wrap: wrap;
@@ -3960,8 +3961,10 @@
         const s = minDate(ls.map(l => l.reservationStart)), ends = ls.filter(l => !l.isAddon).map(l => l.reservationEnd);
         dates = s ? `${fmt(s)} → ${ends.some(e => !e) ? "open-ended" : fmt(maxDate(ends))}` : "Dates TBD";
       }
-      side = `<span class="loan-row-date">${esc(dates)}</span>
-          ${allAddon ? `<span class="tag tag-addon loan-row-tag">Add-on</span>` : `<span class="tag tag-navy loan-row-tag">Reserved</span>`}`;
+      side = `<span class="loan-row-side">
+            <span class="loan-row-date">${esc(dates)}</span>
+            ${allAddon ? `<span class="tag tag-addon loan-row-tag">Add-on</span>` : `<span class="tag tag-navy loan-row-tag">Reserved</span>`}
+          </span>`;
     }
     const itemSpans = one
       ? `<span class="loan-row-item">${esc(one.itemTypeName || (isLoan ? "" : "Item TBD"))}</span>
@@ -5584,7 +5587,7 @@
     const since = ls.map(l => l.dateBorrowed).filter(Boolean).sort()[0];
     const when = e.late ? `${l0.expectedReturn ? esc(fmtDay(l0.expectedReturn)) : "Out"}<small>${l0.expectedReturn ? "Was due" : `${esc(l0.daysOut ?? "")} days`}</small>`
       : `Due back<small>${since ? `out since ${esc(fmtDay(since))}` : ""}</small>`;
-    const items = ls.map(l => `${loanLabel(l)}${l.itemId ? ` · ${l.itemId}` : ""}`).join(", ");
+    const items = ls.map(l => `${esc(loanLabel(l))}${l.itemId ? ` · <span class="nw">${esc(l.itemId)}</span>` : ""}`).join(", ");
     const ph = ls.find(l => okPhoto(l.photo));
     const one = ls.length === 1 ? l0 : null;
     const notes = [...new Set(ls.map(l => l.notes).filter(Boolean))].map(n => `<div class="loan-notes">💬 ${esc(n)}</div>`).join("");
@@ -5596,7 +5599,7 @@
       <button type="button" class="up-open" onclick="toggleUpcoming('ret-${k}')" aria-expanded="false" aria-controls="ret-panel-${k}">
         <span class="up-when">${when}</span>
         <span class="up-main"><span class="up-name" style="display:block">${esc(l0.borrowerName || "Unknown")}</span>
-          <span class="up-items" style="display:block">${esc(items)}</span></span>
+          <span class="up-items" style="display:block">${items}</span></span>
       </button>
       ${ph ? rowThumb(ph.photo, ph.itemTypeName, ph.photos) : ""}
       <span class="up-side"><span class="tag ${e.late ? "tag-red" : "tag-green"}">${e.late ? "Overdue" : "Due back"}</span></span>
@@ -5994,7 +5997,7 @@
       groups[key].push(item);
     });
 
-    const header = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    const header = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem">
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
         ${["all","available","onloan","repair"].map(f => `
           <button class="btn btn-sm ${inventoryFilter===f?"btn-primary":"btn-ghost"}" onclick="setInventoryFilter('${f}')">
@@ -6005,7 +6008,7 @@
         <a href="#" style="font-size:0.78rem;color:var(--muted);text-decoration:none;white-space:nowrap" onclick="event.preventDefault();toggleAllGroups()">
           <span id="collapse-all-label">Collapse all</span>
         </a>
-        <button class="btn btn-primary btn-sm" onclick="openAddItemType()">+ New Item Type</button>
+        <button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="openAddItemType()">+ New Item Type</button>
       </div>
     </div>`;
 
