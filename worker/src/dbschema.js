@@ -224,7 +224,7 @@ const TABLES = {
       "Last Error": t("last_error"),
     },
   },
-  // Daily counts the public site reports (events.js): item photos opened / ticked, browser errors, "couldn't load".
+  // Daily counts the public site reports (events.js): item photos opened / checked, browser errors, "couldn't load".
   // One row per (Date, Kind, Key); network-wide (no gemach scope), like the Search Log. D1 only.
   "Site Events": {
     sql: "site_events",

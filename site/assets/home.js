@@ -511,7 +511,7 @@
     }).join("");
   }
 
-  // ── "Your requests": links saved on this device when the person ticked "Remember me" ──
+  // ── "Your requests": links saved on this device when the person checked "Remember me" ──
   function renderMine() {
     var sec = $("my-requests");
     if (!sec) return;

@@ -18,7 +18,7 @@ const Q = {
   ne: (field, value) => ({ op: "ne", field, value }),
   /** field equals one of the values. */
   in: (field, values) => ({ op: "in", field, values: [...values] }),
-  /** checkbox is ticked. */
+  /** checkbox is checked. */
   isTrue: field => ({ op: "true", field }),
   /** text field is not empty. */
   nonEmpty: field => ({ op: "nonEmpty", field }),

@@ -232,7 +232,7 @@ async function buildNetworkAnalytics(db, days, nowMs = Date.now()) {
     loansPerPerson: loansPer.size ? Math.round(10 * [...loansPer.values()].reduce((a, b) => a + b, 0) / loansPer.size) / 10 : null,
   };
 
-  // ── What visitors look at (photos opened, items ticked) and problems they hit (site events) ──
+  // ── What visitors look at (photos opened, items checked) and problems they hit (site events) ──
   const LOOK_FIELD = { "item-photos": "photos", "item-pick": "picks", "item-share": "shares", "item-link": "linkOpens" };
   const looked = new Map(); // item type id -> { photos, picks, shares, linkOpens }
   const problems = new Map(); // kind|key -> { kind, label, count, lastAt, detail }

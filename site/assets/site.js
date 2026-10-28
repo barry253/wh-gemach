@@ -62,7 +62,7 @@
   }
 
   // ── "Remember me on this device" (opt-in; localStorage, may be unavailable) ──
-  // Saved only when the person ticks the box: their contact details + links to their recent requests.
+  // Saved only when the person checks the box: their contact details + links to their recent requests.
   var ME_KEY = "whg_me_v1", MINE_KEY = "whg_my_requests_v1";
   function lsGet(k) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
@@ -517,7 +517,7 @@
   ICONS.share = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>';
   ICONS.clock = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
 
-  // ── Site events (Network → Analytics): item photos opened / ticked, browser errors, "couldn't load" ──
+  // ── Site events (Network → Analytics): item photos opened / checked, browser errors, "couldn't load" ──
   // Counts only: no names, no contact details, nothing stored on the device. At most 25 per page view,
   // each item counted once per page view.
   var tracked = {}, trackedN = 0;

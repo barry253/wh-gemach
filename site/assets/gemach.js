@@ -56,7 +56,7 @@
   var sortBySize = false;
   // Availability for a date (gemach Settings → Availability = "For a date"): the date a person is checking, and
   // whether to list only what's free on it (off by default: everything stays listed). Kept for the tab so it carries into the request form.
-  var availDate = "", availUntil = "", availOnly = false, availBad = "", availLoaded = false; // "only what's free" starts unticked
+  var availDate = "", availUntil = "", availOnly = false, availBad = "", availLoaded = false; // "only what's free" starts unchecked
   var lastFocus = null;
   var loadedFresh = false;
   // Arriving from the home page's "See all N at …": ?cat=<category slug>&q=<search text> narrows the
@@ -1087,7 +1087,7 @@
       }).join("") + "</nav>";
     }
     if (availOnlyOn() && !listed.some(function (it) { return !isAddon(it); }) && !chipFilterCount()) {
-      html += '<div class="notice notice-info af-none">Nothing is free on ' + esc(availLabel()) + '. Try another date, or untick “Only show what’s free” to see everything.</div>';
+      html += '<div class="notice notice-info af-none">Nothing is free on ' + esc(availLabel()) + '. Try another date, or uncheck “Only show what’s free” to see everything.</div>';
     }
     if (chipFilterCount() && !listed.some(function (it) { return !isAddon(it); })) {
       html += '<div class="notice notice-info af-none">' + (availOnlyOn() ? "Nothing free matches these filters." : "Nothing matches these filters.") + ' <button type="button" class="af-clear" id="af-clear-2">Clear filters</button></div>';
@@ -1961,7 +1961,7 @@
         W.me.save({ name: body.name, phone: $("f-phone").value.trim(), email: body.email || "", preferredContact: body.preferredContact, town: body.town || "", state: body.state || "" });
         if (link) W.me.addRequest({ url: link, gemach: gemach.name, requestId: data.requestId });
       } else if (W.me.load()) {
-        W.me.forget(); // they unticked "Remember me"
+        W.me.forget(); // they unchecked "Remember me"
       }
       $("manage-box").hidden = !link;
       if (link) {
@@ -1995,7 +1995,7 @@
 
   // ── Spam protection: Cloudflare Turnstile ──
   // Only once the worker has its keys (GET /public/config gives the site key). The widget is invisible unless
-  // Cloudflare wants the visitor to tick a box; the form waits up to 15 s for its token when they press Send.
+  // Cloudflare wants the visitor to check a box; the form waits up to 15 s for its token when they press Send.
   var ts = { key: null, id: null, token: null, waiters: [], loading: false, failed: false, config: null };
   function tsLoad() { // asked once, when the form is first opened (most visitors never open it)
     return ts.config || (ts.config = W.fetchJSON("/public/config").then(function (c) {

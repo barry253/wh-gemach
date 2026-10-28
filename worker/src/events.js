@@ -1,7 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 // Site events: small daily counts the public site reports, for Network → Analytics.
 //   POST /public/event (text/plain JSON, always 204):
-//     { kind: "item-photos" | "item-pick", gemach: <slug>, item: <item type id> }   someone opened an item's photos / ticked it
+//     { kind: "item-photos" | "item-pick", gemach: <slug>, item: <item type id> }   someone opened an item's photos / checked it
 //     { kind: "item-share" | "item-link", gemach, item }   someone shared an item's link / opened the site from a shared item link
 //     { kind: "js-error", msg, src, line, page }                                       a script error in a visitor's browser
 //     { kind: "load-fail", what: "directory" | "gemach" | "manage" | "contact", page }           "couldn't load" shown to a visitor

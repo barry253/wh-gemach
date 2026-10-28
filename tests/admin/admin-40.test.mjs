@@ -111,8 +111,11 @@ await page.waitForTimeout(100);
 const said = await page.evaluate(() => document.getElementById("sr-status")?.textContent || "");
 ok(/3 items marked as returned · 2 missing/.test(said), "toast: " + said);
 
-// Wording: "Check / Uncheck", never "Tick / Untick", in anything an admin reads (Barry, Oct 28, 2026).
-const shown = html.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/\/\/ [^\n"`]*$/gm, "");
-ok(!/\b(un)?tick(ed|ing|s)?\b/i.test(shown), "no Tick / Untick wording: " + (shown.match(/.{0,40}\b(un)?tick(ed|ing|s)?\b.{0,40}/i) || [""])[0]);
+// Wording: "Check / Uncheck", never "Tick / Untick" (not used in the US), anywhere on the site or in admin (Barry, Oct 28, 2026).
+const root = new URL("../../", import.meta.url);
+const files = ["admin.html", "embed.html", ...fs.readdirSync(new URL("site/", root), { recursive: true }).map(f => "site/" + f)]
+  .filter(f => /\.(html|js|css)$/.test(f));
+const ticky = files.flatMap(f => (fs.readFileSync(new URL(f, root), "utf8").match(/.{0,30}\b(un)?tick(ed|ing|s)?\b.{0,30}/gi) || []).map(m => `${f}: ${m}`));
+ok(!ticky.length, "no Tick / Untick wording: " + ticky.join(" | "));
 ok(!errors.length, "no page errors " + errors.join(" | "));
 await browser.close();

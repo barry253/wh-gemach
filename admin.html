@@ -353,7 +353,7 @@
     .qty-line input { width: 100%; }
     .qty-line .muted-small { grid-column: 1 / -1; }
     .qty-line .warn, .qty-warn { color: var(--amber); }
-    /* Confirm sheet: one row per requested item — tick = confirm it, untick = not available (optional note). */
+    /* Confirm sheet: one row per requested item — check = confirm it, uncheck = not available (optional note). */
     .ci-row { display: grid; grid-template-columns: 1fr 6.5rem; align-items: center; gap: 0.2rem 0.75rem; padding: 0.55rem 0; border-top: 1px solid var(--border, #e6e0d2); }
     .ci-row:first-child { border-top: 0; }
     .ci-main { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; font-weight: 500; cursor: pointer; min-height: 44px; }
@@ -791,7 +791,7 @@
     .bk-line-sub.warn { color: var(--amber); font-weight: 600; }
     .bk-line-sub.good { color: var(--green); }
     .bk-line > .btn { flex-shrink: 0; }
-    /* Multi-item loan: a checklist (all ticked) and one "Mark all returned" button */
+    /* Multi-item loan: a checklist (all checked) and one "Mark all returned" button */
     .bk-ret-box { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--navy); cursor: pointer; }
     label.bk-line-main { cursor: pointer; }
     .bk-line.bk-off .bk-line-name { color: var(--muted); }
@@ -3417,9 +3417,9 @@
     document.getElementById("confirm-subtitle").textContent =
       `${(r.itemNames || []).join(", ")} · ${r.requestId}`;
 
-    // One row per requested item: tick = confirm it (quantity items also let the admin change the count),
-    // untick = not available, with an optional note for the borrower. Items the availability check says have
-    // nothing free for these dates start unticked (the admin can still tick them).
+    // One row per requested item: check = confirm it (quantity items also let the admin change the count),
+    // uncheck = not available, with an optional note for the borrower. Items the availability check says have
+    // nothing free for these dates start unchecked (the admin can still check them).
     const allItems = (r.items || []).filter(i => i && i.id);
     const isOut = i => i.availability && (i.availability.status === "none" || i.availability.status === "none-owned");
     const qtyItems = allItems.filter(i => i.quantity != null);
@@ -3476,7 +3476,7 @@
     const submitBtn = document.getElementById("confirm-submit-btn");
     const declineBtn = document.getElementById("confirm-decline-btn");
     const refresh = () => {
-      // Keep the message in step with the ticks, notes and counts, unless the admin has edited it by hand.
+      // Keep the message in step with the checkboxes, notes and counts, unless the admin has edited it by hand.
       const auto = buildMessage();
       if (msgEl.value === lastAuto) msgEl.value = auto;
       lastAuto = auto;
@@ -3486,7 +3486,7 @@
         row?.classList.toggle("ci-off", !on);
         if (noteOf(i)) noteOf(i).style.display = on ? "none" : "";
       });
-      // Nothing left ticked: there's nothing to confirm, so the button becomes Decline.
+      // Nothing left checked: there's nothing to confirm, so the button becomes Decline.
       const none = allItems.length > 0 && allItems.every(i => !isOn(i));
       submitBtn.style.display = none ? "none" : "";
       declineBtn.style.display = none ? "" : "none";
@@ -4509,7 +4509,7 @@
   }
 
   // ── Check out / New loan: lend at the counter ─────────────────────────────
-  // Appointment visit (openCheckout(requestId)): the requested items start ticked; untick what she didn't
+  // Appointment visit (openCheckout(requestId)): the requested items start checked; uncheck what she didn't
   // take, add anything else she took. Walk-in (openCheckout()): enter the borrower, add items.
   let CO = null;
   const coType = id => CO?.types.get(id);
@@ -7590,7 +7590,7 @@
     put("themeColor", theme);
     put("accentColor", accent);
     put("depositRequired", setEl("depositRequired").checked);
-    if (!setEl("localTier").checked) { // unticked: clear both (only if something was saved)
+    if (!setEl("localTier").checked) { // unchecked: clear both (only if something was saved)
       for (const k of ["localPlaces", "localDepositInfo"]) { if (String(settingsOriginal[k] || "").trim()) patch[k] = ""; else delete patch[k]; }
     } else if (!setEl("localPlaces").value.trim() || !setEl("localDepositInfo").value.trim()) {
       return { error: "Different amount for local borrowers: add the local cities and the payment for local borrowers (or uncheck it)." };
