@@ -803,6 +803,11 @@
     .ret-qty-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.35rem 0; font-size: 0.85rem; }
     .ret-qty-row span { flex: 1; }
     .ret-qty-row input { max-width: 5.5rem; }
+    .ret-qty-row select { max-width: 9.5rem; }
+    .ret-qty-row .pk-fixed { flex: 0 0 auto; color: var(--muted); }
+    .pk-row-err { color: var(--red); font-size: 0.78rem; margin: -0.15rem 0 0.4rem; }
+    .ret-qty-row.pk-done span { color: var(--green); }
+    #pickup-multi:empty { display: none; }
     .card-meta .bk-pair { flex-wrap: wrap; gap: 0.25rem 0.9rem; }
     .late-text { color: var(--red); font-weight: 600; }
     .bk-ready { color: var(--green); font-weight: 600; }
@@ -2193,6 +2198,7 @@
     <button class="sheet-close" onclick="closeSheet('pickup-sheet')">×</button>
     <h3 id="pickup-title">Mark as picked up</h3>
     <p class="sheet-subtitle" id="pickup-subtitle"></p>
+    <div class="form-group" id="pickup-multi" style="margin-top:0.75rem"></div>
     <div class="form-group" id="pickup-item-group" style="margin-top:0.75rem;display:none">
       <label for="pickup-item">Which item is going out?</label>
       <select id="pickup-item"></select>
@@ -3949,10 +3955,14 @@
     RECORDS.bk.set(`${p}-${b.id}`, b);
     const ls = b.loans, one = ls.length === 1 ? ls[0] : null, f = ls[0], id = b.id, req = b.request;
     const today = nyTodayStr();
-    // Loans: items of this booking that already came back, and a checklist when several are still out.
-    const back = isLoan ? (ls.find(l => l.bookingReturned?.length)?.bookingReturned || []) : [];
-    const multi = isLoan && ls.length > 1;
-    const backTag = back.length ? `<span class="tag tag-green loan-row-tag" title="Part of this loan is back">${esc(back.length)} returned · ${esc(ls.length)} out</span>` : "";
+    // Items of this booking already done (Loans: came back; Reservations: picked up), and a checklist when
+    // several are still open: all checked, one "Mark all returned / picked up" button.
+    const back = (isLoan ? ls.find(l => l.bookingReturned?.length)?.bookingReturned : ls.find(l => l.bookingPickedUp?.length)?.bookingPickedUp) || [];
+    const multi = ls.length > 1;
+    const doneWord = isLoan ? "returned" : ls.every(l => l.isAddon) ? "handed over" : "picked up";
+    const backTag = !back.length ? ""
+      : isLoan ? `<span class="tag tag-green loan-row-tag" title="Part of this loan is back">${esc(back.length)} returned · ${esc(ls.length)} out</span>`
+      : `<span class="tag tag-green loan-row-tag" title="Part of this booking is already out">${esc(back.length)} picked up · ${esc(ls.length)} reserved</span>`;
 
     // ── the row
     let cls = "", side;
@@ -4016,25 +4026,27 @@
       const subs = [];
       if (l.isAddon && l.price != null) subs.push(esc(`${fmtMoney(l.price)} each${l.quantity > 1 ? ` · ${fmtMoney(l.price * l.quantity)}` : ""}`));
       if (!datesSame) subs.push(isLoan ? loanDatesHtml(l) : esc(resDatesText(l)));
-      const box = `ret-${id}-${j}`;
+      const box = `${isLoan ? "ret" : "pk"}-${id}-${j}`;
       return itemLineHtml({
         photo: l.photo, photos: l.photos, name: l.itemTypeName, qty: l.quantity, code: l.itemId,
         tag: l.isAddon ? ` <span class="tag tag-addon">Add-on</span>` : "",
         sub: subs.join(" · "),
         ...(multi
-          ? { lead: `<input type="checkbox" class="bk-ret-box" id="${box}" data-j="${j}" checked aria-label="${esc(l.itemTypeName || "Item")} came back" onchange="bkRetSync('${id}')" />`, labelFor: box }
+          ? { lead: `<input type="checkbox" class="bk-ret-box" id="${box}" data-j="${j}" checked aria-label="${esc(l.itemTypeName || "Item")} ${isLoan ? "came back" : "is going out"}" onchange="bkCheckSync('${p}','${id}')" />`, labelFor: box }
           : { button: `<button class="btn ${one ? "btn-primary" : "btn-ghost"} btn-sm" onclick="${act("bkDone", `'${p}','${id}',${j}`)}">✓ ${doneLabel(l)}</button>` }),
       });
     });
+    const pickedText = r => r.isAddon ? `✓ Handed over ${esc(fmt(r.datePickedUp) || "")}`
+      : `✓ Picked up ${esc(fmt(r.datePickedUp) || "")}${r.status === "Active" ? " · now on Loans" : " · since returned"}`;
     for (const r of back) lines.push(itemLineHtml({
       photo: r.photo, name: r.itemTypeName, qty: r.quantity, code: r.itemId, cls: "bk-back",
-      sub: `<span class="good">✓ Returned${r.dateReturned ? ` ${esc(fmt(r.dateReturned))}` : ""}</span>`,
+      sub: `<span class="good">${isLoan ? `✓ Returned${r.dateReturned ? ` ${esc(fmt(r.dateReturned))}` : ""}` : pickedText(r)}</span>`,
     }));
-    const backSummary = back.length
-      ? `<div class="bk-ret-summary">${esc(back.length)} of ${esc(back.length + ls.length)} items returned · ${esc(ls.length)} still out</div>` : "";
+    const backSummary = !back.length ? ""
+      : `<div class="bk-ret-summary">${esc(back.length)} of ${esc(back.length + ls.length)} items ${isLoan ? "returned" : "picked up"} · ${esc(ls.length)} still ${isLoan ? "out" : "reserved"}</div>`;
     const retAll = multi
-      ? `<button type="button" class="btn btn-primary bk-ret-all" id="loan-retall-${id}" onclick="${act("bkReturnChecked", `'${id}'`)}">✓ Mark all returned</button>
-          <p class="bk-ret-help">Untick anything that isn't back yet.</p>` : "";
+      ? `<button type="button" class="btn btn-primary bk-ret-all" id="${p}-retall-${id}" onclick="${act("bkChecked", `'${p}','${id}'`)}">✓ Mark all ${doneWord}</button>
+          <p class="bk-ret-help">${isLoan ? "Uncheck anything that isn't back yet." : "Uncheck anything they aren't taking today."}</p>` : "";
     const buttons = isLoan
       ? `<button class="btn btn-ghost btn-sm" onclick="${act("bkReminder", `'${id}'`)}">⏰ Return reminder</button>
             <button class="btn btn-ghost btn-sm" onclick="${act("bkEdit", `'loan','${id}'`)}">✏️ Edit</button>`
@@ -4097,21 +4109,31 @@
     if (!l) return;
     if (p === "loan") openReturn(l); else openPickup(l);
   }
-  /** Multi-item loan checklist: the button says how many will be marked returned. */
-  function bkRetSync(id) {
-    const panel = document.getElementById(`loan-panel-${id}`), btn = document.getElementById(`loan-retall-${id}`);
+  /** Multi-item booking checklist: the button says how many will be marked returned / picked up. */
+  function bkCheckWords(p, b) {
+    if (p === "loan") return { done: "returned", none: "Check the items that came back" };
+    return b?.loans?.every(l => l.isAddon) ? { done: "handed over", none: "Check the items being handed over" }
+      : { done: "picked up", none: "Check the items being picked up" };
+  }
+  function bkCheckSync(p, id) {
+    const panel = document.getElementById(`${p}-panel-${id}`), btn = document.getElementById(`${p}-retall-${id}`);
     if (!panel || !btn) return;
+    const w = bkCheckWords(p, bk(p, id));
     const boxes = [...panel.querySelectorAll(".bk-ret-box")], n = boxes.filter(x => x.checked).length;
     boxes.forEach(x => x.closest(".bk-line")?.classList.toggle("bk-off", !x.checked));
-    btn.textContent = n === boxes.length ? "✓ Mark all returned" : n ? `✓ Mark ${n} of ${boxes.length} returned` : "Tick the items that came back";
+    btn.textContent = n === boxes.length ? `✓ Mark all ${w.done}` : n ? `✓ Mark ${n} of ${boxes.length} ${w.done}` : w.none;
   }
-  function bkReturnChecked(id) {
-    const b = bk("loan", id), panel = document.getElementById(`loan-panel-${id}`);
+  function bkChecked(p, id) {
+    const b = bk(p, id), panel = document.getElementById(`${p}-panel-${id}`);
     if (!b || !panel) return;
     const sel = [...panel.querySelectorAll(".bk-ret-box")].filter(x => x.checked).map(x => b.loans[+x.dataset.j]).filter(Boolean);
-    if (!sel.length) { showToast("Tick the items that came back"); return; }
-    if (sel.length === 1) openReturn(sel[0]); else openReturnMany(sel);
+    if (!sel.length) { showToast(bkCheckWords(p, b).none); return; }
+    if (p === "loan") { if (sel.length === 1) openReturn(sel[0]); else openReturnMany(sel); }
+    else if (sel.length === 1) openPickup(sel[0]); else openPickupMany(sel);
   }
+  // Older names (pages already open when this deploys).
+  function bkRetSync(id) { bkCheckSync("loan", id); }
+  function bkReturnChecked(id) { bkChecked("loan", id); }
   function bkEdit(p, id) {
     const b = bk(p, id);
     if (b) openBooking({ ...bkRef(b), from: p === "loan" ? "loans" : "reservations" });
@@ -5894,6 +5916,7 @@
   function openEditReservation(r) { openBooking({ loan: r.id, from: "reservations" }); }
 
   async function openPickup(r) {
+    document.getElementById("pickup-multi").innerHTML = "";
     const counted = r.isQuantity || r.isAddon; // no unit to choose, just how many
     document.getElementById("pickup-title").textContent = r.isAddon ? "Mark as handed over" : "Mark as picked up";
     document.getElementById("pickup-qty-label").textContent = r.isAddon ? "How many are being handed over?" : "How many are going out?";
@@ -5972,6 +5995,107 @@
       loadReservations();
       loadDashboard();
       showToast(r.isAddon ? "Marked as handed over" : "Marked as picked up");
+    };
+    openSheet("pickup-sheet");
+  }
+
+  /**
+   * Several items of one reservation booking picked up together: one date, then per item only what it needs —
+   * a unit (pre-chosen: an available one, never the same unit twice), a count, or nothing. Each item is saved
+   * with its own call; ones that fail stay in the sheet with the reason, ones that worked are kept.
+   */
+  async function openPickupMany(list) {
+    const f = list[0];
+    const allAddon = list.every(x => x.isAddon);
+    document.getElementById("pickup-title").textContent = allAddon ? "Mark as handed over" : "Mark as picked up";
+    document.getElementById("pickup-subtitle").textContent = `${f.borrowerName} · ${list.length} items`;
+    document.getElementById("pickup-date").value = nyTodayStr();
+    document.getElementById("pickup-item-group").style.display = "none";
+    document.getElementById("pickup-qty-group").style.display = "none";
+    const box = document.getElementById("pickup-multi");
+    const btn = document.getElementById("pickup-submit-btn");
+    const needUnit = x => !x.itemRecId && !x.isQuantity && !x.isAddon;
+    const rows = list.map(x => ({ x, done: false, err: "" }));
+    let units = [];
+    const paint = () => {
+      const used = new Set();
+      box.innerHTML = rows.map((r, k) => {
+        const x = r.x, name = esc(x.itemTypeName || "Item");
+        let ctl;
+        if (r.done) ctl = `<span class="pk-fixed">✓ Done</span>`;
+        else if (x.isQuantity || x.isAddon) {
+          ctl = `<input type="number" data-pkq="${k}" min="1" step="1" inputmode="numeric" value="${esc(r.qty ?? x.quantity)}" aria-label="How many ${name}${x.isAddon ? " handed over" : " going out"}" />`;
+        } else if (needUnit(x)) {
+          const mine = units.filter(u => u.itemTypeId === x.itemTypeId);
+          if (r.unit == null) r.unit = (mine.find(u => u.status === "Available" && !used.has(u.id)) || {}).id || "";
+          if (r.unit) used.add(r.unit);
+          ctl = mine.length
+            ? `<select data-pku="${k}" aria-label="Which ${name} is going out">${mine.map(u =>
+                `<option value="${esc(u.id)}"${u.id === r.unit ? " selected" : ""}>${esc(u.itemId)}${u.status === "Available" ? "" : ` (${esc(u.status)})`}</option>`).join("")}</select>`
+            : `<span class="pk-fixed">None in Inventory</span>`;
+        } else ctl = `<span class="pk-fixed">${esc(x.itemId || "")}</span>`;
+        const label = x.isAddon ? `${name} <span class="muted-small">handed over</span>` : x.isQuantity ? `${name} <span class="muted-small">going out</span>` : name;
+        return `<div class="ret-qty-row${r.done ? " pk-done" : ""}"><span>${label}</span>${ctl}</div>${r.err ? `<p class="pk-row-err" role="alert">${esc(r.err)}</p>` : ""}`;
+      }).join("");
+      box.querySelectorAll("[data-pku]").forEach(s => s.onchange = () => { rows[+s.dataset.pku].unit = s.value; });
+      box.querySelectorAll("[data-pkq]").forEach(i => i.oninput = () => { rows[+i.dataset.pkq].qty = i.value; });
+      const left = rows.filter(r => !r.done).length;
+      btn.textContent = `Confirm ${allAddon ? "handover" : "pickup"} of ${left}`;
+    };
+    if (list.some(needUnit)) {
+      box.innerHTML = `<p class="muted-small">Loading…</p>`;
+      openSheet("pickup-sheet");
+      try { units = ((await api("/admin/catalog/items"))?.items || []).filter(i => i.active); } catch { units = []; }
+    }
+    paint();
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      const pickupDate = document.getElementById("pickup-date").value;
+      const todo = rows.filter(r => !r.done);
+      // Check everything first, so nothing is half-saved over a typo.
+      let bad = false;
+      const taken = new Map();
+      for (const r of todo) {
+        r.err = "";
+        if (r.x.isQuantity || r.x.isAddon) {
+          const n = parseInt(r.qty ?? r.x.quantity, 10);
+          if (!(Number.isInteger(n) && n >= 1)) { r.err = "Enter how many (1 or more)."; bad = true; }
+        } else if (needUnit(r.x)) {
+          if (!r.unit) { r.err = "Choose which one is going out."; bad = true; }
+          else if (taken.has(r.unit)) { r.err = "That unit is already chosen above — choose another."; bad = true; }
+          else taken.set(r.unit, r);
+        }
+      }
+      if (bad) { paint(); return; }
+      const label = btn.textContent;
+      btn.disabled = true;
+      let saved = 0, changed = false;
+      try {
+        for (let i = 0; i < todo.length; i++) {
+          const r = todo[i], x = r.x;
+          btn.textContent = `Saving ${i + 1} of ${todo.length}…`;
+          const body = { pickupDate, borrower: x.borrowerName, loanId: x.loanId, itemType: x.itemTypeName };
+          if (x.isQuantity || x.isAddon) body.quantity = parseInt(r.qty ?? x.quantity, 10);
+          else if (needUnit(x)) { body.itemId = r.unit; body.itemCode = units.find(u => u.id === r.unit)?.itemId; }
+          let res;
+          try { res = await api(`/admin/loans/${x.id}/pickup`, "POST", body); }
+          catch { res = { error: "Not saved — check your connection and try again." }; }
+          if (res && !res.error) { r.done = true; saved++; continue; }
+          r.err = res?.error || "Not saved";
+          if (res?.current) { r.done = true; changed = true; } // already picked up / cancelled elsewhere: nothing to do here
+        }
+      } finally { btn.disabled = false; btn.textContent = label; }
+      const left = rows.filter(r => !r.done);
+      if (saved || changed) { loadReservations(); loadDashboard(); }
+      const verb = allAddon ? "handed over" : "picked up";
+      if (!left.length) {
+        closeSheet("pickup-sheet");
+        const errs = rows.filter(r => r.err).map(r => r.err);
+        showToast(errs.length ? `${saved} of ${rows.length} marked as ${verb} — ${errs[0]}` : `${saved} items marked as ${verb}`, errs.length ? 8000 : undefined);
+        return;
+      }
+      paint();
+      showToast(saved ? `${saved} saved · ${left.length} still to fix` : left[0].err, 6000);
     };
     openSheet("pickup-sheet");
   }

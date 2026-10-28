@@ -78,9 +78,9 @@ function evalFilter(table, f, r) {
   if (/NOT\(\{Expected Return\}=BLANK\(\)\)/.test(f) && !r.fields["Expected Return"]) return false;
   if (/\{Status\}="Available"/.test(f) && r.fields.Status !== "Available") return false;
   if (/\{Status\}="New"/.test(f) && r.fields.Status !== "New") return false;
-  if (/\{Status\}="Returned"/.test(f) && r.fields.Status !== "Returned") return false;
+  if (/\{Status\}="Returned"/.test(f) && !/OR\(\{Status\}/.test(f) && r.fields.Status !== "Returned") return false;
   if (/\{Status\}="Active"/.test(f) && !/OR\(\{Status\}/.test(f) && r.fields.Status !== "Active") return false;
-  if (/OR\(\{Status\}="Active",\{Status\}="Reserved"\)/.test(f) && !["Active", "Reserved"].includes(r.fields.Status)) return false;
+  if ((m = f.match(/OR\((\{Status\}="[^"]+"(?:,\{Status\}="[^"]+")*)\)/)) && ![...m[1].matchAll(/="([^"]+)"/g)].map(x => x[1]).includes(r.fields.Status)) return false;
   if ((m = f.match(/\{Query\}="([^"]*)"/)) && r.fields.Query !== m[1]) return false;
   for (const k of ["Kind", "Key", "Date"]) if ((m = f.match(new RegExp(`\\{${k}\\}="((?:[^"\\\\]|\\\\.)*)"`))) && String(r.fields[k] ?? "") !== JSON.parse(`"${m[1]}"`)) return false;
   if ((m = f.match(/NOT\(IS_BEFORE\(\{Date\},"([^"]+)"\)\)/)) && !(r.fields.Date >= m[1])) return false;
@@ -3867,6 +3867,24 @@ await t("loans list: items of the same booking that already came back are listed
   assert.deepEqual(loans.find(x => x.id === "recLOANWC0020000A").bookingReturned, [], "walk-in loans: none");
   DB.Loans = DB.Loans.filter(x => !/^recLOANPARTRET/.test(x.id));
   DB.Requests = DB.Requests.filter(x => !/^recREQPARTRET/.test(x.id));
+});
+
+await t("reservations list: items of the same booking already picked up are listed on each item still reserved", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  DB.Requests.push(rec("recREQPARTPCK0001", { "Request ID": "R-952", Name: "Part Pickup", Status: "Converted", ...sc }));
+  DB.Loans.push(
+    rec("recLOANPARTPCK001", { "Loan ID": "L-970", Status: "Reserved", "Item to Reserve": ["recTYPEA000000002"], "Reservation Start": "2026-11-01", "Source Request": ["recREQPARTPCK0001"], ...sc }),
+    rec("recLOANPARTPCK002", { "Loan ID": "L-971", Status: "Active", "Item to Reserve": ["recTYPEA000000003"], "Date Borrowed": "2026-10-28", "Source Request": ["recREQPARTPCK0001"], ...sc }),
+    rec("recLOANPARTPCK003", { "Loan ID": "L-972", Status: "Cancelled", "Item to Reserve": ["recTYPEA000000001"], "Source Request": ["recREQPARTPCK0001"], ...sc }));
+  const res = await (await call("/admin/reservations", { headers: H })).json();
+  const r = res.find(x => x.id === "recLOANPARTPCK001");
+  assert.equal(r.bookingPickedUp.length, 1, JSON.stringify(r.bookingPickedUp));
+  assert.equal(r.bookingPickedUp[0].itemTypeName, "Shower Chair");
+  assert.equal(r.bookingPickedUp[0].status, "Active");
+  assert.equal(r.bookingPickedUp[0].datePickedUp, "2026-10-28");
+  DB.Loans = DB.Loans.filter(x => !/^recLOANPARTPCK/.test(x.id));
+  DB.Requests = DB.Requests.filter(x => !/^recREQPARTPCK/.test(x.id));
 });
 
 await t("return reminder: stamps the loan, logs it, only for loans that are out; template saved in Settings", async () => {

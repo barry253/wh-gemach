@@ -164,7 +164,10 @@ async function handleGetLoans({ db, g, env }) {
 }
 
 /** Returned loans from the same requests as these active loans (one query; none when no loan came from a request). */
-async function returnedSiblings(db, g, loans, reqMap) {
+const returnedSiblings = (db, g, loans, reqMap) => siblingLoans(db, g, loans, reqMap, ["Returned"]);
+
+/** Loans with one of `statuses` from the same requests as `loans` (one query; none when no loan came from a request). */
+async function siblingLoans(db, g, loans, reqMap, statuses) {
   const reqs = new Map();
   for (const l of loans) {
     const id = linkedId(firstLink(l.fields["Source Request"]));
@@ -173,8 +176,8 @@ async function returnedSiblings(db, g, loans, reqMap) {
   if (!reqs.size) return [];
   const recs = await db.listAll(T.LOANS, {
     scope: g,
-    where: [Q.eq("Status", "Returned"), Q.or(...[...reqs].map(([id, name]) => Q.linksTo("Source Request", id, name)))],
-    sort: [{ field: "Date Returned", direction: "asc" }],
+    where: [Q.in("Status", statuses), Q.or(...[...reqs].map(([id, name]) => Q.linksTo("Source Request", id, name)))],
+    sort: [{ field: "Date Borrowed", direction: "asc" }],
     fields: ["Loan ID", "Item", "Item to Reserve", "Status", "Quantity", "Date Borrowed", "Date Returned", "Source Request"],
   });
   // Airtable matches links by name: keep only the real ids.
@@ -431,7 +434,27 @@ async function handleGetReservations({ db, g, env }) {
     sort: [{ field: "Reservation Start", direction: "asc" }],
     fields: LOAN_LIST_FIELDS,
   });
-  return json(await reservationRecords(db, g, env, loans));
+  const rows = await reservationRecords(db, g, env, loans);
+  // Items of the same booking already picked up (out on loan, back again, or add-ons handed over): shown on its card.
+  const reqMap = Object.fromEntries(rows.filter(r => r.requestRecId).map(r => [r.requestRecId, r.request]));
+  const gone = await siblingLoans(db, g, loans, reqMap, ["Active", "Returned"]);
+  if (gone.length) {
+    const { itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, gone, { includeItemToReserve: true });
+    const byReq = {};
+    for (const r of gone) {
+      const f = r.fields, item = itemMap[linkedId(firstLink(f["Item"]))] || {};
+      if (!f["Date Borrowed"]) continue; // never went out (e.g. closed some other way)
+      const tId = item.itemTypeId || linkedId(firstLink(f["Item to Reserve"]));
+      const q = loanQtyInfo(f, typeInfo);
+      (byReq[linkedId(firstLink(f["Source Request"]))] ||= []).push({
+        id: r.id, itemTypeName: item.itemTypeName || itemTypeMap[tId] || null, itemId: item.itemId || null,
+        quantity: q.quantity, isAddon: q.isAddon, status: selName(f.Status), datePickedUp: f["Date Borrowed"],
+        photo: typeInfo[tId]?.photo || null,
+      });
+    }
+    rows.forEach(r => { r.bookingPickedUp = byReq[r.requestRecId] || []; });
+  } else rows.forEach(r => { r.bookingPickedUp = []; });
+  return json(rows);
 }
 
 /** Reserved loans → the rows the Reservations list (and Dashboard "Upcoming") show and act on. */

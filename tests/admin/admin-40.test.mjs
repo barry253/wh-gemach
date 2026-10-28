@@ -70,6 +70,7 @@ await page.click("#loan-row-recLOANMULTI0001");
 const boxes = "#loan-panel-recLOANMULTI0001 .bk-ret-box";
 ok(await page.$$eval(boxes, e => e.length === 3 && e.every(x => x.checked)), "every item starts ticked");
 ok((await page.textContent("#loan-retall-recLOANMULTI0001")).includes("Mark all returned"), "button: Mark all returned");
+ok(/Uncheck anything that isn.t back yet/.test(await page.innerText("#loan-panel-recLOANMULTI0001")), "help says Uncheck");
 await page.screenshot({ path: "shot-mark-all-returned.png", fullPage: true });
 // Tapping the item's name unticks it
 await page.click("#loan-panel-recLOANMULTI0001 label[for='ret-recLOANMULTI0001-1']");
@@ -77,7 +78,7 @@ ok(!(await page.$eval("#ret-recLOANMULTI0001-1", e => e.checked)), "tapping the 
 ok((await page.textContent("#loan-retall-recLOANMULTI0001")).includes("Mark 2 of 3 returned"), "button counts: " + await page.textContent("#loan-retall-recLOANMULTI0001"));
 await page.uncheck("#ret-recLOANMULTI0001-2");
 await page.uncheck("#ret-recLOANMULTI0001-0");
-ok(/Tick the items/.test(await page.textContent("#loan-retall-recLOANMULTI0001")), "nothing ticked: says to tick");
+ok(/Check the items/.test(await page.textContent("#loan-retall-recLOANMULTI0001")), "nothing checked: says to check");
 await page.click("#loan-retall-recLOANMULTI0001");
 ok(!(await page.$eval("#return-sheet", e => e.classList.contains("open"))), "nothing ticked: no sheet");
 

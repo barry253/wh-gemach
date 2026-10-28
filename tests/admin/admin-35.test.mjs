@@ -71,7 +71,7 @@ const pt = (await page.innerText(panel)).replace(/\s+/g, " ");
 ok(/R-092 · 3d ago/.test(pt), "request number and when it came in: " + pt.slice(0, 40));
 ok(await page.$$eval(`${panel} .bk-line .row-thumb-btn`, e => e.length) === 2, "each item line has its photo");
 ok(!/📦/.test(pt) && !/📅/.test(pt) && !/📞/.test(pt) && (pt.match(/Blue & White Toile/g) || []).length === 1, "each item, date and number appears once in the opened card");
-ok(await page.$$eval(`${panel} .bk-line`, e => e.map(x => x.innerText.replace(/\s+/g, " ").trim()).join("|")) === "2 Blue & White Toile · Round × 12 ✓ Picked up|Solid Navy · Rectangle × 6 ✓ Picked up", "one line per item with its button: " + await page.$$eval(`${panel} .bk-line`, e => e.map(x => x.innerText.replace(/\s+/g, " ").trim()).join("|")));
+ok(await page.$$eval(`${panel} .bk-line`, e => e.map(x => x.innerText.replace(/\s+/g, " ").trim()).join("|")) === "2 Blue & White Toile · Round × 12|Solid Navy · Rectangle × 6" && await page.$$eval(`${panel} .bk-ret-box:checked`, e => e.length) === 2, "one line per item, each checked: " + await page.$$eval(`${panel} .bk-line`, e => e.map(x => x.innerText.replace(/\s+/g, " ").trim()).join("|")));
 ok(/✓ Payment acknowledged/.test(pt) && /📍 Cedarhurst/.test(pt) && /Not local/i.test(pt), "payment and town with the tier tag");
 ok(/\(917\) 282-8486 · no email/.test(await page.textContent(`${panel} .contact-caption`)), "number (formatted) and 'no email' in the contact line");
 ok(/💬 For a sheva brachos/.test(pt), "the request's note");
