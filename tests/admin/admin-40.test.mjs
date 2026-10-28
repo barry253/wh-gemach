@@ -111,5 +111,8 @@ await page.waitForTimeout(100);
 const said = await page.evaluate(() => document.getElementById("sr-status")?.textContent || "");
 ok(/3 items marked as returned · 2 missing/.test(said), "toast: " + said);
 
+// Wording: "Check / Uncheck", never "Tick / Untick", in anything an admin reads (Barry, Oct 28, 2026).
+const shown = html.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/\/\/ [^\n"`]*$/gm, "");
+ok(!/\b(un)?tick(ed|ing|s)?\b/i.test(shown), "no Tick / Untick wording: " + (shown.match(/.{0,40}\b(un)?tick(ed|ing|s)?\b.{0,40}/i) || [""])[0]);
 ok(!errors.length, "no page errors " + errors.join(" | "));
 await browser.close();

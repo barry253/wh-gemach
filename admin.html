@@ -1782,7 +1782,7 @@
     <div class="form-group" id="confirm-qty-group" style="display:none">
       <label>Which items are you confirming?</label>
       <div id="confirm-qty-list" class="qty-list"></div>
-      <p class="muted-small" id="confirm-items-help">Untick anything you can't lend — the borrower is told which items are confirmed and which aren't.</p>
+      <p class="muted-small" id="confirm-items-help">Uncheck anything you can't lend — the borrower is told which items are confirmed and which aren't.</p>
     </div>
 
     <div class="form-group">
@@ -4614,7 +4614,7 @@
       askedEl.innerHTML = asked.length ? asked.map(([r, i]) => coRowHtml(r, i)).join("")
         : `<p class="muted-small" style="margin:0">${CO.req?.itemTypeIds?.length ? "Those items are no longer in the inventory." : "No particular items were asked for."}</p>`;
       const tog = document.getElementById("co-toggle-all");
-      if (tog) { const anyOn = asked.some(([r]) => r.on); tog.textContent = anyOn ? "Untick all" : "Tick all"; tog.style.display = asked.length > 1 ? "" : "none"; }
+      if (tog) { const anyOn = asked.some(([r]) => r.on); tog.textContent = anyOn ? "Uncheck all" : "Check all"; tog.style.display = asked.length > 1 ? "" : "none"; }
     }
     document.getElementById("co-extra-list").innerHTML = extra.map(([r, i]) => coRowHtml(r, i)).join("");
     coRenderResults();
@@ -4642,7 +4642,7 @@
     const n = chosen.length;
     document.getElementById("checkout-summary").innerHTML = n
       ? `${n} item${n === 1 ? "" : "s"} going out${CO.req ? ` to ${esc(CO.req.name || "")}` : ""}.`
-      : CO.req ? `Nothing ticked. If ${esc((CO.req.name || "they").split(" ")[0])} didn't take anything, <button type="button" class="link-btn" onclick="markVisit('${safeId(CO.req.id)}', 'nothing')">close the appointment — nothing borrowed</button>.`
+      : CO.req ? `Nothing checked. If ${esc((CO.req.name || "they").split(" ")[0])} didn't take anything, <button type="button" class="link-btn" onclick="markVisit('${safeId(CO.req.id)}', 'nothing')">close the appointment — nothing borrowed</button>.`
         : "Add the items being lent.";
     document.getElementById("checkout-submit-btn").disabled = !n;
     // Due-date shortcuts
@@ -4777,7 +4777,7 @@
         ${cityStateHtml("co")}
       </div>` : `
       <div class="form-group">
-        <div class="co-section-head"><label>Asked to see — untick what isn't going out</label><button type="button" class="link-btn" id="co-toggle-all" onclick="coToggleAll()">Untick all</button></div>
+        <div class="co-section-head"><label>Asked to see — uncheck what isn't going out</label><button type="button" class="link-btn" id="co-toggle-all" onclick="coToggleAll()">Uncheck all</button></div>
         <div class="co-list" id="co-asked-list"></div>
       </div>`) + `
       <div class="form-group">
@@ -4809,7 +4809,7 @@
     const fail = msg => { errEl.textContent = msg; errEl.style.display = "block"; };
     errEl.style.display = "none";
     const chosen = coChosen();
-    if (!chosen.length) { fail("Tick or add at least one item."); return; }
+    if (!chosen.length) { fail("Check or add at least one item."); return; }
     const body = {
       items: chosen.map(r => {
         const t = coType(r.typeId);
@@ -6751,9 +6751,9 @@
         <div id="deposit-info-wrap">
           <div class="form-group" role="radiogroup" aria-label="Deposit or payment">
             <label class="radio-card"><input type="radio" name="set-chargeType" value="Deposit" onchange="onSettingsInput()" />
-              <span>Refundable deposit<small>Given back when the items are returned. Borrowers tick “I understand a deposit is required”.</small></span></label>
+              <span>Refundable deposit<small>Given back when the items are returned. Borrowers check “I understand a deposit is required”.</small></span></label>
             <label class="radio-card"><input type="radio" name="set-chargeType" value="Payment" onchange="onSettingsInput()" />
-              <span>Payment (a fee)<small>Not given back, e.g. a rental or cleaning fee. Borrowers tick “I understand payment is required”.</small></span></label>
+              <span>Payment (a fee)<small>Not given back, e.g. a rental or cleaning fee. Borrowers check “I understand payment is required”.</small></span></label>
           </div>
           ${fieldHtml("depositInfo")}
           <div class="checkbox-row">
@@ -6846,7 +6846,7 @@
           <input type="checkbox" id="set-requireTown" />
           <label for="set-requireTown">Make the borrower's city required</label>
         </div>
-        <p class="settings-help" id="require-town-help" style="margin:0.2rem 0 0">The request form always asks which city and state the borrower lives in. Tick this to make the city required.</p>`;
+        <p class="settings-help" id="require-town-help" style="margin:0.2rem 0 0">The request form always asks which city and state the borrower lives in. Check this to make the city required.</p>`;
     }
     if (group.extra === "browsecats") {
       inner += `
@@ -7143,8 +7143,8 @@
     // Town: already required whenever a payment (or a local amount) depends on it.
     const chargeNeedsTown = setEl("depositRequired").checked && (document.querySelector('input[name="set-chargeType"]:checked')?.value === "Payment" || tier);
     document.getElementById("require-town-help").textContent = chargeNeedsTown
-      ? "It's already required on requests that include a payment (Your page → Gemach info). Tick this to require it on every request."
-      : "The request form always asks which city and state the borrower lives in. Tick this to make the city required.";
+      ? "It's already required on requests that include a payment (Your page → Gemach info). Check this to require it on every request."
+      : "The request form always asks which city and state the borrower lives in. Check this to make the city required.";
     document.querySelector('label[for="set-depositInfo"]').textContent = tier ? "Deposit / payment for everyone else" : SETTINGS_FIELDS.depositInfo.label;
     updateRequestStyleUi();
   }
@@ -7593,7 +7593,7 @@
     if (!setEl("localTier").checked) { // unticked: clear both (only if something was saved)
       for (const k of ["localPlaces", "localDepositInfo"]) { if (String(settingsOriginal[k] || "").trim()) patch[k] = ""; else delete patch[k]; }
     } else if (!setEl("localPlaces").value.trim() || !setEl("localDepositInfo").value.trim()) {
-      return { error: "Different amount for local borrowers: add the local cities and the payment for local borrowers (or untick it)." };
+      return { error: "Different amount for local borrowers: add the local cities and the payment for local borrowers (or uncheck it)." };
     }
     put("chargeType", document.querySelector('input[name="set-chargeType"]:checked')?.value || "Deposit");
     put("itemView", document.querySelector('input[name="set-itemView"]:checked')?.value || "List");
@@ -7876,7 +7876,7 @@
     // What visitors look at on gemach pages (counted by the site itself, since this feature went live).
     const lk = d.topLooked || [];
     html += `<div class="card stat-block"><h4>Most looked at</h4>` + (lk.length
-      ? `<div class="net-an-scroll"><table class="stat-table net-an-looked"><thead><tr><th>Item</th><th>Gemach</th><th class="num" title="Times someone opened its photos">Photos opened</th><th class="num" title="Times someone ticked it to request">Ticked</th><th class="num" title="Times someone shared a link to it">Shared</th><th class="num" title="Visits that came from a shared link to it">Link opened</th><th class="num">Requested</th></tr></thead><tbody>` +
+      ? `<div class="net-an-scroll"><table class="stat-table net-an-looked"><thead><tr><th>Item</th><th>Gemach</th><th class="num" title="Times someone opened its photos">Photos opened</th><th class="num" title="Times someone checked it to request">Checked</th><th class="num" title="Times someone shared a link to it">Shared</th><th class="num" title="Visits that came from a shared link to it">Link opened</th><th class="num">Requested</th></tr></thead><tbody>` +
         lk.map(t => `<tr><td>${esc(t.name)}</td><td class="card-id">${esc(t.gemach || "")}</td><td class="num">${esc(t.photos)}</td><td class="num">${esc(t.picks)}</td><td class="num">${esc(t.shares || 0)}</td><td class="num">${esc(t.linkOpens || 0)}</td><td class="num">${esc(t.requests)}${t.photos + t.picks >= 10 && !t.requests ? '<div class="net-an-warn">no requests</div>' : ""}</td></tr>`).join("") +
         `</tbody></table></div><p class="stat-note">Items people look at a lot but rarely request may need a better photo, description or price.</p>`
       : `<p class="stat-note">Nothing counted yet in ${esc(period)}. Counting started when this feature went live.</p>`) + `</div>`;
