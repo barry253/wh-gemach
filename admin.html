@@ -791,6 +791,18 @@
     .bk-line-sub.warn { color: var(--amber); font-weight: 600; }
     .bk-line-sub.good { color: var(--green); }
     .bk-line > .btn { flex-shrink: 0; }
+    /* Multi-item loan: a checklist (all ticked) and one "Mark all returned" button */
+    .bk-ret-box { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--navy); cursor: pointer; }
+    label.bk-line-main { cursor: pointer; }
+    .bk-line.bk-off .bk-line-name { color: var(--muted); }
+    .bk-line.bk-back { opacity: 0.6; }
+    .bk-ret-all { width: 100%; justify-content: center; text-align: center; margin: 0.15rem 0 0.6rem; min-height: 44px; }
+    .bk-ret-help { font-size: 0.75rem; color: var(--muted); margin: -0.35rem 0 0.6rem; }
+    .bk-ret-summary { font-size: 0.8rem; font-weight: 600; color: var(--green); margin: 0 0 0.35rem; }
+    #return-multi-qty:empty { display: none; }
+    .ret-qty-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.35rem 0; font-size: 0.85rem; }
+    .ret-qty-row span { flex: 1; }
+    .ret-qty-row input { max-width: 5.5rem; }
     .card-meta .bk-pair { flex-wrap: wrap; gap: 0.25rem 0.9rem; }
     .late-text { color: var(--red); font-weight: 600; }
     .bk-ready { color: var(--green); font-weight: 600; }
@@ -2097,6 +2109,7 @@
         <input type="checkbox" id="return-reduce" /> <span id="return-reduce-label">Take the missing ones out of inventory</span>
       </label>
     </div>
+    <div class="form-group" id="return-multi-qty"></div>
     <p style="font-size:0.82rem;color:var(--muted);margin-bottom:0.75rem" id="return-explainer">
       This will mark the item as returned and make it available for other borrowers.
     </p>
@@ -3830,12 +3843,14 @@
    * an optional line under it (availability, its own dates, add-on price) and an optional button.
    */
   function itemLineHtml(o) {
-    return `<div class="bk-line">
+    const main = o.labelFor ? `label class="bk-line-main" for="${o.labelFor}"` : `div class="bk-line-main"`;
+    return `<div class="bk-line${o.cls ? " " + o.cls : ""}">
+            ${o.lead || ""}
             ${rowThumb(o.photo, o.name, o.photos, 44)}
-            <div class="bk-line-main">
+            <${main}>
               <div class="bk-line-name">${esc(o.name || "Item")}${o.qty != null ? ` <span class="bk-qty">× ${esc(o.qty)}</span>` : ""}${o.code ? ` <span class="loan-row-code">${esc(o.code)}</span>` : ""}${o.tag || ""}</div>
               ${o.sub ? `<div class="bk-line-sub${o.warn ? " warn" : o.good ? " good" : ""}">${o.sub}</div>` : ""}
-            </div>
+            </${o.labelFor ? "label" : "div"}>
             ${o.button || ""}
           </div>`;
   }
@@ -3934,6 +3949,10 @@
     RECORDS.bk.set(`${p}-${b.id}`, b);
     const ls = b.loans, one = ls.length === 1 ? ls[0] : null, f = ls[0], id = b.id, req = b.request;
     const today = nyTodayStr();
+    // Loans: items of this booking that already came back, and a checklist when several are still out.
+    const back = isLoan ? (ls.find(l => l.bookingReturned?.length)?.bookingReturned || []) : [];
+    const multi = isLoan && ls.length > 1;
+    const backTag = back.length ? `<span class="tag tag-green loan-row-tag" title="Part of this loan is back">${esc(back.length)} returned · ${esc(ls.length)} out</span>` : "";
 
     // ── the row
     let cls = "", side;
@@ -3997,13 +4016,25 @@
       const subs = [];
       if (l.isAddon && l.price != null) subs.push(esc(`${fmtMoney(l.price)} each${l.quantity > 1 ? ` · ${fmtMoney(l.price * l.quantity)}` : ""}`));
       if (!datesSame) subs.push(isLoan ? loanDatesHtml(l) : esc(resDatesText(l)));
+      const box = `ret-${id}-${j}`;
       return itemLineHtml({
         photo: l.photo, photos: l.photos, name: l.itemTypeName, qty: l.quantity, code: l.itemId,
         tag: l.isAddon ? ` <span class="tag tag-addon">Add-on</span>` : "",
         sub: subs.join(" · "),
-        button: `<button class="btn ${one ? "btn-primary" : "btn-ghost"} btn-sm" onclick="${act("bkDone", `'${p}','${id}',${j}`)}">✓ ${doneLabel(l)}</button>`,
+        ...(multi
+          ? { lead: `<input type="checkbox" class="bk-ret-box" id="${box}" data-j="${j}" checked aria-label="${esc(l.itemTypeName || "Item")} came back" onchange="bkRetSync('${id}')" />`, labelFor: box }
+          : { button: `<button class="btn ${one ? "btn-primary" : "btn-ghost"} btn-sm" onclick="${act("bkDone", `'${p}','${id}',${j}`)}">✓ ${doneLabel(l)}</button>` }),
       });
     });
+    for (const r of back) lines.push(itemLineHtml({
+      photo: r.photo, name: r.itemTypeName, qty: r.quantity, code: r.itemId, cls: "bk-back",
+      sub: `<span class="good">✓ Returned${r.dateReturned ? ` ${esc(fmt(r.dateReturned))}` : ""}</span>`,
+    }));
+    const backSummary = back.length
+      ? `<div class="bk-ret-summary">${esc(back.length)} of ${esc(back.length + ls.length)} items returned · ${esc(ls.length)} still out</div>` : "";
+    const retAll = multi
+      ? `<button type="button" class="btn btn-primary bk-ret-all" id="loan-retall-${id}" onclick="${act("bkReturnChecked", `'${id}'`)}">✓ Mark all returned</button>
+          <p class="bk-ret-help">Untick anything that isn't back yet.</p>` : "";
     const buttons = isLoan
       ? `<button class="btn btn-ghost btn-sm" onclick="${act("bkReminder", `'${id}'`)}">⏰ Return reminder</button>
             <button class="btn btn-ghost btn-sm" onclick="${act("bkEdit", `'loan','${id}'`)}">✏️ Edit</button>`
@@ -4021,6 +4052,7 @@
             ${loanCity(f) ? `<span class="row-city">📍 ${esc(loanCity(f))}</span>` : ""}
             ${hasNote ? `<span class="note-indicator" title="Has notes" role="img" aria-label="Has notes">💬</span>` : ""}
             ${req?.test ? `<span class="tag tag-test loan-row-tag" title="Sent from the test link — not a real loan">Test</span>` : ""}
+            ${backTag}
             ${isLoan && ready ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
             ${isLoan && reminded ? `<span class="tag tag-amber loan-row-tag" title="Return reminder ${esc(reminderVia(reminded.reminderSentVia))} ${esc(timeAgo(reminded.reminderSentAt))}">⏰ Reminded ${esc(timeAgo(reminded.reminderSentAt))}</span>` : ""}
           </span>
@@ -4029,7 +4061,9 @@
         </div>
         <div class="loan-actions-panel booking-panel" id="${p}-panel-${id}">
           ${head ? `<div class="card-id bk-head">${esc(head)}</div>` : ""}
+          ${backSummary}
           <div class="bk-lines">${lines.join("")}</div>
+          ${retAll}
           ${bookingMetaHtml({
             eventDate: req?.eventDate, depositAcknowledged: req?.depositAcknowledged,
             town: req?.town || f.borrowerCity, state: req?.town ? req?.state : f.borrowerState, paymentTier: req?.paymentTier, notes, extra,
@@ -4062,6 +4096,21 @@
     const l = bk(p, id)?.loans?.[j];
     if (!l) return;
     if (p === "loan") openReturn(l); else openPickup(l);
+  }
+  /** Multi-item loan checklist: the button says how many will be marked returned. */
+  function bkRetSync(id) {
+    const panel = document.getElementById(`loan-panel-${id}`), btn = document.getElementById(`loan-retall-${id}`);
+    if (!panel || !btn) return;
+    const boxes = [...panel.querySelectorAll(".bk-ret-box")], n = boxes.filter(x => x.checked).length;
+    boxes.forEach(x => x.closest(".bk-line")?.classList.toggle("bk-off", !x.checked));
+    btn.textContent = n === boxes.length ? "✓ Mark all returned" : n ? `✓ Mark ${n} of ${boxes.length} returned` : "Tick the items that came back";
+  }
+  function bkReturnChecked(id) {
+    const b = bk("loan", id), panel = document.getElementById(`loan-panel-${id}`);
+    if (!b || !panel) return;
+    const sel = [...panel.querySelectorAll(".bk-ret-box")].filter(x => x.checked).map(x => b.loans[+x.dataset.j]).filter(Boolean);
+    if (!sel.length) { showToast("Tick the items that came back"); return; }
+    if (sel.length === 1) openReturn(sel[0]); else openReturnMany(sel);
   }
   function bkEdit(p, id) {
     const b = bk(p, id);
@@ -4174,6 +4223,7 @@
   // ── Return sheet ──────────────────────────────────────────────────────────
   function openReturn(l) {
     currentLoan = l;
+    document.getElementById("return-multi-qty").innerHTML = "";
     document.getElementById("return-subtitle").textContent =
       `${l.borrowerName} · ${l.itemId || l.itemTypeName}${l.isQuantity ? ` × ${l.quantity}` : ""}`;
     document.getElementById("return-date").value = nyTodayStr();
@@ -4250,6 +4300,92 @@
       else showToast(base + (res.emailSent ? (choice === "email" ? " · thank-you emailed" : " · copy emailed") : ""));
     };
 
+    openSheet("return-sheet");
+  }
+
+  /**
+   * Several items of one loan booking returned together: one date, one count per quantity item, one message.
+   * Each item is returned with its own call; the message (and its email) goes with the last one only.
+   */
+  function openReturnMany(list) {
+    const l = list[0];
+    currentLoan = l;
+    const names = joinAndList(list.map(bkLabel));
+    document.getElementById("return-subtitle").textContent = `${l.borrowerName} · ${list.length} items`;
+    document.getElementById("return-date").value = nyTodayStr();
+    document.getElementById("return-qty-group").style.display = "none";
+    const stillOut = (allLoans || []).filter(x => bookingKey(x) === bookingKey(l) && !list.some(y => y.id === x.id)).length;
+    document.getElementById("return-explainer").textContent =
+      `This marks ${names} as returned and makes them available for other borrowers.` +
+      (stillOut ? ` ${stillOut} other item${stillOut === 1 ? " stays" : "s stay"} on loan.` : "");
+
+    // Quantity items: how many of each came back.
+    const qtys = list.filter(x => x.isQuantity);
+    const qBox = document.getElementById("return-multi-qty");
+    qBox.innerHTML = qtys.length ? `<label>How many came back?</label>` + qtys.map(x => `<div class="ret-qty-row">
+        <span>${esc(x.itemTypeName || "Item")} <span class="muted-small">of ${esc(x.quantity)}</span></span>
+        <input type="number" data-retq="${esc(safeId(x.id))}" min="0" max="${esc(x.quantity)}" step="1" inputmode="numeric" value="${esc(x.quantity)}" aria-label="How many ${esc(x.itemTypeName || "items")} came back" />
+      </div>`).join("") + `<label class="check-row" id="return-multi-reduce-row" style="display:none;margin-top:0.5rem;font-weight:400;font-size:0.85rem">
+        <input type="checkbox" id="return-multi-reduce" /> <span>Missing ones are gone for good — lower the inventory counts</span></label>` : "";
+    const qOf = x => parseInt(qBox.querySelector(`[data-retq="${safeId(x.id)}"]`)?.value, 10);
+    const syncQ = () => { const r = document.getElementById("return-multi-reduce-row"); if (r) r.style.display = qtys.some(x => qOf(x) < x.quantity) ? "flex" : "none"; };
+    qBox.oninput = syncQ; syncQ();
+
+    const msgOn = !!GEMACH?.returnedMessageOn;
+    document.getElementById("return-msg-group").hidden = !msgOn;
+    document.getElementById("return-send-by").hidden = !msgOn;
+    document.getElementById("return-message").value = renderMessage("returned", String(l.borrowerName || "").split(" ")[0], names, {});
+    const msgNote = document.getElementById("return-msg-note");
+    msgNote.hidden = !(msgOn && stillOut);
+    msgNote.textContent = msgOn && stillOut ? `${stillOut} other item${stillOut === 1 ? " is" : "s are"} from this booking still out — you may want to send this with the last one.` : "";
+    const retLabels = { email: `Return ${list.length} & email`, whatsapp: `Return ${list.length} & open WhatsApp`, sms: `Return ${list.length} & open text`, none: `Confirm return of ${list.length}` };
+    const btn = document.getElementById("return-submit-btn");
+    if (msgOn) setupSendBy("return", { ...l, phone: l.borrowerPhone, email: l.borrowerEmail, preferredContact: l.borrowerContact },
+      "return-submit-btn", retLabels, stillOut ? { initial: "none" } : {});
+    else { SEND_BY.return = { c: {}, choice: "none" }; btn.textContent = retLabels.none; }
+
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      const returnDate = document.getElementById("return-date").value;
+      const { choice, c } = SEND_BY["return"];
+      const message = document.getElementById("return-message").value;
+      if (choice !== "none" && !message.trim()) { showToast("Write a message first, or choose Don't send"); return; }
+      for (const x of qtys) {
+        const q = qOf(x);
+        if (!(Number.isInteger(q) && q >= 0 && q <= x.quantity)) { showToast(`Enter how many ${x.itemTypeName || "items"} came back (0–${x.quantity})`); return; }
+      }
+      if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message); // before any await
+      const reduceAll = !!document.getElementById("return-multi-reduce")?.checked;
+      const label = btn.textContent;
+      btn.disabled = true;
+      let done = 0, missing = 0, emailSent, firstError = null, changed = false;
+      try {
+        for (let i = 0; i < list.length; i++) {
+          const x = list[i], last = i === list.length - 1;
+          btn.textContent = `Returning ${i + 1} of ${list.length}…`;
+          const body = { returnDate };
+          if (x.isQuantity) { body.quantityReturned = qOf(x); if (body.quantityReturned < x.quantity && reduceAll) body.reduceOwned = true; }
+          if (last && choice !== "none") {
+            body.via = choice; body.message = message; body.itemsLabel = names;
+            if (emailCopy(choice, c)) body.emailCopy = true;
+          }
+          let res;
+          try { res = await api(`/admin/loans/${x.id}/return`, "POST", body); }
+          catch { res = { error: "Not saved — check your connection and try again." }; }
+          if (!res || res.error) { firstError ||= res?.error || "Not saved"; if (res?.current) changed = true; continue; }
+          done++; missing += res.missing || 0;
+          if (res.emailSent !== undefined) emailSent = res.emailSent;
+        }
+      } finally { btn.disabled = false; btn.textContent = label; }
+      if (!done && !changed) { showToast(firstError + (choice !== "none" ? outboundNotSaved(choice) : ""), 6000); return; }
+      closeSheet("return-sheet");
+      loadDashboard();
+      loadLoans(true);
+      let msg = done === list.length ? `${done} items marked as returned` : `${done} of ${list.length} marked as returned — ${firstError}`;
+      if (missing) msg += ` · ${missing} missing (noted)`;
+      if (emailSent === false) showToast(msg + emailFailText(choice), 8000);
+      else showToast(msg + (emailSent ? (choice === "email" ? " · thank-you emailed" : " · copy emailed") : ""), done === list.length ? undefined : 8000);
+    };
     openSheet("return-sheet");
   }
 

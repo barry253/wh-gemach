@@ -101,10 +101,23 @@ async function handleGetLoans({ db, g, env }) {
     sort: [{ field: "Date Borrowed", direction: "asc" }],
     fields: LOAN_LIST_FIELDS,
   });
-  const [{ borrowerMap, itemMap, itemTypeMap, typeInfo }, reqMap] = await Promise.all([
-    loadLoanRelations(db, g, loans, { includeItemToReserve: true }),
-    sourceRequestMap(db, g, loans),
-  ]);
+  const reqMap = await sourceRequestMap(db, g, loans);
+  const returned = await returnedSiblings(db, g, loans, reqMap);
+  const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, g, [...loans, ...returned], { includeItemToReserve: true });
+  // Items of the same booking that already came back (a booking returned bit by bit): shown on its card.
+  const backByReq = {};
+  for (const r of returned) {
+    const f = r.fields, src = linkedId(firstLink(f["Source Request"]));
+    const item = itemMap[linkedId(firstLink(f["Item"]))] || {};
+    const tId = item.itemTypeId || linkedId(firstLink(f["Item to Reserve"]));
+    const q = loanQtyInfo(f, typeInfo);
+    if (q.isAddon) continue; // handed-over add-ons aren't loans
+    (backByReq[src] ||= []).push({
+      id: r.id, itemTypeName: item.itemTypeName || itemTypeMap[tId] || null, itemId: item.itemId || null,
+      quantity: q.quantity, dateReturned: f["Date Returned"] || null,
+      photo: typeInfo[tId]?.photo || null,
+    });
+  }
   const now = new Date();
   const t = today();
 
@@ -144,9 +157,28 @@ async function handleGetLoans({ db, g, env }) {
       reminderSentVia: f["Reminder Sent Via"] || null,
       manageUrl: await sourceManageUrl(env, f),
       ...requestFields(f, reqMap),
+      bookingReturned: backByReq[linkedId(firstLink(f["Source Request"]))] || [],
     };
   }));
   return json(records);
+}
+
+/** Returned loans from the same requests as these active loans (one query; none when no loan came from a request). */
+async function returnedSiblings(db, g, loans, reqMap) {
+  const reqs = new Map();
+  for (const l of loans) {
+    const id = linkedId(firstLink(l.fields["Source Request"]));
+    if (id) reqs.set(id, reqMap[id]?.requestId || "");
+  }
+  if (!reqs.size) return [];
+  const recs = await db.listAll(T.LOANS, {
+    scope: g,
+    where: [Q.eq("Status", "Returned"), Q.or(...[...reqs].map(([id, name]) => Q.linksTo("Source Request", id, name)))],
+    sort: [{ field: "Date Returned", direction: "asc" }],
+    fields: ["Loan ID", "Item", "Item to Reserve", "Status", "Quantity", "Date Borrowed", "Date Returned", "Source Request"],
+  });
+  // Airtable matches links by name: keep only the real ids.
+  return recs.filter(r => reqs.has(linkedId(firstLink(r.fields["Source Request"]))));
 }
 
 /** The borrower's manage link for a loan made from a request (null for loans created in admin). */
@@ -286,7 +318,9 @@ async function handleReturnLoan(c, id) {
   let emailSent, emailError;
   const via = { whatsapp: "WhatsApp", sms: "text message", email: "email" }[body.via] || null;
   if (g.returnedMessageOn && (body.via === "email" || ((body.via === "whatsapp" || body.via === "sms") && body.emailCopy === true)) && String(body.message ?? "").trim()) {
-    const sent = await emailBorrower(c, loan, body.message, `Thank you for returning the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`);
+    // itemsLabel: several items of a booking returned together, thanked for in one message ("Walker and Shower Seat").
+    const label = typeof body.itemsLabel === "string" && body.itemsLabel.trim() ? body.itemsLabel.trim().slice(0, 200) : await loanItemLabel(db, g, loan);
+    const sent = await emailBorrower(c, loan, body.message, `Thank you for returning the ${label} — ${g.name || "Gemach"}`);
     emailSent = !!sent.ok;
     if (!sent.ok) emailError = sent.error;
   }

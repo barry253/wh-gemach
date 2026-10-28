@@ -3849,6 +3849,26 @@ await t("inventory ?holds=1: reservations without a unit yet, per numbered item 
   DB.Loans = DB.Loans.filter(l => !/^recLOANHOLD/.test(l.id));
 });
 
+await t("loans list: items of the same booking that already came back are listed on each loan still out", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  DB.Requests.push(rec("recREQPARTRET0001", { "Request ID": "R-950", Name: "Part Return", Status: "Converted", ...sc }),
+    rec("recREQPARTRET0002", { "Request ID": "R-951", Name: "Other", Status: "Converted", ...sc }));
+  DB.Loans.push(
+    rec("recLOANPARTRET001", { "Loan ID": "L-960", Status: "Active", "Item to Reserve": ["recTYPEA000000002"], "Date Borrowed": "2026-10-01", "Source Request": ["recREQPARTRET0001"], ...sc }),
+    rec("recLOANPARTRET002", { "Loan ID": "L-961", Status: "Returned", "Item to Reserve": ["recTYPEA000000003"], "Date Borrowed": "2026-10-01", "Date Returned": "2026-10-20", "Source Request": ["recREQPARTRET0001"], ...sc }),
+    rec("recLOANPARTRET003", { "Loan ID": "L-962", Status: "Cancelled", "Item to Reserve": ["recTYPEA000000001"], "Source Request": ["recREQPARTRET0001"], ...sc }),
+    rec("recLOANPARTRET004", { "Loan ID": "L-963", Status: "Returned", "Item to Reserve": ["recTYPEA000000001"], "Date Returned": "2026-10-21", "Source Request": ["recREQPARTRET0002"], ...sc }));
+  const loans = await (await call("/admin/loans", { headers: H })).json();
+  const l = loans.find(x => x.id === "recLOANPARTRET001");
+  assert.equal(l.bookingReturned.length, 1, JSON.stringify(l.bookingReturned));
+  assert.equal(l.bookingReturned[0].itemTypeName, "Shower Chair");
+  assert.equal(l.bookingReturned[0].dateReturned, "2026-10-20");
+  assert.deepEqual(loans.find(x => x.id === "recLOANWC0020000A").bookingReturned, [], "walk-in loans: none");
+  DB.Loans = DB.Loans.filter(x => !/^recLOANPARTRET/.test(x.id));
+  DB.Requests = DB.Requests.filter(x => !/^recREQPARTRET/.test(x.id));
+});
+
 await t("return reminder: stamps the loan, logs it, only for loans that are out; template saved in Settings", async () => {
   const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
   const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };

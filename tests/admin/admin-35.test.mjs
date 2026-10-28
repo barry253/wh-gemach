@@ -111,7 +111,8 @@ await page.click("#loans-list .loan-row:has-text('Devorah')");
 const lp = (await page.innerText("#loan-panel-recLOANDEV000001")).replace(/\s+/g, " ");
 ok(/R-080/.test(lp) && /Local rate/i.test(lp) && /\(561\) 322-9454/.test(lp), "loan booking shows the request card lines");
 ok(await page.$$eval("#loan-panel-recLOANDEV000001 .bk-line-sub", e => e.length) === 2 && /overdue/.test(lp), "different due dates: each gown's line has its own");
-ok(await page.$$eval("#loan-panel-recLOANDEV000001 .bk-line button", e => e.length) === 2, "a Returned button per gown");
+ok(await page.$$eval("#loan-panel-recLOANDEV000001 .bk-line .bk-ret-box:checked", e => e.length) === 2, "a ticked box per gown");
+ok(/Mark all returned/.test(await page.textContent("#loan-retall-recLOANDEV000001")), "one Mark all returned button");
 await page.screenshot({ path: "shot-booking-loan.png", fullPage: true });
 // The search still finds a booking by any of its items
 await page.fill("#loans-search", "navy");
