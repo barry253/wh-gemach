@@ -1578,7 +1578,7 @@
     $("form-view").hidden = false;
     $("success-view").hidden = true;
     hideError();
-    tsLoad().then(tsMount); // spam check starts while they fill in the form
+    tsLoad().then(tsMount); // load the spam-check widget while they fill in the form (it runs on Send)
     var btn = $("btn-submit"); btn.disabled = false; btn.textContent = submitLabel();
     modal.hidden = false; modal.classList.add("open"); lockScroll(true);
     setTimeout(function () { if (!modal.contains(document.activeElement) || document.activeElement === modal) $("f-name").focus(); }, 30);
@@ -1945,16 +1945,24 @@
     var btn = $("btn-submit");
     btn.disabled = true; btn.textContent = "Sending…";
 
-    tsToken().then(function (tok) {
-      if (ts.key && !tok) {
-        var te = new Error(ts.failed
-          ? "The security check couldn’t load (an ad blocker can cause this). Please allow challenges.cloudflare.com, or try another browser."
-          : "The security check under the form hasn’t finished yet — please wait a moment and send again.");
-        te.status = 400; throw te;
-      }
-      if (tok) body.turnstileToken = tok;
-      return W.fetchJSON("/submit-request", { method: "POST", body: body, retry: false, timeout: 20000 });
-    }).then(function (data) {
+    function sendOnce(retried) {
+      return tsToken().then(function (tok) {
+        if (ts.key && !tok) {
+          var te = new Error(ts.failed
+            ? "The security check couldn’t load (an ad blocker can cause this). Please allow challenges.cloudflare.com, or try another browser."
+            : "The security check under the form hasn’t finished yet — please wait a moment and send again.");
+          te.status = 400; throw te;
+        }
+        if (tok) body.turnstileToken = tok; else delete body.turnstileToken;
+        return W.fetchJSON("/submit-request", { method: "POST", body: body, retry: false, timeout: 20000 });
+      }).catch(function (err) {
+        // Cloudflare turned the token down (e.g. the phone paused the page): get a fresh one and try once more,
+        // so the borrower only sees the message if it happens twice in a row.
+        if (!retried && ts.key && err && err.status === 403 && err.data && err.data.turnstile) { tsReset(); return sendOnce(true); }
+        throw err;
+      });
+    }
+    sendOnce(false).then(function (data) {
       if (!data || !data.success) throw new Error((data && data.error) || "failed");
       var link = typeof data.manageUrl === "string" && /^https:\/\//.test(data.manageUrl) ? data.manageUrl : null;
       if ($("f-remember").checked) {
@@ -1994,14 +2002,19 @@
   });
 
   // ── Spam protection: Cloudflare Turnstile ──
-  // Only once the worker has its keys (GET /public/config gives the site key). The widget is invisible unless
-  // Cloudflare wants the visitor to check a box; the form waits up to 15 s for its token when they press Send.
-  var ts = { key: null, id: null, token: null, waiters: [], loading: false, failed: false, config: null };
+  // Only once the worker has its keys (GET /public/config gives the site key). The widget is rendered when the form
+  // opens but in "execute" mode: it asks Cloudflare for a token only when Send is pressed, so the token is always
+  // fresh (tokens last 5 minutes, and phones pause pages in the background). The widget is invisible unless
+  // Cloudflare wants the visitor to check a box; the form waits up to 15 s for the token (2 min once a box shows).
+  var TS_WAIT_MS = 15000, TS_INTERACTIVE_WAIT_MS = 120000, TS_FRESH_MS = 4 * 60 * 1000;
+  var ts = { key: null, id: null, token: null, tokenAt: 0, used: false, running: false, waiters: [], onInteractive: null,
+    loading: false, failed: false, config: null };
   function tsLoad() { // asked once, when the form is first opened (most visitors never open it)
     return ts.config || (ts.config = W.fetchJSON("/public/config").then(function (c) {
       ts.key = c && typeof c.turnstileSiteKey === "string" && c.turnstileSiteKey ? c.turnstileSiteKey : null;
     }).catch(function () { ts.config = null; /* try again next time; meanwhile send without a token (the worker decides) */ }));
   }
+  function tsDeliver(t) { var w = ts.waiters; ts.waiters = []; ts.onInteractive = null; w.forEach(function (f) { f(t); }); }
   function tsMount() {
     if (!ts.key || ts.id !== null || ts.loading) return;
     var box = $("ts-box");
@@ -2011,20 +2024,30 @@
       ts.loading = false;
       try {
         ts.id = window.turnstile.render(box, {
-          sitekey: ts.key, action: "request", appearance: "interaction-only", theme: "light",
-          callback: function (t) { ts.token = t; var w = ts.waiters; ts.waiters = []; w.forEach(function (f) { f(t); }); },
+          sitekey: ts.key, action: "request", appearance: "interaction-only", execution: "execute", theme: "light",
+          callback: function (t) { ts.running = false; ts.used = true; ts.token = t; ts.tokenAt = Date.now(); tsDeliver(t); },
+          "before-interactive-callback": function () { if (ts.onInteractive) ts.onInteractive(); },
           "expired-callback": function () { ts.token = null; },
-          "error-callback": function () { ts.token = null; },
+          "error-callback": function () { ts.running = false; ts.used = true; ts.token = null; },
         });
-      } catch (e) { ts.failed = true; }
+      } catch (e) { ts.failed = true; tsDeliver(null); return; }
+      if (ts.waiters.length) tsExecute(); // Send was pressed while the script was loading
     };
     if (window.turnstile) { render(); return; }
     var sc = document.createElement("script");
     sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     sc.async = true;
     sc.onload = render;
-    sc.onerror = function () { ts.loading = false; ts.failed = true; var w = ts.waiters; ts.waiters = []; w.forEach(function (f) { f(null); }); };
+    sc.onerror = function () { ts.loading = false; ts.failed = true; tsDeliver(null); };
     document.head.appendChild(sc);
+  }
+  function tsExecute() { // ask Cloudflare for a new token now
+    if (ts.id === null || !window.turnstile || ts.running) return;
+    try {
+      if (ts.used) { window.turnstile.reset(ts.id); ts.used = false; }
+      ts.token = null; ts.running = true;
+      window.turnstile.execute(ts.id);
+    } catch (e) { ts.running = false; }
   }
   function tsToken() {
     return tsLoad().then(tsTokenNow);
@@ -2032,17 +2055,21 @@
   function tsTokenNow() {
     if (!ts.key) return Promise.resolve(null);
     tsMount();
-    if (ts.token) return Promise.resolve(ts.token);
+    if (ts.token && Date.now() - ts.tokenAt < TS_FRESH_MS) return Promise.resolve(ts.token);
     if (ts.failed) return Promise.resolve(null);
     return new Promise(function (resolve) {
-      var done = false;
-      var timer = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 15000);
-      ts.waiters.push(function (t) { if (!done) { done = true; clearTimeout(timer); resolve(t); } });
+      var done = false, timer = null;
+      function finish(t) { if (!done) { done = true; clearTimeout(timer); resolve(t); } }
+      function wait(ms) { clearTimeout(timer); timer = setTimeout(function () { ts.running = false; ts.used = true; ts.onInteractive = null; finish(null); }, ms); }
+      wait(TS_WAIT_MS);
+      ts.onInteractive = function () { wait(TS_INTERACTIVE_WAIT_MS); }; // a box to check: give the visitor time
+      ts.waiters.push(finish);
+      tsExecute();
     });
   }
-  function tsReset() {
+  function tsReset() { // a token works once: the next send asks for a new one
     ts.token = null;
-    if (ts.id !== null && window.turnstile) { try { window.turnstile.reset(ts.id); } catch (e) { /* ignore */ } }
+    if (ts.used && ts.id !== null && window.turnstile && !ts.running) { try { window.turnstile.reset(ts.id); ts.used = false; } catch (e) { /* ignore */ } }
   }
 
   // ── Data ──

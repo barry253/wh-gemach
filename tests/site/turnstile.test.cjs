@@ -1,4 +1,5 @@
-// Request form spam protection: Cloudflare Turnstile token sent with the request (fake widget), reset after each send, honeypot, CSP
+// Request form spam protection: Cloudflare Turnstile token asked for on Send (execute mode, fake widget), one quiet retry
+// when the worker turns a token down, reset after each send, honeypot, CSP
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
 const { directory, gemachPayload } = require('./mock.js');
@@ -68,10 +69,14 @@ const base = { tagline: 'Wheelchairs and more.', description: '', category: 'Med
 directory.gemachs.push({ ...base, id: 'recTSG', slug: 'tsg', name: 'Turnstile Gemach',
   items: [{ id: 'recTsIt1', name: 'Walker', description: '', totalUnits: 1, availableCount: 1, hasPhoto: false, photoUrl: null, categoryId: 'catSH' }] });
 
-// A stand-in for Cloudflare's widget: hands out "tok-N" a moment after render / reset.
+// A stand-in for Cloudflare's widget: in execute mode it hands out "tok-N" a moment after each execute(); like the real
+// one, execute() does nothing while a token is already out until reset() is called.
 const FAKE_TURNSTILE = `window.turnstile = {
-  render: function (el, o) { window.__tsOpts = o; window.__tsRenders = (window.__tsRenders || 0) + 1; setTimeout(function () { o.callback('tok-1'); }, 300); return 'w1'; },
-  reset: function () { window.__tsResets = (window.__tsResets || 0) + 1; var n = window.__tsResets; setTimeout(function () { window.__tsOpts.callback('tok-r' + n); }, 100); }
+  render: function (el, o) { window.__tsOpts = o; window.__tsRenders = (window.__tsRenders || 0) + 1; window.__tsHas = false;
+    if (o.execution !== 'execute') setTimeout(function () { o.callback('tok-auto'); }, 300); return 'w1'; },
+  execute: function () { if (window.__tsHas) return; window.__tsExecs = (window.__tsExecs || 0) + 1; var n = window.__tsExecs;
+    setTimeout(function () { window.__tsHas = true; window.__tsOpts.callback('tok-' + n); }, 150); },
+  reset: function () { window.__tsResets = (window.__tsResets || 0) + 1; window.__tsHas = false; }
 };`;
 
 async function fillAndSend(page) {
@@ -100,20 +105,45 @@ async function fillAndSend(page) {
     await page.check('#row-recTsIt1 input[type=checkbox]');
     await page.click('#btn-open-modal');
     await page.waitForTimeout(100);
-    const opts = await page.evaluate(() => window.__tsOpts && { sitekey: window.__tsOpts.sitekey, action: window.__tsOpts.action, appearance: window.__tsOpts.appearance });
-    assert(opts && opts.sitekey === '0x4AAAtest' && opts.action === 'request' && opts.appearance === 'interaction-only', 'widget rendered on opening the form: ' + JSON.stringify(opts));
-    postStatus = 403; postReply = { error: 'The security check didn\'t go through. Please try sending again.', turnstile: true };
+    const opts = await page.evaluate(() => window.__tsOpts && { sitekey: window.__tsOpts.sitekey, action: window.__tsOpts.action, appearance: window.__tsOpts.appearance, execution: window.__tsOpts.execution });
+    assert(opts && opts.sitekey === '0x4AAAtest' && opts.action === 'request' && opts.appearance === 'interaction-only' && opts.execution === 'execute', 'widget rendered on opening the form: ' + JSON.stringify(opts));
+    await page.waitForTimeout(500);
+    assert(!(await page.evaluate(() => window.__tsExecs)), 'no token asked for until Send');
+    // The worker turns the first token down (e.g. it went stale): a fresh token is fetched and sent once more, quietly
+    let replies = [{ s: 403, b: { error: 'The security check didn\'t go through. Please try sending again.', turnstile: true } }, { s: 200, b: { success: true, requestId: 'R-1' } }];
+    const next = () => { const r = replies.shift() || { s: 200, b: { success: true, requestId: 'R-x' } }; postStatus = r.s; postReply = r.b; };
+    await ctx.route(API + '/submit-request', async r => { posts.push(JSON.parse(r.request().postData())); next(); await new Promise(res => setTimeout(res, 100)); r.fulfill({ status: postStatus, json: postReply, headers: cors }); });
     await fillAndSend(page);
-    await page.waitForTimeout(700);
-    assert(posts.length === 1 && posts[0].turnstileToken === 'tok-1' && !('website' in posts[0]), 'first send carries the token, no honeypot value: ' + JSON.stringify(posts[0] && { t: posts[0].turnstileToken, w: posts[0].website }));
-    assert(/security check didn’t go through|security check didn't go through/.test(await errs(page)), 'server refusal shown: ' + await errs(page));
-    assert(await page.evaluate(() => window.__tsResets) === 1, 'widget reset after the send');
-    postStatus = 200; postReply = { success: true, requestId: 'R-1' };
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(1200);
+    assert(posts.length === 2 && posts[0].turnstileToken === 'tok-1' && posts[1].turnstileToken === 'tok-2' && !('website' in posts[0]), 'refused token: retried once with a fresh token, no honeypot value: ' + JSON.stringify(posts.map(p => p.turnstileToken)));
+    assert(await page.isVisible('#success-view') && !(await errs(page)), 'request sent, no error shown: ' + await errs(page));
+    // Refused twice in a row: the message shows, and only one retry was made
+    await page.goto(BASE + '/g/tsg', { waitUntil: 'networkidle' });
+    await page.check('#row-recTsIt1 input[type=checkbox]');
+    await page.click('#btn-open-modal');
+    const refused = { s: 403, b: { error: 'The security check didn\'t go through. Please try sending again.', turnstile: true } };
+    replies = [refused, refused];
+    await fillAndSend(page);
+    await page.waitForTimeout(1200);
+    assert(posts.length === 4 && posts[2].turnstileToken !== posts[3].turnstileToken, 'one retry only, each with its own token: ' + JSON.stringify(posts.slice(2).map(p => p.turnstileToken)));
+    assert(/security check didn’t go through|security check didn't go through/.test(await errs(page)), 'second refusal shown: ' + await errs(page));
+    assert(!(await page.$eval('#btn-submit', b => b.disabled)), 'send button usable again');
+    // Pressing Send again after that gets yet another fresh token
+    replies = [{ s: 200, b: { success: true, requestId: 'R-2' } }];
     await page.click('#btn-submit');
-    await page.waitForTimeout(600);
-    assert(posts.length === 2 && posts[1].turnstileToken === 'tok-r1', 'second send uses a fresh token: ' + (posts[1] && posts[1].turnstileToken));
+    await page.waitForTimeout(800);
+    assert(posts.length === 5 && ![posts[2], posts[3]].some(p => p.turnstileToken === posts[4].turnstileToken), 'next send uses a fresh token: ' + posts[4]?.turnstileToken);
     assert(await page.isVisible('#success-view'), 'request sent');
+    // A different refusal (not Turnstile) is not retried
+    await page.goto(BASE + '/g/tsg', { waitUntil: 'networkidle' });
+    await page.check('#row-recTsIt1 input[type=checkbox]');
+    await page.click('#btn-open-modal');
+    replies = [{ s: 400, b: { error: 'Name and email are required.' } }];
+    await fillAndSend(page);
+    await page.waitForTimeout(800);
+    assert(posts.length === 6 && /Name and email are required/.test(await errs(page)), 'other errors shown without a retry');
+    await ctx.unroute(API + '/submit-request');
+    postStatus = 200; postReply = { success: true, requestId: 'R-3' };
     // honeypot: a bot that fills every field
     await page.goto(BASE + '/g/tsg', { waitUntil: 'networkidle' });
     await page.check('#row-recTsIt1 input[type=checkbox]');
@@ -123,7 +153,7 @@ async function fillAndSend(page) {
     await page.evaluate(() => { document.getElementById('f-hp').value = 'http://spam.example'; });
     await fillAndSend(page);
     await page.waitForTimeout(700);
-    assert(posts.length === 3 && posts[2].website === 'http://spam.example', 'honeypot value reaches the server (which refuses it)');
+    assert(posts.length === 7 && posts[6].website === 'http://spam.example', 'honeypot value reaches the server (which refuses it)');
     assert(!csp.length, 'nothing blocked by the Content-Security-Policy: ' + csp.join(' | '));
     await ctx.close();
 
