@@ -87,6 +87,7 @@ const TABLES = {
       // spotlight from another, and a Listing-only "how to borrow" note shown instead of "contact to check".
       "Group By": t("group_by"), "Spotlight Filter": t("spotlight_filter"), "Borrow Note": t("borrow_note"),
       "Photo Shape": t("photo_shape"), // "Portrait" = tall photos (book covers); blank = the usual landscape/square
+      "Vacations": t("vacations"), // JSON [{start, end}] (vacations.js): no borrower pickups / returns on those days
       "Availability Mode": t("availability_mode"), // "Date" = the page shows what's free for a date the visitor picks; blank = right now
       "Browse Categories": links("gemach_browse_categories", "Product Categories"),
       "Onboarding": t("onboarding"),

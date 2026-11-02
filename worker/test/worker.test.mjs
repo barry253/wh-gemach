@@ -5224,6 +5224,98 @@ await t("backup watch: alerts when the nightly export or an off-site copy is lat
   assert.ok(listed > 0, "daily cron checks the backups");
 });
 
+// ── Vacations (Settings → Vacations): no borrower pickups / returns on those days; admin sees what's affected ──
+{
+  const G = { id: "recVACGEMACH00001", slug: "vacation-gemach" };
+  const Gf = { Gemach: [G.id], "Gemach Slug": [G.slug] };
+  const day = n => { const d = new Date(__WHG_TEST__.nyToday() + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  DB.Gemachs.push(rec(G.id, { Name: "Vacation Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "vg@example.com", "Request Style": "Dates" }));
+  DB["Item Types"].push(rec("recVACTYPE0000001", { Name: "Walker", Active: true, ...Gf }));
+  DB.Items.push(rec("recVACUNIT0000001", { "Item ID": "VW-1", "Item Type": ["recVACTYPE0000001"], Active: true, Status: "Available", ...Gf }));
+  DB.Borrowers.push(rec("recVACBORROWER001", { Name: "Dina Away", Phone: "5165550101", ...Gf }));
+  DB.Requests.push(
+    rec("recVACREQUEST0001", { "Request ID": "R-V1", Name: "Waiting Wendy", Status: "New", "Request Type": "Loan", "Needed From": day(11), "Needed Until": day(30), ...Gf }),
+    rec("recVACREQUEST0002", { "Request ID": "R-V2", Name: "Later Larry", Status: "New", "Request Type": "Loan", "Needed From": day(40), ...Gf }));
+  DB.Loans.push(
+    rec("recVACLOAN0000001", { "Loan ID": "L-V1", Status: "Reserved", "Item to Reserve": ["recVACTYPE0000001"], "Reservation Start": day(2), "Reservation End": day(12), Borrower: ["recVACBORROWER001"], ...Gf }),
+    rec("recVACLOAN0000002", { "Loan ID": "L-V2", Status: "Active", Item: ["recVACUNIT0000001"], "Date Borrowed": day(-3), "Expected Return": day(5), Borrower: ["recVACBORROWER001"], ...Gf }));
+  const H = { ...auth(tokNet), "X-Gemach": G.slug, "Content-Type": "application/json" };
+  const putV = (list, h = H) => call("/admin/vacations", { method: "POST", headers: h, body: JSON.stringify({ vacations: list }) });
+  const page = async () => { __WHG_TEST__.clearMemo(); return (await call(`/public/gemach/${G.slug}?x=${Math.random()}`)).json(); };
+  const ask = extra => post("/submit-request", { gemach: G.slug, name: "Shira Ask", phone: "5165550202", preferredContact: "Phone", itemsRequested: ["recVACTYPE0000001"], ...extra });
+
+  await t("vacations: saved sorted, past ones dropped, bad / overlapping refused, volunteers can't change them", async () => {
+    let r = await putV([{ start: day(10), end: day(14) }, { start: day(-9), end: day(-5) }, { start: day(3), end: day(3) }]);
+    assert.equal(r.status, 200, await r.clone().text());
+    const d = await r.json();
+    assert.deepEqual(d.vacations, [{ start: day(3), end: day(3) }, { start: day(10), end: day(14) }]);
+    assert.deepEqual(JSON.parse(DB.Gemachs.find(x => x.id === G.id).fields.Vacations), d.vacations);
+    assert.equal((await putV([{ start: day(5), end: day(4) }])).status, 400);
+    assert.equal((await putV([{ start: "2026-02-30", end: day(4) }])).status, 400);
+    r = await putV([{ start: day(5), end: day(9) }, { start: day(9), end: day(12) }]);
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /overlap/);
+    const vol = await sign({ email: "v@example.com", name: "Vol", role: "Volunteer", gemachs: [{ id: G.id, slug: G.slug, name: "VG" }] });
+    assert.ok([403, 401].includes((await putV([], { ...auth(vol), "X-Gemach": G.slug, "Content-Type": "application/json" })).status));
+    const g = await (await call("/admin/vacations", { headers: H })).json();
+    assert.deepEqual(g.vacations, d.vacations);
+  });
+
+  await t("vacations: the save lists bookings dated inside a vacation (pickup, return, due back)", async () => {
+    const d = await (await putV([{ start: day(10), end: day(14) }, { start: day(5), end: day(5) }])).json();
+    const rows = d.conflicts.map(c => [c.kind, c.name, c.what, c.date]);
+    assert.deepEqual(rows, [
+      ["loan", "Dina Away", "return", day(5)],
+      ["request", "Waiting Wendy", "pickup", day(11)],
+      ["reservation", "Dina Away", "return", day(12)],
+    ]);
+    assert.deepEqual(d.conflicts[0].ref, { loan: "recVACLOAN0000002" });
+  });
+
+  await t("vacations: public page carries current + upcoming ones only", async () => {
+    DB.Gemachs.find(x => x.id === G.id).fields.Vacations = JSON.stringify([{ start: day(-8), end: day(-2) }, { start: day(-1), end: day(1) }, { start: day(10), end: day(14) }]);
+    const p = await page();
+    assert.deepEqual(p.gemach.vacations, [{ start: day(-1), end: day(1) }, { start: day(10), end: day(14) }]);
+  });
+
+  await t("vacations: a request can't pick up or return during one; around it is fine", async () => {
+    DB.Gemachs.find(x => x.id === G.id).fields.Vacations = JSON.stringify([{ start: day(10), end: day(14) }]);
+    __WHG_TEST__.clearMemo();
+    let r = await ask({ neededFrom: day(12), neededUntil: day(20) });
+    assert.equal(r.status, 400);
+    let e = await r.json();
+    assert.equal(e.vacation, true);
+    assert.match(e.error, /^The gemach is on vacation \w{3}, \w{3} \d+ – \w{3}, \w{3} \d+, so a pickup on .* can't be scheduled then\. Please choose a different date\.$/);
+    r = await ask({ neededFrom: day(8), neededUntil: day(14) });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /a return on/);
+    assert.equal((await ask({ neededFrom: day(8), neededUntil: day(16) })).status, 200, "spanning a vacation is fine");
+    const ok = await (await ask({ neededFrom: day(15), openEnded: true })).json();
+    assert.ok(ok.manageUrl);
+    const tok = ok.manageUrl.split("/r/")[1];
+    assert.equal((await (await call(`/public/manage/${tok}`)).json()).gemach.onVacation, false, "upcoming vacation: not on vacation yet");
+    DB.Gemachs.find(x => x.id === G.id).fields.Vacations = JSON.stringify([{ start: day(-1), end: day(2) }, { start: day(10), end: day(14) }]);
+    __WHG_TEST__.clearMemo();
+    const m = await (await call(`/public/manage/${tok}`)).json();
+    assert.equal(m.gemach.onVacation, true);
+    assert.equal(m.gemach.vacations, undefined, "manage page gets yes / no, not the dates");
+    DB.Gemachs.find(x => x.id === G.id).fields.Vacations = JSON.stringify([{ start: day(10), end: day(14) }]);
+    __WHG_TEST__.clearMemo();
+  });
+
+  await t("vacations: Event style checks the worked-out pickup and return days", async () => {
+    const gf = DB.Gemachs.find(x => x.id === G.id).fields;
+    Object.assign(gf, { "Request Style": "Event", "Pickup Days Before": 1, "Return Days After": 1, "Shabbos Adjust": false });
+    __WHG_TEST__.clearMemo();
+    let r = await ask({ eventDate: day(15) }); // return day(16) fine, pickup day(14) in the vacation
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /a pickup on/);
+    assert.equal((await ask({ eventDate: day(20) })).status, 200);
+    Object.assign(gf, { "Request Style": "Dates", Vacations: null });
+    __WHG_TEST__.clearMemo();
+  });
+}
+
 if (D1_MODE) {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);

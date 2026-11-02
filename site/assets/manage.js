@@ -122,6 +122,7 @@
         actionsHtml() +
       "</section>" +
       '<section class="m-help"><h2 class="m-h2">Need something else?</h2><p>To change dates or ask a question, contact ' + esc(data.gemach.name) + " directly.</p>" +
+        (data.gemach.onVacation ? '<p class="vac-banner" role="note">This gemach is currently on vacation and will have delayed responses.</p>' : "") +
         contactRow(data.gemach, false) + "</section>" +
       '<p class="m-private">This page is private to you. Please don’t share the link.</p>';
   }

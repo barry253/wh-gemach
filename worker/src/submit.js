@@ -4,6 +4,7 @@ import { AirtableError, linkedId, verifyOwnedIds } from "./airtable.js";
 import { sendAlert } from "./alerts.js";
 import { LEGACY_SLUG, T } from "./config.js";
 import { addYearsDate, eventDates, isValidDate, nyToday } from "./dates.js";
+import { vacationProblem } from "./vacationrules.js";
 import { buildEmailHtml, escHtml, sendEmail, sendNotificationEmail } from "./email.js";
 import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
 import { json } from "./http.js";
@@ -199,6 +200,8 @@ async function handleSubmitRequest(request, db, env, ctx) {
     // Server is authoritative: client-computed dates are ignored.
     const d = eventDates(eventDate, g);
     from = d.pickup; until = d.return;
+    const away = vacationProblem(g, [{ date: from, what: "pickup" }, { date: until, what: "return" }]);
+    if (away) return json({ error: away, vacation: true }, 400);
     fields["Needed From"] = from;
     fields["Needed Until"] = until;
     fields["Open-ended duration"] = false;
@@ -218,6 +221,8 @@ async function handleSubmitRequest(request, db, env, ctx) {
       if (neededUntil > addYearsDate(todayNy, 3)) return json({ error: "The approximate return date is too far in the future." }, 400);
       fields["Needed Until"] = until = neededUntil;
     }
+    const away = vacationProblem(g, [{ date: neededFrom, what: "pickup" }, ...(!isOpen && neededUntil ? [{ date: neededUntil, what: "return" }] : [])]);
+    if (away) return json({ error: away, vacation: true }, 400);
     fields["Open-ended duration"] = isOpen;
     fields["Needed From"] = from = neededFrom;
   }

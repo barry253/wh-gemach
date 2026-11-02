@@ -10,6 +10,7 @@ import { publicTypeExtras } from "./extras.js";
 import { parseMorePhotos } from "./photos.js";
 import { hasLocalTier, townRequired } from "./places.js";
 import { inTestMode } from "./testmode.js";
+import { parseVacations } from "./vacationrules.js";
 import { addonPrice, isAddonType, isQtyType, lendableQty, loanWindow, LOAN_WINDOW_FIELDS, maxPerRequest, packageSize, packageUnit, qtyAvailable, qtyBookingsFromLoans, TYPE_PUBLIC_FIELDS } from "./quantity.js";
 
 // ─── Public inventory / directory ─────────────────────────────────────────────
@@ -154,6 +155,7 @@ function publicGemach(g, communityName, { withContact = true } = {}) {
     availabilityMode: g.availabilityMode === "Date" ? "Date" : "Now",
     photoShape: g.photoShape || "Landscape", groupBy: g.groupBy ?? null, spotlightFilter: g.spotlightFilter ?? null, borrowNote: g.borrowNote ?? null,
     comingSoon: !!g.comingSoon,
+    vacations: parseVacations(g.vacations, nyToday()), // current + upcoming; the page re-checks against today (cache can be a day old)
     browseCategoryIds: g.browseCategoryIds || [],
   };
   if (!withContact) for (const k of CONTACT_KEYS) delete out[k];

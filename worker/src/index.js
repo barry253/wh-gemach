@@ -53,6 +53,8 @@
  *   Admin:   GET /admin/me and every other /admin/* route, scoped by ?g=<slug> or X-Gemach header.
  *            GET/PATCH /admin/gemach — gemach profile, branding, request style + message templates
  *            (PATCH: Owner/Manager/Network Admin); POST /admin/gemach/logo (multipart "logo", ≤2 MB, png/jpeg/webp).
+ *            GET/POST /admin/vacations — { vacations: [{start, end}] } (POST: Owner/Manager/Network Admin; replaces the list,
+ *            answers with { vacations, conflicts } = open bookings dated inside a vacation). vacations.js
  *            GET /admin/appointments — upcoming confirmed appointments, plus recent ones not marked as visited (past: true).
  *            POST /admin/reservations | /admin/appointments (made in admin), GET /admin/upcoming — newbooking.js.
  *            GET|PATCH /admin/booking, POST /admin/booking/cancel — edit a request + its open loans as one booking (booking.js).
@@ -110,6 +112,7 @@ import { handleGetManage, handleManageCancel, handleManageReady } from "./manage
 import { handleSearchLog } from "./search.js";
 import { handleSiteEvent } from "./events.js";
 import { handleGetAdminGemach, handleUpdateAdminGemach, handleUploadLogo } from "./settings.js";
+import { handleGetVacations, handlePutVacations } from "./vacations.js";
 import { handleDashboard, handleStats } from "./stats.js";
 import { handleSubmitRequest } from "./submit.js";
 import { clientIp, handlePublicConfig, overLimit } from "./abuse.js";
@@ -281,6 +284,8 @@ async function adminRoute(c, path, method) {
   if (method === "GET"   && path === "/admin/gemach")      return handleGetAdminGemach(c);
   if (method === "PATCH" && path === "/admin/gemach")      return handleUpdateAdminGemach(c);
   if (method === "POST"  && path === "/admin/gemach/logo") return handleUploadLogo(c);
+  if (method === "GET"   && path === "/admin/vacations")   return handleGetVacations(c);
+  if (method === "POST"  && path === "/admin/vacations")   return handlePutVacations(c);
   if (method === "GET"   && path === "/admin/appointments") return handleGetAppointments(c);
   if (method === "GET"  && path === "/admin/requests")     return handleGetRequests(c);
   if (method === "POST" && (m = path.match(/^\/admin\/requests\/([^/]+)\/confirm$/))) return handleRequestDecision(c, m[1], "confirm");

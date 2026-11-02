@@ -17,7 +17,8 @@ import { logEvent, logEvents } from "./activity.js";
 import { AirtableError, Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
 import { purgePublicCache } from "./cache.js";
 import { REC_RE, T } from "./config.js";
-import { formatNy } from "./dates.js";
+import { formatNy, nyToday } from "./dates.js";
+import { vacationOn } from "./vacationrules.js";
 import { longDate, sendEmail, buildEmailHtml, escHtml } from "./email.js";
 import { loadGemachBySlug, selName } from "./gemachs.js";
 import { json } from "./http.js";
@@ -129,7 +130,8 @@ async function managePayload(db, rec, g, loans) {
   return {
     gemach: { name: gp.name, slug: gp.slug, phone: gp.phone, email: gp.email, whatsapp: gp.whatsapp, primaryContact: gp.primaryContact,
       secondaryContact: gp.secondaryContact, logoUrl: gp.logoUrl, logoDarkUrl: gp.logoDarkUrl, themeColor: gp.themeColor, accentColor: gp.accentColor,
-      requestStyle: gp.requestStyle, eventLabel: gp.eventLabel },
+      requestStyle: gp.requestStyle, eventLabel: gp.eventLabel,
+      onVacation: !!vacationOn(gp.vacations, nyToday()) }, // just yes / no: the dates stay private here
     request: {
       requestId: f["Request ID"] || null,
       firstName: String(f["Name"] || "").trim().split(/\s+/)[0] || null,

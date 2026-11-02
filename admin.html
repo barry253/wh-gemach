@@ -243,7 +243,10 @@
     .savebar-msg b { font-size: 0.88rem; color: #92400E; }
     .savebar-msg span { font-size: 0.78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .set-tab-phone { display: none; }
-    @media (max-width: 479px) { .set-tab-full { display: none; } .set-tab-phone { display: inline; } .set-tabs { gap: 0.25rem; } .set-tab { padding: 0 0.5rem; font-size: 0.85rem; } }
+    /* Phones: six areas don't fit one row, so they sit in rows of three (no sideways scrolling). */
+    @media (max-width: 479px) { .set-tab-full { display: none; } .set-tab-phone { display: inline; }
+      .set-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.3rem; overflow-x: visible; }
+      .set-tab { padding: 0 0.4rem; font-size: 0.85rem; justify-content: center; } }
     body.settings-dirty #settings-body { padding-bottom: 5rem; }
     .settings-help {
       font-size: 0.78rem;
@@ -2143,7 +2146,7 @@
     <div id="checkout-foot" style="display:none">
       <div class="form-group" id="checkout-due-group">
         <label for="checkout-due">Due back</label>
-        <input type="date" id="checkout-due" style="max-width:12rem" />
+        <input type="date" id="checkout-due" style="max-width:12rem" data-vac="return" />
         <div class="co-chips" id="checkout-due-chips"></div>
       </div>
       <div class="form-group" id="checkout-notes-group" style="display:none">
@@ -2827,6 +2830,27 @@
     const t = new Date(dateMs(s)).toLocaleDateString("en-US", o);
     return withComma ? t : t.replace(",", "");
   }
+  // ── Vacations (Settings → Vacations) ── borrowers can't pick these days; admin is only warned.
+  /** Current + upcoming vacations [{start, end}] (both days included). */
+  function gemachVacations() { const t = nyTodayStr(); return (GEMACH?.vacations || []).filter(v => v.end >= t); }
+  function vacationOn(d) { return isValidDate(d) ? gemachVacations().find(v => v.start <= d && d <= v.end) || null : null; }
+  /** "Fri Dec 18 – Sun Dec 27" (one day: "Fri Dec 18"). */
+  function vacRange(v) { return v.start === v.end ? fmtDay(v.start) : `${fmtDay(v.start)} – ${fmtDay(v.end)}`; }
+  /** A default date moved out of any vacation (to the day after it ends). */
+  function outsideVacation(d) { let v, n = 0; while (d && (v = vacationOn(d)) && n++ < 30) d = isoAddDays(v.end, 1); return d; }
+  /** Date inputs marked data-vac get a warning under them when the day falls in a vacation. */
+  function refreshVacNotes(root = document) {
+    root.querySelectorAll("input[type=date][data-vac]").forEach(inp => {
+      let note = inp.nextElementSibling?.classList?.contains("vac-note") ? inp.nextElementSibling : null;
+      const v = !inp.disabled && vacationOn(inp.value);
+      if (!v) { if (note) note.remove(); return; }
+      if (!note) { note = document.createElement("div"); note.className = "co-note warn vac-note"; inp.insertAdjacentElement("afterend", note); }
+      note.textContent = `⚠ You're on vacation then (${vacRange(v)}). Borrowers can't choose this day, but you can still save it.`;
+    });
+  }
+  ["input", "change"].forEach(ev => document.addEventListener(ev, e => {
+    if (e.target?.matches?.("input[type=date][data-vac]")) refreshVacNotes(e.target.parentElement || document);
+  }));
   /** "Sun, Oct 12 at 8:00 PM" from local date + "HH:MM" inputs. */
   function fmtAppointment(date, time) {
     if (!isValidDate(date) || !/^\d{2}:\d{2}$/.test(time || "")) return "";
@@ -4709,6 +4733,7 @@
   function coSetDue(d) {
     CO.due = isValidDate(d) ? d : "";
     document.getElementById("checkout-due").value = CO.due;
+    refreshVacNotes(document.getElementById("checkout-due").parentElement);
     coRenderRows();
   }
   function coAdd(typeId) {
@@ -4761,9 +4786,10 @@
       ].filter(Boolean).join(" · ");
       CO.rows = (CO.req.itemTypeIds || []).filter(id => CO.types.has(id)).map(id => coNewRow(id, false, CO.req.quantities?.[id]));
     }
-    CO.due = data.defaultLoanDays ? isoAddDays(data.today, data.defaultLoanDays) : "";
+    CO.due = data.defaultLoanDays ? outsideVacation(isoAddDays(data.today, data.defaultLoanDays)) : ""; // never defaults into a vacation
     document.getElementById("checkout-due").value = CO.due;
     document.getElementById("checkout-due").min = data.today;
+    refreshVacNotes(document.getElementById("checkout-due").parentElement);
     document.getElementById("checkout-due").onchange = e => coSetDue(e.target.value);
     document.getElementById("checkout-notes-group").style.display = walkIn ? "" : "none";
     document.getElementById("checkout-notes").value = "";
@@ -4907,27 +4933,27 @@
       } else {
         dates = `<div class="bk-grid">
           ${isEventReq ? `<div class="form-group full"><label for="bk-event">${esc(b.eventLabel || "Event date")}</label><input type="date" id="bk-event" value="${esc(r.eventDate || "")}" onchange="bkEventChanged()" /></div>` : ""}
-          <div class="form-group"><label for="bk-from">Needed from</label><input type="date" id="bk-from" value="${esc(r.neededFrom || "")}" /></div>
-          <div class="form-group"><label for="bk-until">Until</label><input type="date" id="bk-until" value="${esc(r.openEnded ? "" : r.neededUntil || "")}" ${r.openEnded ? "disabled" : ""} /></div>
+          <div class="form-group"><label for="bk-from">Needed from</label><input type="date" id="bk-from" data-vac="pickup" value="${esc(r.neededFrom || "")}" /></div>
+          <div class="form-group"><label for="bk-until">Until</label><input type="date" id="bk-until" data-vac="return" value="${esc(r.openEnded ? "" : r.neededUntil || "")}" ${r.openEnded ? "disabled" : ""} /></div>
           <label class="check-row full" style="margin-bottom:0.6rem"><input type="checkbox" id="bk-open" ${r.openEnded ? "checked" : ""} onchange="bkEl('bk-until').disabled=this.checked" /><span>Open-ended (no return date yet)</span></label>
         </div>`;
       }
     } else if (b.kind === "appointment") {
       const p = nyParts(r.appointmentAt);
       dates = `<div class="bk-grid">
-        <div class="form-group"><label for="bk-appt-date">Appointment date</label><input type="date" id="bk-appt-date" value="${esc(p.date)}" /></div>
+        <div class="form-group"><label for="bk-appt-date">Appointment date</label><input type="date" id="bk-appt-date" data-vac="appointment" value="${esc(p.date)}" /></div>
         <div class="form-group"><label for="bk-appt-time">Time</label><input type="time" id="bk-appt-time" step="300" value="${esc(p.time)}" /></div>
         <div class="form-group"><label for="bk-event">${esc(b.eventLabel || "Event date")}</label><input type="date" id="bk-event" value="${esc(r.eventDate || "")}" /></div>
       </div>`;
     } else {
       if (res0) dates += `<div class="bk-grid">
         ${isEventReq ? `<div class="form-group full"><label for="bk-event">${esc(b.eventLabel || "Event date")}</label><input type="date" id="bk-event" value="${esc(r.eventDate || "")}" onchange="bkEventChanged()" /></div>` : ""}
-        <div class="form-group"><label for="bk-res-start">${act0 ? "Reserved items: from" : "Reserved from"}</label><input type="date" id="bk-res-start" value="${esc(res0.reservationStart || "")}" /></div>
-        <div class="form-group"><label for="bk-res-end">Until</label><input type="date" id="bk-res-end" value="${esc(res0.reservationEnd || "")}" /></div>
+        <div class="form-group"><label for="bk-res-start">${act0 ? "Reserved items: from" : "Reserved from"}</label><input type="date" id="bk-res-start" data-vac="pickup" value="${esc(res0.reservationStart || "")}" /></div>
+        <div class="form-group"><label for="bk-res-end">Until</label><input type="date" id="bk-res-end" data-vac="return" value="${esc(res0.reservationEnd || "")}" /></div>
       </div>`;
       if (act0) dates += `<div class="bk-grid">
         <div class="form-group"><label for="bk-borrowed">Picked up</label><input type="date" id="bk-borrowed" max="${esc(b.today)}" value="${esc(act0.dateBorrowed || "")}" /></div>
-        <div class="form-group"><label for="bk-due">Due back</label><input type="date" id="bk-due" value="${esc(act0.expectedReturn || "")}" onchange="bkDueChips()" /></div>
+        <div class="form-group"><label for="bk-due">Due back</label><input type="date" id="bk-due" data-vac="return" value="${esc(act0.expectedReturn || "")}" onchange="bkDueChips()" /></div>
         <div class="co-chips full" id="bk-due-chips" style="margin:-0.5rem 0 1rem"></div>
       </div>`;
     }
@@ -4955,6 +4981,7 @@
     BK.orig = bkSnapshot();
     bkRenderItems();
     if (act0) bkDueChips();
+    refreshVacNotes(bkEl("bk-body"));
     bkEl("bk-body").addEventListener("input", bkAutoMessage);
     bkEl("bk-body").addEventListener("change", bkAutoMessage);
     ["bk-phone", "bk-email", "bk-pref"].forEach(id => bkEl(id).addEventListener("change", bkSetupSendBy));
@@ -4983,6 +5010,7 @@
     if (!d) return;
     if (bkEl("bk-from")) { bkEl("bk-from").value = d.pickup; bkEl("bk-until").value = d.return; }
     if (bkEl("bk-res-start")) { bkEl("bk-res-start").value = d.pickup; bkEl("bk-res-end").value = d.return; }
+    refreshVacNotes(bkEl("bk-body"));
     bkAutoMessage();
   }
   function bkDueChips() {
@@ -4994,7 +5022,7 @@
     box.innerHTML = chips.map(([d, label]) => `<button type="button" class="co-chip" onclick="bkSetDue('${d}')">${esc(label)} <span class="muted-small">${esc(fmtDay(d))}</span></button>`).join("") +
       `<button type="button" class="co-chip${cur ? "" : " active"}" onclick="bkSetDue('')">No date</button>`;
   }
-  function bkSetDue(d) { bkEl("bk-due").value = d; bkDueChips(); bkAutoMessage(); }
+  function bkSetDue(d) { bkEl("bk-due").value = d; refreshVacNotes(bkEl("bk-body")); bkDueChips(); bkAutoMessage(); }
 
   function bkRenderItems() {
     const box = bkEl("bk-items");
@@ -5339,19 +5367,23 @@
     NB.data = d;
     NB.types = new Map(d.types.map(t => [t.id, t]));
     const today = d.today;
-    const until = d.defaultLoanDays ? isoAddDays(today, d.defaultLoanDays) : "";
+    // Defaults skip vacation days (pickup moves to the day after; so does the return date).
+    const from0 = outsideVacation(today);
+    const until = d.defaultLoanDays ? outsideVacation(isoAddDays(from0, d.defaultLoanDays)) : "";
+    const movedFrom = from0 !== today ? vacationOn(today) : null;
     const label = GEMACH?.eventLabel || "Event date";
     const dates = appt ? `
         <div class="bk-grid">
-          <div class="form-group"><label for="nb-appt-date">Date <span style="color:var(--red)">*</span></label><input type="date" id="nb-appt-date" min="${esc(today)}" /></div>
+          <div class="form-group"><label for="nb-appt-date">Date <span style="color:var(--red)">*</span></label><input type="date" id="nb-appt-date" min="${esc(today)}" data-vac="appointment" /></div>
           <div class="form-group"><label for="nb-appt-time">Time <span style="color:var(--red)">*</span></label><input type="time" id="nb-appt-time" step="300" /></div>
           <div class="form-group"><label for="nb-event">${esc(label)} <span class="muted-small">— optional</span></label><input type="date" id="nb-event" /></div>
         </div>` : `
         <div class="bk-grid">
           ${isEventGemach() ? `<div class="form-group full"><label for="nb-event">${esc(label)}</label><input type="date" id="nb-event" min="${esc(today)}" onchange="nbEventChanged()" />
             <p class="muted-small" style="margin:0.3rem 0 0">Fills in the dates below by your pickup / return rule.</p></div>` : ""}
-          <div class="form-group"><label for="nb-from">Needed from <span style="color:var(--red)">*</span></label><input type="date" id="nb-from" min="${esc(today)}" value="${esc(today)}" /></div>
-          <div class="form-group"><label for="nb-until">Until</label><input type="date" id="nb-until" min="${esc(today)}" value="${esc(until)}" /></div>
+          <div class="form-group"><label for="nb-from">Needed from <span style="color:var(--red)">*</span></label><input type="date" id="nb-from" min="${esc(today)}" value="${esc(from0)}" data-vac="pickup" /></div>
+          <div class="form-group"><label for="nb-until">Until</label><input type="date" id="nb-until" min="${esc(today)}" value="${esc(until)}" data-vac="return" /></div>
+          ${movedFrom ? `<p class="muted-small full" style="margin:-0.4rem 0 0.6rem">Starts ${esc(fmtDay(from0))}, after your vacation (${esc(vacRange(movedFrom))}).</p>` : ""}
           <label class="check-row full" style="margin-bottom:0.6rem"><input type="checkbox" id="nb-open" onchange="nbEl('nb-until').disabled=this.checked;nbRender()" /><span>Open-ended (no return date yet)</span></label>
         </div>`;
     nbEl("nb-body").innerHTML = `
@@ -5391,6 +5423,7 @@
     nbEl("nb-from").value = d.pickup < NB.data.today ? NB.data.today : d.pickup;
     nbEl("nb-until").value = d.return;
     nbEl("nb-open").checked = false; nbEl("nb-until").disabled = false;
+    refreshVacNotes(nbEl("nb-body"));
     nbRender();
   }
   const nbWindow = () => ({ from: nbVal("nb-from") || NB.data.today, to: nbEl("nb-open")?.checked ? null : nbVal("nb-until") || null });
@@ -5427,6 +5460,7 @@
   }
   function nbRender() {
     if (!NB?.data) return;
+    refreshVacNotes(nbEl("nb-body"));
     nbEl("nb-items").innerHTML = NB.rows.map((row, i) => {
       const t = NB.types.get(row.typeId);
       const attrs = Object.entries(t.attributes || {}).map(([k, v]) => `${k} ${v.join(", ")}`).join(" · ");
@@ -6608,6 +6642,7 @@
     { id: "page",     name: "Your page", phone: "Page" },
     { id: "requests", name: "Requests & pickup", phone: "Requests" },
     { id: "messages", name: "Messages" },
+    { id: "vacations", name: "Vacations" }, // saved right away (own list), not by the Save bar
     { id: "team",     name: "Team", owners: true }, // only for the gemach's owners (and network admins)
   ];
   const visibleSettingsAreas = () => SETTINGS_AREAS.filter(a => !a.owners || GEMACH?.canManageTeam);
@@ -6931,6 +6966,16 @@
             ${ro ? "" : `<div style="text-align:right;margin-top:0.4rem"><button class="btn btn-ghost btn-sm" type="button" onclick="resetTemplate('${t.kind}')">Reset to default</button></div>`}
           </div>
         </details>`).join("")}
+      </div>
+      <div class="set-area" id="set-area-vacations" role="tabpanel" aria-labelledby="set-tab-vacations">
+        <div class="net-toolbar">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="settings-sec-vacations">Vacations</div>
+          ${ro ? "" : `<button class="btn btn-primary btn-sm" type="button" id="vac-add-btn" onclick="vacEdit(-1)">+ Add vacation</button>`}
+        </div>
+        <p class="settings-help">Borrowers can't choose a pickup or return day during a vacation, and while one is on, your page says you're on vacation and will answer later (without the dates). Both days you choose are included. You can still reserve and lend on those days yourself.${ro ? "" : " Changes here are saved right away."}</p>
+        <div id="vac-form"></div>
+        <div class="card-list" id="vac-list"></div>
+        <div id="vac-conflicts"></div>
       </div>
       ${g.canManageTeam ? `<div class="set-area" id="set-area-team" role="tabpanel" aria-labelledby="set-tab-team">
         <div class="net-toolbar">
@@ -7354,6 +7399,86 @@
     });
     if (!quiet) { const tabs = document.querySelector(".set-tabs"); if (tabs && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: "start" }); }
     if (id === "team") loadTeam();
+    if (id === "vacations") renderVacations();
+  }
+
+  // ── Vacations (Settings → Vacations; Owners / Managers edit, Volunteers see) ──
+  // The whole list is saved with POST /admin/vacations; the answer lists bookings dated inside a vacation.
+  let VAC_EDIT = null; // index being edited, -1 = new, null = none
+  function renderVacations() {
+    const list = document.getElementById("vac-list");
+    if (!list) return;
+    const vs = gemachVacations(), t = nyTodayStr(), ro = !GEMACH?.canEdit;
+    list.innerHTML = vs.length ? vs.map((v, i) => `<div class="card net-row" id="vac-row-${i}">
+        <div class="net-row-head">
+          <div class="card-title">${esc(vacRange(v))}</div>
+          ${v.start <= t ? '<span class="tag tag-amber">On now</span>' : '<span class="tag tag-navy">Upcoming</span>'}
+        </div>
+        ${ro ? "" : `<div class="team-actions">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="vacEdit(${i})">Edit</button>
+          <button class="btn btn-ghost btn-sm btn-danger-text" type="button" onclick="vacDelete(${i}, this)">Delete</button></div>`}
+      </div>`).join("") : '<div class="empty-state">No vacations coming up</div>';
+    const form = document.getElementById("vac-form");
+    if (VAC_EDIT == null || ro) { form.innerHTML = ""; return; }
+    const v = VAC_EDIT >= 0 ? vs[VAC_EDIT] : null;
+    form.innerHTML = `<div class="card" style="margin-bottom:0.75rem">
+      <div class="card-title" style="margin-bottom:0.5rem">${v ? "Change vacation" : "New vacation"}</div>
+      <div class="bk-grid">
+        <div class="form-group"><label for="vac-start">First day away</label><input type="date" id="vac-start" min="${esc(t)}" value="${esc(v?.start || "")}" /></div>
+        <div class="form-group"><label for="vac-end">Last day away</label><input type="date" id="vac-end" min="${esc(t)}" value="${esc(v?.end || "")}" /></div>
+      </div>
+      <div class="team-actions">
+        <button class="btn btn-primary btn-sm" type="button" id="vac-save-btn" onclick="vacSave()">Save</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="VAC_EDIT=null;renderVacations()">Cancel</button>
+      </div></div>`;
+    const s = document.getElementById("vac-start"), e = document.getElementById("vac-end");
+    s.onchange = () => { if (isValidDate(s.value)) { e.min = s.value; if (!e.value || e.value < s.value) e.value = s.value; } };
+    (v ? e : s).focus();
+  }
+  function vacEdit(i) { VAC_EDIT = i; renderVacations(); }
+  async function vacPut(list, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api("/admin/vacations", "POST", { vacations: list });
+      if (!res) return false;
+      if (res.error) { showToast(res.error); return false; }
+      GEMACH.vacations = res.vacations || [];
+      VAC_EDIT = null;
+      renderVacations();
+      renderVacationConflicts(res.conflicts);
+      return true;
+    } finally { if (btn) btn.disabled = false; }
+  }
+  async function vacSave() {
+    const start = document.getElementById("vac-start").value, end = document.getElementById("vac-end").value;
+    if (!isValidDate(start)) { showToast("Choose the first day away"); return; }
+    if (!isValidDate(end)) { showToast("Choose the last day away"); return; }
+    if (end < start) { showToast("The last day can't be before the first day"); return; }
+    if (end < nyTodayStr()) { showToast("That vacation is already over"); return; }
+    const list = gemachVacations().slice();
+    if (VAC_EDIT >= 0) list[VAC_EDIT] = { start, end }; else list.push({ start, end });
+    if (await vacPut(list, document.getElementById("vac-save-btn"))) showToast("Vacation saved");
+  }
+  async function vacDelete(i, btn) {
+    const v = gemachVacations()[i];
+    if (!v || !confirm(`Delete the vacation ${vacRange(v)}?`)) return;
+    if (await vacPut(gemachVacations().filter((_, j) => j !== i), btn)) showToast("Vacation deleted");
+  }
+  /** After a save: bookings with a pickup / return / appointment inside a vacation (nothing was changed). */
+  function renderVacationConflicts(rows) {
+    const box = document.getElementById("vac-conflicts");
+    if (!box) return;
+    if (rows == null) { box.innerHTML = '<p class="muted-small">Couldn\'t check your bookings against these dates. Look at Upcoming on the Dashboard.</p>'; return; }
+    if (!rows.length) { box.innerHTML = ""; return; }
+    const what = { pickup: "pickup", return: "due back", appointment: "appointment" };
+    const kind = { request: "Request", reservation: "Reservation", loan: "On loan", appointment: "Appointment" };
+    box.innerHTML = `<div class="section-label" style="margin-top:1.25rem">Already booked during a vacation</div>
+      <p class="settings-help">${rows.length === 1 ? "This booking has" : `These ${rows.length} bookings have`} a date while you're away. Nothing was changed — edit ${rows.length === 1 ? "it" : "them"} if you need to.</p>
+      <div class="card-list">${rows.map(r => `<div class="card net-row">
+        <div class="net-row-head"><div style="min-width:0"><div class="card-title">${esc(r.name)}</div>
+          <div class="card-id">${esc(kind[r.kind] || "")} · ${esc(what[r.what] || r.what)} ${esc(fmtDay(r.date))}</div></div>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="openBooking(${r.ref.loan ? `{ loan: '${safeId(r.ref.loan)}' }` : `{ request: '${safeId(r.ref.request)}' }`})">✏️ Edit</button></div>
+      </div>`).join("")}</div>`;
   }
 
   // ── Team (Settings → Team; owners and network admins) ──────────────────────
@@ -7492,7 +7617,7 @@
   }
   window.addEventListener("beforeunload", e => { if (settingsUnsaved()) { e.preventDefault(); e.returnValue = ""; } });
   ["input", "change", "click"].forEach(ev => document.getElementById("settings-body").addEventListener(ev, e => {
-    if (e.target.closest && e.target.closest("#settings-savebar, .set-tabs")) return;
+    if (e.target.closest && e.target.closest("#settings-savebar, .set-tabs, #set-area-vacations")) return;
     setTimeout(refreshSettingsDirty, 0);
   }));
 

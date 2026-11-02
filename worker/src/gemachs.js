@@ -5,6 +5,7 @@ import { isLiveNetworkAdmin } from "./network.js";
 import { parseAttrDefs } from "./attributes.js";
 import { filterNameIn } from "./extras.js";
 import { parseLocalPlaces } from "./places.js";
+import { parseVacations } from "./vacationrules.js";
 
 // ─── Gemach lookup ────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ const GEMACH_FIELDS = ["Name", "Slug", "Tagline", "Email", "Phone", "WhatsApp", 
   "Shabbos Adjust", "Auto Reminders", "Returned Message On", "Reminder Days Before", "Reminder Repeat Days", "Logo URL", "Display Order",
   "Pickup Address", "Pickup Instructions", "Confirm Message", "Decline Message", "Pickup Message", "Appointment Message",
   "Return Reminder Message", "Returned Message", "Active", "Logo On Dark URL", "Community", "Item Attributes", "Coming Soon", "Browse Categories",
-  "Group By", "Spotlight Filter", "Borrow Note", "Photo Shape", "Availability Mode"];
+  "Group By", "Spotlight Filter", "Borrow Note", "Photo Shape", "Availability Mode", "Vacations"];
 
 /** One gemach's record by id, with just GEMACH_FIELDS (null if it doesn't exist). */
 async function getGemachRecord(db, id) {
@@ -107,6 +108,7 @@ function gemachFromRecord(r) {
     photoShape: selName(f["Photo Shape"]) === "Portrait" ? "Portrait" : "Landscape", // Portrait: tall thumbnails (book covers)
     availabilityMode: selName(f["Availability Mode"]) === "Date" ? "Date" : "Now", // Date: page shows what's free for a date the visitor picks
     borrowNote: nonBlank(f["Borrow Note"]),                    // Listing only: how to borrow, instead of "contact to check"
+    vacations: parseVacations(f["Vacations"]),                   // vacations.js: [{start, end}] sorted (incl. past ones until the next save)
     comingSoon: !!f["Coming Soon"],                              // listed, not searchable, no requests (only meaningful when active)
     browseCategoryIds: (f["Browse Categories"] || []).map(linkedId).filter(Boolean),
   };

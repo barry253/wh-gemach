@@ -70,9 +70,9 @@ async function open(role, gemach) {
 {
   const { page, errors, calls } = await open("Owner", G);
   await page.click(".nav-tab:has-text('Settings')");
-  await page.waitForFunction(want => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages|Team", { timeout: 5000 }).catch(() => {});
-  ok((await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages|Team", "owner sees a Team area");
-  ok(await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all five tabs fit on a phone " + await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth + "/" + el.clientWidth));
+  await page.waitForFunction(want => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages|Vacations|Team", { timeout: 5000 }).catch(() => {});
+  ok((await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|") === "Profile|Page|Requests|Messages|Vacations|Team", "owner sees a Team area (after Vacations)");
+  ok(await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth <= el.clientWidth + 1), "all the tabs fit on a phone (rows of three) " + await page.$eval("#screen-settings .set-tabs", el => el.scrollWidth + "/" + el.clientWidth));
   await page.click("#set-tab-team");
   await page.waitForSelector("#team-list .team-row");
   ok((await page.$$eval("#team-list .team-row .card-title", e => e.map(x => x.textContent.trim()))).join("|") === "Barry You|Nate Net|Moe Manager|Sam Shared", "team listed, you marked, linked network admin after owners");
@@ -136,9 +136,9 @@ async function open(role, gemach) {
 {
   const { page, errors } = await open("Manager", { ...G, canManageTeam: false });
   await page.click(".nav-tab:has-text('Settings')");
-  await page.waitForFunction(want => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages", { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(want => [...document.querySelectorAll("#screen-settings .set-tab")].map(x => x.innerText.trim()).join("|") === want, "Profile|Page|Requests|Messages|Vacations", { timeout: 5000 }).catch(() => {});
   const mgrTabs = (await page.$$eval("#screen-settings .set-tab", b => b.map(x => x.innerText.trim()))).join("|");
-  ok(mgrTabs === "Profile|Page|Requests|Messages", "manager: no Team area: " + mgrTabs);
+  ok(mgrTabs === "Profile|Page|Requests|Messages|Vacations", "manager: no Team area: " + mgrTabs);
   ok(!(await page.$("#set-area-team")), "no team panel in the page");
   ok(!errors.length, "no page errors: " + errors.join(" | "));
   await page.close();

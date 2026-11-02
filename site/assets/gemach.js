@@ -75,6 +75,10 @@
         (a.ext ? ' target="_blank" rel="noopener"' : "") + ' data-contact="' + esc(a.type) + '">' + W.ICONS[a.icon] + esc(a.label) + "</a>";
     }).join("") + "</div>";
   }
+  /** Above the contact buttons while a vacation is on (no dates: the admin's dates stay private here). */
+  function vacationBanner(g) {
+    return W.onVacation(g) ? '<p class="vac-banner" role="note">This gemach is currently on vacation and will have delayed responses.</p>' : "";
+  }
   /** Slim bar once the header has scrolled away: logo, name, icon-only contact buttons. */
   function miniBar(g) {
     var links = contactLinks(g);
@@ -153,6 +157,7 @@
       '<h1 class="g-name">' + nameHtml(g) + "</h1>" +
       (g.tagline ? '<p class="tagline">' + esc(g.tagline) + "</p>" : "") +
       (W.isComingSoon(g) ? '<span class="chip chip-soon">Coming soon</span>' : "") +
+      vacationBanner(g) +
       contactButtons(g) +
       (facts ? '<div class="g-facts">' + facts + "</div>" : "");
     setupMini(g);
@@ -423,6 +428,8 @@
     var free = all.filter(function (it) { return availFor(it).free > 0; }).length;
     var ev = style() === "Event";
     note.innerHTML = "<b>" + free + " of " + all.length + "</b> " + (all.length === 1 ? "item is" : "items are") + " free " + (ev ? "for your " + esc(eventLabel().toLowerCase()) + " on " + esc(W.fmtDay(availDate)) + " (pick up " + esc(shortDay(w.from)) + ", return " + esc(shortDay(w.to)) + ")" : "from " + esc(availLabel())) + ".";
+    var away = vacationProblemFor(w.from, ev || availUntil ? w.to : "");
+    if (away) note.innerHTML += ' <span class="vac-warn">' + esc(away) + "</span>";
   }
   function syncBarInputs() {
     var d = $("av-date"), u = $("av-until");
@@ -1678,6 +1685,7 @@
     $("f-notes").setAttribute("placeholder", appt ? "e.g. sizes, colors or styles you’re interested in"
       : ev ? "e.g. anything specific you’re looking for" : NOTES_PH);
     updateEventSummary();
+    updateVacationNote();
   }
   function updateEventSummary() {
     var box = $("event-summary");
@@ -1696,6 +1704,57 @@
     if (v > W.maxEventDate()) return "The " + eventLabel().toLowerCase() + " must be within the next 2 years.";
     return "";
   }
+
+  // ── Vacations: a note under the date fields, and no pickup / return on those days ──
+  function vacationProblemFor(pickup, ret) {
+    var d = [{ date: pickup, what: "pickup" }];
+    if (ret) d.push({ date: ret, what: "return" });
+    return W.vacationProblem(gemach, d);
+  }
+  /** The field to flag and the message, for the dates in the form now (or null). */
+  function formVacationProblem() {
+    var st = style();
+    if (st === "Event") {
+      var v = $("f-event").value, w = v && W.parseYMD(v) ? W.eventWindow(v, gemach) : null;
+      var m = w ? vacationProblemFor(w.pickup, w.ret) : "";
+      return m ? { field: $("f-event"), msg: m } : null;
+    }
+    if (st !== "Dates") return null;
+    var from = $("f-from").value, until = $("f-until").value;
+    if (from && W.parseYMD(from)) { var mf = vacationProblemFor(from, ""); if (mf) return { field: $("f-from"), msg: mf }; }
+    if (until && W.parseYMD(until)) {
+      var mu = W.vacationProblem(gemach, [{ date: until, what: "return" }]);
+      if (mu) return { field: $("f-until"), msg: mu };
+    }
+    return null;
+  }
+  function updateVacationNote() {
+    var el = $("vac-note");
+    if (!el) return;
+    var vs = gemach ? W.vacationsOf(gemach) : [];
+    if (!vs.length) { el.hidden = true; el.textContent = ""; return; }
+    var shown = vs.slice(0, 3).map(W.vacationRange);
+    var list = shown.length === 1 ? shown[0] : shown.slice(0, -1).join(", ") + " and " + shown[shown.length - 1];
+    if (vs.length > 3) list += " (and " + (vs.length - 3) + " more)";
+    el.textContent = "The gemach is away " + list + (style() === "Appointment"
+      ? ". Please suggest times outside those dates." : ", so pickups and returns can’t be scheduled then.");
+    el.hidden = false;
+  }
+  /** Right away when a date is entered: flag a vacation day on the field (cleared once it's fine). */
+  function checkVacationNow(e) {
+    var ids = ["f-from", "f-until", "f-event"];
+    if (ids.indexOf(e.target.id) < 0) return;
+    var p = formVacationProblem();
+    ids.forEach(function (id) {
+      var f = $(id), err = document.getElementById("err-" + id);
+      if (err && err.getAttribute("data-vac") && (!p || p.field !== f)) clearFieldError(f);
+    });
+    if (p) { setFieldError(p.field, p.msg); var el = document.getElementById("err-" + p.field.id); if (el) el.setAttribute("data-vac", "1"); }
+  }
+  // After the form's own "edited, clear the error" handler (it runs on the way up from the field).
+  ["f-from", "f-until", "f-event"].forEach(function (id) {
+    $(id).addEventListener("change", function (e) { setTimeout(function () { checkVacationNow(e); }, 0); });
+  });
 
   // ── Dates style: live min/max ──
   function updateDateMins() {
@@ -1915,6 +1974,8 @@
       if (from) body.neededFrom = from;
       if (until) body.neededUntil = until;
     }
+    var awayP = formVacationProblem();
+    if (awayP && errs.indexOf(awayP.field) < 0) bad(awayP.field, awayP.msg);
     if (gemach.depositRequired && !$("deposit-group").hidden) {
       if (!$("f-deposit").checked) bad($("f-deposit"), isPayment(gemach) ? "Please confirm you understand payment is required." : "Please confirm you understand a deposit is required.");
       body.depositAck = true;

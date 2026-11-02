@@ -968,6 +968,18 @@ fieldset { border: 0; }
   font-size: .9375rem; display: flex; flex-wrap: wrap; gap: .15rem .9rem;
 }
 .event-summary b { font-weight: 600; }
+/* Vacations: a note under the request form's dates; a line in the date bar; the banner above the contact buttons */
+.vac-note {
+  margin: 0 0 1rem; padding: .6rem .8rem; border-radius: 8px; background: var(--amber-bg); color: #6B3406;
+  border: 1px solid #F1D3AE; font-size: .9375rem; line-height: 1.4;
+}
+.avail-note .vac-warn { display: block; margin-top: .3rem; color: #8A4B0F; font-weight: 600; }
+.vac-banner {
+  margin: 1rem 0 0; padding: .55rem .9rem; border-radius: 8px; background: var(--amber-bg); color: #6B3406;
+  border: 1px solid #F1D3AE; font-size: .9375rem; font-weight: 600; line-height: 1.4; max-width: 34rem;
+}
+.g-store .vac-banner { text-align: center; margin-left: auto; margin-right: auto; }
+.vac-banner + .contact-row { margin-top: .75rem; }
 .field-hint { font-size: .875rem; color: var(--muted); margin-top: .3rem; }
 .deposit-form { margin-bottom: 1rem; }
 .deposit-form .deposit-callout { margin-bottom: .6rem; }

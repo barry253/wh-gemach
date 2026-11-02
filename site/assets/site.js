@@ -383,6 +383,30 @@
   }
 
   function addDaysYMD(s, n) { var d = parseYMD(s); return d ? ymd(addDays(d, n)) : ""; }
+  // ── Vacations (gemach.vacations = [{start, end}], both days included; worker vacationrules.js words it the same) ──
+  /** Current + upcoming vacations (the page data can be a day old, so ended ones are dropped here too). */
+  function vacationsOf(g) {
+    var t = todayNY();
+    return ((g && g.vacations) || []).filter(function (v) { return v && parseYMD(v.start) && parseYMD(v.end) && v.end >= t; });
+  }
+  function vacationOn(g, d) {
+    if (!d) return null;
+    return vacationsOf(g).filter(function (v) { return v.start <= d && d <= v.end; })[0] || null;
+  }
+  /** "Fri, Dec 18 – Sun, Dec 27" (one day: "Fri, Dec 18"). */
+  function vacationRange(v) { return v.start === v.end ? fmtDay(v.start) : fmtDay(v.start) + " – " + fmtDay(v.end); }
+  /** First pickup / return day inside a vacation → the message to show, else "". dates: [{ date, what: "pickup" | "return" }] */
+  function vacationProblem(g, dates) {
+    for (var i = 0; i < dates.length; i++) {
+      var d = dates[i].date, v = vacationOn(g, d);
+      if (!v) continue;
+      return "The gemach is on vacation " + (v.start === v.end ? "on " : "") + vacationRange(v) + ", so " +
+        (dates[i].what === "return" ? "a return" : "a pickup") + " on " + fmtDay(d) + " can’t be scheduled then. Please choose a different date.";
+    }
+    return "";
+  }
+  /** Is today in one of the gemach's vacations? */
+  function onVacation(g) { return !!vacationOn(g, todayNY()); }
 
   // ── Phone formatting (US → "(516) 555-1234"; non-+1 international left as typed) ──
   function isIntlPhone(v) {
@@ -628,6 +652,11 @@
     todayNY: todayNY,
     maxEventDate: maxEventDate,
     addDaysYMD: addDaysYMD,
+    vacationsOf: vacationsOf,
+    vacationOn: vacationOn,
+    vacationRange: vacationRange,
+    vacationProblem: vacationProblem,
+    onVacation: onVacation,
     formatPhone: formatPhone,
     phoneError: phoneError,
     validHex: validHex,
