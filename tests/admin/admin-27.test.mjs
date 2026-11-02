@@ -14,6 +14,9 @@ const ITEMS = [
     currentLoan: { loanRecId: "recLOAN2", loanId: "L-2", status: "Active", dateBorrowed: "2026-10-10", expectedReturn: "2026-10-24", reservationStart: null, reservationEnd: null, notes: "Loan note stays put",
       borrowerName: "Dina Cohen", borrowerPhone: "5165550100", borrowerEmail: "d@example.com", borrowerContact: "Email" } },
 ];
+// Two weeks from today in New York (a new loan's borrowed date defaults to today, and must not be after the return date).
+const RETURN_IN_2W = (() => { const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date()).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 14)).toISOString().slice(0, 10); })();
 const calls = [];
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const errors = [];
@@ -110,11 +113,11 @@ await page.waitForSelector("#assign-item-sheet.open");
 await page.click('#assign-status-btns button[data-status="On Loan"]');
 ok(await page.$eval("#assign-expected-return", e => e.offsetParent !== null && e.value === ""), "new loan: expected return field is shown and starts empty");
 await page.fill("#assign-borrower-name", "Moshe Katz");
-await page.fill("#assign-expected-return", "2026-10-30");
+await page.fill("#assign-expected-return", RETURN_IN_2W);
 await page.screenshot({ path: "shot-r27-expected-return.png" });
 await page.click("#assign-item-submit-btn"); await wait(); await page.waitForTimeout(200);
 const a4 = sent("POST", /recITEM1\/assign$/).at(-1);
-ok(a4.body.status === "On Loan" && a4.body.expectedReturn === "2026-10-30", "new loan sends expectedReturn");
+ok(a4.body.status === "On Loan" && a4.body.expectedReturn === RETURN_IN_2W, "new loan sends expectedReturn");
 
 // 6. Item details (ID / type / active) save in the same PATCH.
 await page.locator(".inventory-item").nth(0).click();

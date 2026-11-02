@@ -11,7 +11,9 @@ const iso = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.to
 const nyToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 const TODAY = nyToday();
 const plus = n => { const [y, m, d] = TODAY.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
-const nyAt = (n, h, min = 0) => new Date(`${plus(n)}T${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}:00-04:00`).toISOString();
+// h:min New York time, n days from today, whichever of EDT / EST applies that day.
+const nyAt = (n, h, min = 0) => ["-04:00", "-05:00"].map(off => new Date(`${plus(n)}T${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}:00${off}`))
+  .find(d => Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(d)) === h).toISOString();
 
 const TYPES = [
   { id: "recWC", name: "Wheelchair", tracking: "Units", photo: null, photos: [], attributes: {}, units: [{ id: "recU1", itemId: "WC-001" }, { id: "recU2", itemId: "WC-002" }],

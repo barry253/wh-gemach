@@ -3068,8 +3068,7 @@
   /** {due_back}: "is due back on Fri, Oct 9" / "is due back today" / "was due back on Fri, Oct 2" (blank without a date). */
   function dueBackText(date) {
     if (!isValidDate(date || "")) return "";
-    const d = new Date(), pad = n => String(n).padStart(2, "0");
-    const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const todayStr = nyTodayStr(); // New York's date, even on a phone set to another time zone
     if (date === todayStr) return "is due back today";
     return `${date > todayStr ? "is" : "was"} due back on ${fmtDay(date, true)}`;
   }
@@ -6223,9 +6222,7 @@
   function holdsHtml(type) {
     const hs = inventoryHolds.filter(h => h.itemTypeId === type.id);
     if (!hs.length) return "";
-    const d = new Date(), pad = n => String(n).padStart(2, "0");
-    const iso = x => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
-    const weekOut = iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7));
+    const weekOut = isoAddDays(nyTodayStr(), 7);
     const soon = hs.filter(h => !h.reservationStart || h.reservationStart <= weekOut).length;
     const ready = inventoryData.filter(i => (i.itemTypeId ? i.itemTypeId === type.id : i.itemTypeName === type.name)
       && i.status === "Available" && i.active !== false && i.condition !== "Needs Repair").length;
@@ -7215,8 +7212,7 @@
     document.getElementById("event-options").style.display = style === "Event" ? "" : "none";
     document.getElementById("availability-wrap").style.display = style === "Appointment" ? "none" : ""; // appointments reserve nothing, so there's no availability to show
     // Live example: the next Sunday at least two weeks out, using the same rule as the server.
-    const now = new Date();
-    let ms = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) + 14 * DAY_MS;
+    let ms = dateMs(nyTodayStr()) + 14 * DAY_MS;
     while (new Date(ms).getUTCDay() !== 0) ms += DAY_MS;
     const ev = msDate(ms);
     const d = eventDates(ev, {
@@ -8984,8 +8980,7 @@
   function setNewUntil(days) {
     const el = document.getElementById("it-new-until");
     if (days == null) { el.value = ""; return; }
-    const d = new Date(); d.setDate(d.getDate() + days);
-    el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    el.value = isoAddDays(nyTodayStr(), days);
   }
 
   function openAddItemType() {
