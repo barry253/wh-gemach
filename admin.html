@@ -6632,6 +6632,7 @@
     localPlaces:        { label: "Local cities",         type: "area",  max: 1000, rows: 2, placeholder: "West Hempstead, W Hempstead, W. Hempstead, WH, 11552, Franklin Square", hint: "Separate with commas. Add the spellings people might type (WH, W. Hempstead) and zip codes. Capital letters and dots don't matter, and a trailing “NY” or zip is ignored." },
     localDepositInfo:   { label: "Payment for local borrowers", type: "area", max: 2000, rows: 2, placeholder: "e.g. West Hempstead resident fee: $36 minimum donation", hint: "Borrowers who enter one of the local cities see this instead of the text above. Your page shows both." },
     gemachInfo:         { label: "General info",        type: "area",  max: 2000, rows: 3, placeholder: "Anything borrowers should know (shown on your public page)" },
+    policies:           { label: "Gemach policies",     type: "area",  max: 5000, rows: 5, placeholder: "e.g. Cleaning: $5 per tablecloth, or return them washed and pressed.\nReturn within 2 days of your simcha. Late returns: $10 a day.\nStains or damage: charged at replacement cost.", hint: "Your page shows a “Read the policies” button, and borrowers must check “I’ve read the gemach’s policies” before sending a request. Leave blank if you don’t need this." },
     requestFormUrl:     { label: "Request form link",   type: "url",   max: 600, placeholder: "https://forms.gle/…", hint: "Only for Listing only gemachs that take requests through their own form (e.g. a Google Form). Your page shows an “Open the request form” button instead of live availability." },
     eventLabel:         { label: "Event label",         type: "text",  max: 60,  placeholder: "Event date" },
     borrowNote:         { label: "How to borrow",       type: "area",  max: 2000, rows: 3, placeholder: "e.g. Come visit during our open hours to browse and borrow — up to 3 books at a time.", hint: "Only for Listing only gemachs. Shown above your items instead of “contact them directly”, and the “Contact to check” tags are dropped." },
@@ -6663,7 +6664,7 @@
   // Which area each saved key belongs to (for the "unsaved" dots).
   const EXTRA_KEYS = {
     contact: ["primaryContact", "secondaryContact"], branding: ["themeColor", "accentColor", "logoUrl"],
-    info: ["depositRequired", "chargeType", "depositInfo", "localPlaces", "localDepositInfo", "gemachInfo"],
+    info: ["depositRequired", "chargeType", "depositInfo", "localPlaces", "localDepositInfo", "gemachInfo", "policies"],
     requests: ["requestFormUrl", "borrowNote", "requestStyle", "availabilityMode", "eventLabel", "pickupDaysBefore", "returnDaysAfter", "shabbosAdjust", "defaultLoanDays", "requireTown"],
     reminders: ["autoReminders", "reminderDaysBefore", "reminderRepeatDays"], returned: ["returnedMessageOn"], view: ["itemView", "photoShape"],
     attrs: ["itemAttributes", "groupBy", "spotlightFilter"], browsecats: ["browseCategoryIds"],
@@ -6797,7 +6798,8 @@
             ${fieldHtml("localDepositInfo")}
           </div>
         </div>
-        ${fieldHtml("gemachInfo")}`;
+        ${fieldHtml("gemachInfo")}
+        ${fieldHtml("policies")}`;
     }
     if (group.extra === "returned") {
       inner += `

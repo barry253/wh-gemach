@@ -238,6 +238,12 @@
         <label class="check-line" id="deposit-line"><input type="checkbox" id="f-deposit" name="depositAck" /> <span><span id="deposit-ack-text">I understand a deposit is required</span> <span class="req" aria-hidden="true">*</span></span></label>
       </div>
 
+      <div class="policies-form" id="policies-group" hidden>
+        <p class="policies-lead">Please read the gemach’s policies before you send your request.
+          <button type="button" class="link-btn" data-policies aria-haspopup="dialog">Read the policies</button></p>
+        <label class="check-line" id="policies-line"><input type="checkbox" id="f-policies" name="policiesAck" /> <span>I’ve read the gemach’s policies <span class="req" aria-hidden="true">*</span></span></label>
+      </div>
+
       <div class="form-group">
         <label for="f-notes">Anything else they should know?</label>
         <textarea id="f-notes" name="notes" maxlength="2000" placeholder="e.g. for my mother-in-law visiting for Sukkos, recovering from knee surgery…"></textarea>

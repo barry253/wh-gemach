@@ -74,6 +74,7 @@ const TABLES = {
       "Local Deposit Info": t("local_deposit_info"), "Local Places": t("local_places"),
       "Require Town": b("require_town"), // the request form's town question is required even without a payment
       "Gemach Info": t("gemach_info"),
+      "Policies": t("policies"), // cleaning, return, late/damage rules; the request form asks borrowers to confirm they read them
       "Request Form URL": t("request_form_url"), // optional: Listing-only gemachs send borrowers to their own form (e.g. a Google Form)
       "Request Style": t("request_style"), "Event Label": t("event_label"),
       "Pickup Days Before": n("pickup_days_before"), "Return Days After": n("return_days_after"), "Shabbos Adjust": b("shabbos_adjust"),

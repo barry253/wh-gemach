@@ -163,6 +163,10 @@ async function handleSubmitRequest(request, db, env, ctx) {
   if (g.depositRequired && !addonsOnly && body.depositAck !== true) {
     return json({ error: `Please confirm that you understand the ${g.chargeType === "Payment" ? "payment" : "deposit"} requirement.` }, 400);
   }
+  // The gemach's policies (cleaning, return, late fees…): the borrower checks that they've read them.
+  if (g.policies && body.policiesAck !== true) {
+    return json({ error: "Please check that you've read the gemach's policies." }, 400);
+  }
   // Where the borrower lives: asked of everyone, required when the gemach charges a payment or has a local tier
   // (not for an add-ons-only order, which has no charge). Local tier → "Local" / "Standard" (places.js).
   if (body.town != null && typeof body.town !== "string") return json({ error: "Invalid town." }, 400);

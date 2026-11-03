@@ -179,6 +179,7 @@
     var facts = [];
     if (g.hours && !(v3 && shortInfo(g))) facts.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");
     if (v3 && g.depositRequired) facts.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
+    if (v3 && hasPolicies(g)) facts.push(policiesRow());
     var acts = [];
     // Numbers, addresses and links aren't printed on the page; the website is a button.
     // Contact buttons live in the header (and the slim bar), so they aren't repeated here.
@@ -545,6 +546,14 @@
     if (lines.length > 4 || lines.some(function (l) { return l.length > 70; })) return "";
     return W.formatText(lines.join("\n"));
   }
+  // ── Gemach policies (cleaning, returns, late fees…): a row on the page and a required check on the form,
+  //    both opening the full text in a pop-up (openPolicies) ──
+  function hasPolicies(g) { return !!g && !!String(g.policies || "").trim(); }
+  function policiesRow() {
+    return '<div class="policies-callout" role="note"><div class="policies-text"><strong>' + W.ICONS.info + "Gemach policies</strong>" +
+      "<span>Fees, cleaning and return rules. Please read them before you borrow.</span></div>" +
+      '<button type="button" class="btn btn-sm" data-policies aria-haspopup="dialog">Read the policies</button></div>';
+  }
   function testModeBanner() {
     if (!inTestMode()) return "";
     return '<div class="test-banner" role="note"><strong>Test mode</strong> ' +
@@ -568,6 +577,7 @@
     var rows = [];
     if (g.hours) rows.push('<div class="ginfo-row">' + W.ICONS.clock + '<div><div class="info-label">Hours</div><div>' + esc(g.hours).replace(/\r?\n/g, "<br>") + "</div></div></div>");
     if (g.depositRequired) rows.push('<div class="deposit-callout" role="note">' + depositHtml(g) + "</div>");
+    if (hasPolicies(g)) rows.push(policiesRow());
     return '<section class="info-only" aria-labelledby="io-title"><h2 id="io-title">How this gemach works</h2>' +
       (info ? '<div class="prose io-prose">' + info + "</div>" : '<p class="io-prose">Contact the gemach using the buttons below.</p>') +
       rows.join("") + (contactPending(g) ? contactStatusHtml("io-actions") : btns ? '<div class="io-actions">' + btns + "</div>" : "") + "</section>";
@@ -1478,6 +1488,57 @@
     if (b) openDonate(b);
   });
 
+  // ── Policies pop-up: opened from the page ("Read the policies") or from the request form, on top of it ──
+  var policiesModal = null, policiesFocus = null;
+  function openPolicies(opener) {
+    var g = gemach || {};
+    if (!hasPolicies(g)) return;
+    if (!policiesModal) {
+      policiesModal = document.createElement("div");
+      policiesModal.className = "modal-overlay policies-overlay";
+      policiesModal.id = "policies-modal";
+      policiesModal.hidden = true;
+      policiesModal.innerHTML = '<div class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="policies-title">' +
+        '<button type="button" class="modal-close" id="policies-close" aria-label="Close">×</button>' +
+        '<h2 id="policies-title">Gemach policies</h2>' +
+        '<div class="prose policies-body" id="policies-body"></div><div class="policies-actions" id="policies-actions"></div></div>';
+      document.body.appendChild(policiesModal);
+      $("policies-close").addEventListener("click", closePolicies);
+      policiesModal.addEventListener("click", function (e) {
+        if (e.target === policiesModal) closePolicies();
+        if (e.target.closest && e.target.closest("#policies-agree")) { // from the form: "I’ve read them" checks the box
+          var cb = $("f-policies");
+          cb.checked = true; clearFieldError(cb); $("error-msg").hidden = true;
+          closePolicies();
+        }
+        if (e.target.closest && e.target.closest("#policies-done")) closePolicies();
+      });
+      policiesModal.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.stopPropagation(); closePolicies(); } trap(e, policiesModal); });
+    }
+    var fromForm = !!(opener && opener.closest && opener.closest("#policies-group"));
+    $("policies-title").textContent = (g.name || "Gemach") + " policies";
+    $("policies-body").innerHTML = W.formatRich(g.policies);
+    $("policies-actions").innerHTML = fromForm
+      ? '<button type="button" class="btn btn-primary" id="policies-agree">I’ve read them</button>'
+      : '<button type="button" class="btn" id="policies-done">Close</button>';
+    policiesFocus = opener || document.activeElement;
+    policiesModal.hidden = false; policiesModal.classList.add("open"); lockScroll(true);
+    var body = policiesModal.querySelector(".modal"); if (body) body.scrollTop = 0;
+    setTimeout(function () { $("policies-close").focus(); }, 30);
+  }
+  function closePolicies() {
+    if (!policiesModal) return;
+    policiesModal.classList.remove("open"); policiesModal.hidden = true;
+    if (modal.hidden) lockScroll(false); // the request form may still be open underneath
+    var back = policiesFocus;
+    if (back && back.closest && back.closest("#policies-group") && $("f-policies").checked) back = $("f-policies");
+    if (back && back.focus && document.body.contains(back)) back.focus();
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-policies]");
+    if (b) { e.preventDefault(); openPolicies(b); }
+  });
+
   // ── Lightbox ──
   var lb = $("lightbox");
   // ── Photo viewer: one photo or a gallery (swipe / arrows / ← → keys) ──
@@ -1681,6 +1742,9 @@
     $("f-deposit").required = dep;
     updateTown();
     $("deposit-ack-text").textContent = isPayment(gemach) ? "I understand payment is required" : "I understand a deposit is required";
+    var pol = hasPolicies(gemach);
+    $("policies-group").hidden = !pol;
+    $("f-policies").required = pol;
     $("form-note-purpose").textContent = appt ? "your appointment" : "the loan";
     $("f-notes").setAttribute("placeholder", appt ? "e.g. sizes, colors or styles you’re interested in"
       : ev ? "e.g. anything specific you’re looking for" : NOTES_PH);
@@ -1823,6 +1887,7 @@
   // ── Inline field errors ──
   function errAnchor(field) {
     if (field.id === "f-deposit") return $("deposit-group");
+    if (field.id === "f-policies") return $("policies-group");
     if (field.name === "modal-items") return $("items-group");
     if (field.hasAttribute && field.hasAttribute("data-qty")) return field.closest(".qty-row");
     return field.closest(".form-group") || field.parentNode;
@@ -1845,6 +1910,7 @@
       if (db.indexOf(id) < 0) { db.push(id); t.setAttribute("aria-describedby", db.join(" ")); }
     });
     if (field.id === "f-deposit") $("deposit-line").classList.add("invalid");
+    if (field.id === "f-policies") $("policies-line").classList.add("invalid");
     if (field.name === "modal-items") $("items-group").classList.add("invalid");
   }
   function clearFieldError(field) {
@@ -1858,6 +1924,7 @@
       if (db.length) t.setAttribute("aria-describedby", db.join(" ")); else t.removeAttribute("aria-describedby");
     });
     if (field.id === "f-deposit") $("deposit-line").classList.remove("invalid");
+    if (field.id === "f-policies") $("policies-line").classList.remove("invalid");
     if (field.name === "modal-items") $("items-group").classList.remove("invalid");
   }
 
@@ -1892,7 +1959,7 @@
     var t = e.target;
     if (!t || !t.closest) return;
     if (t.name === "modal-items") { if (modal.querySelector('input[name="modal-items"]:checked')) clearFieldError(t); }
-    else if (t.getAttribute("aria-invalid") === "true" || t.id === "f-deposit") clearFieldError(t);
+    else if (t.getAttribute("aria-invalid") === "true" || t.id === "f-deposit" || t.id === "f-policies") clearFieldError(t);
     if (t.id === "f-from" && $("f-until").getAttribute("aria-invalid") === "true") clearFieldError($("f-until"));
     $("error-msg").hidden = true;
   }
@@ -1979,6 +2046,10 @@
     if (gemach.depositRequired && !$("deposit-group").hidden) {
       if (!$("f-deposit").checked) bad($("f-deposit"), isPayment(gemach) ? "Please confirm you understand payment is required." : "Please confirm you understand a deposit is required.");
       body.depositAck = true;
+    }
+    if (hasPolicies(gemach) && !$("policies-group").hidden) {
+      if (!$("f-policies").checked) bad($("f-policies"), "Please check that you’ve read the gemach’s policies.");
+      body.policiesAck = true;
     }
     if (errs.length) {
       var f = errs[0];

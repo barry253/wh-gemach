@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS gemachs (
   local_places TEXT,  -- Local Places
   require_town INTEGER NOT NULL DEFAULT 0,  -- Require Town
   gemach_info TEXT,  -- Gemach Info
+  policies TEXT,  -- Policies
   request_form_url TEXT,  -- Request Form URL
   request_style TEXT,  -- Request Style
   event_label TEXT,  -- Event Label

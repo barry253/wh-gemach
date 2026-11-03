@@ -3639,6 +3639,33 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.equal(r.status, 200);
   });
 
+  await t("policies: Settings saves them (line breaks kept, max 5000); page shows them; requests must confirm reading them", async () => {
+    let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ policies: "x".repeat(5001) }) });
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /Gemach policies is too long \(max 5000/);
+    const text = "Cleaning: $5 per tablecloth.\n\nReturn within 2 days of your simcha.\nLate: $10 a day.";
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ policies: "  " + text + "  " }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).policies, text);
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Policies"], text);
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?pol=1`)).json()).gemach.policies, text);
+    const base = { ...payBase, town: "Lynbrook" };
+    r = await post("/submit-request", base);
+    assert.equal(r.status, 400); assert.match((await r.json()).error, /policies/);
+    r = await post("/submit-request", { ...base, policiesAck: "yes" });
+    assert.equal(r.status, 400);
+    r = await post("/submit-request", { ...base, policiesAck: true });
+    assert.equal(r.status, 200, await r.clone().text());
+    // cleared: no policies, no check needed
+    r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ policies: "" }) });
+    assert.equal(r.status, 200);
+    assert.equal(DB.Gemachs.find(x => x.id === G.id).fields["Policies"], null);
+    __WHG_TEST__.clearMemo();
+    assert.equal((await (await call(`/public/gemach/${G.slug}?pol=2`)).json()).gemach.policies, null);
+    r = await post("/submit-request", base);
+    assert.equal(r.status, 200, await r.clone().text());
+  });
+
   await t("town: Settings can make it required without any payment", async () => {
     let r = await call("/admin/gemach", { method: "PATCH", headers: H, body: JSON.stringify({ depositRequired: false, requireTown: true }) });
     assert.equal(r.status, 200, await r.clone().text());

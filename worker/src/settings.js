@@ -107,6 +107,7 @@ const GEMACH_EDITABLE = {
   localPlaces:        ["Local Places", "places"],
   requireTown:        ["Require Town", "bool"],
   gemachInfo:         ["Gemach Info", "long"],
+  policies:           ["Policies", "policy"],
   requestFormUrl:     ["Request Form URL", "formurl"],
   requestStyle:       ["Request Style", "style"],
   eventLabel:         ["Event Label", "label"],
@@ -136,13 +137,13 @@ const GEMACH_LABELS = {
   pickupInstructions: "Pickup instructions", confirmMessage: "Confirm message", declineMessage: "Decline message",
   pickupMessage: "Pickup message", name: "Gemach name",
   primaryContact: "Primary contact", secondaryContact: "Secondary contact", themeColor: "Theme color", accentColor: "Accent color",
-  depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", localDepositInfo: "Payment for local borrowers", localPlaces: "Local cities", requireTown: "City required", gemachInfo: "General info", requestFormUrl: "Request form link", requestStyle: "Request style",
+  depositRequired: "Deposit required", chargeType: "Deposit or payment", itemView: "Item view", depositInfo: "Deposit info", localDepositInfo: "Payment for local borrowers", localPlaces: "Local cities", requireTown: "City required", gemachInfo: "General info", policies: "Gemach policies", requestFormUrl: "Request form link", requestStyle: "Request style",
   eventLabel: "Event label", pickupDaysBefore: "Pickup days before", returnDaysAfter: "Return days after", defaultLoanDays: "Usual loan length",
   shabbosAdjust: "Shabbos adjust", appointmentMessage: "Appointment message", returnReminderMessage: "Return reminder message", returnedMessage: "Item returned message", autoReminders: "Automatic reminders", returnedMessageOn: "Thank-you when returned", reminderDaysBefore: "Reminder days before", reminderRepeatDays: "Overdue reminder every", logoUrl: "Logo", itemAttributes: "Item filters", browseCategoryIds: "Browse categories",
   groupBy: "Sections", spotlightFilter: "Holiday spotlight", borrowNote: "How to borrow", photoShape: "Photo shape", availabilityMode: "Availability",
 };
 const CONTACT_NEEDS = { Call: "phone", Text: "phone", WhatsApp: "whatsapp", Email: "email" };
-const MAX_LINE = 200, MAX_LONG = 2000, MAX_FORM_URL = 600; // pre-filled Google Form links run long
+const MAX_LINE = 200, MAX_LONG = 2000, MAX_POLICY = 5000, MAX_FORM_URL = 600; // pre-filled Google Form links run long
 const EMAIL_RE = /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[^\s@<>()",;]+$/;
 
 /**
@@ -264,7 +265,7 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
       continue;
     }
 
-    if (kind !== "long") v = v.replace(/\s*\n\s*/g, " ");
+    if (kind !== "long" && kind !== "policy") v = v.replace(/\s*\n\s*/g, " ");
     if (kind === "name") {
       v = v.replace(/\s+/g, " ");
       if (!v) return { error: "Gemach name can't be empty." };
@@ -272,7 +273,7 @@ function validateGemachPatch(body, { current = null, logoPrefix = null } = {}) {
       fields[field] = v;
       continue;
     }
-    const max = kind === "long" ? MAX_LONG : kind === "label" ? 60 : kind === "formurl" ? MAX_FORM_URL : MAX_LINE;
+    const max = kind === "long" ? MAX_LONG : kind === "policy" ? MAX_POLICY : kind === "label" ? 60 : kind === "formurl" ? MAX_FORM_URL : MAX_LINE;
     if (v.length > max) return { error: `${label} is too long (max ${max} characters).` };
     if (v && kind === "email" && !EMAIL_RE.test(v)) return { error: `${label} doesn't look like a valid email address.` };
     if (v && kind === "url") {
