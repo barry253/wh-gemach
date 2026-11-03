@@ -519,7 +519,7 @@ await t("v2 GET /admin/gemach: private fields, default templates, placeholders, 
   assert.match(d.templates.confirm, /Pickup is at \{pickup_address\}\. \{pickup_instructions\}/);
   assert.equal(d.templates.pickup, "SECRET TPL {first_name}");
   assert.deepEqual(d.rawTemplates, { confirm: null, decline: null, pickup: "SECRET TPL {first_name}", appointment: null, returnReminder: null, returned: null });
-  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link"]);
+  assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link", "policies"]);
   assert.match(d.templates.returnReminder, /^Hi \{first_name\}, a friendly reminder .*\{due_back\}/);
   assert.equal(d.canEdit, true);
   const v = await (await call(`/admin/gemach`, { headers: { ...auth(tokenVol), "X-Gemach": A.slug } })).json();
@@ -2581,7 +2581,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     DB.Gemachs.push(rec(N.id, { Name: "Analytics Gemach", Slug: N.slug, Active: true, "Coming Soon": true }));
     const sc = { Gemach: [N.id], "Gemach Slug": [N.slug] };
     const ago = h => new Date(Date.now() - h * 3600e3).toISOString();
-    const day = n => __WHG_TEST__.nyToday(Date.now() + n * 864e5);
+    const day = n => { const d = new Date(__WHG_TEST__.nyToday() + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }; // calendar days (24h steps slip across a clock change)
     const R = (id, f, h) => ({ ...rec(id, { ...f, "Received At": ago(h), ...sc }), createdTime: ago(h) });
     DB["Item Types"].push(rec("recANTYPE00000001", { Name: "Analytics Crib", Active: true, ...sc }),
                           rec("recANTYPE00000002", { Name: "Sweatshirt", Active: true, Tracking: "Add-on", ...sc }),

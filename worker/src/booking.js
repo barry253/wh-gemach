@@ -43,7 +43,7 @@ const MAX_GROUP = 40;           // loans edited at once (keeps a save inside D1'
 const MAX_ADD = 20;
 const MAX_ADDON = 500;
 const MAX_DAYS_AHEAD = 730;
-const MAX_MESSAGE = 5000;
+const MAX_MESSAGE = 12000; // room for the gemach policies (up to 5000) in a confirm message
 const LOAN_FIELDS = ["Loan ID", "Item", "Item to Reserve", "Borrower", "Status", "Quantity", "Date Borrowed", "Expected Return",
   "Reservation Start", "Reservation End", "Notes", "Source Request", "Gemach"];
 // Request.Preferred Contact uses the form's words; Borrowers use CONTACT_MAP's.

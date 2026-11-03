@@ -3049,7 +3049,7 @@
 
   // ── Message templates ─────────────────────────────────────────────────────
   // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
-  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "return_by", "donation_info", "donation_link"]);
+  const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "return_by", "donation_info", "donation_link", "policies"]);
 
   function fillTemplate(template, vars) {
     const has = k => Object.prototype.hasOwnProperty.call(vars, k);
@@ -3117,15 +3117,29 @@
       email: g.email || "",
       donation_info: g.donationInfo || "",
       donation_link: g.donationUrl || "",
+      policies: String(g.policies || "").trim(),
     };
   }
 
   // Borrower-facing messages always carry the private manage link: templates written before it existed
   // (or customized without it) get a closing line; put {manage_link} in a template to place it yourself.
   const LINK_LINE = { confirm: "Manage or cancel: {manage_link}", appointment: "Manage or cancel: {manage_link}", pickup: "Manage your loan: {manage_link}", returnReminder: "Manage your loan: {manage_link}" };
+  // The confirm message also carries the gemach's policies (Settings → Gemach policies), placed before the manage
+  // link line; put {policies} in the template to place them yourself.
+  const POLICIES_BLOCK = "Please read our policies:\n{policies}";
+  function withPolicies(tpl) {
+    tpl = String(tpl);
+    if (!String(GEMACH?.policies || "").trim() || tpl.includes("{policies}")) return tpl;
+    const lines = tpl.replace(/\r\n?/g, "\n").split("\n");
+    const at = lines.findIndex(l => l.includes("{manage_link}"));
+    if (at < 0) return tpl.trimEnd() + "\n\n" + POLICIES_BLOCK;
+    lines.splice(at, 0, POLICIES_BLOCK, "");
+    return lines.join("\n");
+  }
   function renderMessage(kind, firstName, items, extra) {
     let tpl = GEMACH?.templates?.[kind] || defaultTemplate(kind);
     if (LINK_LINE[kind] && extra?.manageUrl && !String(tpl).includes("{manage_link}")) tpl = String(tpl).trimEnd() + "\n\n" + LINK_LINE[kind];
+    if (kind === "confirm") tpl = withPolicies(tpl);
     return fillTemplate(tpl, templateVars(firstName, items, extra));
   }
 

@@ -47,7 +47,7 @@ function reminderDue({ expected, today, lastSent, before, repeat }) {
 // Same rules as the admin page's fillTemplate (admin.html): a sentence whose only substance was a blank
 // info placeholder is dropped, "… at {x}" loses " at {x}" when x is blank, spacing is tidied.
 const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date",
-  "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out"]);
+  "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "policies"]);
 function fillTemplate(template, vars) {
   const has = k => Object.prototype.hasOwnProperty.call(vars, k);
   const val = k => String(vars[k] ?? "").trim();
@@ -101,6 +101,7 @@ function reminderMessage(g, { firstName, items, borrowed, expected, today, link 
     pickup_address: g.pickupAddress || "", pickup_instructions: g.pickupInstructions || "",
     hours: g.hours || "", phone: g.phone || "", email: g.email || "",
     deposit_info: g.depositRequired ? (g.depositInfo || "") : "",
+    policies: g.policies || "",
     event_date: "", appointment_time: "",
     manage_link: link || "",
     borrowed_date: dayLabel(borrowed),

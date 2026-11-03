@@ -11,7 +11,7 @@ import { MAX_PLACES_TEXT, parseLocalPlaces } from "./places.js";
 
 // ─── Gemach profile & message templates (admin) ───────────────────────────────
 
-const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link"];
+const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link", "policies"];
 const DEFAULT_TEMPLATES = {
   confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
   confirmNoAddress: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
