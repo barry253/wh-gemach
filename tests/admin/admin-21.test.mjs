@@ -125,7 +125,7 @@ await page.waitForSelector("#it-byline");
 await page.fill("#it-byline", "  Dina   Rosenfeld ");
 await page.uncheck("#it-featured");
 await page.click("button:has-text('New for 6 months')");
-const want = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 180); return d.toLocaleDateString("en-CA"); });
+const want = await page.evaluate(() => isoAddDays(nyTodayStr(), 180)); // the page counts from today in New York (CI runs in UTC)
 await page.screenshot({ path: "shot-item-extras-sheet.png" });
 await page.click("#item-type-submit-btn");
 await page.waitForTimeout(300);
