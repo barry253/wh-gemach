@@ -81,7 +81,7 @@ const rowText = (page, id) => page.$eval('#row-' + id, el => el.innerText.replac
       assert(barFirst, `${label} the date bar comes before the About card`);
       assert(/Simcha date/.test(await page.textContent('label[for=av-date]')), `${label} uses the gemach's event label`);
       assert(!(await page.$('#av-until')), `${label} no end date for Event style`);
-      assert(/Choose a date to see what will be free/.test(await page.textContent('#av-note')), `${label} neutral note before a date`);
+      assert(/Choose a date to check availability\./.test(await page.textContent('#av-note')), `${label} neutral note before a date`);
       assert(await page.isHidden('#av-only-row'), `${label} 'only free' hidden until a date is chosen`);
       assert((await page.$$eval('#inv-wrap .badge-ok, #inv-wrap .badge-out', b => b.length)) === 0, `${label} no availability badges before a date (today's count would mislead)`);
       assert(/Choose a date above/.test(await page.textContent('.inv-title .section-sub')), `${label} heading line asks for a date`);

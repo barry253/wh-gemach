@@ -423,7 +423,7 @@
     if (row) row.hidden = !w || usableDefs().length > 0; // gemachs with filters keep it in the filter bar instead
     var until = $("av-until");
     if (until) until.min = availDate ? W.addDaysYMD(availDate, 1) : W.todayNY();
-    if (!w) { note.textContent = availBad || "Choose a date to see what will be free."; note.classList.toggle("warn", !!availBad); return; }
+    if (!w) { note.textContent = availBad || "Choose a date to check availability."; note.classList.toggle("warn", !!availBad); return; }
     note.classList.remove("warn");
     var all = items.filter(function (it) { return !isAddon(it) && Array.isArray(it.bookings); });
     var free = all.filter(function (it) { return availFor(it).free > 0; }).length;
@@ -550,9 +550,9 @@
   //    both opening the full text in a pop-up (openPolicies) ──
   function hasPolicies(g) { return !!g && !!String(g.policies || "").trim(); }
   function policiesRow() {
-    return '<div class="policies-callout" role="note"><div class="policies-text"><strong>' + W.ICONS.info + "Gemach policies</strong>" +
+    return '<div class="policies-callout" role="note"><div class="policies-text"><strong>' + W.ICONS.policy + "Gemach policies</strong>" +
       "<span>Fees, cleaning and return rules. Please read them before you borrow.</span></div>" +
-      '<button type="button" class="btn btn-sm" data-policies aria-haspopup="dialog">Read the policies</button></div>';
+      '<button type="button" class="btn btn-sm btn-primary" data-policies aria-haspopup="dialog">Read the policies</button></div>';
   }
   function testModeBanner() {
     if (!inTestMode()) return "";
