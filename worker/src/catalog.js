@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, Q, firstLink, getOwned, linkedId } from "./airtable.js";
+import { DbError, Q, firstLink, getOwned, linkedId } from "./records.js";
 import { parseItemAttrs, validateItemAttrs } from "./attributes.js";
 import { typeExtraFields, typeExtras } from "./extras.js";
 import { gemachFromRecord, getGemachRecord } from "./gemachs.js";
@@ -129,7 +129,7 @@ async function resolveAttributesField(db, g, attributes) {
 async function airtableResult(promise) {
   try { return json(await promise); }
   catch (e) {
-    if (e instanceof AirtableError) return json(e.detail || { error: e.message }, 500);
+    if (e instanceof DbError) return json(e.detail || { error: e.message }, 500);
     throw e;
   }
 }
@@ -253,7 +253,7 @@ async function handleCreateItem(c) {
     const data = await db.create(T.ITEMS, fields);
     return json({ ...data, generatedId: itemId });
   } catch (e) {
-    if (e instanceof AirtableError) return json({ ...(e.detail || {}), generatedId: itemId }, 500);
+    if (e instanceof DbError) return json({ ...(e.detail || {}), generatedId: itemId }, 500);
     throw e;
   }
 }
@@ -284,7 +284,7 @@ async function handleDeleteItem(c, id) {
   try {
     await c.db.del(T.ITEMS, id);
   } catch (e) {
-    if (e instanceof AirtableError) return json({ error: e.message || "Delete failed" }, 500);
+    if (e instanceof DbError) return json({ error: e.message || "Delete failed" }, 500);
     throw e;
   }
   return json({ deleted: true });

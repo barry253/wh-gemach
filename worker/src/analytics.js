@@ -1,7 +1,7 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 // GET /admin/network/analytics?days=1|3|7|30|90|365[&fresh=1] — network-wide numbers for the admin Network → Analytics tab
 // (Network Admins only; routed through networkDispatch, which checks the role).
-import { Q, linkedId } from "./airtable.js";
+import { Q, linkedId } from "./records.js";
 import { T } from "./config.js";
 import { DAY_MS, NY_TZ, addDays, dateToUtcMs, isValidDate, nyToday } from "./dates.js";
 import { selName } from "./gemachs.js";

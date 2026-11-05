@@ -1,9 +1,8 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 //
 // ─── Structured queries ────────────────────────────────────────────────────────
-// Every list query describes WHAT it wants with these conditions instead of a hand-written
-// Airtable formula, so the same query can run against Airtable (compiled to a formula below)
-// or against D1 (compiled to SQL in the D1 data layer).
+// Every list query describes WHAT it wants with these conditions; the D1 data layer (d1.js)
+// compiles them to SQL with bound parameters.
 //
 //   db.listAll(T.LOANS, { scope: g, where: [Q.in("Status", ["Active", "Reserved"])], sort, fields })
 //
@@ -35,9 +34,8 @@ const Q = {
   /** record id is one of ids. */
   idIn: ids => ({ op: "idIn", ids: [...ids] }),
   /**
-   * Link field points at record `id`. Airtable formulas can only see the linked record's name, so
-   * `name` (its primary field) is passed too and Airtable gets a name match — callers keep a
-   * post-filter on the real id. D1 matches the id exactly.
+   * Link field points at record `id` (matched exactly). `name` (the linked record's primary field)
+   * is only used by the tests' call log, which still prints queries as the old Airtable formulas.
    */
   linksTo: (field, id, name) => ({ op: "linksTo", field, id, name: String(name ?? "") }),
   /** Digits of a phone field equal `digits`; last10: compare only the last 10 digits. */
@@ -46,51 +44,4 @@ const Q = {
   or: (...conds) => ({ op: "or", conds: conds.filter(Boolean) }),
 };
 
-// ─── Airtable compilation ──────────────────────────────────────────────────────
-
-const fStr = s => `"${String(s ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\r\n]+/g, " ")}"`;
-const fVal = v => (typeof v === "number" && Number.isFinite(v) ? String(v) : fStr(v));
-const fAnd = (...parts) => {
-  const p = parts.filter(Boolean);
-  return p.length === 0 ? undefined : p.length === 1 ? p[0] : `AND(${p.join(",")})`;
-};
-const fld = name => {
-  if (typeof name !== "string" || !name || /[{}]/.test(name)) throw new Error(`bad field name: ${name}`);
-  return `{${name}}`;
-};
-const scopeF = g => `ARRAYJOIN({Gemach Slug})=${fStr(g.slug)}`;
-const idsF = ids => `OR(${ids.map(id => `RECORD_ID()=${fStr(id)}`).join(",")})`;
-
-function condToFormula(c) {
-  switch (c.op) {
-    case "eq": return `${fld(c.field)}=${fVal(c.value)}`;
-    case "ne": return `${fld(c.field)}!=${fVal(c.value)}`;
-    case "in":
-      if (!c.values.length) return "FALSE()";
-      return c.values.length === 1 ? `${fld(c.field)}=${fVal(c.values[0])}` : `OR(${c.values.map(v => `${fld(c.field)}=${fVal(v)}`).join(",")})`;
-    case "true": return `${fld(c.field)}=1`;
-    case "nonEmpty": return `${fld(c.field)}!=""`;
-    case "notBlank": return `NOT(${fld(c.field)}=BLANK())`;
-    case "ieq": return c.trim ? `LOWER(TRIM(${fld(c.field)}&""))=${fStr(c.value)}` : `LOWER(${fld(c.field)})=${fStr(c.value)}`;
-    case "after": return `IS_AFTER(${fld(c.field)},${fStr(c.value)})`;
-    case "before": return `IS_BEFORE(${fld(c.field)},${fStr(c.value)})`;
-    case "notBefore": return `NOT(IS_BEFORE(${fld(c.field)},${fStr(c.value)}))`;
-    case "idIn": return c.ids.length ? idsF(c.ids) : "FALSE()";
-    case "linksTo": return `FIND(${fStr(c.name)},ARRAYJOIN(${fld(c.field)}))`;
-    case "phone": return c.last10
-      ? `RIGHT(REGEX_REPLACE(${fld(c.field)}&"","[^0-9]",""),10)=${fStr(c.value)}`
-      : `REGEX_REPLACE(${fld(c.field)}&"","[^0-9]","")=${fStr(c.value)}`;
-    case "or": {
-      const parts = c.conds.map(condToFormula);
-      return parts.length === 0 ? "FALSE()" : parts.length === 1 ? parts[0] : `OR(${parts.join(",")})`;
-    }
-    default: throw new Error(`unknown query condition: ${c?.op}`);
-  }
-}
-
-/** Airtable filterByFormula for { scope, where } (undefined = no filter). */
-function toFormula({ scope = null, where = [] } = {}) {
-  return fAnd(scope && scopeF(scope), ...(where || []).filter(Boolean).map(condToFormula));
-}
-
-export { Q, toFormula, condToFormula, fStr, fAnd, scopeF, idsF };
+export { Q };

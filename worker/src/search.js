@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { Q } from "./airtable.js";
+import { Q } from "./records.js";
 import { T } from "./config.js";
 import { DAY_MS } from "./dates.js";
 import { clampInt } from "./gemachs.js";

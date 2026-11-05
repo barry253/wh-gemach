@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, Q } from "./airtable.js";
+import { DbError, Q } from "./records.js";
 import { DATE_RE, T } from "./config.js";
 import { json } from "./http.js";
 import { typePhotos } from "./quantity.js";
@@ -60,7 +60,7 @@ async function handleGetHistory({ db, g, url }) {
       offset,
     });
   } catch (e) {
-    if (e instanceof AirtableError && e.status === 422 && offset) return json({ error: "Invalid or expired offset" }, 400);
+    if (e instanceof DbError && e.status === 422 && offset) return json({ error: "Invalid or expired offset" }, 400);
     throw e;
   }
 

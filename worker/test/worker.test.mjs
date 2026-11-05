@@ -56,42 +56,8 @@ let cfAnswer = () => new Response("{}", { status: 500 });
 // Web Push: messages "delivered" to push services, and what each endpoint answers (status code).
 const pushes = [];
 let pushStatusFor = () => 201;
-let resendFail = false, airtableFail = null;
-let fail429Once = false;
-let stallOnce = null; // (method, table, id) => ms: that call hangs for ms (or until aborted)
-const PAGE = 2; // small page size to exercise offset paging
+let resendFail = false, dbFail = null; // dbFail(method, table, id): make that data-layer call fail
 
-function evalFilter(table, f, r) {
-  if (!f) return true;
-  let m;
-  if ((m = f.match(/ARRAYJOIN\(\{Gemach Slug\}\)="([^"]+)"/)) && (r.fields["Gemach Slug"] || []).join(", ") !== m[1]) return false;
-  const ids = [...f.matchAll(/RECORD_ID\(\)="(rec\w+)"/g)].map(x => x[1]);
-  if (ids.length && !ids.includes(r.id)) return false;
-  if ((m = f.match(/(?<!LOWER\()\{Slug\}="([^"]+)"/)) && r.fields.Slug !== m[1]) return false;
-  if ((m = f.match(/LOWER\(\{Slug\}\)="([^"]*)"/)) && String(r.fields.Slug || "").toLowerCase() !== m[1]) return false;
-  if ((m = f.match(/LOWER\(\{Name\}\)="([^"]*)"/)) && String(r.fields.Name || "").toLowerCase() !== m[1]) return false;
-  if (/\{Slug\}!=""/.test(f) && !r.fields.Slug) return false;
-  if ((m = f.match(/LOWER\(\{Email\}\)="([^"]+)"/)) && (r.fields.Email || "").toLowerCase() !== m[1]) return false;
-  if (/\{Active\}=1/.test(f) && !r.fields.Active) return false;
-  if (/AND\(\{Active\},/.test(f) && !r.fields.Active) return false;
-  if (/\{Auto Reminders\}/.test(f) && !r.fields["Auto Reminders"]) return false;
-  if (/NOT\(\{Expected Return\}=BLANK\(\)\)/.test(f) && !r.fields["Expected Return"]) return false;
-  if (/\{Status\}="Available"/.test(f) && r.fields.Status !== "Available") return false;
-  if (/\{Status\}="New"/.test(f) && r.fields.Status !== "New") return false;
-  if (/\{Status\}="Returned"/.test(f) && !/OR\(\{Status\}/.test(f) && r.fields.Status !== "Returned") return false;
-  if (/\{Status\}="Active"/.test(f) && !/OR\(\{Status\}/.test(f) && r.fields.Status !== "Active") return false;
-  if ((m = f.match(/OR\((\{Status\}="[^"]+"(?:,\{Status\}="[^"]+")*)\)/)) && ![...m[1].matchAll(/="([^"]+)"/g)].map(x => x[1]).includes(r.fields.Status)) return false;
-  if ((m = f.match(/\{Query\}="([^"]*)"/)) && r.fields.Query !== m[1]) return false;
-  for (const k of ["Kind", "Key", "Date"]) if ((m = f.match(new RegExp(`\\{${k}\\}="((?:[^"\\\\]|\\\\.)*)"`))) && String(r.fields[k] ?? "") !== JSON.parse(`"${m[1]}"`)) return false;
-  if ((m = f.match(/NOT\(IS_BEFORE\(\{Date\},"([^"]+)"\)\)/)) && !(r.fields.Date >= m[1])) return false;
-  const evs = [...f.matchAll(/\{Event Type\}="([^"]+)"/g)].map(x => x[1]);
-  if (evs.length && !evs.includes(r.fields["Event Type"])) return false;
-  if (/\{Request Type\}="Appointment"/.test(f) && r.fields["Request Type"] !== "Appointment") return false;
-  if (/\{Status\}!="Declined"/.test(f) && r.fields.Status === "Declined") return false;
-  if (/\{Status\}!="Cancelled"/.test(f) && r.fields.Status === "Cancelled") return false;
-  if ((m = f.match(/NOT\(IS_BEFORE\(\{Appointment At\},"([^"]+)"\)\)/)) && !(r.fields["Appointment At"] && r.fields["Appointment At"] >= m[1])) return false;
-  return true;
-}
 
 // Turnstile siteverify (tests replace this): token "good" passes, anything else fails.
 let turnstileAnswer = init => {
@@ -117,77 +83,22 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (url === "https://challenges.cloudflare.com/turnstile/v0/siteverify") return turnstileAnswer(init); // abuse.js
   if (url.startsWith("https://api.cloudflare.com/")) return cfAnswer(url, init);
-  if (url === "https://api.airtable.com/v0/meta/whoami") return new Response('{"id":"usrTEST"}');
-  if (D1_MODE && url.startsWith("https://api.airtable.com/")) throw new Error("Airtable called in D1 mode: " + method + " " + url);
-  const m = url.match(/^https:\/\/api\.airtable\.com\/v0\/appTEST\/([^/?]+)(?:\/([^/?]+))?/);
-  if (!m) throw new Error("unexpected fetch " + url);
-  if (airtableFail && airtableFail(method, decodeURIComponent(m[1]), m[2])) return new Response('{"error":{"type":"TEST_FAIL"}}', { status: 422 });
-  if (stallOnce && stallOnce(method, decodeURIComponent(m[1]), m[2])) {
-    const ms = stallOnce(method, decodeURIComponent(m[1]), m[2]); stallOnce = null;
-    await new Promise((res, rej) => { const t = setTimeout(res, ms); init.signal?.addEventListener("abort", () => { clearTimeout(t); rej(new Error("aborted")); }); });
-  }
-  if (fail429Once) { fail429Once = false; return new Response("{}", { status: 429, headers: { "Retry-After": "0" } }); }
-  const table = decodeURIComponent(m[1]);
-  const rows = DB[table];
-  assert.ok(rows, "unknown table " + table);
-  if (m[2] === "listRecords") {
-    const b = JSON.parse(init.body || "{}");
-    if (process.env.FORMULA_LOG) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, f: b.filterByFormula || null, sort: b.sort || null, fields: b.fields || null, max: b.maxRecords || null }) + "\n");
-    const all = rows.filter(r => evalFilter(table, b.filterByFormula, r));
-    const start = Number(b.offset || 0);
-    const size = Math.min(PAGE, b.maxRecords || PAGE);
-    // Like Airtable: with a field list, only those fields come back (catches a read that forgets one).
-    const pick = r => (Array.isArray(b.fields) ? { ...r, fields: Object.fromEntries(Object.entries(r.fields).filter(([k]) => b.fields.includes(k))) } : r);
-    const page = all.slice(start, start + size).map(pick);
-    const next = start + size < all.length && !(b.maxRecords && start + size >= b.maxRecords) ? String(start + size) : undefined;
-    return new Response(JSON.stringify({ records: page, offset: next }));
-  }
-  if (!m[2] && method === "GET") return new Response(JSON.stringify({ records: rows.slice(0, 1) })); // GET list (health probe)
-  if (method === "DELETE" && m[2]) {
-    const i = rows.findIndex(x => x.id === m[2]);
-    if (i < 0) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404 });
-    rows.splice(i, 1);
-    return new Response(JSON.stringify({ id: m[2], deleted: true }));
-  }
-  if (m[2]) {
-    const r = rows.find(x => x.id === m[2]);
-    if (!r) return new Response(JSON.stringify({ error: "NOT_FOUND" }), { status: 404 });
-    if (method === "PATCH") {
-      if (process.env.FORMULA_LOG) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, write: "PATCH", fields: Object.keys(JSON.parse(init.body).fields || {}) }) + "\n");
-      Object.assign(r.fields, JSON.parse(init.body).fields);
-    }
-    if (method === "GET" && process.env.FORMULA_LOG) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, get: true }) + "\n");
-    return new Response(JSON.stringify(r));
-  }
-  if (process.env.FORMULA_LOG && (method === "POST" || method === "PATCH")) (await import("node:fs")).appendFileSync(process.env.FORMULA_LOG, JSON.stringify({ table, write: method, fields: Object.keys(JSON.parse(init.body || "{}").fields || {}) }) + "\n");
-  if (method === "POST") {
-    // Unique even after deletes (rows.length alone could repeat an id).
-    let n = rows.length, id;
-    do id = "recNEW" + String(n++).padStart(11, "0"); while (rows.some(x => x.id === id));
-    const r = rec(id, JSON.parse(init.body).fields);
-    if (Array.isArray(r.fields.Gemach) && !r.fields["Gemach Slug"]) r.fields["Gemach Slug"] = r.fields.Gemach.map(id => DB.Gemachs.find(g => g.id === id)?.fields.Slug); // lookup field
-    rows.push(r);
-    return new Response(JSON.stringify(r));
-  }
-  throw new Error("unhandled " + method + " " + url);
+  if (url.startsWith("https://api.airtable.com/")) throw new Error("Airtable called (the worker no longer uses it): " + method + " " + url);
+  throw new Error("unexpected fetch " + url);
 };
 
 const R2 = [];
-const env = { AIRTABLE_BASE_ID: "appTEST", AIRTABLE_TOKEN: "x", GEMACH_JWT: "test-secret", RESEND_API_KEY: "k", ALERT_EMAIL: "alerts@example.com", ASSETS_URL: "https://assets",
+const env = { GEMACH_JWT: "test-secret", RESEND_API_KEY: "k", ALERT_EMAIL: "alerts@example.com", ASSETS_URL: "https://assets",
   ASSETS_BUCKET: { put: async (key, body, opts) => { R2.push({ key, size: body.byteLength, opts }); } } };
 const waits = [];
 const ctx = { waitUntil: p => waits.push(p) };
 
-// DB_BACKEND=d1: the same tests against the D1 data layer (see d1-harness.mjs).
-const D1_MODE = process.env.DB_BACKEND === "d1";
+// The data lives in a real SQLite database behind a fake D1 binding (see d1-harness.mjs).
 let d1Queries = 0;
 const d1Busiest = { n: 0, path: "" };
-let d1 = null;
-if (D1_MODE) {
-  const { setupD1 } = await import("./d1-harness.mjs");
-  d1 = setupD1({ DB, calls, getFail: () => airtableFail, onQuery: () => { d1Queries++; } });
-  Object.assign(env, d1.env);
-}
+const { setupD1 } = await import("./d1-harness.mjs");
+const d1 = setupD1({ DB, calls, getFail: () => dbFail, onQuery: () => { d1Queries++; } });
+Object.assign(env, d1.env);
 // Since Oct 15, 2026 the request form needs an email (the phone is optional). The many older tests
 // below were written when it was the other way round: a request body with no "email" key at all
 // gets a placeholder one here; tests about the email rule send "email" explicitly (even "").
@@ -220,10 +131,8 @@ const tokenA = await sign({ email: "barry@example.com", name: "Bárry ✡", role
 const auth = t => ({ Authorization: `Bearer ${t}` });
 
 let pass = 0;
-// Tests about Airtable's own plumbing (the ?probe=1 timing calls, resending a stalled call).
-const AIRTABLE_ONLY = ["health: ?probe=1", "airtable: a read that stalls"];
 async function t(name, fn) {
-  if (D1_MODE && AIRTABLE_ONLY.some(p => name.startsWith(p))) { console.log("SKIP (Airtable only)", name); return; } try { await fn(); pass++; console.log("PASS", name); } catch (e) { console.log("FAIL", name, "-", e.message); process.exitCode = 1; } }
+  try { await fn(); pass++; console.log("PASS", name); } catch (e) { console.log("FAIL", name, "-", e.message); process.exitCode = 1; } }
 
 await t("OPTIONS returns CORS (allowlisted origin echoed)", async () => {
   const r = await call("/api/admin/dashboard", { method: "OPTIONS", headers: { Origin: "https://whgemachs.org" } });
@@ -442,13 +351,6 @@ await t("borrower reuse requires matching name (shared phone -> new borrower)", 
   const loan2 = DB["Loans"].find(l => (l.fields["Source Request"] || [])[0] === "recREQSHARE000002");
   assert.deepEqual(loan2.fields.Borrower, ["recBORRSHARED0001"]);
 });
-
-await t("429 is retried", async () => {
-  fail429Once = true;
-  const r = await call(`/inventory`);
-  assert.equal(r.status, 200);
-});
-
 
 // ─── v2 contract tests ───────────────────────────────────────────────────────
 const tokenVol = await sign({ email: "v@example.com", name: "Vol", role: "Volunteer", gemachs: [{ id: A.id, slug: A.slug, name: "WH" }] });
@@ -1142,7 +1044,7 @@ await t("walk-in loan: 20 items at once stays well inside D1's 50-queries-per-re
   assert.equal(DB.Loans.length, before + 20);
   await Promise.allSettled(waits);
   assert.equal(DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields.Borrower === "Big Order").length, 20, "one History row per loan");
-  if (D1_MODE) assert.ok(d1Queries <= 30, `used ${d1Queries} queries`);
+  assert.ok(d1Queries <= 30, `used ${d1Queries} queries`);
 });
 
 // ─── Pre-launch guards (Oct 13, 2026): state checks, one-write confirm/cancel, NY "today" ──────────────
@@ -1164,7 +1066,7 @@ await t("guards: confirming a 15-item request and the borrower cancelling it eac
   assert.equal(r.status, 200, await r.clone().text());
   assert.equal((await r.json()).reservations.length, 15);
   const used = await bgQueries();
-  if (D1_MODE) assert.ok(used <= 50, `confirm used ${used} queries`);
+  assert.ok(used <= 50, `confirm used ${used} queries`);
   const made = DB.Loans.slice(before);
   assert.equal(made.length, 15);
   assert.equal(new Set(made.map(l => l.fields["Loan ID"])).size, 15, "distinct Loan IDs");
@@ -1175,7 +1077,7 @@ await t("guards: confirming a 15-item request and the borrower cancelling it eac
   const c = await call(`/public/manage/${url.split("/r/")[1]}/cancel`, { method: "POST", body: "{}" });
   assert.equal(c.status, 200, await c.clone().text());
   const used2 = await bgQueries();
-  if (D1_MODE) assert.ok(used2 <= 50, `cancel used ${used2} queries`);
+  assert.ok(used2 <= 50, `cancel used ${used2} queries`);
   assert.ok(made.every(l => l.fields.Status === "Cancelled"));
   assert.equal(DB.Requests.find(x => x.id === "recREQGUARDBULK01").fields.Status, "Cancelled");
 });
@@ -1197,8 +1099,8 @@ await t("guards: confirm / decline only while the request is New (cancelled by t
   DB.Requests.push(rec("recREQGUARDTWIC01", { "Request ID": "R-953", Name: "Double Tap", Status: "New", "Items Requested": ["recTYPEB000000001"], "Needed From": "2027-04-01", ...Bf }));
   const before2 = DB.Loans.length;
   const [a, b] = await Promise.all([postB(`/admin/requests/recREQGUARDTWIC01/confirm`, {}), postB(`/admin/requests/recREQGUARDTWIC01/confirm`, {})]);
-  if (D1_MODE) assert.deepEqual([a.status, b.status].sort(), [200, 409]); // atomic on D1 (the Airtable fallback isn't)
-  if (D1_MODE) assert.equal(DB.Loans.length, before2 + 1);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]); // atomic
+  assert.equal(DB.Loans.length, before2 + 1);
 });
 
 await t("partial confirm: a request with one free and one taken item → confirm the free one, note the other, one combined message", async () => {
@@ -1300,7 +1202,7 @@ await t("guards: pickup / return / cancel check the loan's state; unit pickups g
 });
 
 await t("guards: server 'today' is the New York date, not UTC", async () => {
-  const { today } = await import("../src/airtable.js");
+  const { today } = await import("../src/records.js");
   const ny = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
   assert.equal(today(), ny);
   const RealDate = Date;
@@ -1396,7 +1298,7 @@ await t("guards: server 'today' is the New York date, not UTC", async () => {
     assert.deepEqual([it2.totalUnits, it2.availableCount], [3, 1]);
   });
 
-  if (D1_MODE) await t("abuse: anonymous counting can add only so many new rows a day (events and searches)", async () => {
+  await t("abuse: anonymous counting can add only so many new rows a day (events and searches)", async () => {
     const X2 = await import("../src/events.js"), S2 = await import("../src/search.js");
     const db = __WHG_TEST__.makeDbForTest(env);
     const date = __WHG_TEST__.nyToday();
@@ -2447,57 +2349,24 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
 {
   const alerts = () => resendCalls().filter(m => m.to[0] === "alerts@example.com");
   const settle = async () => { await Promise.allSettled(waits); };
-  await t("alerts: GET /health 200 when Airtable answers, 503 (no alert) when it doesn't", async () => {
+  await t("alerts: GET /health 200 when the database answers, 503 (no alert) when it doesn't", async () => {
     let r = await call("/health");
     assert.equal(r.status, 200); const j = await r.json(); assert.equal(j.ok, true); assert.equal(r.headers.get("Cache-Control"), "no-store");
     assert.equal(r.headers.get("Access-Control-Allow-Origin"), "*");
     const n = alerts().length;
-    airtableFail = () => true;
-    r = await call("/health"); airtableFail = null;
+    dbFail = () => true;
+    r = await call("/health"); dbFail = null;
     assert.equal(r.status, 503); assert.equal((await r.json()).ok, false);
     await settle(); assert.equal(alerts().length, n, "health failures are for the uptime monitor, not alert emails");
-  });
-  await t("health: ?probe=1 times several kinds of Airtable call, at most once per 20 s", async () => {
-    const before = calls.length;
-    let j = await (await call("/health?probe=1")).json();
-    assert.equal(j.probe, true);
-    for (const k of ["whoami", "listPost", "listGet", "getOne", "smallTable", "whoamiAgain"]) assert.equal(typeof j.steps[k].ms, "number", k);
-    assert.equal(j.steps.getOne.status, 200);
-    assert.ok(calls.slice(before).some(c => c.url.endsWith("/meta/whoami")));
-    j = await (await call("/health?probe=1")).json();
-    assert.equal(j.probe, undefined, "second probe within 20 s falls back to the plain health check");
-    assert.equal(j.ok, true);
-  });
-  await t("airtable: a read that stalls is sent again and the first answer wins; writes are never resent", async () => {
-    const fast = { ...env, AIRTABLE_HEDGE_MS: "40" };
-    const go = (path, init = {}) => worker.fetch(new Request("https://wh-gemach.example.workers.dev" + path, init), fast, ctx);
-    stallOnce = (m, table, id) => table === "Gemachs" && id === "listRecords" ? 3000 : 0;
-    let before = calls.length, t0 = Date.now();
-    const r = await go("/health");
-    const j = await r.json();
-    assert.ok(Date.now() - t0 < 1500, "answered by the second copy, not after the stall");
-    assert.equal(j.ok, true); assert.equal(j.resent, 1);
-    assert.equal(calls.slice(before).filter(c => c.url.includes("/Gemachs/listRecords")).length, 2);
-    assert.match(r.headers.get("Server-Timing"), /1 resent \(1 faster\)/);
-    // A write that is slow is waited for, never duplicated.
-    const loan = DB.Loans[0];
-    stallOnce = (m, table, id) => m === "PATCH" ? 150 : 0;
-    before = calls.length;
-    const { makeDbForTest } = globalThis.__WHG_TEST__;
-    const db = makeDbForTest(fast);
-    await db.update("Loans", loan.id, {});
-    assert.equal(calls.slice(before).filter(c => c.method === "PATCH").length, 1);
-    assert.equal(db.stats.hedges, 0);
-    stallOnce = null;
   });
   const base = { gemach: A.slug, name: "Failing Person", phone: "516-555-9999", email: "fp@example.com", preferredContact: "Phone", itemsRequested: ["recTYPEA000000002"], neededFrom: SOON, notes: "please call" };
   await t("alerts: failed request save emails the person's details (every time, not throttled)", async () => {
     const n = alerts().length;
-    airtableFail = (m, table, id) => m === "POST" && table === "Requests" && !id;
+    dbFail = (m, table, id) => m === "POST" && table === "Requests" && !id;
     let r = await post("/submit-request", base);
     assert.equal(r.status, 500);
     r = await post("/submit-request", { ...base, name: "Second Person" });
-    airtableFail = null; await settle();
+    dbFail = null; await settle();
     const got = alerts().slice(n);
     assert.equal(got.length, 2);
     assert.match(got[0].subject, /FAILED to save/);
@@ -2526,9 +2395,9 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
   });
   await t("alerts: generic 5xx alerts once per route per 10 minutes", async () => {
     const n = alerts().length;
-    airtableFail = (m, table) => table === "Product Categories";
+    dbFail = (m, table) => table === "Product Categories";
     for (let i = 0; i < 3; i++) { const r = await call("/public/directory?x=" + i); }
-    airtableFail = null; await settle();
+    dbFail = null; await settle();
     const a = alerts().slice(n);
     assert.equal(a.length, 1, "exactly one (throttled)"); assert.match(a[0].subject, /Server error: GET \/public\/directory/);
   });
@@ -2940,9 +2809,9 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     let r = await call("/public/directory"); assert.equal(r.headers.get("X-Cache"), "STALE"); await settle();
     r = await call("/public/directory"); assert.equal(r.headers.get("X-Cache"), "HIT", "refreshed in background");
     await setAge(dirKey, 30 * 3600e3);
-    airtableFail = () => true;
+    dbFail = () => true;
     r = await call("/public/directory");
-    airtableFail = null; await settle();
+    dbFail = null; await settle();
     assert.equal(r.status, 200); assert.equal(r.headers.get("X-Cache"), "STALE-ERROR");
     assert.ok(Array.isArray((await r.json()).gemachs));
   });
@@ -2975,7 +2844,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.equal(seen[seen.length - 1], 49, "the last rebuild saw the last change");
     assert.equal(JSON.parse(await (await store.get(key).clone()).text()).v, 49);
   });
-  if (D1_MODE) await t("cache: a stale copy is kept while the data version is unchanged; another location's change makes it rebuild", async () => {
+  await t("cache: a stale copy is kept while the data version is unchanged; another location's change makes it rebuild", async () => {
     await call("/public/directory"); await settle();
     const builtWith = store.get(dirKey).headers.get("X-Data-Version");
     assert.ok(builtWith, "copy remembers the data version it was built from");
@@ -2994,7 +2863,7 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     await settle();
     assert.equal(store.get(dirKey).headers.get("X-Data-Version"), "elsewhere");
   });
-  if (D1_MODE) await t("cache: a hidden gemach's page stops being served once its rebuild says it's gone", async () => {
+  await t("cache: a hidden gemach's page stops being served once its rebuild says it's gone", async () => {
     const gk = "https://whgemachs.org/__cache/v1/gemach/" + B.slug;
     await call("/public/gemach/" + B.slug); await settle();
     assert.ok(store.has(gk));
@@ -3079,10 +2948,10 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.match(m.text, /• Folding Chair × 60 — 60 of 60 free/);
   });
   await t("notify: availability lookup failure still sends the email (with a note) and saves the request", async () => {
-    airtableFail = (m, table, id) => table === "Loans" && id === "listRecords";
+    dbFail = (m, table, id) => table === "Loans" && id === "listRecords";
     const r = await post("/submit-request", { gemach: G.slug, name: "Check Fail", phone: "5165551234", preferredContact: "Phone",
       itemsRequested: ["recNTYPE000000002"], neededFrom: day(3) });
-    airtableFail = null;
+    dbFail = null;
     assert.equal(r.status, 200);
     const m = resendCalls().filter(x => x.to[0] === "notify@example.com").at(-1);
     assert.match(m.subject, /Check Fail — Cane$/);
@@ -3466,11 +3335,11 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     assert.equal((await req(tokenA, "GET", "/admin/network/overview")).status, 403);
   });
 
-  await t("every response carries Server-Timing with the Airtable call count", async () => {
+  await t("every response carries Server-Timing with the D1 query count", async () => {
     const r = await req(tokNet, "GET", "/admin/network/overview");
-    assert.match(r.headers.get("Server-Timing") || "", /^total;dur=\d+, airtable;dur=\d+;desc="\d+ calls", queue;dur=\d+$/);
+    assert.match(r.headers.get("Server-Timing") || "", /^total;dur=\d+, db;dur=\d+;desc="\d+ queries"$/);
     const h = await call("/health");
-    assert.match(h.headers.get("Server-Timing") || "", /airtable;dur=\d+;desc="1 call"/);
+    assert.match(h.headers.get("Server-Timing") || "", /db;dur=\d+;desc="1 query"/);
   });
 
   await t("dashboard stats: second load within 5 minutes reuses the first (no Airtable reads); ?fresh=1 rebuilds", async () => {
@@ -4157,7 +4026,7 @@ await t("returned message: template in Settings; return can email a thank-you (o
     d1Queries = 0;
     const run = await R.runReminders(env, ctx, { now });
     await Promise.allSettled(waits);
-    if (D1_MODE) assert.ok(d1Queries <= 30, `reminder run used ${d1Queries} queries`);
+    assert.ok(d1Queries <= 30, `reminder run used ${d1Queries} queries`);
     const mine = run.sent.filter(x => x.gemach.startsWith("rem-many-"));
     assert.equal(run.sent.length, R.MAX_EMAILS_PER_RUN, "capped at one day's sends");
     assert.ok(mine.length <= R.MAX_EMAILS_PER_RUN && run.deferred >= 48 - mine.length, `deferred ${run.deferred}`);
@@ -4470,41 +4339,14 @@ await t("activity log entries stamped with Gemach", async () => {
   assert.ok(logs.length > 0);
   for (const l of logs) assert.ok(Array.isArray(l.fields.Gemach) && l.fields.Gemach.length === 1);
 });
-// ─── Structured queries (query.js): the Airtable formulas they compile to ─────
-{
-  const { Q, toFormula } = await import("../src/query.js");
-  const { makeDb } = await import("../src/airtable.js");
-  await t("query.js: conditions compile to the expected Airtable formulas", async () => {
-    const g = { slug: "wh-medical" };
-    assert.equal(toFormula({}), undefined);
-    assert.equal(toFormula({ scope: g }), 'ARRAYJOIN({Gemach Slug})="wh-medical"');
-    assert.equal(toFormula({ scope: g, where: [Q.in("Status", ["Active", "Reserved"])] }),
-      'AND(ARRAYJOIN({Gemach Slug})="wh-medical",OR({Status}="Active",{Status}="Reserved"))');
-    assert.equal(toFormula({ where: [Q.in("Status", ["New"])] }), '{Status}="New"', "one value = plain equality");
-    assert.equal(toFormula({ where: [Q.in("Status", [])] }), "FALSE()", "no values matches nothing");
-    assert.equal(toFormula({ where: [Q.ieq("Email", "Barry@Example.COM"), Q.isTrue("Active")] }), 'AND(LOWER({Email})="barry@example.com",{Active}=1)');
-    assert.equal(toFormula({ where: [Q.ieq("Email", " A@B.c ", { trim: true })] }), 'LOWER(TRIM({Email}&""))=" a@b.c "');
-    assert.equal(toFormula({ where: [Q.eq("Query", 'say "hi"\\')] }), '{Query}="say \\"hi\\"\\\\"', "quotes and backslashes escaped");
-    assert.equal(toFormula({ where: [Q.eq("Count", 3), Q.ne("Status", "Declined")] }), 'AND({Count}=3,{Status}!="Declined")');
-    assert.equal(toFormula({ where: [Q.nonEmpty("Slug"), Q.notBlank("Expected Return")] }), 'AND({Slug}!="",NOT({Expected Return}=BLANK()))');
-    assert.equal(toFormula({ where: [Q.after("T", "2026-01-01"), Q.before("T", "2026-02-01"), Q.notBefore("T", "2026-03-01")] }),
-      'AND(IS_AFTER({T},"2026-01-01"),IS_BEFORE({T},"2026-02-01"),NOT(IS_BEFORE({T},"2026-03-01")))');
-    assert.equal(toFormula({ where: [Q.idIn(["recA", "recB"])] }), 'OR(RECORD_ID()="recA",RECORD_ID()="recB")');
-    assert.equal(toFormula({ where: [Q.idIn([])] }), "FALSE()");
-    assert.equal(toFormula({ where: [Q.linksTo("Source Request", "recX", "REQ-0001")] }), 'FIND("REQ-0001",ARRAYJOIN({Source Request}))');
-    assert.equal(toFormula({ where: [Q.or(Q.phoneDigits("Phone", "5165551234", { last10: true }), Q.phoneDigits("Phone", "12345"))] }),
-      'OR(RIGHT(REGEX_REPLACE({Phone}&"","[^0-9]",""),10)="5165551234",REGEX_REPLACE({Phone}&"","[^0-9]","")="12345")');
-    assert.throws(() => toFormula({ where: [Q.eq("Bad}Field", 1)] }), /bad field name/);
-    assert.throws(() => toFormula({ where: [{ op: "nope" }] }), /unknown query condition/);
-  });
-  await t("data layer refuses raw Airtable formulas (everything must be a structured query)", async () => {
-    const db = makeDb({ AIRTABLE_BASE_ID: "appTEST", AIRTABLE_TOKEN: "x" });
-    await assert.rejects(db.listAll("Items", { filter: "{Active}=1" }), /no longer accepted/);
-    await assert.rejects(db.listPage("Items", { filter: "{Active}=1" }), /no longer accepted/);
-  });
-}
+await t("data layer refuses raw formulas (everything must be a structured query)", async () => {
+  const { makeDbForTest } = globalThis.__WHG_TEST__;
+  const db = makeDbForTest(env);
+  await assert.rejects(db.listAll("Items", { filter: "{Active}=1" }), /no longer accepted/);
+  await assert.rejects(db.listPage("Items", { filter: "{Active}=1" }), /no longer accepted/);
+});
 await t("network categories: each shows how many item types use it (reverse link)", async () => {
-  // Earlier tests move item types between categories; line the fake Airtable's reverse link up
+  // Earlier tests move item types between categories; line the fixture's reverse link up
   // with the item types (D1 works it out itself).
   const wc = DB["Item Types"].find(r => r.id === "recTYPEA000000001").fields;
   const before = wc["Product Category"];
@@ -4524,10 +4366,9 @@ await t("network categories: each shows how many item types use it (reverse link
 
 await t("network: delete a home page category (refused while item types use it; unlinks gemachs; 404 after)", async () => {
   const del = id => req(tokNet, "DELETE", `/admin/network/categories/${id}`);
-  // put an item type in Wheelchairs (the fake needs its reverse link set by hand; D1 works it out itself)
+  // put an item type in Wheelchairs (D1 works out the reverse link itself)
   const pr = await call("/admin/catalog/item-types/recTYPEA000000001", { method: "PATCH", headers: J(tokenA, { "X-Gemach": A.slug }), body: JSON.stringify({ categoryId: "recCAT0000000000A" }) });
   assert.equal(pr.status, 200, await pr.clone().text());
-  if (!D1_MODE) DB["Product Categories"].find(c => c.id === "recCAT0000000000A").fields["Item Types"] = ["recTYPEA000000001"];
   assert.equal((await del("recCAT0000000000A")).status, 409, "Wheelchairs has item types");
   assert.equal((await del("recNOPE")).status, 404);
   assert.equal((await call("/admin/network/categories/recCAT0000000000Z", { method: "DELETE", headers: auth(tokenA) })).status, 403, "not for gemach admins");
@@ -4549,7 +4390,7 @@ await t("network: delete a home page category (refused while item types use it; 
     assert.equal(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"), schemaSql());
   });
 }
-if (D1_MODE) {
+{
   await t("D1: /health reports the database and answers from D1", async () => {
     const r = await call("/health");
     assert.equal(r.status, 200);
@@ -4704,7 +4545,7 @@ if (D1_MODE) {
       itemsRequested: ["recTYPEA000000002"], neededFrom: SOON });
     assert.equal(r.status, 200, await r.clone().text());
     await settle();
-    if (D1_MODE) { // the request plus everything it does afterwards (emails, history, pushes) shares one 50-query budget
+    { // the request plus everything it does afterwards (emails, history, pushes) shares one 50-query budget
       console.log(`  submit-request with pushes: ${d1Queries} D1 queries incl. background work`);
       assert.ok(d1Queries <= 40, String(d1Queries));
     }
@@ -5180,7 +5021,7 @@ await t("bookings: loan and reservation rows carry their source request's card d
   assert.equal(a.request.town, "Cedarhurst");
   const w = loans.find(y => y.id === "recBKCLOANWALK001");
   assert.equal(w.requestRecId, null); assert.equal(w.request, null);
-  if (D1_MODE) assert.ok(d1Queries <= 8, `loans list used ${d1Queries} queries`);
+  assert.ok(d1Queries <= 8, `loans list used ${d1Queries} queries`);
 });
 
 await t("backup watch: alerts when the nightly export or an off-site copy is late; quiet when fresh or not set up", async () => {
@@ -5343,11 +5184,11 @@ await t("backup watch: alerts when the nightly export or an off-site copy is lat
   });
 }
 
-if (D1_MODE) {
+{
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);
     assert.ok(d1Busiest.n <= 50, `${d1Busiest.path} used ${d1Busiest.n}`);
   });
   if (d1.skipped.size) console.log("  fixture fields with no D1 column (ignored):", [...d1.skipped].join(", "));
 }
-console.log(`${pass} passed${D1_MODE ? " (D1)" : ""}`);
+console.log(`${pass} passed`);

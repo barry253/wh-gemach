@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, Q, linkedId } from "./airtable.js";
+import { DbError, Q, linkedId } from "./records.js";
 import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
 import { fetchLiveAdmin, forgetLiveAdmin, liveNetMemo, selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
@@ -79,7 +79,7 @@ const roleError = `Role must be one of: ${TEAM_ROLES.join(", ")}.`;
 async function saveAdmin(db, id, fields) {
   try { return id ? await db.update(T.ADMINS, id, fields) : await db.create(T.ADMINS, fields); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Team change failed:", JSON.stringify(e.detail));
     return null;
   }

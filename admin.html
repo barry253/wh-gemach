@@ -3230,7 +3230,7 @@
   // ── Saved copies ("snapshots") ────────────────────────────────────────────
   // Each list's last good answer is kept on this device (per gemach, up to 7 days, cleared on sign-out
   // and after any change). Opening a tab shows it at once, marked "Updating…" with its buttons paused,
-  // then swaps in the fresh answer — so a slow moment at Airtable doesn't leave a blank screen.
+  // then swaps in the fresh answer — so a slow moment at the server doesn't leave a blank screen.
   const SNAP_PREFIX = "whg_snap:";
   const SNAP_MAX_AGE = 7 * 864e5;
   const snapKey = path => `${SNAP_PREFIX}${gemachSlug || ""}|${path}`;
@@ -7380,7 +7380,7 @@
     if (data.error) { setLogoStatus(data.error, true); return; }
     GEMACH = { ...GEMACH, logoUrl: data.logoUrl };
     renderLogoPreview(); updateThemePreview();
-    setLogoStatus(data.logoUrl ? "Uploaded logo removed (the logo attached in Airtable is still shown)." : "Logo removed");
+    setLogoStatus("Logo removed");
     showToast("Logo removed");
   }
 
@@ -7825,7 +7825,7 @@
     if (NET.loadedAt || NET.fromSnap) { renderNetGemachs(); fillAdminFilter(); renderNetAdmins(); renderNetCategories(); }
     const netEls = ["net-gemachs", "net-admins", "net-categories"].map(id => document.getElementById(id));
     if (NET.fromSnap) netEls.forEach(el => el?.classList.add("is-stale"));
-    // One request for gemachs + admins + categories (3 Airtable reads instead of ~9 across three requests).
+    // One request for gemachs + admins + categories (3 database reads instead of ~9 across three requests).
     const typesReq = api("/admin/network/gemach-types").catch(() => null);
     let ov = await api("/admin/network/overview").catch(e => ({ error: e.message }));
     let g, a, c;

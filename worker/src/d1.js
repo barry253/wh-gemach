@@ -1,18 +1,17 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 //
 // ─── D1 data layer ──────────────────────────────────────────────────────────────
-// Same interface and record shape as the Airtable layer (airtable.js makeDb): listAll, listPage,
-// get, create, update, del, returning { id, createdTime, fields } with Airtable field names. The
-// worker picks one with the DB_BACKEND variable (db.js). Field ↔ column mapping: dbschema.js.
+// listAll, listPage, get, create, update, del, returning { id, createdTime, fields } with the
+// field names the site used on Airtable (before Oct 2026). Field ↔ column mapping: dbschema.js.
 //
-// Behaves like Airtable where the worker relies on it:
+// Keeps Airtable's behaviour where the worker relies on it:
 //   - empty values are left out of `fields` (no "", null, false or [] keys)
 //   - links come back as arrays of record ids; lookups as arrays of values
 //   - asking for a field that doesn't exist, or writing a computed one, is an error (422)
 //   - a fields list returns only those fields
 //   - unsorted lists come back in creation order
-// Errors are thrown as AirtableError (same status codes) so existing catch blocks keep working.
-import { AirtableError } from "./airtable.js";
+// Errors are thrown as DbError (records.js) with HTTP-like status codes.
+import { DbError } from "./records.js";
 import { REC_RE } from "./config.js";
 import { tableSpec, viewName, linksCol } from "./dbschema.js";
 
@@ -27,7 +26,7 @@ function newRecordId() {
   return s;
 }
 
-const err = (status, type, message) => new AirtableError(status, { error: { type, message } });
+const err = (status, type, message) => new DbError(status, { error: { type, message } });
 
 function fieldSpec(spec, name) {
   const f = spec.fields[name];
@@ -215,8 +214,8 @@ const isConstraint = e => /constraint|FOREIGN KEY/i.test(String(e?.message || e)
 
 function makeD1Db(env) {
   const d1 = env.DB;
-  if (!d1) throw new Error("DB_BACKEND=d1 but the worker has no DB binding");
-  const stats = { calls: 0, retries: 0, ms: 0, waitMs: 0, slowest: 0, slowestPath: "", hedges: 0, hedgeWins: 0 };
+  if (!d1) throw new Error("the worker has no DB binding (D1 database)");
+  const stats = { calls: 0, ms: 0, slowest: 0, slowestPath: "" };
   let warned = false;
 
   const prep = (sql, params = []) => d1.prepare(sql).bind(...params);
@@ -253,7 +252,7 @@ function makeD1Db(env) {
   }
 
   async function listPage(table, { scope, where, filter, sort, fields, pageSize, offset, maxRecords } = {}) {
-    if (filter !== undefined) throw new Error("raw Airtable formulas are no longer accepted; use scope/where (query.js)");
+    if (filter !== undefined) throw new Error("raw formulas are no longer accepted; use scope/where (query.js)");
     const spec = tableSpec(table);
     trace?.({ kind: "list", table, scope, where, sort, fields, pageSize, offset, maxRecords });
     const sel = selectList(spec, fields);
@@ -272,7 +271,7 @@ function makeD1Db(env) {
 
   // One query for the whole list (no paging round trips, unlike Airtable).
   async function listAll(table, { scope, where, filter, sort, fields, maxRecords } = {}) {
-    if (filter !== undefined) throw new Error("raw Airtable formulas are no longer accepted; use scope/where (query.js)");
+    if (filter !== undefined) throw new Error("raw formulas are no longer accepted; use scope/where (query.js)");
     const spec = tableSpec(table);
     trace?.({ kind: "list", table, scope, where, sort, fields, maxRecords });
     const sel = selectList(spec, fields);

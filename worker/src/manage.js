@@ -14,7 +14,7 @@
 // Links stop working 30 days after everything from the request is finished (returned / cancelled / declined).
 
 import { logEvent, logEvents } from "./activity.js";
-import { AirtableError, Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
+import { DbError, Q, fetchByIds, firstLink, linkedId } from "./records.js";
 import { purgePublicCache } from "./cache.js";
 import { REC_RE, T } from "./config.js";
 import { formatNy, nyToday } from "./dates.js";
@@ -231,7 +231,7 @@ async function handleManageCancel(db, env, ctx, token) {
     const somethingOut = loans.some(x => selName(x.fields.Status) === "Active") || cancelled.length < reserved.length;
     if (reqStatus(rec) === "Converted" && !isAppt(rec) && !somethingOut) await db.update(T.REQUESTS, rec.id, { "Status": "Cancelled" });
   } catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("manage cancel failed:", JSON.stringify(e.detail));
     return json({ error: "Couldn't cancel right now. Please try again or contact the gemach." }, 502);
   }
@@ -286,7 +286,7 @@ async function handleManageReady(db, env, ctx, token) {
   try {
     for (const l of todo) await db.update(T.LOANS, l.id, { "Ready To Return At": now });
   } catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("manage ready failed:", JSON.stringify(e.detail));
     return json({ error: "Couldn't send that right now. Please try again or contact the gemach." }, 502);
   }

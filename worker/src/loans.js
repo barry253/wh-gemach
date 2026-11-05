@@ -1,6 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent } from "./activity.js";
-import { AirtableError, Q, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./airtable.js";
+import { DbError, Q, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./records.js";
 import { findOrCreateBorrower } from "./borrowers.js";
 import { cleanCityState } from "./places.js";
 import { DATE_RE, T } from "./config.js";
@@ -180,7 +180,7 @@ async function siblingLoans(db, g, loans, reqMap, statuses) {
     sort: [{ field: "Date Borrowed", direction: "asc" }],
     fields: ["Loan ID", "Item", "Item to Reserve", "Status", "Quantity", "Date Borrowed", "Date Returned", "Source Request"],
   });
-  // Airtable matches links by name: keep only the real ids.
+  // Keep only the real ids.
   return recs.filter(r => reqs.has(linkedId(firstLink(r.fields["Source Request"]))));
 }
 
@@ -224,7 +224,7 @@ async function loanItemLabel(db, g, loan) {
   return (d.itemType || "item") + (!(loan.fields["Item"] || []).length && q > 1 ? ` × ${q}` : "");
 }
 
-/** Email the loan's borrower an admin-written message (the borrower's address comes from Airtable, never the request). */
+/** Email the loan's borrower an admin-written message (the borrower's address comes from the Borrowers table, never the request). */
 async function emailBorrower(c, loan, message, subject) {
   const { db, g, env } = c;
   const text = String(message ?? "").trim();
@@ -516,7 +516,7 @@ async function handleUpdateReservation(c, id) {
   try {
     return json(await db.update(T.LOANS, id, fields));
   } catch (e) {
-    if (e instanceof AirtableError) return json(e.detail || { error: e.message }, 500);
+    if (e instanceof DbError) return json(e.detail || { error: e.message }, 500);
     throw e;
   }
 }
@@ -532,7 +532,7 @@ async function handleCancelReservation(c, id) {
     if (!(await db.updateIf(T.LOANS, id, [Q.eq("Status", "Reserved")], { "Status": "Cancelled" }))) return wrongLoanState((await db.get(T.LOANS, id)) || loan, "cancel it");
     data = await db.get(T.LOANS, id);
   } catch (e) {
-    if (e instanceof AirtableError) return json(e.detail || { error: e.message }, 500);
+    if (e instanceof DbError) return json(e.detail || { error: e.message }, 500);
     throw e;
   }
   logEvent(ctx, db, g, {
@@ -569,7 +569,7 @@ async function handleAssignItem(c, itemRecId) {
       logEvent(ctx, db, g, { eventType: "Marked for Repair", itemCode: body.itemCode || null, itemType: body.itemType || null, admin });
       return json({ success: true, data });
     } catch (e) {
-      if (e instanceof AirtableError) return json({ success: false, data: e.detail }, 500);
+      if (e instanceof DbError) return json({ success: false, data: e.detail }, 500);
       throw e;
     }
   }
@@ -630,7 +630,7 @@ async function handleAssignItem(c, itemRecId) {
     }
     let loanData, ok = true;
     try { loanData = await db.update(T.LOANS, existingLoanId, updateFields); }
-    catch (e) { if (!(e instanceof AirtableError)) throw e; ok = false; loanData = e.detail; }
+    catch (e) { if (!(e instanceof DbError)) throw e; ok = false; loanData = e.detail; }
     const label = loanData?.fields?.["Loan ID"] || existingLoan.fields["Loan ID"] || existingLoanId;
     if (ok) {
       logEvent(ctx, db, g, {
@@ -664,9 +664,9 @@ async function handleAssignItem(c, itemRecId) {
   try {
     loanData = await db.create(T.LOANS, loanFields);
   } catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Loan creation failed. Fields:", JSON.stringify(loanFields), "Response:", JSON.stringify(e.detail));
-    return json({ success: false, error: e.message || "Airtable error", detail: e.detail }, 500);
+    return json({ success: false, error: e.message || "Database error", detail: e.detail }, 500);
   }
 
   logEvent(ctx, db, g, {

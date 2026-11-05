@@ -13,7 +13,7 @@
 // A message may contain {manage_link}; the email gets the real link (WhatsApp / text are sent from the
 // admin's phone after saving, with the link the answer returns).
 import { logEvents } from "./activity.js";
-import { Q, belongs, fetchByIds, firstLink, linkedId, linkedName } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, linkedId, linkedName } from "./records.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { checkBorrower, checkDate, checkRequestedItems, checkReservedAdds, createReserved, REQUEST_CONTACT, sendNote } from "./booking.js";
 import { useOrFindBorrower } from "./borrowers.js";

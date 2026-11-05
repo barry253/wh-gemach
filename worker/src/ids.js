@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { firstLink, linkedId } from "./airtable.js";
+import { firstLink, linkedId } from "./records.js";
 import { T } from "./config.js";
 
 // ─── IDs ──────────────────────────────────────────────────────────────────────

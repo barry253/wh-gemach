@@ -5,7 +5,7 @@
 //   Admin is only warned (admin.html). The gemach page shows a "currently on vacation" note above the contact buttons.
 //   GET/POST /admin/vacations — list (current + upcoming) / replace the list (Owner, Manager, Network Admin);
 //   POST answers with the bookings whose pickup / return / appointment falls inside a vacation (nothing is changed).
-import { AirtableError, Q, belongs, fetchByIds, firstLink, linkedId } from "./airtable.js";
+import { DbError, Q, belongs, fetchByIds, firstLink, linkedId } from "./records.js";
 import { T } from "./config.js";
 import { nyToday } from "./dates.js";
 import { gemachFromRecord, gemachMemo, getGemachRecord, selName } from "./gemachs.js";
@@ -81,7 +81,7 @@ async function handlePutVacations({ db, g, user, request }) {
   try {
     await db.update(T.GEMACHS, g.id, { "Vacations": value.length ? JSON.stringify(value) : null });
   } catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Vacations update failed:", JSON.stringify(e.detail));
     return json({ error: "Could not save vacations. Please try again." }, 502);
   }

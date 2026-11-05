@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { Q, belongs, fetchByIds, firstLink, linkedId, today } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, linkedId, today } from "./records.js";
 import { REC_RE, T } from "./config.js";
 import { isValidDate, nyToday } from "./dates.js";
 import { selName } from "./gemachs.js";

@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { Q, fetchByIds, linkedId } from "./airtable.js";
+import { Q, fetchByIds, linkedId } from "./records.js";
 import { CACHE_TTL_MS, LEGACY_SLUG, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
 import { isLiveNetworkAdmin } from "./network.js";
 import { parseAttrDefs } from "./attributes.js";

@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { makeDb, useD1 } from "./db.js";
+import { makeDb } from "./db.js";
 import { CACHE_MAX_STALE_MS, CACHE_TTL_MS, DEFAULT_CACHE_ORIGIN } from "./config.js";
 import { json } from "./http.js";
 import { directoryBuilder, gemachBuilder } from "./public.js";
@@ -18,7 +18,7 @@ const RECHECK_MAX_MS = 30 * 60 * 1000;
 let versionMemo = { v: null, at: 0 };
 
 async function dataVersion(env) {
-  if (!useD1(env) || !env.DB) return null;
+  if (!env?.DB) return null;
   if (Date.now() - versionMemo.at < 5000) return versionMemo.v;
   try {
     const r = await env.DB.prepare("SELECT value FROM site_meta WHERE id = ?").bind(VERSION_ROW_ID).all();
@@ -31,7 +31,7 @@ async function dataVersion(env) {
 }
 
 async function bumpDataVersion(env) {
-  if (!useD1(env) || !env.DB) return;
+  if (!env?.DB) return;
   const v = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     await env.DB.prepare("INSERT INTO site_meta (id, created_at, key, value) VALUES (?, ?, 'data_version', ?) ON CONFLICT(id) DO UPDATE SET value = excluded.value")
@@ -146,7 +146,7 @@ async function cachedJson(env, ctx, key, build) {
     const { status, body } = await p;
     return json(body, status, status === 200 ? { ...headers, "X-Cache": "MISS" } : {});
   } catch (e) {
-    if (hit) { // Airtable trouble: an old copy beats an error page
+    if (hit) { // Database trouble: an old copy beats an error page
       console.error("rebuild failed, serving old copy:", e.message);
       return json(hit.body, 200, { ...headers, "X-Cache": "STALE-ERROR" });
     }

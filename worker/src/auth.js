@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { Q, fetchByIds } from "./airtable.js";
+import { Q, fetchByIds } from "./records.js";
 import { DEFAULT_GOOGLE_CLIENT_ID, JWT_TTL_MS, NETWORK_ADMIN_ROLE, SLUG_RE, T } from "./config.js";
 import { forgetLiveAdmin, gemachRef, listAllGemachs, liveNetMemo } from "./gemachs.js";
 import { json, readJson } from "./http.js";

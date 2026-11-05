@@ -1,6 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent } from "./activity.js";
-import { AirtableError, linkedId, verifyOwnedIds } from "./airtable.js";
+import { DbError, linkedId, verifyOwnedIds } from "./records.js";
 import { sendAlert } from "./alerts.js";
 import { LEGACY_SLUG, T } from "./config.js";
 import { addYearsDate, eventDates, isValidDate, nyToday } from "./dates.js";
@@ -243,8 +243,8 @@ async function handleSubmitRequest(request, db, env, ctx) {
   try {
     created = await db.create(T.REQUESTS, fields);
   } catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
-    console.error("Airtable error:", JSON.stringify(e.detail));
+    if (!(e instanceof DbError)) throw e;
+    console.error("Database error:", JSON.stringify(e.detail));
     return json({ error: "Failed to save request. Please contact the gemach directly." }, 500);
   }
 

@@ -24,7 +24,7 @@
 //   DELETE /admin/push/:id
 //   POST   /admin/push/unsubscribe    { endpoint } — this device signed out / turned off
 //   POST   /admin/push/test           { endpoint } → { sent }
-import { Q, fetchByIds, linkedId } from "./airtable.js";
+import { Q, fetchByIds, linkedId } from "./records.js";
 import { b64urlDecode, b64urlEncode } from "./auth.js";
 import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
 import { makeDb } from "./db.js";
@@ -235,7 +235,7 @@ const deviceOut = s => ({ id: s.id, device: s.device, endpoint: s.endpoint, even
 
 async function ownSubs(db, me) {
   const rows = await db.listAll(T.PUSH, { where: [Q.linksTo("Admin", me.id, me.name)], fields: SUB_FIELDS });
-  return rows.map(subFromRecord).filter(s => s.adminId === me.id); // the Airtable formula matches by name; keep only real links
+  return rows.map(subFromRecord).filter(s => s.adminId === me.id); // keep only real links
 }
 async function subByEndpoint(db, endpoint) {
   const rows = await db.listAll(T.PUSH, { where: [Q.eq("Endpoint", endpoint)], fields: SUB_FIELDS });

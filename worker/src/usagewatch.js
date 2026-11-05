@@ -12,7 +12,6 @@
 import { gql, TRAFFIC_DEFAULTS } from "./traffic.js";
 import { formatNy } from "./dates.js";
 import { sendAlert } from "./alerts.js";
-import { useD1 } from "./db.js";
 
 const USAGE_CRON = "7 * * * *"; // hourly, at :07 (the reminders cron owns 14:00)
 const STATE_ROW_ID = "recUSAGEALERTV1";
@@ -48,7 +47,7 @@ const D1_USAGE_QUERY = `query D1Usage($account: string!, $day: Date!, $db: strin
 let memState = null; // used when there is no D1
 
 async function loadState(env) {
-  if (!useD1(env) || !env.DB) return memState;
+  if (!env?.DB) return memState;
   try {
     const r = await env.DB.prepare("SELECT value FROM site_meta WHERE id = ?").bind(STATE_ROW_ID).all();
     const v = r.results?.[0]?.value;
@@ -61,7 +60,7 @@ async function loadState(env) {
 
 async function saveState(env, state) {
   memState = state;
-  if (!useD1(env) || !env.DB) return;
+  if (!env?.DB) return;
   try {
     await env.DB.prepare("INSERT INTO site_meta (id, created_at, key, value) VALUES (?, ?, 'usage_alert', ?) ON CONFLICT(id) DO UPDATE SET value = excluded.value")
       .bind(STATE_ROW_ID, new Date().toISOString(), JSON.stringify(state)).run();

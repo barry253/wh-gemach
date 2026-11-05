@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, fetchByIds } from "./airtable.js";
+import { DbError, fetchByIds } from "./records.js";
 import { parseAttrDefs, validateAttrDefs } from "./attributes.js";
 import { filterNameIn } from "./extras.js";
 import { NETWORK_ADMIN_ROLE, REC_RE, T } from "./config.js";
@@ -355,7 +355,7 @@ async function handleUpdateAdminGemach({ db, g, env, user, request }) {
   try {
     rec = await db.update(T.GEMACHS, g.id, fields);
   } catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Gemach update failed:", JSON.stringify(e.detail));
     return json({ error: "Could not save settings. Please try again." }, 502);
   }
@@ -398,7 +398,7 @@ async function handleUploadLogo(c) {
   try {
     rec = await db.update(T.GEMACHS, g.id, { "Logo URL": url });
   } catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Logo URL update failed:", JSON.stringify(e.detail));
     return json({ error: "Logo uploaded but could not be saved. Please try again." }, 502);
   }

@@ -2,7 +2,7 @@
 
 The API behind whgemachs.org: public directory and gemach pages, the request form, and everything in
 the admin page. Worker name **wh-gemach**, served at `https://api.whgemachs.org` and
-`https://wh-gemach.barry253-0f5.workers.dev`. Data lives in Airtable; photos and logos in the R2 bucket
+`https://wh-gemach.barry253-0f5.workers.dev`. Data lives in Cloudflare D1 (database `wh-gemach`, since Oct 7, 2026; Airtable before that); photos and logos in the R2 bucket
 `wh-gemach-assets`; email goes out through Resend.
 
 ## How changes go live
@@ -21,16 +21,16 @@ Never paste code into the dashboard editor any more — the next deploy from Git
 | What | Where | Notes |
 |---|---|---|
 | Code | `worker/src/` | bundled by Wrangler into one script |
-| Bindings, domain, logs | `worker/wrangler.toml` | R2 bucket, `api.whgemachs.org`, workers.dev, Observability |
-| Plain variables (`AIRTABLE_BASE_ID`, `FROM_EMAIL`, `ALERT_EMAIL`, `NOTIFY_EMAIL`, `ASSETS_URL`, …) | Cloudflare dashboard | kept on deploy because of `keep_vars = true` |
-| Secrets (`AIRTABLE_TOKEN`, `GEMACH_JWT`, `RESEND_API_KEY`, `VAPID_PRIVATE_KEY`) | Cloudflare dashboard | never touched by deploys |
+| Bindings, domain, logs | `worker/wrangler.toml` | D1 database, R2 bucket, `api.whgemachs.org`, workers.dev, Observability |
+| Plain variables (`FROM_EMAIL`, `ALERT_EMAIL`, `NOTIFY_EMAIL`, `ASSETS_URL`, …) | Cloudflare dashboard | kept on deploy because of `keep_vars = true` |
+| Secrets (`GEMACH_JWT`, `RESEND_API_KEY`, `VAPID_PRIVATE_KEY`) | Cloudflare dashboard | never touched by deploys |
 
 ## Working on it locally
 
 ```sh
 cd worker
 npm install
-npm test          # the API tests twice: against a fake Airtable, then against D1 (Node's built-in SQLite)
+npm test          # the API tests, against D1's engine (Node's built-in SQLite; Node 22.13+)
 npm run check     # bundles exactly as a deploy would, without deploying
 npm run schema    # regenerate schema.sql after changing src/dbschema.js (a test checks they match)
 ```
@@ -44,11 +44,11 @@ Browser tests for the site and admin page are in `../tests` (`cd tests && npm in
 | `index.js` | Entry point: routing, CORS, admin session handling, env var list (top comment) |
 | `config.js` | Constants: table names, allowed origins, cache timings |
 | `http.js` | JSON responses and CORS headers |
-| `db.js` | Picks the data layer: Airtable, or D1 when `DB_BACKEND` = `d1` |
-| `query.js` | Structured query conditions (`Q.eq`, `Q.in`, …) and their Airtable formulas |
-| `airtable.js` | Airtable client (concurrency limit, 429 retry, paging) and record helpers |
-| `d1.js` | D1 client with the same calls and Airtable-shaped records |
-| `dbschema.js` / `../schema.sql` | How each Airtable table and field maps to D1 tables, columns and views |
+| `db.js` | Makes the data layer for a request (D1) |
+| `query.js` | Structured query conditions (`Q.eq`, `Q.in`, …), compiled to SQL by `d1.js` |
+| `records.js` | `DbError` and record helpers (`linkedId`, `getOwned`, `fetchByIds`, …) |
+| `d1.js` | D1 client: list/get/create/update/delete returning Airtable-shaped records |
+| `dbschema.js` / `../schema.sql` | How each table and field (Airtable names) maps to D1 tables, columns and views |
 | `gemachs.js` | Loading a gemach by slug/id, admin gemach resolution |
 | `auth.js` | Google sign-in, admin lookup, session tokens (JWT) |
 | `dates.js` | New York dates, event-date rule, calendar invites |

@@ -23,7 +23,7 @@
 //   POST /admin/booking/cancel { request | loan, message?, sendMessage? }
 //        — cancels what hasn't gone out: Reserved loans, an appointment, a waiting request.
 import { logEvent, logEvents } from "./activity.js";
-import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId } from "./records.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { CONTACT_MAP } from "./borrowers.js";
 import { createLoans, EMAIL_RE, validateLending } from "./checkout.js";

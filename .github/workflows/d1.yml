@@ -4,8 +4,6 @@ name: D1 schema
 # existing data is kept. (CREATE TABLE IF NOT EXISTS never adds columns to an existing table: new columns
 # need an ALTER TABLE on the live database.)
 #
-# The Airtable "copy" and "compare" tasks were removed on Oct 13, 2026: D1 has been the live database since
-# Oct 7 and Airtable is no longer updated, so a copy would have replaced live data with an old snapshot.
 # Needs repository secret CLOUDFLARE_API_TOKEN (D1 edit).
 on:
   workflow_dispatch:

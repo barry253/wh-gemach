@@ -1,11 +1,11 @@
 # Gemach Network API — deployed by Cloudflare Workers Builds from this folder on every push to main.
-# Secrets (AIRTABLE_TOKEN, GEMACH_JWT, RESEND_API_KEY, VAPID_PRIVATE_KEY, TURNSTILE_SECRET) live only in the Cloudflare dashboard and are never touched by deploys.
+# Secrets (GEMACH_JWT, RESEND_API_KEY, VAPID_PRIVATE_KEY, TURNSTILE_SECRET) live only in the Cloudflare dashboard and are never touched by deploys.
 
 name = "wh-gemach"                 # must match the Worker's name in the dashboard
 main = "src/index.js"
 compatibility_date = "2026-09-23"  # same as the dashboard-deployed worker; change deliberately, not casually
 
-# Plain variables (AIRTABLE_BASE_ID, FROM_EMAIL, ALERT_EMAIL, NOTIFY_EMAIL, ASSETS_URL, ...) stay managed in the
+# Plain variables (FROM_EMAIL, ALERT_EMAIL, NOTIFY_EMAIL, ASSETS_URL, ...) stay managed in the
 # dashboard: without this, every deploy would delete them.
 keep_vars = true
 
@@ -53,14 +53,8 @@ crons = ["0 14 * * *", "7 * * * *"]
 [observability]
 enabled = true
 
-# Which database the worker uses (src/db.js): "d1" = Cloudflare D1 (since Oct 7, 2026), "airtable" = the old
-# Airtable base. Set here (not in the dashboard) so it's tracked; to switch back, change it and push, or roll
-# back to the previous deployment in the dashboard. Other plain vars stay dashboard-managed (keep_vars).
-[vars]
-DB_BACKEND = "d1"
-
-# Cloudflare D1 database (used when DB_BACKEND is "d1"; see src/db.js).
-# Schema: schema.sql (generated from src/dbschema.js). Copy/compare: .github/workflows/d1.yml.
+# The database (Cloudflare D1, since Oct 7, 2026; see src/db.js and src/d1.js).
+# Schema: schema.sql (generated from src/dbschema.js); apply it with Actions → "D1 schema" (.github/workflows/d1.yml).
 [[d1_databases]]
 binding = "DB"
 database_name = "wh-gemach"

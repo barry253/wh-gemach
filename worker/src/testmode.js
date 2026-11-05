@@ -20,7 +20,7 @@
 //   POST /admin/test-data/clear   deletes the gemach's Test requests, the loans made from them, borrowers left with
 //                                 nothing else, and their History rows (Owner / Manager / Network Admin).
 
-import { Q, linkedId } from "./airtable.js";
+import { Q, linkedId } from "./records.js";
 import { REC_RE, T } from "./config.js";
 import { json } from "./http.js";
 import { canEditGemach } from "./settings.js";

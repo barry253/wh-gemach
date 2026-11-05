@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { AirtableError, Q, fetchByIds, linkedId } from "./airtable.js";
+import { DbError, Q, fetchByIds, linkedId } from "./records.js";
 import { sendAlert } from "./alerts.js";
 import { purgePublicCache } from "./cache.js";
 import { DEFAULT_ADMIN_URL, LEGACY_SLUG, NETWORK_ADMIN_ROLE, REC_RE, SLUG_RE, T } from "./config.js";
@@ -22,7 +22,7 @@ async function loadGemachTypeNames(db) {
     const recs = await db.listAll(T.GEMACH_TYPES, {});
     const names = recs.map(r => ({ name: r.fields.Name })).filter(r => r.name).sort(byName).map(r => r.name);
     if (names.length) return names;
-  } catch (e) { if (!(e instanceof AirtableError)) throw e; }
+  } catch (e) { if (!(e instanceof DbError)) throw e; }
   return GEMACH_CATEGORIES;
 }
 const typeError = names => `Type must be one of: ${names.join(", ")}.`;
@@ -187,7 +187,7 @@ async function netCreateGemach(c) {
   let rec;
   try { rec = await db.create(T.GEMACHS, fields); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Create gemach failed:", JSON.stringify(e.detail));
     return json({ error: "Could not create the gemach. Please try again." }, 502);
   }
@@ -268,7 +268,7 @@ async function netUpdateGemach(c, id) {
   if (!Object.keys(f).length) return json((await netGemachRows(db)).find(r => r.id === id) || { id }); // nothing changed
   try { await db.update(T.GEMACHS, id, f); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Update gemach failed:", JSON.stringify(e.detail));
     return json({ error: "Could not save. Please try again." }, 502);
   }
@@ -337,7 +337,7 @@ async function netCreateAdmin(c) {
   let rec;
   try { rec = await db.create(T.ADMINS, { ...fields, "Email": email, "Active": true }); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Create admin failed:", JSON.stringify(e.detail));
     return json({ error: "Could not add the admin. Please try again." }, 502);
   }
@@ -396,7 +396,7 @@ async function netUpdateAdmin(c, id) {
   let updated;
   try { updated = await db.update(T.ADMINS, id, fields); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     console.error("Update admin failed:", JSON.stringify(e.detail));
     return json({ error: "Could not save. Please try again." }, 502);
   }
@@ -462,7 +462,7 @@ async function netCreateCategory(c) {
   let rec;
   try { rec = await db.create(T.PRODUCT_CATEGORIES, { ...fields, "Active": body.active === false ? false : true }); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     return json({ error: "Could not create the category." }, 502);
   }
   purgeManyPublic(env, ctx, await allSlugs(db));
@@ -480,7 +480,7 @@ async function netUpdateCategory(c, id) {
   let rec;
   try { rec = await db.update(T.PRODUCT_CATEGORIES, id, fields); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     return json({ error: "Could not save the category." }, 502);
   }
   purgeManyPublic(env, ctx, await allSlugs(db));
@@ -578,7 +578,7 @@ async function netDeleteCategory(c, id) {
   }
   try { await db.del(T.PRODUCT_CATEGORIES, id); }
   catch (e) {
-    if (!(e instanceof AirtableError)) throw e;
+    if (!(e instanceof DbError)) throw e;
     return json({ error: "Could not delete the category." }, 502);
   }
   purgeManyPublic(env, ctx, gemachs.map(g => g.fields.Slug));

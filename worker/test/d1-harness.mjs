@@ -1,4 +1,4 @@
-// Runs the worker test suite against the D1 data layer (DB_BACKEND=d1 node test/worker.test.mjs).
+// Runs the worker test suite against the D1 data layer (used by test/worker.test.mjs).
 //
 // The tests describe their data as Airtable-shaped records in a plain DB object and look at it
 // directly. Here that DB object stays the tests' view of the data, and a real SQLite database
@@ -7,11 +7,12 @@
 //   - after a write, SQLite is copied back into DB in place (so held references stay valid), and
 //     computed fields (item status, lookups, reverse links) are refreshed from SQL.
 // Each data-layer call is also logged into the tests' `calls` list in Airtable's URL form, with
-// the Airtable formula the same query would have used, so call-based assertions work unchanged.
+// the Airtable formula the same query would have used (test/formula.mjs), so call-based assertions
+// read the same as before the Airtable code was removed (Nov 2026).
 import { DatabaseSync } from "node:sqlite";
 import { TABLES, schemaSql } from "../src/dbschema.js";
-import { toFormula } from "../src/query.js";
-import { AirtableError } from "../src/airtable.js";
+import { toFormula } from "./formula.mjs";
+import { DbError } from "../src/records.js";
 import { toRecord, writePlan } from "../src/d1.js";
 
 export function setupD1({ DB, calls, getFail, onQuery }) {
@@ -134,10 +135,10 @@ export function setupD1({ DB, calls, getFail, onQuery }) {
     lastWrite = op.kind === "create" || op.kind === "update" ? { table: op.table, id: op.id, fields: op.fields } : null;
     const fail = getFail();
     if (fail && fail(method, op.table, op.kind === "list" ? "listRecords" : op.id)) {
-      throw new AirtableError(422, { error: { type: "TEST_FAIL" } });
+      throw new DbError(422, { error: { type: "TEST_FAIL" } });
     }
   }
 
   load(); mirror();
-  return { env: { DB_BACKEND: "d1", DB: binding, DB_TRACE: trace }, skipped, sqlite: () => sql };
+  return { env: { DB: binding, DB_TRACE: trace }, skipped, sqlite: () => sql };
 }

@@ -1,6 +1,6 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
 import { logEvent, logEvents } from "./activity.js";
-import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./records.js";
 import { itemAttrsFor } from "./attributes.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { findOrCreateBorrower } from "./borrowers.js";

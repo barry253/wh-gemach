@@ -1,15 +1,11 @@
 /**
  * Gemach Network API — Cloudflare Worker (module syntax), multi-tenant.
  *
- * Serves every gemach stored in one Airtable base. All routes work both at the
+ * Serves every gemach stored in one Cloudflare D1 database. All routes work both at the
  * workers.dev root and behind a "/api" prefix (e.g. https://whgemachs.org/api/...).
  *
  * ── Env vars / secrets / bindings read ──────────────────────────────────────
- *   AIRTABLE_TOKEN     secret   Airtable PAT (data.records:read/write on the base)
- *   AIRTABLE_BASE_ID   var      Airtable base id
- *   DB_BACKEND         var  NEW (optional) "d1" = read/write Cloudflare D1 (binding DB) instead of Airtable.
- *                           Blank/anything else = Airtable. See db.js, d1.js, dbschema.js, schema.sql.
- *   DB                 D1 binding  The D1 database (only used when DB_BACKEND = "d1")
+ *   DB                 D1 binding  The database (see db.js, d1.js, dbschema.js, schema.sql)
  *   GEMACH_JWT         secret   HMAC-SHA256 key for admin session tokens
  *   RESEND_API_KEY     secret   Resend API key for outgoing email
  *   NOTIFY_EMAIL       var      Fallback notification / reply-to address when a gemach has no Email
@@ -34,7 +30,7 @@
  *   POST /public/event {kind, …} — item photos opened / checked, browser errors, "couldn't load" (events.js); always 204.
  *   GET /admin/network/traffic?days=1|3|7|30|90|365[&fresh=1] (Network Admin): Cloudflare visitors + errors (traffic.js).
  *   Stats:   GET /admin/stats?days=30|90|365 — per-gemach request/loan/inventory stats for the Dashboard.
- *   Health:  GET /health — checks Airtable is reachable; 200 {ok:true} or 503 (for uptime monitors).
+ *   Health:  GET /health — checks the database answers; 200 {ok:true} or 503 (for uptime monitors).
  *   Public:  GET /inventory (legacy, wh-medical only), GET /public/directory,
  *            GET /public/gemach/:slug, GET /public/meta/:slug[?item=] (name/tagline/logo, and a shared item, for link previews), GET /public/contact/:slug (encoded phone/email/WhatsApp — kept out of the
  *            directory and page payloads against scraping), POST /submit-request (rejected for Directory, Info-only and Coming-soon gemachs)
@@ -63,7 +59,7 @@
  *            /admin/team — the gemach's Owners/Managers/Volunteers (Owner or Network Admin; see team.js).
  *   Push:    /admin/push (GET), /admin/push/subscribe|unsubscribe|test (POST), /admin/push/:id (PATCH, DELETE) —
  *            admin notification devices (push.js). VAPID_PRIVATE_KEY secret (P-256 JWK) turns it on.
- *   Network: /admin/network/{gemachs,admins,categories} — role "Network Admin" only, re-checked live in Airtable.
+ *   Network: /admin/network/{gemachs,admins,categories} — role "Network Admin" only, re-checked live in the database.
  *   Contract: see API.md (v2) + API-v3.md (request styles, appointments, branding, HTML emails + .ics).
  *
  * ── Add-ons (Item Types.Tracking = "Add-on", optional Item Types.Price) ───────
@@ -185,14 +181,13 @@ if (globalThis.__WHG_TEST__) {
 
 /**
  * Server-Timing on every response (visible in the browser's Network tab), and a log line for slow
- * requests (Workers Logs) saying how much of the time was Airtable and whether Airtable rate-limited us.
+ * requests (Workers Logs) saying how much of the time was spent in D1 queries.
  */
 function withTiming(res, st, totalMs, method, path) {
-  const desc = `${st.calls} call${st.calls === 1 ? "" : "s"}${st.retries ? `, ${st.retries} rate-limited` : ""}${st.hedges ? `, ${st.hedges} resent (${st.hedgeWins} faster)` : ""}`;
-  const timing = `total;dur=${totalMs}, airtable;dur=${st.ms};desc="${desc}", queue;dur=${st.waitMs}`;
+  const desc = `${st.calls} quer${st.calls === 1 ? "y" : "ies"}`;
+  const timing = `total;dur=${totalMs}, db;dur=${st.ms};desc="${desc}"`;
   if (totalMs > 2000 && path !== "/health") {
-    console.warn(`slow request ${method} ${path}: ${totalMs}ms — Airtable ${st.calls} calls, ${st.ms}ms total, slowest ${st.slowest}ms (${st.slowestPath}), ` +
-      `${st.retries} rate-limited retries, ${st.hedges || 0} slow reads resent (${st.hedgeWins || 0} faster), ${st.waitMs}ms queued`);
+    console.warn(`slow request ${method} ${path}: ${totalMs}ms — D1 ${st.calls} queries, ${st.ms}ms total, slowest ${st.slowest}ms (${st.slowestPath})`);
   }
   try {
     const out = new Response(res.body, res);
@@ -204,7 +199,7 @@ function withTiming(res, st, totalMs, method, path) {
 async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
 
   // Public endpoints
-  if (method === "GET"  && path === "/health")           return handleHealth(db, env, request, url);
+  if (method === "GET"  && path === "/health")           return handleHealth(db, env, request);
   if (method === "GET"  && path === "/inventory")        return handleLegacyInventory(db);
   if (method === "GET"  && path === "/public/directory") return handleDirectory(db, env, ctx);
   if (method === "GET"  && path.startsWith("/public/meta/")) return handlePublicMeta(db, env, ctx, safeDecode(path.slice("/public/meta/".length)), url.searchParams.get("item"));
@@ -235,7 +230,7 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
   let user = await verifyJWT(request, env);
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  // Sliding session: periodically re-check the admin in Airtable and hand back a fresh 14-day token.
+  // Sliding session: periodically re-check the admin in the database and hand back a fresh 14-day token.
   // Removed/deactivated admins lose access at the next check (within 12h) instead of at token expiry.
   let freshToken = null;
   if (!(typeof user.iat === "number" && Date.now() - user.iat < JWT_REFRESH_MS)) {
@@ -243,7 +238,7 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
     try { session = await lookupAdminSession(db, user.email); }
     catch (e) { console.error("Session refresh failed:", e.message); session = { transient: true }; }
     if (session.transient) {
-      // Airtable hiccup: keep the current (still valid) token rather than logging the admin out.
+      // Database hiccup: keep the current (still valid) token rather than logging the admin out.
     } else if (!session.ok) {
       return json({ error: "Unauthorized" }, 401);
     } else {

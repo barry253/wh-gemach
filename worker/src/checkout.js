@@ -16,7 +16,7 @@
 // Body items: [{ itemTypeId, itemId? (numbered units), quantity? (quantity items / add-ons) }].
 // Add-ons are handed over at once (Status Returned), like "Mark handed over".
 import { logEvent, logEvents } from "./activity.js";
-import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName } from "./airtable.js";
+import { Q, belongs, fetchByIds, firstLink, getOwned, linkedId, linkedName } from "./records.js";
 import { alertBorrowerEmailFailed } from "./alerts.js";
 import { itemAttrsFor } from "./attributes.js";
 import { findOrCreateBorrower, useOrFindBorrower } from "./borrowers.js";

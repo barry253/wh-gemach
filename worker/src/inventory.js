@@ -1,5 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
-import { Q, fetchByIds, firstLink, linkedId } from "./airtable.js";
+import { Q, fetchByIds, firstLink, linkedId } from "./records.js";
 import { T } from "./config.js";
 import { json } from "./http.js";
 import { BORROWER_FIELDS, borrowerInfo } from "./loans.js";
