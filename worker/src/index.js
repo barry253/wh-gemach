@@ -11,6 +11,7 @@
  *   NOTIFY_EMAIL       var      Fallback notification / reply-to address when a gemach has no Email
  *   ASSETS_BUCKET      R2 binding  Photo storage
  *   ASSETS_URL         var      Public base URL of the R2 bucket
+ *   PICKUP_BUCKET      R2 binding  PRIVATE bucket for pickup photos (wh-gemach-pickup; see pickupphotos.js)
  *   GOOGLE_CLIENT_ID   var  NEW (optional) Google OAuth client id; defaults to the current hardcoded one
  *   FROM_EMAIL         var  NEW (optional) Sender address; defaults to onboarding@resend.dev
  *   ADMIN_URL          var  NEW (optional) Admin page link used in emails; defaults to https://whgemachs.org/admin
@@ -57,6 +58,8 @@
  *            GET /admin/checkout/options, POST /admin/requests/:id/checkout | /visit, POST /admin/loans (walk-in) — checkout.js.
  *            GET /admin/catalog/categories — active Product Categories (for the item-type "Browse category" select).
  *            /admin/team — the gemach's Owners/Managers/Volunteers (Owner or Network Admin; see team.js).
+ *   Pickup photos (pickupphotos.js): POST /admin/loans/:id/pickup-photo, DELETE /admin/pickup-photos/:set[/:name],
+ *            GET /public/pickup-photos/:set, GET /public/pickup-photo/:set/:name; deleted 30 days after the return (hourly cron).
  *   Push:    /admin/push (GET), /admin/push/subscribe|unsubscribe|test (POST), /admin/push/:id (PATCH, DELETE) —
  *            admin notification devices (push.js). VAPID_PRIVATE_KEY secret (P-256 JWK) turns it on.
  *   Network: /admin/network/{gemachs,admins,categories} — role "Network Admin" only, re-checked live in the database.
@@ -114,6 +117,7 @@ import { handleSubmitRequest } from "./submit.js";
 import { clientIp, handlePublicConfig, overLimit } from "./abuse.js";
 import { runReminders } from "./reminders.js";
 import { pushDispatch } from "./push.js";
+import { handlePickupPhotoDelete, handlePickupPhotoUpload, handlePublicPickupPhoto, handlePublicPickupSet, runPickupPhotoCleanup } from "./pickupphotos.js";
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 export default {
@@ -154,6 +158,8 @@ export default {
   async scheduled(event, env, ctx) {
     if (event && event.cron === USAGE_CRON) {
       ctx.waitUntil(runUsageWatch(env).catch(e => console.error("usage watch failed:", e && (e.stack || e.message))));
+      // Pickup photos are deleted 30 days after the items come back (pickupphotos.js).
+      ctx.waitUntil(runPickupPhotoCleanup(env, makeDb(env)).catch(e => console.error("pickup photo clean-up failed:", e && (e.stack || e.message))));
       return;
     }
     ctx.waitUntil(runBackupWatch(env).catch(e => console.error("backup watch failed:", e && (e.stack || e.message))));
@@ -199,6 +205,7 @@ function withTiming(res, st, totalMs, method, path) {
 async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
 
   // Public endpoints
+  let m0;
   if (method === "GET"  && path === "/health")           return handleHealth(db, env, request);
   if (method === "GET"  && path === "/inventory")        return handleLegacyInventory(db);
   if (method === "GET"  && path === "/public/directory") return handleDirectory(db, env, ctx);
@@ -206,6 +213,8 @@ async function route(request, env, ctx, url, path, method, db = makeDb(env)) {
   if (method === "GET"  && path.startsWith("/public/contact/")) return handlePublicContact(db, env, ctx, safeDecode(path.slice("/public/contact/".length)), url.searchParams.get("test"));
   if (method === "GET"  && path.startsWith("/public/gemach/")) return handlePublicGemach(db, env, ctx, safeDecode(path.slice("/public/gemach/".length)), url.searchParams.get("test"));
   if (method === "POST" && path === "/submit-request")   return handleSubmitRequest(request, db, env, ctx);
+  if (method === "GET"  && (m0 = path.match(/^\/public\/pickup-photos\/([^/]+)$/)))         return handlePublicPickupSet(db, env, m0[1]);
+  if (method === "GET"  && (m0 = path.match(/^\/public\/pickup-photo\/([^/]+)\/([^/]+)$/))) return handlePublicPickupPhoto(env, m0[1], m0[2]);
   if (method === "GET"  && path === "/public/config")    return handlePublicConfig(env);
   if (method === "POST" && (path === "/public/search-log" || path === "/public/event")) {
     // Counting only: over the per-visitor limit, the visit just isn't counted (always 204).
@@ -268,7 +277,9 @@ async function adminDispatch(request, env, ctx, url, path, method, db, user) {
 
   const res = await adminRoute(c, path, method);
   // A photo upload only stores a file (and fetch-photo stores nothing); the item type that uses it is saved (and purges) separately.
-  if (method !== "GET" && res.status < 400 && path !== "/admin/catalog/upload-photo" && path !== "/admin/catalog/fetch-photo") purgePublicCache(env, ctx, c.g.slug);
+  // Pickup photos and pickup emails don't change anything the public pages show either.
+  if (method !== "GET" && res.status < 400 && path !== "/admin/catalog/upload-photo" && path !== "/admin/catalog/fetch-photo"
+    && !/\/pickup-photos?(\/|$)/.test(path)) purgePublicCache(env, ctx, c.g.slug);
   return res;
 }
 
@@ -297,6 +308,8 @@ async function adminRoute(c, path, method) {
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/reminder$/)))   return handleLoanReminder(c, m[1]);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/pickup-email$/))) return handlePickupEmail(c, m[1]);
   if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/pickup$/)))     return handleMarkPickedUp(c, m[1]);
+  if (method === "POST" && (m = path.match(/^\/admin\/loans\/([^/]+)\/pickup-photo$/))) return handlePickupPhotoUpload(c, m[1]);
+  if (method === "DELETE" && (m = path.match(/^\/admin\/pickup-photos\/([^/]+)(?:\/([^/]+))?$/))) return handlePickupPhotoDelete(c, m[1], m[2] || null);
   if (method === "GET"  && path === "/admin/reservations") return handleGetReservations(c);
   if (method === "POST" && path === "/admin/reservations") return handleNewReservation(c);
   if (method === "POST" && path === "/admin/appointments") return handleNewAppointment(c);

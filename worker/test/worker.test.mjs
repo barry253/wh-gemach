@@ -92,6 +92,16 @@ const env = { GEMACH_JWT: "test-secret", RESEND_API_KEY: "k", ALERT_EMAIL: "aler
   ASSETS_BUCKET: { put: async (key, body, opts) => { R2.push({ key, size: body.byteLength, opts }); } } };
 const waits = [];
 const ctx = { waitUntil: p => waits.push(p) };
+// Fake private R2 bucket for pickup photos (pickupphotos.js): put / get / list (prefix, cursor-less) / delete.
+const PICKUP = new Map();
+env.PICKUP_BUCKET = {
+  put: async (key, body, opts = {}) => { PICKUP.set(key, { bytes: new Uint8Array(body), opts, uploaded: new Date() }); },
+  get: async key => { const o = PICKUP.get(key); return o ? { body: o.bytes, arrayBuffer: async () => o.bytes.buffer.slice(0), httpMetadata: o.opts.httpMetadata } : null; },
+  list: async ({ prefix = "" } = {}) => ({ truncated: false, objects: [...PICKUP.entries()].filter(([k]) => k.startsWith(prefix))
+    .map(([key, o]) => ({ key, customMetadata: o.opts.customMetadata, uploaded: o.uploaded })) }),
+  delete: async keys => { for (const k of [].concat(keys)) PICKUP.delete(k); },
+};
+
 
 // The data lives in a real SQLite database behind a fake D1 binding (see d1-harness.mjs).
 let d1Queries = 0;
@@ -5183,6 +5193,95 @@ await t("backup watch: alerts when the nightly export or an off-site copy is lat
     __WHG_TEST__.clearMemo();
   });
 }
+
+
+await t("pickup photos: upload to the private bucket, link page data, email embeds them, delete, other gemach can't", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  DB.Borrowers.push(rec("recBORRPIC0000001", { Name: "Pic Person", Email: "pic@example.com", ...sc }));
+  DB.Requests.push(rec("recREQPIC00000001", { "Request ID": "R-901", Name: "Pic Person", Status: "Converted", ...sc }));
+  DB.Loans.push(rec("recLOANPIC0000001", { "Loan ID": "L-901", Status: "Reserved", Borrower: ["recBORRPIC0000001"], "Item to Reserve": ["recTYPEA000000001"], "Source Request": ["recREQPIC00000001"], ...sc }),
+    rec("recLOANPIC0000002", { "Loan ID": "L-902", Status: "Reserved", Borrower: ["recBORRPIC0000001"], "Item to Reserve": ["recTYPEA000000002"], "Source Request": ["recREQPIC00000001"], ...sc }),
+    rec("recLOANPIC0000003", { "Loan ID": "L-903", Status: "Returned", Borrower: ["recBORRPIC0000001"], "Item to Reserve": ["recTYPEA000000002"], ...sc }));
+  const jpg = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  const up = (loan, set, bytes = jpg, headers = H) => { const fd = new FormData(); fd.append("photo", new Blob([bytes], { type: "image/jpeg" }), "a.jpg"); if (set) fd.append("set", set); return call(`/admin/loans/${loan}/pickup-photo`, { method: "POST", headers, body: fd }); };
+  let r = await up("recLOANPIC0000001");
+  assert.equal(r.status, 200, await r.clone().text());
+  const j = await r.json();
+  assert.match(j.set, /^[A-Za-z0-9_-]{22}$/); assert.equal(j.url, `https://whgemachs.org/p/${j.set}`); assert.equal(j.photos.length, 1);
+  const first = PICKUP.get(`${j.set}/${j.name}`);
+  assert.ok(first, "stored in the private bucket"); assert.equal(first.opts.customMetadata.gemachId, A.id);
+  assert.deepEqual(first.opts.customMetadata.loans.split(",").sort(), ["recLOANPIC0000001", "recLOANPIC0000002"], "every loan of the booking");
+  assert.equal(R2.some(x => x.key.includes(j.set)), false, "never in the public photo bucket");
+  // add two more to the same set; a fourth is refused
+  assert.equal((await up("recLOANPIC0000001", j.set)).status, 200);
+  r = await up("recLOANPIC0000001", j.set); assert.equal(r.status, 200);
+  const three = (await r.json()).photos; assert.equal(three.length, 3);
+  assert.equal((await up("recLOANPIC0000001", j.set)).status, 400, "max 3");
+  // not an image / closed loan / other gemach / someone else's set
+  assert.equal((await up("recLOANPIC0000001", null, new TextEncoder().encode("<svg onload=x>"))).status, 400);
+  assert.equal((await up("recLOANPIC0000003")).status, 409, "returned loan");
+  assert.equal((await up("recLOANPIC0000001", null, jpg, { ...auth(tokenA), "X-Gemach": B.slug })).status >= 400, true);
+  const tokenB = await sign({ email: "b@example.com", name: "Bee", role: "Manager", gemachs: [{ id: B.id, slug: B.slug, name: "B" }] });
+  DB.Loans.push(rec("recLOANPICB000001", { "Loan ID": "L-904", Status: "Reserved", Gemach: [B.id], "Gemach Slug": [B.slug] }));
+  assert.equal((await up("recLOANPICB000001", j.set, jpg, { ...auth(tokenB), "X-Gemach": B.slug })).status, 404, "can't add to another gemach's set");
+  assert.equal((await call(`/admin/pickup-photos/${j.set}`, { method: "DELETE", headers: { ...auth(tokenB), "X-Gemach": B.slug } })).status, 404, "can't delete another gemach's set");
+  // public: set data + image, no login
+  r = await call(`/public/pickup-photos/${j.set}`);
+  assert.equal(r.status, 200); assert.equal(r.headers.get("X-Robots-Tag"), "noindex, nofollow");
+  const pub = await r.json();
+  assert.equal(pub.gemach, "West Hempstead Medical Gemach"); assert.deepEqual(pub.photos, three);
+  r = await call(`/public/pickup-photo/${j.set}/${three[0]}`);
+  assert.equal(r.status, 200); assert.equal(r.headers.get("Content-Type"), "image/jpeg");
+  assert.deepEqual(new Uint8Array(await r.arrayBuffer()), jpg);
+  assert.equal((await call(`/public/pickup-photos/AAAAAAAAAAAAAAAAAAAAAA`)).status, 404);
+  assert.equal((await call(`/public/pickup-photo/${j.set}/..%2Fx.jpg`)).status, 404);
+  // email embeds them (inline attachments, cid: images); another gemach's set is ignored
+  const n0 = resendCalls().length;
+  r = await call("/admin/loans/recLOANPIC0000001/pickup-email", { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ message: `Ready at the door.\n\nPickup photo: ${j.url}`, photos: j.set }) });
+  assert.equal(r.status, 200, await r.clone().text()); assert.equal((await r.json()).photos, 3);
+  const m = resendCalls().slice(n0).filter(x => x.to[0] !== "alerts@example.com")[0];
+  assert.equal(m.attachments.length, 3); assert.ok(m.attachments.every(a => a.content_id && a.content && a.content_type === "image/jpeg"));
+  assert.ok(m.attachments.every(a => m.html.includes(`cid:${a.content_id}`)));
+  assert.ok(m.html.includes("Ready at the door"));
+  // delete one, then the rest
+  r = await call(`/admin/pickup-photos/${j.set}/${three[1]}`, { method: "DELETE", headers: H });
+  assert.equal(r.status, 200); assert.equal((await r.json()).photos.length, 2);
+  r = await call(`/admin/pickup-photos/${j.set}`, { method: "DELETE", headers: H });
+  assert.equal(r.status, 200); assert.equal([...PICKUP.keys()].filter(k => k.startsWith(j.set)).length, 0);
+  assert.equal((await call(`/public/pickup-photos/${j.set}`)).status, 404, "gone");
+  DB.Loans = DB.Loans.filter(l => !/^recLOANPIC/.test(l.id));
+});
+
+await t("pickup photos: deleted 30 days after the last item comes back (cancelled / missing loans count from the upload)", async () => {
+  const { pickupSetExpired, runPickupPhotoCleanup } = await import("../src/pickupphotos.js");
+  const D = 86400000, now = Date.parse("2026-12-31T12:00:00Z"), up = now - 40 * D;
+  const L = (status, ret) => ({ fields: { Status: status, ...(ret ? { "Date Returned": ret } : {}) } });
+  assert.equal(pickupSetExpired({ uploadedMs: up, loans: [L("Active")], loanCount: 1, nowMs: now }), false, "still out");
+  assert.equal(pickupSetExpired({ uploadedMs: up, loans: [L("Returned", "2026-12-20")], loanCount: 1, nowMs: now }), false, "back 11 days ago");
+  assert.equal(pickupSetExpired({ uploadedMs: up, loans: [L("Returned", "2026-11-30")], loanCount: 1, nowMs: now }), true, "back 31 days ago");
+  assert.equal(pickupSetExpired({ uploadedMs: up, loans: [L("Returned", "2026-11-20"), L("Returned", "2026-12-15")], loanCount: 2, nowMs: now }), false, "the last one counts");
+  assert.equal(pickupSetExpired({ uploadedMs: up, loans: [L("Returned", "2026-11-20"), L("Reserved")], loanCount: 2, nowMs: now }), false);
+  assert.equal(pickupSetExpired({ uploadedMs: up, loans: [L("Cancelled")], loanCount: 1, nowMs: now }), true, "cancelled: 30 days from upload");
+  assert.equal(pickupSetExpired({ uploadedMs: now - 5 * D, loans: [], loanCount: 1, nowMs: now }), false, "loan missing, recent upload");
+  assert.equal(pickupSetExpired({ uploadedMs: now - 31 * D, loans: [], loanCount: 1, nowMs: now }), true, "loan missing, old upload");
+  assert.equal(pickupSetExpired({ uploadedMs: now - 366 * D, loans: [L("Active")], loanCount: 1, nowMs: now }), true, "a year at most");
+  // the run: one set expired, one kept
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  DB.Loans.push(rec("recLOANCLEAN00001", { "Loan ID": "L-951", Status: "Returned", "Date Returned": "2026-11-01", ...sc }),
+    rec("recLOANCLEAN00002", { "Loan ID": "L-952", Status: "Active", ...sc }));
+  PICKUP.clear();
+  const meta = loans => ({ customMetadata: { gemachId: A.id, loans, at: new Date(up).toISOString() } });
+  await env.PICKUP_BUCKET.put("OLDOLDOLDOLDOLDOLDOLDO/1-abcdefgh.jpg", new Uint8Array([1]), meta("recLOANCLEAN00001"));
+  await env.PICKUP_BUCKET.put("NEWNEWNEWNEWNEWNEWNEWN/1-abcdefgh.jpg", new Uint8Array([1]), meta("recLOANCLEAN00002"));
+  d1Queries = 0;
+  const res = await runPickupPhotoCleanup(env, __WHG_TEST__.makeDbForTest(env), now);
+  assert.deepEqual(res, { sets: 2, deleted: 1 });
+  assert.ok(d1Queries <= 2, `${d1Queries} queries`);
+  assert.deepEqual([...PICKUP.keys()], ["NEWNEWNEWNEWNEWNEWNEWN/1-abcdefgh.jpg"]);
+  PICKUP.clear();
+  DB.Loans = DB.Loans.filter(l => !/^recLOANCLEAN/.test(l.id));
+});
 
 {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {

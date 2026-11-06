@@ -1094,6 +1094,22 @@
       background: var(--white); color: var(--text); font-size: 0.8rem; font-family: 'Inter', sans-serif; cursor: pointer;
     }
     .send-by-options button.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+    /* Copy the message (Nov 2026): a small button on the label row of every message box. */
+    .msg-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
+    .msg-label-row > label { margin-bottom: 0 !important; }
+    .copy-msg-btn { flex: none; min-height: 32px; padding: 0.25rem 0.7rem; font-size: 0.78rem; font-weight: 600; border-radius: 999px;
+      border: 1px solid var(--border); background: #fff; color: var(--navy); cursor: pointer; font-family: inherit; }
+    .copy-msg-btn:hover { background: #F3F4F6; }
+    .copy-msg-btn.copied { color: var(--green); border-color: var(--green); }
+    /* Pickup photos on "Send pickup instructions" (Nov 2026). */
+    .pi-photos { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .pi-photos:empty { display: none; }
+    .pi-photo { position: relative; width: 76px; height: 76px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #F3F4F6; }
+    .pi-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .pi-photo.uploading img { opacity: 0.45; }
+    .pi-photo .pi-photo-x { position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border-radius: 50%; border: 0;
+      background: rgba(17,24,39,0.75); color: #fff; font-size: 0.95rem; line-height: 26px; padding: 0; cursor: pointer; }
+    .pi-photo-btn { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; }
     .send-by-help { font-size: 0.75rem; color: var(--muted); margin-top: 0.45rem; line-height: 1.4; overflow-wrap: anywhere; }
     .contact-caption { font-size: 0.72rem; color: var(--muted); align-self: center; }
 
@@ -2231,8 +2247,14 @@
     <h3>Send pickup instructions</h3>
     <p class="sheet-subtitle" id="pickup-instructions-subtitle"></p>
     <div class="form-group" style="margin-top:0.75rem">
-      <label>Message</label>
+      <label for="pickup-instructions-message">Message</label>
       <textarea id="pickup-instructions-message" rows="6"></textarea>
+    </div>
+    <div class="form-group" id="pi-photos-group">
+      <div class="pi-photos" id="pi-photos" aria-live="polite"></div>
+      <button type="button" class="btn btn-ghost btn-sm pi-photo-btn" id="pi-photo-btn" onclick="document.getElementById('pi-photo-input').click()"><span aria-hidden="true">📷</span> <span id="pi-photo-btn-text">Add photo</span></button>
+      <input type="file" id="pi-photo-input" accept="image/*" multiple hidden onchange="handlePickupPhotoSelect(event)" />
+      <p class="muted-small" id="pi-photo-status" style="margin:0.35rem 0 0">Show where the items are, or which ones are theirs. The message gets a link to the photo; it's deleted 30 days after the items come back.</p>
     </div>
     <div class="form-group" id="pickup-instructions-send-by"></div>
     <div class="sheet-actions">
@@ -2787,6 +2809,47 @@
     };
     paint();
   }
+  // ── Copy the message (Nov 2026) ── a "Copy" button on the label row of every message box, for pasting the
+  // text into another app. Copying sends nothing and changes nothing; the text is copied exactly as it is in the box
+  // (the borrower's link is already filled in, except on New reservation, where Copy is offered once it's saved).
+  const MESSAGE_BOXES = ["confirm-message", "appointment-message", "decline-message", "return-message", "checkout-message",
+    "pickup-instructions-message", "reminder-message", "bk-message"];
+  async function copyToClipboard(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* older browsers / no permission */ }
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch (e) { /* ignore */ }
+    ta.remove();
+    return ok;
+  }
+  /** Copy text and show it on the button ("✓ Copied" for a moment). */
+  async function copyMessage(btn, text) {
+    if (!String(text || "").trim()) { showToast("There's no message to copy"); return; }
+    const ok = await copyToClipboard(text);
+    if (!ok) { showToast("Couldn't copy — select the text and copy it yourself"); return; }
+    btn.classList.add("copied");
+    btn.textContent = "✓ Copied";
+    clearTimeout(btn._copyTimer);
+    btn._copyTimer = setTimeout(() => { btn.classList.remove("copied"); btn.textContent = "Copy"; }, 2000);
+  }
+  function addCopyButton(id) {
+    const ta = document.getElementById(id);
+    const group = ta?.closest(".form-group");
+    const label = group?.querySelector("label");
+    if (!label || group.querySelector(".copy-msg-btn")) return;
+    const row = document.createElement("div");
+    row.className = "msg-label-row";
+    label.replaceWith(row);
+    row.appendChild(label);
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "copy-msg-btn"; btn.dataset.copyFor = id; btn.textContent = "Copy";
+    btn.setAttribute("aria-label", "Copy the message");
+    btn.onclick = () => copyMessage(btn, ta.value);
+    row.appendChild(btn);
+  }
+  MESSAGE_BOXES.forEach(addCopyButton);
+
   /** Open WhatsApp / Messages / mail app. Must run synchronously inside the click handler (popup blockers). */
   function openOutbound(choice, c, message) {
     let href = null;
@@ -5580,8 +5643,9 @@
     if (res.error) { fail(res.error); return; }
     refreshAfterLending();
     const what = appt ? "Appointment booked" : "Reservation saved";
-    if (choice === "whatsapp" || choice === "sms") {
+    if (choice === "whatsapp" || choice === "sms" || choice === "none") {
       // The link exists now; sending needs a tap of its own (phones block opening apps after a wait).
+      // "Don't send" also stops here, so the finished message (with the real link) can be copied.
       const final = message.replace(/\{manage_link\}/g, res.manageUrl || "");
       nbEl("nb-foot").style.display = "none";
       nbEl("nb-done").style.display = "";
@@ -5589,9 +5653,12 @@
           emailCopy(choice, c) ? (res.emailSent === false ? `<div style="color:var(--red,#B91C1C);font-weight:500;margin-top:0.25rem">The email copy didn't send.</div>` : `<div style="font-weight:500;margin-top:0.25rem">A copy was emailed to ${esc(safeEmail(c.email))}.</div>`) : ""}</div>
         <div class="sheet-actions" style="margin-top:0">
           <button class="btn btn-ghost" onclick="closeSheet('newbk-sheet')">Done</button>
-          <button class="btn ${choice === "whatsapp" ? "btn-whatsapp" : "btn-primary"}" id="nb-send-now">${choice === "whatsapp" ? "Send on WhatsApp" : "Send the text"}</button>
-        </div>`;
-      nbEl("nb-send-now").onclick = () => { openOutbound(choice, c, final); closeSheet("newbk-sheet"); };
+          ${choice === "none" ? "" : `<button class="btn ${choice === "whatsapp" ? "btn-whatsapp" : "btn-primary"}" id="nb-send-now">${choice === "whatsapp" ? "Send on WhatsApp" : "Send the text"}</button>`}
+        </div>
+        ${final.trim() ? `<div class="msg-label-row" style="margin-top:0.9rem"><span class="muted-small">Want to paste the message somewhere else?</span><button type="button" class="copy-msg-btn" id="nb-copy-final" aria-label="Copy the message">Copy</button></div>` : ""}`;
+      if (choice !== "none") nbEl("nb-send-now").onclick = () => { openOutbound(choice, c, final); closeSheet("newbk-sheet"); };
+      const cp = nbEl("nb-copy-final");
+      if (cp) cp.onclick = () => copyMessage(cp, final);
       return;
     }
     closeSheet("newbk-sheet");
@@ -6201,30 +6268,130 @@
     document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${items}`;
     const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], items, { manageUrl: r.manageUrl });
     document.getElementById("pickup-instructions-message").value = msg;
+    resetPickupPhotos(r.id);
     setupSendBy("pickup-instructions", r, "pickup-instructions-send-btn",
       { whatsapp: "Open WhatsApp", sms: "Open text message", email: "Send email", none: "Close" }, { noNone: true });
     const btn = document.getElementById("pickup-instructions-send-btn");
     btn.onclick = async () => {
       const { choice, c } = SEND_BY["pickup-instructions"];
+      if (PI.uploading) { showToast("Wait a moment — the photo is still uploading"); return; }
       const message = document.getElementById("pickup-instructions-message").value;
+      const photos = PI.set && PI.photos.length ? PI.set : undefined; // embedded in the email under the message
       if (choice === "email") { // sent by us, like confirmations
         if (!message.trim()) { showToast("Write a message first"); return; }
         btn.disabled = true; btn.textContent = "Sending…";
-        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message }).catch(() => null);
+        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message, photos }).catch(() => null);
         btn.disabled = false; btn.textContent = "Send email";
         if (!res || !res.success) { showToast(res?.error || "The email didn't go through. Try again, or use WhatsApp or text."); return; }
+        PI.sent = true;
         closeSheet("pickup-instructions-sheet");
         showToast("Pickup details emailed");
         return;
       }
       if (choice !== "none") openOutbound(choice, c, message); // before any await
+      PI.sent = true;
       closeSheet("pickup-instructions-sheet");
       if (emailCopy(choice, c) && message.trim()) {
-        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message }).catch(() => null);
+        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message, photos }).catch(() => null);
         showToast(res && res.success ? "Pickup details · copy emailed" : "The email copy of the pickup details didn't send.", res && res.success ? undefined : 8000);
       }
     };
+    // Closed without sending: the photos it uploaded are deleted right away.
+    document.getElementById("pickup-instructions-sheet")._onClose = () => {
+      const set = PI.set, sent = PI.sent;
+      PI.photos.forEach(p => { try { URL.revokeObjectURL(p.preview); } catch (e) { /* ignore */ } });
+      if (set && !sent) api(`/admin/pickup-photos/${encodeURIComponent(set)}`, "DELETE").catch(() => {});
+      PI = { loanId: null, set: null, photos: [], uploading: 0, sent: false };
+    };
     openSheet("pickup-instructions-sheet");
+  }
+
+  // ── Pickup photos (Nov 2026) ── up to 3 per message, in a private bucket; the message gets one link
+  // (whgemachs.org/p/<set>) and the email embeds them. Deleted 30 days after the items come back (worker cron).
+  const MAX_PICKUP_PHOTOS = 3;
+  var PI = { loanId: null, set: null, photos: [], uploading: 0, sent: false };
+  function resetPickupPhotos(loanId) {
+    PI = { loanId, set: null, photos: [], uploading: 0, sent: false };
+    renderPickupPhotos();
+  }
+  const pickupLinkLabel = n => (n > 1 ? "Pickup photos" : "Pickup photo");
+  /** Put the photo link into the message (after its first paragraph), or update / remove it. */
+  function syncPickupPhotoLine(url, count) {
+    const ta = document.getElementById("pickup-instructions-message");
+    const esc2 = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const lineRe = new RegExp(`^.*${esc2}.*$\\n?`, "m");
+    let text = ta.value;
+    if (!count) { ta.value = text.replace(new RegExp(`\\n*^.*${esc2}.*$`, "m"), "").replace(lineRe, ""); return; }
+    const line = `${pickupLinkLabel(count)}: ${url}`;
+    if (text.includes(url)) { ta.value = text.replace(new RegExp(`Pickup photos?: ${esc2}`), line); return; }
+    const parts = text.split(/\n\s*\n/);
+    if (parts.length > 1) { parts.splice(1, 0, line); ta.value = parts.join("\n\n"); }
+    else ta.value = (text.trimEnd() ? text.trimEnd() + "\n\n" : "") + line;
+  }
+  function renderPickupPhotos() {
+    const box = document.getElementById("pi-photos");
+    if (!box) return;
+    box.innerHTML = PI.photos.map((p, i) => `<div class="pi-photo${p.name ? "" : " uploading"}">
+        <img src="${esc(p.preview)}" alt="Pickup photo ${i + 1}">
+        ${p.name ? `<button type="button" class="pi-photo-x" aria-label="Remove photo ${i + 1}" onclick="removePickupPhoto(${i})">×</button>` : ""}
+      </div>`).join("");
+    const full = PI.photos.length >= MAX_PICKUP_PHOTOS;
+    document.getElementById("pi-photo-btn").style.display = full ? "none" : "";
+    document.getElementById("pi-photo-btn-text").textContent = PI.photos.length ? "Add another photo" : "Add photo";
+  }
+  function setPickupPhotoStatus(t) { document.getElementById("pi-photo-status").textContent = t; }
+  async function handlePickupPhotoSelect(event) {
+    const files = [...(event.target.files || [])];
+    event.target.value = "";
+    if (!files.length || !PI.loanId) return;
+    const loanId = PI.loanId;
+    const todo = files.slice(0, Math.max(0, MAX_PICKUP_PHOTOS - PI.photos.length));
+    if (files.length > todo.length) showToast(`Up to ${MAX_PICKUP_PHOTOS} photos`);
+    for (const f of todo) {
+      const file = await shrinkPhoto(f);
+      if (PI.loanId !== loanId) return; // the sheet was closed / reopened meanwhile
+      const p = { preview: URL.createObjectURL(file), name: null };
+      PI.photos.push(p); PI.uploading++;
+      renderPickupPhotos();
+      setPickupPhotoStatus("Uploading photo…");
+      try {
+        const fd = new FormData();
+        fd.append("photo", file);
+        if (PI.set) fd.append("set", PI.set);
+        const res = await fetch(`${WORKER}/admin/loans/${safeId(loanId)}/pickup-photo`, {
+          method: "POST", headers: { "Authorization": `Bearer ${token}`, ...gemachHeaders() }, body: fd,
+        });
+        const fresh = res.headers.get("X-Session-Token");
+        if (fresh) { localStorage.setItem("gemach_token", fresh); token = fresh; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.set) throw new Error(data.error || `Upload failed (${res.status})`);
+        if (PI.loanId !== loanId) { api(`/admin/pickup-photos/${encodeURIComponent(data.set)}`, "DELETE").catch(() => {}); return; }
+        PI.set = data.set; PI.url = data.url; p.name = data.name;
+        syncPickupPhotoLine(data.url, PI.photos.filter(x => x.name).length);
+        const n = PI.photos.filter(x => x.name).length;
+        setPickupPhotoStatus(n > 1 ? "The message has a link to the photos. They're deleted 30 days after the items come back."
+          : "The message has a link to the photo. It's deleted 30 days after the items come back.");
+      } catch (e) {
+        if (PI.loanId !== loanId) return;
+        PI.photos.splice(PI.photos.indexOf(p), 1);
+        try { URL.revokeObjectURL(p.preview); } catch (x) { /* ignore */ }
+        setPickupPhotoStatus(`The photo didn't upload: ${e.message}`);
+      } finally {
+        if (PI.loanId === loanId) { PI.uploading--; renderPickupPhotos(); }
+      }
+    }
+  }
+  async function removePickupPhoto(i) {
+    const p = PI.photos[i];
+    if (!p || !p.name || !PI.set) return;
+    PI.photos.splice(i, 1);
+    renderPickupPhotos();
+    try { URL.revokeObjectURL(p.preview); } catch (e) { /* ignore */ }
+    const left = PI.photos.filter(x => x.name).length;
+    syncPickupPhotoLine(PI.url, left);
+    const set = PI.set;
+    if (!left) { PI.set = null; setPickupPhotoStatus("Photo removed."); }
+    api(`/admin/pickup-photos/${encodeURIComponent(set)}${left ? "/" + encodeURIComponent(p.name) : ""}`, "DELETE").catch(() => {});
   }
 
   // ── Inventory ─────────────────────────────────────────────────────────────
@@ -8900,6 +9067,8 @@
   function closeSheet(id) {
     const el = document.getElementById(id);
     delete el.dataset.dirty;
+    const onClose = el._onClose; el._onClose = null; // one-off clean-up set by the sheet's opener (pickup photos)
+    if (onClose) try { onClose(); } catch (e) { console.warn("sheet clean-up failed:", e); }
     const hadFocus = el.contains(document.activeElement);
     el.classList.remove("open");
     el.inert = false;

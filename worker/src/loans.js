@@ -11,7 +11,8 @@ import { getNextLoanId } from "./ids.js";
 import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loanQty, wholeNum } from "./quantity.js";
 import { itemTypeNameMap } from "./requests.js";
 import { manageUrl } from "./manage.js";
-import { buildEmailHtml, sendEmail } from "./email.js";
+import { buildEmailHtml, messageHtml, sendEmail } from "./email.js";
+import { pickupPhotoAttachments, pickupPhotosHtml } from "./pickupphotos.js";
 import { emailSignature } from "./settings.js";
 
 // ─── Loans / reservations shared lookups ──────────────────────────────────────
@@ -225,7 +226,7 @@ async function loanItemLabel(db, g, loan) {
 }
 
 /** Email the loan's borrower an admin-written message (the borrower's address comes from the Borrowers table, never the request). */
-async function emailBorrower(c, loan, message, subject) {
+async function emailBorrower(c, loan, message, subject, { attachments = null, extraHtml = "" } = {}) {
   const { db, g, env } = c;
   const text = String(message ?? "").trim();
   if (!text) return { error: "Write a message first.", status: 400 };
@@ -234,7 +235,8 @@ async function emailBorrower(c, loan, message, subject) {
   const [b] = bId ? await fetchByIds(db, T.BORROWERS, [bId], { g, fields: ["Email"] }) : [];
   const to = String(b?.fields?.Email || "").trim();
   if (!to) return { error: "This borrower has no email address.", status: 400 };
-  const ok = await sendEmail(env, g, { to, subject, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true }) });
+  const html = buildEmailHtml(g, text, { signature: true, ...(extraHtml ? { bodyHtml: messageHtml(text, g) + extraHtml } : {}) });
+  const ok = await sendEmail(env, g, { to, subject, text: text + emailSignature(g), html, ...(attachments?.length ? { attachments } : {}) });
   if (!ok) return { error: "The email didn't go through. Try again, or send it by WhatsApp or text.", status: 422 }; // the admin sees it right away; not a server error
   return { ok: true, to };
 }
@@ -246,9 +248,12 @@ async function handlePickupEmail(c, id) {
   const loan = await getOwned(db, T.LOANS, id, g);
   if (!loan) return json({ error: "Not found" }, 404);
   if (!["Reserved", "Active"].includes(selName(loan.fields.Status))) return json({ error: "This reservation isn't open any more." }, 409);
-  const sent = await emailBorrower(c, loan, body.message, `Pickup details — ${g.name || "Gemach"}`);
+  // Pickup photos (pickupphotos.js): embedded under the message; the message itself carries the photo link too.
+  const pics = body.photos ? await pickupPhotoAttachments(c.env, g, String(body.photos)) : null;
+  const sent = await emailBorrower(c, loan, body.message, `Pickup details — ${g.name || "Gemach"}`,
+    pics ? { attachments: pics.attachments, extraHtml: pickupPhotosHtml(pics.cids) } : {});
   if (sent.error) return json({ error: sent.error }, sent.status);
-  return json({ success: true });
+  return json({ success: true, ...(pics ? { photos: pics.cids.length } : {}) });
 }
 
 /** An admin sent a "time to return" reminder (email from us, or WhatsApp / text from their phone): stamp the loan and log it. */
