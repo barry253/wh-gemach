@@ -2993,7 +2993,7 @@
     if (params.has("g")) {
       params.delete("g");
       const qs = params.toString();
-      history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+      history.replaceState(history.state, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
     }
     renderGemachSwitcher();
     await loadGemachProfile();
@@ -3339,7 +3339,8 @@
 
   // ── Tab switching ─────────────────────────────────────────────────────────
   function switchTab(name) {
-    if (name !== "settings" && settingsUnsaved() && !confirm("You have unsaved settings. Leave without saving?")) return;
+    if (name !== "settings" && settingsUnsaved() && !confirm("You have unsaved settings. Leave without saving?")) return false;
+    const fromTab = navTab();
     if (name !== "settings") document.body.classList.remove("settings-dirty");
     document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
@@ -3354,6 +3355,8 @@
     if (name === "history")      initHistory();
     if (name === "settings")     loadSettings();
     if (name === "network")      loadNetwork();
+    if (name !== fromTab) navPush(); // Back returns to the tab before
+    return true;
   }
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -3899,8 +3902,10 @@
     const many = set.list.length > 1;
     document.getElementById("pv-prev").hidden = document.getElementById("pv-next").hidden = !many;
     showViewerPhoto(0);
+    const wasOpen = !el.hidden;
     el.hidden = false;
     document.body.style.overflow = "hidden";
+    if (!wasOpen) viewer.hi = navPush({ viewer: 1 }); // Back closes the viewer
     document.getElementById(many ? "pv-next" : "pv-close").focus();
   }
   function showViewerPhoto(i) {
@@ -3916,6 +3921,7 @@
     if (el.hidden) return;
     el.hidden = true;
     document.body.style.overflow = "";
+    navConsume(viewer.hi); viewer.hi = null;
     viewer.opener?.focus?.();
   }
   document.addEventListener("keydown", e => {
@@ -8752,7 +8758,7 @@
     const p = new URLSearchParams(location.search);
     ["tab", "req", "loan"].forEach(k => p.delete(k));
     const qs = p.toString();
-    history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+    history.replaceState(history.state, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
   }
   function openDeep(d) {
     if (!d.tab || (d.tab === "network" && !isNetworkAdmin())) return;
@@ -9020,6 +9026,69 @@
     });
   }
 
+  // ── Back button (Nov 2026) ── the phone's Back button works like an app's:
+  //   • a sheet (or the photo viewer) is open → Back closes it, exactly like its Cancel button (no extra question);
+  //   • otherwise → Back goes to the tab shown before; • nowhere left to go back to → the browser closes the app.
+  // Every tab change and every sheet adds a history entry ({ whg: 1, i, tab, sheet? }); i counts entries from the
+  // first one (0). Closing a sheet with its own buttons removes its entry again with history.back(); entries pushed
+  // while that is still under way wait until it has finished (popstate), so the history never gets out of step.
+  var NAV = { i: 0, restoring: false, pending: 0, queue: [], timer: null };
+  function navTab() { return (document.querySelector(".screen.active")?.id || "screen-dashboard").replace("screen-", ""); }
+  function navWrite(state) { try { history.pushState(state, "", location.href); } catch (e) { /* history unavailable */ } }
+  /** Add a Back step for what just opened; returns its index (null while restoring from Back itself). */
+  function navPush(extra = {}) {
+    if (!NAV || NAV.restoring) return null; // NAV is still undefined if called before this part of the script ran
+    NAV.i++;
+    const state = { whg: 1, i: NAV.i, tab: navTab(), ...extra };
+    if (NAV.pending) NAV.queue.push(state); else navWrite(state);
+    return NAV.i;
+  }
+  /** Something closed by its own button: drop its Back step if it's the newest one. */
+  function navConsume(hi) {
+    if (!NAV || NAV.restoring || hi == null || hi !== NAV.i) return;
+    if (NAV.queue.length && NAV.queue[NAV.queue.length - 1].i === hi) { NAV.queue.pop(); NAV.i--; return; } // never written yet
+    NAV.i--;
+    NAV.pending++;
+    clearTimeout(NAV.timer);
+    NAV.timer = setTimeout(navFlush, 1500); // safety net: never hold new entries back for long
+    history.back();
+  }
+  function navFlush() {
+    clearTimeout(NAV.timer);
+    NAV.pending = 0;
+    const q = NAV.queue; NAV.queue = [];
+    q.forEach(navWrite);
+  }
+  try {
+    const st = history.state;
+    NAV.i = st && st.whg && Number.isInteger(st.i) && st.i > 0 ? st.i : 0; // a reload keeps its place
+    history.replaceState({ ...(st && typeof st === "object" ? st : {}), whg: 1, i: NAV.i, tab: navTab(), sheet: undefined, viewer: undefined }, "", location.href);
+  } catch (e) { /* history unavailable */ }
+  window.addEventListener("popstate", e => {
+    const s = e.state && e.state.whg ? e.state : { whg: 1, i: 0, tab: "dashboard" };
+    if (NAV.pending) { // the history.back() from navConsume arriving
+      NAV.pending--;
+      if (!NAV.pending) navFlush();
+      return;
+    }
+    let changed = false;
+    NAV.restoring = true;
+    try {
+      const pv = document.getElementById("photo-viewer");
+      if (pv && !pv.hidden && (viewer.hi == null || viewer.hi > s.i)) { closePhotoViewer(); viewer.hi = null; changed = true; }
+      for (let k = sheetStack.length - 1; k >= 0; k--) {
+        const st = sheetStack[k];
+        if (st && (st.hi == null || st.hi > s.i)) { closeSheet(st.el.id); changed = true; }
+      }
+      if (!changed && s.tab && s.tab !== navTab() && document.getElementById("screen-" + s.tab)) {
+        changed = true;
+        if (switchTab(s.tab) === false) { NAV.restoring = false; NAV.i = s.i; navPush(); return; } // stayed (unsaved settings)
+      }
+    } finally { NAV.restoring = false; }
+    NAV.i = s.i;
+    if (!changed && s.i > 0) history.back(); // an entry with nothing left to undo: skip it
+  });
+
   // ── Sheet helpers ─────────────────────────────────────────────────────────
   // Sheets are modal dialogs for keyboard and screen-reader users: named by their heading, focus moves in on
   // open (unless the opener already put it on a field), everything behind is inert, Escape closes the top one,
@@ -9052,8 +9121,9 @@
     delete el.dataset.dirty;             // nothing typed yet in this opening of the sheet
     const i = sheetStack.findIndex(s => s.el === el);
     const opener = i >= 0 ? sheetStack[i].opener : document.activeElement;
+    const hi = i >= 0 ? sheetStack[i].hi : navPush({ sheet: id }); // a new sheet gets its own Back step
     if (i >= 0) sheetStack.splice(i, 1);
-    sheetStack.push({ el, opener });
+    sheetStack.push({ el, opener, hi });
     el.classList.add("open");
     syncSheetInert();
     // After the opener has filled the sheet (and maybe focused a field itself), make sure focus is inside.
@@ -9074,6 +9144,7 @@
     el.inert = false;
     const i = sheetStack.findIndex(s => s.el === el);
     const entry = i >= 0 ? sheetStack.splice(i, 1)[0] : null;
+    if (entry) navConsume(entry.hi); // closed with Cancel / × / Save: take its Back step away too
     syncSheetInert();
     // Return focus to the opener when it's still on screen; else to the sheet below, if any.
     if (hadFocus || document.activeElement === document.body) {
