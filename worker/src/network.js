@@ -4,7 +4,6 @@ import { sendAlert } from "./alerts.js";
 import { purgePublicCache } from "./cache.js";
 import { DEFAULT_ADMIN_URL, LEGACY_SLUG, NETWORK_ADMIN_ROLE, REC_RE, SLUG_RE, T } from "./config.js";
 import { buildEmailHtml, sendEmail } from "./email.js";
-import { handleEmailImport } from "./emailimport.js";
 import { DEFAULT_THEME, GEMACH_MODES, byName, gemachFromRecord, gemachMemo, gemachRef, isLiveNetworkAdminMemo, liveNetMemo, selName, forgetLiveAdmin } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { netListSearches } from "./search.js";
@@ -57,7 +56,6 @@ async function networkDispatch(c, path, method) {
   if (method === "GET"   && path === "/admin/network/analytics")  return handleNetworkAnalytics(c);
   if (method === "GET"   && path === "/admin/network/traffic")    return handleNetworkTraffic(c);
   if (method === "GET"   && path === "/admin/network/reminders")  return handleRemindersPreview(c); // dry run: sends nothing
-  if (method === "POST"  && path === "/admin/network/email-import") return handleEmailImport(c); // one-off: emails sent before Nov 9 (emailimport.js)
   if (method === "GET"   && path === "/admin/network/gemach-types") return netListGemachTypes(c);
   if (method === "POST"  && path === "/admin/network/gemach-types") return netCreateGemachType(c);
   if (method === "PATCH" && (m = path.match(/^\/admin\/network\/gemach-types\/([^/]+)$/))) return netUpdateGemachType(c, m[1]);
