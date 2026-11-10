@@ -5461,6 +5461,23 @@ await t("sent emails: copies are deleted after a year; History then says Gone", 
   assert.equal(row.emailId, "recSENTOLD0000001"); assert.equal(row.emailStatus, "Gone");
 });
 
+await t("history filters: several types at once (groups) and since = an exact moment", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  const LOG = DB["tblC3PY7f5sXQDMJK"];
+  LOG.push(rec("recLOGHF000000001", { Timestamp: "2026-11-09T04:30:00.000Z", "Event Type": "Request Received", "Loan ID": "R-HF1", ...sc }),
+    rec("recLOGHF000000002", { Timestamp: "2026-11-09T05:30:00.000Z", "Event Type": "Request Declined", "Loan ID": "R-HF2", ...sc }),
+    rec("recLOGHF000000003", { Timestamp: "2026-11-09T06:30:00.000Z", "Event Type": "Item Returned", "Loan ID": "L-HF3", ...sc }));
+  const ids = async q => (await (await call(`/admin/history?search=HF&dateFrom=2026-11-08&dateTo=2026-11-09&${q}`, { headers: H })).json()).records.map(r => r.loanId).sort();
+  assert.deepEqual(await ids("eventType=" + encodeURIComponent("Request Received,Request Declined")), ["R-HF1", "R-HF2"]);
+  assert.deepEqual(await ids("eventType=Item%20Returned"), ["L-HF3"]);
+  assert.deepEqual(await ids("eventType=" + encodeURIComponent(" Request Declined , ,Request Declined")), ["R-HF2"], "blanks and repeats ignored");
+  // since: from 05:00 UTC on (a New York midnight), inclusive
+  const s = async q => (await (await call(`/admin/history?search=HF&dateTo=2026-11-09&${q}`, { headers: H })).json()).records.map(r => r.loanId).sort();
+  assert.deepEqual(await s("since=2026-11-09T05:30:00.000Z"), ["L-HF3", "R-HF2"]);
+  assert.deepEqual(await s("since=not-a-date"), ["L-HF3", "R-HF1", "R-HF2"], "a bad since is ignored");
+});
+
 {
   await t("D1: no request used more than 50 queries (Free plan limit per request)", async () => {
     console.log(`  busiest request: ${d1Busiest.n} queries (${d1Busiest.path})`);

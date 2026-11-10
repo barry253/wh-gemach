@@ -1247,12 +1247,34 @@
 
     .history-sort-btn.asc { color: var(--navy); border-color: var(--navy); }
 
+    .history-when-wrap { position: relative; flex: none; }
+    .history-when-btn {
+      height: 100%; min-height: 40px; display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0 0.7rem; border: 1px solid var(--border); border-radius: 6px; background: var(--white);
+      font: inherit; font-size: 0.82rem; color: var(--text); cursor: pointer; white-space: nowrap;
+    }
+    .history-when-btn.on { border-color: var(--navy); background: var(--teal); color: var(--navy); font-weight: 600; }
+    .history-when-menu {
+      position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 170px;
+      background: var(--white); border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(15, 30, 40, 0.18); padding: 0.3rem 0;
+    }
+    .history-when-menu button {
+      display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer;
+      font: inherit; font-size: 0.88rem; color: var(--text); padding: 0.6rem 0.9rem;
+    }
+    .history-when-menu button:hover, .history-when-menu button:focus-visible { background: var(--grey); }
+    .history-when-menu button[aria-checked="true"] { font-weight: 600; color: var(--navy); }
+    .history-when-menu button[aria-checked="true"]::before { content: "✓ "; }
+
     .history-date-row {
       display: flex;
       gap: 0.5rem;
       align-items: center;
       margin-bottom: 0.5rem;
+      flex-wrap: wrap;
     }
+    .history-date-row[hidden] { display: none; }
 
     .history-date-row input[type="date"] {
       padding: 0.35rem 0.5rem;
@@ -1266,34 +1288,46 @@
 
     .history-date-row label { font-size: 0.75rem; color: var(--muted); }
 
-    .history-type-chips {
-      display: flex;
-      gap: 0.3rem;
-      flex-wrap: wrap;
+    /* Groups: one row that scrolls sideways on a phone; a chosen group shows its kinds in a second row. */
+    .history-groups, .history-types {
+      display: flex; gap: 0.35rem; overflow-x: auto; scrollbar-width: none;
+      margin: 0 -1rem; padding: 0 1rem;
     }
+    .history-groups::-webkit-scrollbar, .history-types::-webkit-scrollbar { display: none; }
+    .history-types { margin-top: 0.45rem; }
+    .history-types[hidden] { display: none; }
 
     .history-chip {
-      padding: 0.18rem 0.55rem;
+      flex: none;
+      padding: 0 0.8rem;
+      min-height: 34px;
       border-radius: 999px;
       border: 1px solid var(--border);
-      background: transparent;
-      font-size: 0.75rem;
+      background: var(--white);
+      font: inherit;
+      font-size: 0.8rem;
       cursor: pointer;
       color: var(--text);
+      white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 0.3rem;
       transition: background 0.12s, color 0.12s;
     }
+    .history-chip.active { background: var(--navy); color: #fff; border-color: var(--navy); font-weight: 600; }
+    .history-types .history-chip { min-height: 30px; font-size: 0.75rem; padding: 0 0.65rem; }
+    .history-types .history-chip.active { background: var(--teal); color: var(--navy); border-color: var(--navy); }
+    .history-chip .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 
-    .history-chip.active {
-      background: var(--navy);
-      color: #fff;
-      border-color: var(--navy);
+    .history-summary-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+      padding: 0.75rem 0 0; font-size: 0.78rem; color: var(--muted);
     }
+    .history-summary-row .history-sort-btn { padding: 0.3rem 0.6rem; }
 
     .history-feed {
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
-      padding: 1rem 0 0;
+      padding: 0.5rem 0 0;
     }
 
     .history-entry {
@@ -1676,18 +1710,30 @@
     <div class="screen" id="screen-history" style="margin: -1.25rem;">
       <div class="history-controls">
         <div class="history-search-row">
-          <input class="history-search" id="history-search" type="search" placeholder="Search borrower, item, notes…" oninput="onHistorySearch()" />
-          <button class="history-sort-btn" id="history-sort-btn" onclick="toggleHistorySort()">↓ Newest</button>
+          <input class="history-search" id="history-search" type="search" placeholder="Search borrower, item, notes…" aria-label="Search history" oninput="onHistorySearch()" />
+          <div class="history-when-wrap">
+            <button type="button" class="history-when-btn" id="history-when-btn" aria-haspopup="true" aria-expanded="false" aria-controls="history-when-menu" onclick="toggleHistoryWhenMenu()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+              <span id="history-when-label">Any time</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            </button>
+            <div class="history-when-menu" id="history-when-menu" hidden></div>
+          </div>
         </div>
-        <div class="history-date-row">
-          <label>From</label>
+        <div class="history-date-row" id="history-date-row" hidden>
+          <label for="history-from">From</label>
           <input type="date" id="history-from" onchange="reloadHistory()" />
-          <label>To</label>
+          <label for="history-to">To</label>
           <input type="date" id="history-to" onchange="reloadHistory()" />
         </div>
-        <div class="history-type-chips" id="history-type-chips"></div>
+        <div class="history-groups" id="history-groups" role="group" aria-label="What happened"></div>
+        <div class="history-types" id="history-types" role="group" aria-label="Narrow to one kind" hidden></div>
       </div>
       <div class="content" style="padding-top:0">
+        <div class="history-summary-row">
+          <span id="history-summary">All activity</span>
+          <button type="button" class="history-sort-btn" id="history-sort-btn" onclick="toggleHistorySort()">↓ Newest</button>
+        </div>
         <div class="history-feed" id="history-feed">
           <div class="loading">Loading…</div>
         </div>
@@ -9719,19 +9765,25 @@
   }
 
   // ── History ───────────────────────────────────────────────────────────────
-  const HISTORY_EVENT_TYPES = [
-    "Loan Created", "Item Returned", "Item Reserved",
-    "Reservation Cancelled", "Marked for Repair", "Restored",
-    "Request Received", "Request Confirmed", "Request Declined", "Borrower Created",
-    "Add-on Ordered", "Add-on Handed Over", "Request Cancelled", "Ready to Return", "Return Reminder Sent",
-    "Return Reminder Failed", "Pickup Info Sent", "Pickup Info Not Sent", "Checked Out", "Visit Closed"
+  // Filters: groups of event types (one row), then one kind inside the chosen group; dates as presets.
+  const HISTORY_GROUPS = [
+    { name: "Requests", types: ["Request Received", "Request Confirmed", "Request Declined", "Request Cancelled"] },
+    { name: "Reservations & pickup", types: ["Reservation Made", "Appointment Booked", "Item Reserved", "Booking Updated", "Reservation Cancelled", "Pickup Info Sent", "Pickup Info Not Sent"] },
+    { name: "Loans & returns", types: ["Loan Created", "Checked Out", "Ready to Return", "Item Returned", "Loan Cancelled", "Visit Closed"] },
+    { name: "Reminders", types: ["Return Reminder Sent", "Return Reminder Failed"] },
+    { name: "Inventory & add-ons", types: ["Marked for Repair", "Restored", "Add-on Ordered", "Add-on Handed Over"] },
+    { name: "People", types: ["Borrower Created"] },
   ];
 
   const HISTORY_DOT_COLORS = {
     "Loan Created":           "#2E7D32",
     "Item Returned":          "#00897B",
     "Item Reserved":          "#1565C0",
+    "Reservation Made":       "#1565C0",
+    "Appointment Booked":     "#1565C0",
+    "Booking Updated":        "#455A64",
     "Reservation Cancelled":  "#757575",
+    "Loan Cancelled":         "#757575",
     "Add-on Ordered":         "#3730A3",
     "Add-on Handed Over":     "#4F46E5",
     "Marked for Repair":      "#E65100",
@@ -9750,36 +9802,102 @@
     "Visit Closed":           "#9E9E9E",
   };
 
+  const HISTORY_WHEN = [
+    { id: "any", label: "Any time" },
+    { id: "today", label: "Today", days: 0 },
+    { id: "7", label: "Last 7 days", days: 6 },
+    { id: "30", label: "Last 30 days", days: 29 },
+    { id: "custom", label: "Pick dates…" },
+  ];
+
   let historyState = {
     initialized: false,
     sortDir: "desc",
-    eventType: null,
+    group: null,   // index into HISTORY_GROUPS, or null = everything
+    type: null,    // one kind inside the group, or null = the whole group
+    when: "any",
     searchText: "",
     offset: null,
     allEntries: [],
     searchTimer: null,
+    seq: 0,
   };
 
   function initHistory() {
     if (!historyState.initialized) {
-      const chipsEl = document.getElementById("history-type-chips");
-      chipsEl.innerHTML = `<button class="history-chip active" onclick="setHistoryEventType(null)">All</button>` +
-        HISTORY_EVENT_TYPES.map(t =>
-          `<button class="history-chip" onclick="setHistoryEventType('${t.replace(/'/g,"\\'")}')">
-            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${HISTORY_DOT_COLORS[t]||'#999'};margin-right:4px;vertical-align:middle"></span>${t}
-          </button>`
-        ).join("");
+      renderHistoryFilters();
+      document.addEventListener("click", e => {
+        if (!e.target.closest(".history-when-wrap")) closeHistoryWhenMenu();
+      });
       historyState.initialized = true;
     }
     reloadHistory();
   }
 
-  function setHistoryEventType(type) {
-    historyState.eventType = type;
-    document.querySelectorAll(".history-chip").forEach(c => {
-      const label = c.textContent.trim();
-      c.classList.toggle("active", type === null ? label === "All" : label === type);
-    });
+  function renderHistoryFilters() {
+    const gi = historyState.group;
+    document.getElementById("history-groups").innerHTML =
+      `<button type="button" class="history-chip${gi === null ? " active" : ""}" aria-pressed="${gi === null}" onclick="setHistoryGroup(null)">All</button>` +
+      HISTORY_GROUPS.map((g, i) => `<button type="button" class="history-chip${gi === i ? " active" : ""}" aria-pressed="${gi === i}" onclick="setHistoryGroup(${i})">${esc(g.name)}</button>`).join("");
+    const typesEl = document.getElementById("history-types");
+    if (gi === null || HISTORY_GROUPS[gi].types.length < 2) { typesEl.hidden = true; typesEl.innerHTML = ""; }
+    else {
+      const g = HISTORY_GROUPS[gi], t = historyState.type;
+      typesEl.hidden = false;
+      typesEl.innerHTML =
+        `<button type="button" class="history-chip${t === null ? " active" : ""}" aria-pressed="${t === null}" onclick="setHistoryType(null)">All ${esc(g.name.toLowerCase())}</button>` +
+        g.types.map((ty, j) => `<button type="button" class="history-chip${t === ty ? " active" : ""}" aria-pressed="${t === ty}" onclick="setHistoryType(${j})"><span class="dot" style="background:${HISTORY_DOT_COLORS[ty] || "#999"}"></span>${esc(ty)}</button>`).join("");
+    }
+    const when = HISTORY_WHEN.find(w => w.id === historyState.when) || HISTORY_WHEN[0];
+    let whenLabel = when.label;
+    if (when.id === "custom") {
+      const f = document.getElementById("history-from").value, to = document.getElementById("history-to").value;
+      const short = v => new Date(v + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      whenLabel = f && to ? `${short(f)} – ${short(to)}` : f ? `From ${short(f)}` : to ? `Until ${short(to)}` : "Pick dates";
+    }
+    document.getElementById("history-when-label").textContent = whenLabel;
+    document.getElementById("history-when-btn").classList.toggle("on", when.id !== "any");
+    document.getElementById("history-date-row").hidden = when.id !== "custom";
+    document.getElementById("history-when-menu").innerHTML = HISTORY_WHEN.map(w =>
+      `<button type="button" role="menuitemradio" aria-checked="${w.id === when.id}" onclick="setHistoryWhen('${w.id}')">${esc(w.label)}</button>`).join("");
+    const what = gi === null ? "All activity" : historyState.type || HISTORY_GROUPS[gi].name;
+    document.getElementById("history-summary").textContent = when.id === "any" ? what : `${what} · ${whenLabel.toLowerCase()}`;
+  }
+
+  function setHistoryGroup(i) {
+    historyState.group = i;
+    historyState.type = null;
+    renderHistoryFilters();
+    reloadHistory();
+  }
+
+  function setHistoryType(j) {
+    historyState.type = j === null ? null : HISTORY_GROUPS[historyState.group].types[j];
+    renderHistoryFilters();
+    reloadHistory();
+  }
+
+  function toggleHistoryWhenMenu() {
+    const menu = document.getElementById("history-when-menu");
+    if (!menu.hidden) return closeHistoryWhenMenu();
+    menu.hidden = false;
+    document.getElementById("history-when-btn").setAttribute("aria-expanded", "true");
+    (menu.querySelector('[aria-checked="true"]') || menu.querySelector("button"))?.focus();
+  }
+
+  function closeHistoryWhenMenu() {
+    const menu = document.getElementById("history-when-menu");
+    if (!menu || menu.hidden) return;
+    menu.hidden = true;
+    document.getElementById("history-when-btn").setAttribute("aria-expanded", "false");
+  }
+
+  function setHistoryWhen(id) {
+    historyState.when = id;
+    closeHistoryWhenMenu();
+    if (id !== "custom") { document.getElementById("history-from").value = ""; document.getElementById("history-to").value = ""; }
+    renderHistoryFilters();
+    if (id === "custom") { document.getElementById("history-from").focus(); return; } // loads when a date is picked
     reloadHistory();
   }
 
@@ -9805,6 +9923,7 @@
   }
 
   function reloadHistory() {
+    if (historyState.when === "custom") renderHistoryFilters(); // the button shows the picked dates
     historyState.offset = null;
     historyState.allEntries = [];
     fetchHistory(true);
@@ -9815,19 +9934,27 @@
     if (reset) feed.innerHTML = '<div class="loading">Loading…</div>';
 
     const params = new URLSearchParams();
-    if (historyState.eventType) params.set("eventType", historyState.eventType);
+    const types = historyState.type ? [historyState.type] : historyState.group !== null ? HISTORY_GROUPS[historyState.group].types : [];
+    if (types.length)           params.set("eventType", types.join(","));
     if (historyState.sortDir)   params.set("sort", historyState.sortDir);
     if (historyState.offset)    params.set("offset", historyState.offset);
 
-    const fromVal = document.getElementById("history-from").value;
-    const toVal   = document.getElementById("history-to").value;
-    if (fromVal) params.set("dateFrom", fromVal);
-    if (toVal)   params.set("dateTo", toVal);
+    const when = HISTORY_WHEN.find(w => w.id === historyState.when);
+    if (when && when.days != null) {
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - when.days); // this device's midnight
+      params.set("since", start.toISOString());
+    } else if (historyState.when === "custom") {
+      const fromVal = document.getElementById("history-from").value;
+      const toVal   = document.getElementById("history-to").value;
+      if (fromVal) params.set("dateFrom", fromVal);
+      if (toVal)   params.set("dateTo", toVal);
+    }
 
     if (historyState.searchText) params.set("search", historyState.searchText);
 
+    const seq = ++historyState.seq; // a slower, older answer never replaces a newer one
     const data = await api(`/admin/history?${params}`);
-    if (!data) return;
+    if (!data || seq !== historyState.seq) return;
 
     const newEntries = data.records || [];
     historyState.allEntries = reset ? newEntries : [...historyState.allEntries, ...newEntries];

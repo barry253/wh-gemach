@@ -44,17 +44,23 @@ function logEvents(ctx, db, g, events) {
 }
 
 async function handleGetHistory({ db, g, url }) {
-  const eventType = url.searchParams.get("eventType") || null;
+  // One type, or several joined by commas (History's groups: "Request Received,Request Confirmed,…").
+  const eventTypes = [...new Set(String(url.searchParams.get("eventType") || "").split(",").map(s => s.trim()).filter(Boolean))].slice(0, 40);
   const search    = url.searchParams.get("search") || null;
   const dateFrom  = url.searchParams.get("dateFrom") || null;
   const dateTo    = url.searchParams.get("dateTo") || null;
+  // since: an exact moment (the admin's local midnight for "Today" / "Last 7 days"), so presets follow their clock, not UTC days.
+  const sinceRaw  = url.searchParams.get("since") || "";
+  const since     = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(sinceRaw) && !isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : null;
   const sortDir   = url.searchParams.get("sort") === "asc" ? "asc" : "desc";
   const offset    = url.searchParams.get("offset") || null;
 
   const where = [];
-  if (eventType) where.push(Q.eq("Event Type", eventType));
+  if (eventTypes.length === 1) where.push(Q.eq("Event Type", eventTypes[0]));
+  else if (eventTypes.length) where.push(Q.in("Event Type", eventTypes));
   if (dateFrom && DATE_RE.test(dateFrom)) where.push(Q.after("Timestamp", `${dateFrom}T00:00:00.000Z`));
   if (dateTo && DATE_RE.test(dateTo))     where.push(Q.before("Timestamp", `${dateTo}T23:59:59.999Z`));
+  if (since) where.push(Q.notBefore("Timestamp", since));
 
   let page;
   try {
