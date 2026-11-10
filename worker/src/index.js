@@ -60,6 +60,8 @@
  *            /admin/team — the gemach's Owners/Managers/Volunteers (Owner or Network Admin; see team.js).
  *   Pickup photos (pickupphotos.js): POST /admin/loans/:id/pickup-photo, DELETE /admin/pickup-photos/:set[/:name],
  *            GET /public/pickup-photos/:set, GET /public/pickup-photo/:set/:name; deleted 30 days after the return (hourly cron).
+ *   Sent emails (sentemails.js): GET /admin/emails/:id — copy of a borrower email, opened from History ("View email");
+ *            every borrower email is kept a year (hourly cron deletes older ones). History rows carry emailId / emailStatus.
  *   Push:    /admin/push (GET), /admin/push/subscribe|unsubscribe|test (POST), /admin/push/:id (PATCH, DELETE) —
  *            admin notification devices (push.js). VAPID_PRIVATE_KEY secret (P-256 JWK) turns it on.
  *   Network: /admin/network/{gemachs,admins,categories} — role "Network Admin" only, re-checked live in the database.
@@ -116,6 +118,7 @@ import { handleDashboard, handleStats } from "./stats.js";
 import { handleSubmitRequest } from "./submit.js";
 import { clientIp, handlePublicConfig, overLimit } from "./abuse.js";
 import { runReminders } from "./reminders.js";
+import { handleGetSentEmail, runSentEmailCleanup } from "./sentemails.js";
 import { pushDispatch } from "./push.js";
 import { handlePickupPhotoDelete, handlePickupPhotoUpload, handlePublicPickupPhoto, handlePublicPickupSet, runPickupPhotoCleanup } from "./pickupphotos.js";
 
@@ -160,6 +163,8 @@ export default {
       ctx.waitUntil(runUsageWatch(env).catch(e => console.error("usage watch failed:", e && (e.stack || e.message))));
       // Pickup photos are deleted 30 days after the items come back (pickupphotos.js).
       ctx.waitUntil(runPickupPhotoCleanup(env, makeDb(env)).catch(e => console.error("pickup photo clean-up failed:", e && (e.stack || e.message))));
+      // Copies of borrower emails (History → View email) are deleted a year after sending (sentemails.js).
+      ctx.waitUntil(runSentEmailCleanup(makeDb(env)).catch(e => console.error("sent email clean-up failed:", e && (e.stack || e.message))));
       return;
     }
     ctx.waitUntil(runBackupWatch(env).catch(e => console.error("backup watch failed:", e && (e.stack || e.message))));
@@ -332,6 +337,7 @@ async function adminRoute(c, path, method) {
   if (method === "POST"  && path === "/admin/catalog/fetch-photo")  return handleFetchPhoto(c);
 
   if (method === "GET"  && path === "/admin/history")      return handleGetHistory(c);
+  if (method === "GET"  && (m = path.match(/^\/admin\/emails\/([^/]+)$/))) return handleGetSentEmail(c, m[1]);
   if (method === "GET"  && path === "/admin/borrowers")    return handleListBorrowers(c);
   if (method === "GET"  && path === "/admin/test-data")    return handleGetTestData(c);
   if (method === "POST" && path === "/admin/test-data/clear") return handleClearTestData(c);

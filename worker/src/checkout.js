@@ -23,7 +23,8 @@ import { findOrCreateBorrower, useOrFindBorrower } from "./borrowers.js";
 import { cleanCityState } from "./places.js";
 import { REC_RE, T } from "./config.js";
 import { addDays, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
-import { buildEmailHtml, sendEmail } from "./email.js";
+import { buildEmailHtml } from "./email.js";
+import { sendBorrowerEmail } from "./sentemails.js";
 import { selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
@@ -247,19 +248,20 @@ async function createLoans(c, { lines, dueBack, borrowerId, borrowerName, source
   return { created, events };
 }
 
-/** Send the admin-written message by email (when asked). Returns true / false (failed) / undefined (not sent). */
+/** Send the admin-written message by email (when asked), keeping a copy for History. { ok: true / false (failed) / undefined (not sent), emailId }. */
 async function maybeEmail(c, { to, message, sendMessage }) {
-  if (!sendMessage) return undefined;
+  const none = { ok: undefined, emailId: null };
+  if (!sendMessage) return none;
   const text = String(message ?? "").trim();
   const addr = String(to || "").trim();
-  if (!text || !addr) return undefined;
+  if (!text || !addr) return none;
   const g = c.g;
-  return sendEmail(c.env, g, {
+  return sendBorrowerEmail(c.env, c.db, g, {
     to: addr,
     subject: `What you borrowed — ${g.name || "Gemach"}`,
     text: text.slice(0, MAX_MESSAGE) + emailSignature(g),
     html: buildEmailHtml(g, text.slice(0, MAX_MESSAGE), { signature: true }),
-  });
+  }, { kind: "checkout" });
 }
 
 /** POST /admin/requests/:id/checkout */
@@ -296,7 +298,10 @@ async function handleRequestCheckout(c, id) {
   const names = await typeNames(db, g, [...asked]);
   const notTaken = [...asked].filter(x => !takenTypes.has(x)).map(x => names[x]).filter(Boolean);
   const added = v.lines.filter(l => !asked.has(l.type.id)).map(l => l.label);
+  const { ok: emailSent, emailId } = await maybeEmail(c, { to: f.Email, message: body.message, sendMessage: body.sendMessage === true });
+  if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "check-out", rid));
   logEvents(ctx, db, g, [...events, {
+    emailId,
     eventType: "Checked Out",
     borrower: f.Name || null,
     itemType: v.lines.map(l => l.label).join(", "),
@@ -305,9 +310,6 @@ async function handleRequestCheckout(c, id) {
     notes: [`${created.length} item${created.length === 1 ? "" : "s"} out`, added.length ? `added: ${added.join(", ")}` : "",
       notTaken.length ? `not taken: ${notTaken.join(", ")}` : "", v.dueBack ? `due back ${v.dueBack}` : ""].filter(Boolean).join("; "),
   }]);
-
-  const emailSent = await maybeEmail(c, { to: f.Email, message: body.message, sendMessage: body.sendMessage === true });
-  if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "check-out", rid));
   return json({ success: true, loans: created, dueBack: v.dueBack, ...(emailSent === false ? { emailSent: false } : {}) });
 }
 
@@ -365,9 +367,9 @@ async function handleWalkInLoan(c) {
     return json({ error: e.message || "Couldn't save the borrower." }, 500);
   }
   const { created, events } = await createLoans(c, { lines: v.lines, dueBack: v.dueBack, borrowerId, borrowerName: name, note: "Walk-in loan", loanNotes: notes });
-  logEvents(ctx, db, g, events);
-  const emailSent = await maybeEmail(c, { to: email, message: body.message, sendMessage: body.sendMessage === true });
+  const { ok: emailSent, emailId } = await maybeEmail(c, { to: email, message: body.message, sendMessage: body.sendMessage === true });
   if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "loan", created.map(l => l.loanId).join(", ")));
+  logEvents(ctx, db, g, events.map(e => ({ ...e, emailId }))); // a walk-in has no summary entry: every item's entry links the email
   return json({ success: true, loans: created, dueBack: v.dueBack, ...(emailSent === false ? { emailSent: false } : {}) });
 }
 

@@ -5,7 +5,8 @@ import { makeDb } from "./db.js";
 import { sendAlert } from "./alerts.js";
 import { T } from "./config.js";
 import { DAY_MS, addDays, dateToUtcMs, isValidDate, nyToday } from "./dates.js";
-import { buildEmailHtml, sendEmail } from "./email.js";
+import { buildEmailHtml } from "./email.js";
+import { saveSentEmails, sendBorrowerEmail } from "./sentemails.js";
 import { GEMACH_FIELDS, gemachFromRecord } from "./gemachs.js";
 import { json } from "./http.js";
 import { LOAN_LIST_FIELDS, loadLoanRelations, loanQtyInfo } from "./loans.js";
@@ -143,6 +144,7 @@ async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = m
     }
   }
   const stamps = [], events = new Map(); // gemach id -> History rows
+  const copies = []; // { row: Sent Emails row, ev: its History row }
   if (due.length) {
     // Loans from requests sent through a gemach's test link never get real reminders.
     const srcIds = due.map(d => linkedId(firstLink(d.l.fields["Source Request"]))).filter(Boolean);
@@ -170,14 +172,18 @@ async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = m
         if (emails >= MAX_EMAILS_PER_RUN) { out.deferred++; continue; }
         emails++;
         const subject = kind === "overdue" ? `Reminder: please return the ${items} — ${g.name}` : `Reminder: ${items} due back ${dayLabel(expected)} — ${g.name}`;
-        const ok = await sendEmail(env, g, { to: email, subject, text: message + emailSignature(g), html: buildEmailHtml(g, message) });
+        // The copies (History → View email) are saved together after the loop: one write per ~9, not one each.
+        const { ok, row } = await sendBorrowerEmail(env, db, g, { to: email, subject, text: message + emailSignature(g), html: buildEmailHtml(g, message) }, { kind: "reminder", save: false });
+        if (!events.has(g.id)) events.set(g.id, []);
+        const ev = { borrower: b.name || null, itemType: typeName, itemCode: item.itemId || null, loanId: f["Loan ID"] || null, admin: "Automatic" };
+        const logRow = ok
+          ? { ...ev, eventType: "Return Reminder Sent", notes: `Emailed to ${email}${kind === "overdue" ? " (overdue)" : ""}` }
+          // Still due, so it's tried again tomorrow; History shows the attempt (View email).
+          : { ...ev, eventType: "Return Reminder Failed", notes: `The email to ${email} didn't go through; it will be tried again tomorrow` };
+        events.get(g.id).push(logRow);
+        if (row) copies.push({ row, ev: logRow });
         if (!ok) { out.failed.push(entry); continue; }
         stamps.push(l.id);
-        if (!events.has(g.id)) events.set(g.id, []);
-        events.get(g.id).push({
-          eventType: "Return Reminder Sent", borrower: b.name || null, itemType: typeName, itemCode: item.itemId || null,
-          loanId: f["Loan ID"] || null, admin: "Automatic", notes: `Emailed to ${email}${kind === "overdue" ? " (overdue)" : ""}`,
-        });
         out.sent.push(entry);
       } catch (e) {
         out.errors.push(`${g.slug} · ${f["Loan ID"] || l.id}: ${e.message}`);
@@ -190,8 +196,12 @@ async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = m
     } catch (e) {
       out.errors.push(`Couldn't mark ${stamps.length} reminder(s) as sent (they may go out again tomorrow): ${e.message}`);
     }
-    for (const [gid, evs] of events) logEvents(ctx, db, byId.get(gid), evs);
   }
+  if (copies.length) {
+    const ids = await saveSentEmails(db, copies.map(x => x.row));
+    copies.forEach((x, i) => { if (ids[i]) x.ev.emailId = ids[i]; });
+  }
+  if (!dryRun) for (const [gid, evs] of events) logEvents(ctx, db, byId.get(gid), evs);
   console.log(`reminders ${today}${dryRun ? " (dry run)" : ""}: ${out.sent.length} sent, ${out.failed.length} failed, ${out.noEmail} without email` +
     `${out.skippedTest ? `, ${out.skippedTest} test` : ""}${out.deferred ? `, ${out.deferred} left for tomorrow` : ""}${out.errors.length ? `, ${out.errors.length} errors` : ""}`);
   if (!dryRun && (out.failed.length || out.deferred || out.errors.length)) {

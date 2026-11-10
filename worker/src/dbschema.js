@@ -206,6 +206,24 @@ const TABLES = {
       "Timestamp": dt("timestamp"), "Event Type": t("event_type"),
       "Item Code": t("item_code"), "Item Type": t("item_type"), "Borrower": t("borrower"),
       "Loan ID": t("loan_id"), "Admin": t("admin"), "Notes": t("notes"),
+      "Email ID": t("email_id"), // the borrower email this event sent (Sent Emails), shown as "View email" in History
+      "Gemach": link("gemach_id", "Gemachs"),
+      "Gemach Slug": gemachSlug(),
+    },
+  },
+  // A copy of every email sent to a borrower (sentemails.js), opened from History ("View email"). Kept a year.
+  // Emails to gemachs, admin invites and alerts are never saved here. D1 only.
+  "Sent Emails": {
+    sql: "sent_emails",
+    scoped: true,
+    fields: {
+      "Sent At": dt("sent_at"),
+      "Kind": t("kind"),             // receipt / confirm / decline / appointment / pickup / reminder / returned / …
+      "To": t("to_email"), "Subject": t("subject"),
+      "Text": t("text"), "HTML": t("html"),
+      "Attachments": t("attachments"), // JSON [{ name }] / [{ photo: true }] — names only, never the files
+      "Status": t("status"),           // Sent / Failed / Skipped
+      "Error": t("error"),
       "Gemach": link("gemach_id", "Gemachs"),
       "Gemach Slug": gemachSlug(),
     },
@@ -277,6 +295,7 @@ const INDEXES = [
   "CREATE INDEX IF NOT EXISTS loans_source ON loans(source_request_id)",
   "CREATE INDEX IF NOT EXISTS loans_borrower ON loans(borrower_id)",
   "CREATE INDEX IF NOT EXISTS activity_gemach_time ON activity_log(gemach_id, timestamp)",
+  "CREATE INDEX IF NOT EXISTS sent_emails_time ON sent_emails(sent_at)",
   "CREATE UNIQUE INDEX IF NOT EXISTS search_log_query ON search_log(query)",
   "CREATE INDEX IF NOT EXISTS search_log_last ON search_log(last_searched)",
   "CREATE INDEX IF NOT EXISTS search_log_first ON search_log(first_searched)",

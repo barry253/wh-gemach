@@ -47,7 +47,7 @@ const DB = {
   ],
   // WC-002 is out on loan (Items.Status is computed from loans in D1, so the loan has to exist).
   "Loans": [rec("recLOANWC0020000A", { "Loan ID": "L-001", Status: "Active", Item: ["recITEMA000000002"], "Date Borrowed": "2026-01-02", Gemach: [A.id], "Gemach Slug": [A.slug] })],
-  "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [], "Push Subscriptions": [], "Site Events": [],
+  "Borrowers": [], "tblC3PY7f5sXQDMJK": [], "tblpy91cyNSkKx1NL": [], "Push Subscriptions": [], "Site Events": [], "Sent Emails": [],
 };
 
 const calls = [];
@@ -5281,6 +5281,184 @@ await t("pickup photos: deleted 30 days after the last item comes back (cancelle
   assert.deepEqual([...PICKUP.keys()], ["NEWNEWNEWNEWNEWNEWNEWN/1-abcdefgh.jpg"]);
   PICKUP.clear();
   DB.Loans = DB.Loans.filter(l => !/^recLOANCLEAN/.test(l.id));
+});
+
+// ─── Sent emails (Nov 9, 2026): a copy of every borrower email, opened from History ("View email") ─────
+await t("sent emails: confirm / decline / receipt keep a copy linked to their History event; every role can open it; other gemach can't", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  const LOG = () => DB["tblC3PY7f5sXQDMJK"];
+  DB.Requests.push(rec("recREQMAIL0000001", { "Request ID": "R-981", Name: "Copy Person", Email: "copy@example.com", Status: "New", "Items Requested": ["recTYPEA000000003"], "Needed From": "2027-03-01", "Needed Until": "2027-03-05", ...sc }),
+    rec("recREQMAIL0000002", { "Request ID": "R-982", Name: "Decline Person", Email: "decline@example.com", Status: "New", "Items Requested": ["recTYPEA000000003"], ...sc }),
+    rec("recREQMAIL0000003", { "Request ID": "R-983", Name: "Quiet Person", Email: "quiet@example.com", Status: "New", "Items Requested": ["recTYPEA000000003"], ...sc }));
+  let r = await call("/admin/requests/recREQMAIL0000001/confirm", { method: "POST", headers: H, body: JSON.stringify({ sendMessage: true, message: "Hi Copy, your Shower Chair is reserved." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  await Promise.allSettled(waits);
+  const ev = LOG().find(l => l.fields["Event Type"] === "Request Confirmed" && l.fields["Loan ID"] === "R-981");
+  assert.ok(ev?.fields["Email ID"], "the event links the email");
+  const copy = DB["Sent Emails"].find(x => x.id === ev.fields["Email ID"]);
+  assert.equal(copy.fields.To, "copy@example.com"); assert.equal(copy.fields.Kind, "confirm"); assert.equal(copy.fields.Status, "Sent");
+  assert.deepEqual(copy.fields.Gemach, [A.id]);
+  assert.ok(!LOG().some(l => l.fields["Event Type"] === "Item Reserved" && l.fields["Email ID"]), "only the summary entry links it");
+  // the viewer: every admin role of the gemach
+  for (const tok of [tokenA, tokenVol]) {
+    r = await call(`/admin/emails/${copy.id}`, { headers: { ...auth(tok), "X-Gemach": A.slug } });
+    assert.equal(r.status, 200, await r.clone().text());
+  }
+  const v = await r.json();
+  assert.equal(v.to, "copy@example.com"); assert.match(v.subject, /Request — Confirmed/); assert.match(v.text, /^Hi Copy, your Shower Chair is reserved\./);
+  assert.ok(v.html.includes("your Shower Chair is reserved")); assert.equal(v.status, "Sent");
+  const tokenB = await sign({ email: "b@example.com", name: "Bee", role: "Manager", gemachs: [{ id: B.id, slug: B.slug, name: "B" }] });
+  assert.equal((await call(`/admin/emails/${copy.id}`, { headers: { ...auth(tokenB), "X-Gemach": B.slug } })).status, 404, "other gemach can't");
+  assert.equal((await call(`/admin/emails/nope`, { headers: H })).status, 404);
+  // History carries the link and the status
+  const hist = await (await call("/admin/history?search=R-981", { headers: H })).json();
+  const row = hist.records.find(x => x.eventType === "Request Confirmed");
+  assert.equal(row.emailId, copy.id); assert.equal(row.emailStatus, "Sent");
+  // a failed decline is kept (Failed) and still linked
+  resendFail = true;
+  r = await call("/admin/requests/recREQMAIL0000002/decline", { method: "POST", headers: H, body: JSON.stringify({ sendMessage: true, message: "Sorry, none free." }) });
+  resendFail = false;
+  assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, false);
+  await Promise.allSettled(waits);
+  const dev = LOG().find(l => l.fields["Event Type"] === "Request Declined" && l.fields["Loan ID"] === "R-982");
+  const dcopy = DB["Sent Emails"].find(x => x.id === dev.fields["Email ID"]);
+  assert.equal(dcopy.fields.Status, "Failed"); assert.equal(dcopy.fields.Kind, "decline"); assert.match(dcopy.fields.Text, /^Sorry, none free\./);
+  // "Don't send": nothing kept, nothing linked
+  const n = DB["Sent Emails"].length;
+  r = await call("/admin/requests/recREQMAIL0000003/decline", { method: "POST", headers: H, body: JSON.stringify({ sendMessage: false, message: "x" }) });
+  assert.equal(r.status, 200);
+  await Promise.allSettled(waits);
+  assert.equal(DB["Sent Emails"].length, n);
+  assert.ok(!LOG().find(l => l.fields["Loan ID"] === "R-983" && l.fields["Event Type"] === "Request Declined").fields["Email ID"]);
+  // the "We got your request" receipt: linked to "Request Received" once it has gone out
+  r = await call(`/submit-request`, { method: "POST", body: JSON.stringify({ name: "Receipt Person", email: "receipt.person@example.com", neededFrom: SOON, itemsRequested: ["recTYPEA000000003"] }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  const rid = (await r.json()).requestId;
+  await Promise.allSettled(waits); await Promise.allSettled(waits);
+  const rev = LOG().find(l => l.fields["Event Type"] === "Request Received" && l.fields["Loan ID"] === rid);
+  const rcopy = DB["Sent Emails"].find(x => x.id === rev?.fields["Email ID"]);
+  assert.ok(rcopy, "receipt linked"); assert.equal(rcopy.fields.Kind, "receipt"); assert.match(rcopy.fields.Subject, /^We got your request/);
+  assert.equal(rcopy.fields.To, "receipt.person@example.com");
+  DB.Requests = DB.Requests.filter(x => !/^recREQMAIL/.test(x.id) && x.fields["Request ID"] !== rid);
+  DB.Loans = DB.Loans.filter(l => !(l.fields["Source Request"] || []).includes("recREQMAIL0000001"));
+});
+
+await t("sent emails: pickup info is logged (email, WhatsApp with or without a copy, failed); photos noted, not shown in the copy", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  const LOG = () => DB["tblC3PY7f5sXQDMJK"];
+  DB.Borrowers.push(rec("recBORRPU00000001", { Name: "Pick Up", Email: "pick@example.com", ...sc }), rec("recBORRPU00000002", { Name: "No Mail", Phone: "5165551212", ...sc }));
+  DB.Loans.push(rec("recLOANPU00000001", { "Loan ID": "L-971", Status: "Reserved", Borrower: ["recBORRPU00000001"], "Item to Reserve": ["recTYPEA000000003"], ...sc }),
+    rec("recLOANPU00000002", { "Loan ID": "L-972", Status: "Reserved", Borrower: ["recBORRPU00000002"], "Item to Reserve": ["recTYPEA000000003"], ...sc }));
+  const events = id => LOG().filter(l => l.fields["Loan ID"] === id && /^Pickup Info/.test(l.fields["Event Type"]));
+  // older admin page: no via = email
+  let r = await call("/admin/loans/recLOANPU00000001/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ message: "Ready at the side door." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  await Promise.allSettled(waits);
+  let e = events("L-971").at(-1);
+  assert.equal(e.fields["Event Type"], "Pickup Info Sent"); assert.equal(e.fields.Notes, "Sent by email"); assert.equal(e.fields["Item Type"], "Shower Chair");
+  assert.equal(DB["Sent Emails"].find(x => x.id === e.fields["Email ID"]).fields.Kind, "pickup");
+  // WhatsApp + copy
+  r = await call("/admin/loans/recLOANPU00000001/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ via: "whatsapp", emailCopy: true, message: "Ready (WhatsApp)." }) });
+  assert.equal(r.status, 200); assert.equal((await r.json()).emailSent, true);
+  await Promise.allSettled(waits);
+  e = events("L-971").at(-1);
+  assert.equal(e.fields.Notes, "Sent by WhatsApp (copy emailed)"); assert.ok(e.fields["Email ID"]);
+  // WhatsApp, borrower has no email: still logged, nothing emailed, no link
+  const n0 = resendCalls().length;
+  r = await call("/admin/loans/recLOANPU00000002/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ via: "sms", emailCopy: true, message: "Ready (text)." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  await Promise.allSettled(waits);
+  assert.equal(resendCalls().length, n0);
+  e = events("L-972").at(-1);
+  assert.equal(e.fields["Event Type"], "Pickup Info Sent"); assert.equal(e.fields.Notes, "Sent by text message"); assert.ok(!e.fields["Email ID"]);
+  // email fails: "Pickup Info Not Sent" with the copy (Failed); the admin is told
+  resendFail = true;
+  r = await call("/admin/loans/recLOANPU00000001/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Try this." }) });
+  resendFail = false;
+  assert.equal(r.status, 422);
+  await Promise.allSettled(waits);
+  e = events("L-971").at(-1);
+  assert.equal(e.fields["Event Type"], "Pickup Info Not Sent");
+  assert.equal(DB["Sent Emails"].find(x => x.id === e.fields["Email ID"]).fields.Status, "Failed");
+  // empty email message: refused, nothing logged
+  const before = LOG().length;
+  assert.equal((await call("/admin/loans/recLOANPU00000001/pickup-email", { method: "POST", headers: H, body: JSON.stringify({ message: " " }) })).status, 400);
+  await Promise.allSettled(waits);
+  assert.equal(LOG().length, before);
+  // embedded photos aren't kept: the viewer drops cid: images and says how many there were
+  DB["Sent Emails"].push(rec("recSENTPHOTO00001", { "Sent At": new Date().toISOString(), To: "pick@example.com", Subject: "Pickup details", Text: "Ready", Kind: "pickup", Status: "Sent",
+    HTML: '<p>Ready</p><img src="cid:p1" alt="Pickup photo 1"><img src="cid:p2">', Attachments: JSON.stringify([{ photo: true }, { photo: true }]), ...sc }));
+  const v = await (await call("/admin/emails/recSENTPHOTO00001", { headers: H })).json();
+  assert.equal(v.photos, 2); assert.ok(!v.html.includes("cid:")); assert.ok(v.html.includes("<p>Ready</p>"));
+  DB.Loans = DB.Loans.filter(l => !/^recLOANPU/.test(l.id));
+});
+
+await t("sent emails: return reminder / thank-you / walk-in link their copies; automatic reminders saved together", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug, "Content-Type": "application/json" };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  const LOG = () => DB["tblC3PY7f5sXQDMJK"];
+  const kindOf = ev => DB["Sent Emails"].find(x => x.id === ev?.fields["Email ID"])?.fields.Kind;
+  DB.Borrowers.push(rec("recBORRSE00000001", { Name: "Seth Email", Email: "seth@example.com", ...sc }));
+  DB.Loans.push(rec("recLOANSE00000001", { "Loan ID": "L-961", Status: "Active", Borrower: ["recBORRSE00000001"], "Item to Reserve": ["recTYPEA000000003"], "Date Borrowed": "2026-10-01", ...sc }));
+  let r = await call("/admin/loans/recLOANSE00000001/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Please bring it back." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  await Promise.allSettled(waits);
+  assert.equal(kindOf(LOG().filter(l => l.fields["Loan ID"] === "L-961" && l.fields["Event Type"] === "Return Reminder Sent").at(-1)), "reminder");
+  resendFail = true;
+  r = await call("/admin/loans/recLOANSE00000001/reminder", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Again." }) });
+  resendFail = false;
+  assert.equal(r.status, 422);
+  await Promise.allSettled(waits);
+  assert.equal(kindOf(LOG().filter(l => l.fields["Loan ID"] === "L-961" && l.fields["Event Type"] === "Return Reminder Failed").at(-1)), "reminder");
+  setG(A.id, { "Returned Message On": true });
+  r = await call("/admin/loans/recLOANSE00000001/return", { method: "POST", headers: H, body: JSON.stringify({ via: "email", message: "Thank you!" }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  await Promise.allSettled(waits);
+  assert.equal(kindOf(LOG().filter(l => l.fields["Loan ID"] === "L-961" && l.fields["Event Type"] === "Item Returned").at(-1)), "returned");
+  setG(A.id, { "Returned Message On": false });
+  // walk-in: every item's entry links the one email
+  DB["Item Types"].push(rec("recSEWALKTYPE0001", { Name: "Knee Scooter", Active: true, ...sc }));
+  DB.Items.push(rec("recSEWALKITEM0001", { "Item ID": "KS-001", "Item Type": ["recSEWALKTYPE0001"], Active: true, ...sc }));
+  r = await call("/admin/loans", { method: "POST", headers: H, body: JSON.stringify({ borrower: { name: "Walk In", email: "walk@example.com" }, items: [{ itemTypeId: "recSEWALKTYPE0001", itemId: "recSEWALKITEM0001" }], sendMessage: true, message: "Here's what you borrowed." }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  const walkLoans = (await r.json()).loans.map(l => l.loanId);
+  await Promise.allSettled(waits);
+  const wevs = LOG().filter(l => walkLoans.includes(l.fields["Loan ID"]) && l.fields.Borrower === "Walk In");
+  assert.ok(wevs.length && wevs.every(x => kindOf(x) === "checkout"), "walk-in entries link the email");
+  DB.Loans = DB.Loans.filter(l => !walkLoans.includes(l.fields["Loan ID"]));
+  // automatic reminders: copies saved in one go and linked
+  const R = await import("../src/reminders.js");
+  const G = { id: "recSEGEMACH000001", slug: "se-gemach" };
+  const gs = { Gemach: [G.id], "Gemach Slug": [G.slug] };
+  DB.Gemachs.push(rec(G.id, { Name: "SE Gemach", Slug: G.slug, Active: true, Mode: "Full", "Auto Reminders": true, "Reminder Days Before": 2, "Reminder Repeat Days": 7 }));
+  DB["Item Types"].push(rec("recSETYPE00000001", { Name: "Cane", Active: true, ...gs }));
+  DB.Borrowers.push(rec("recSEBORROW000001", { Name: "Auto One", Email: "auto1@example.com", ...gs }));
+  DB.Loans.push(rec("recSELOAN00000001", { "Loan ID": "L-SE1", Status: "Active", Borrower: ["recSEBORROW000001"], "Item to Reserve": ["recSETYPE00000001"], "Date Borrowed": "2026-09-20", "Expected Return": "2026-10-07", ...gs }));
+  await R.runReminders(env, ctx, { now: Date.parse("2026-10-05T14:00:00Z") });
+  await Promise.allSettled(waits);
+  const aev = LOG().find(l => l.fields["Loan ID"] === "L-SE1" && l.fields["Event Type"] === "Return Reminder Sent");
+  assert.equal(kindOf(aev), "reminder");
+  DB.Loans = DB.Loans.filter(l => !/^recLOANSE|^recSELOAN/.test(l.id));
+});
+
+await t("sent emails: copies are deleted after a year; History then says Gone", async () => {
+  const H = { ...auth(tokenA), "X-Gemach": A.slug };
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  const { runSentEmailCleanup } = await import("../src/sentemails.js");
+  const old = new Date(Date.now() - 366 * 86400000).toISOString();
+  DB["Sent Emails"].push(rec("recSENTOLD0000001", { "Sent At": old, To: "x@example.com", Subject: "Old", Text: "old", Status: "Sent", ...sc }),
+    rec("recSENTNEW0000001", { "Sent At": new Date().toISOString(), To: "x@example.com", Subject: "New", Text: "new", Status: "Sent", ...sc }));
+  DB["tblC3PY7f5sXQDMJK"].push(rec("recLOGSENTOLD0001", { Timestamp: old, "Event Type": "Pickup Info Sent", "Loan ID": "L-OLDMAIL", "Email ID": "recSENTOLD0000001", ...sc }));
+  d1Queries = 0;
+  const n = await runSentEmailCleanup(__WHG_TEST__.makeDbForTest(env));
+  assert.ok(n >= 1); assert.ok(d1Queries <= 2, `${d1Queries} queries`);
+  assert.ok(!DB["Sent Emails"].some(x => x.id === "recSENTOLD0000001")); assert.ok(DB["Sent Emails"].some(x => x.id === "recSENTNEW0000001"));
+  assert.equal((await call("/admin/emails/recSENTOLD0000001", { headers: H })).status, 404);
+  const hist = await (await call(`/admin/history?search=L-OLDMAIL&dateFrom=${old.slice(0, 10)}&dateTo=${old.slice(0, 10)}`, { headers: H })).json();
+  const row = hist.records.find(x => x.loanId === "L-OLDMAIL");
+  assert.equal(row.emailId, "recSENTOLD0000001"); assert.equal(row.emailStatus, "Gone");
 });
 
 {

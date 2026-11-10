@@ -104,12 +104,12 @@ async function handleNewReservation(c) {
   const events = await createReserved(c, { lines: lines.lines, start, end, borrowerId: v.id, borrowerName: v.name, sourceRequestId: req.id,
     note: `Made in admin (${requestId})`, loanNotes: notes });
   const url = await manageUrl(env, req.id);
+  const { ok: emailSent, emailId } = await sendNote(c, { to: v.email, message: withLink(body.message, url), sendMessage: body.sendMessage === true, subject: `Your ${g.name || "Gemach"} Request — Confirmed`, kind: "reservation" });
+  if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "reservation", requestId));
   events.unshift({ eventType: "Reservation Made", borrower: v.name, itemType: lines.lines.map(l => l.label).join(", "), loanId: requestId, admin: c.adminName || null,
-    notes: `${start} → ${end || "open-ended"}${notes ? `; ${notes}` : ""}` });
+    notes: `${start} → ${end || "open-ended"}${notes ? `; ${notes}` : ""}`, emailId });
   logEvents(ctx, db, g, events);
 
-  const emailSent = await sendNote(c, { to: v.email, message: withLink(body.message, url), sendMessage: body.sendMessage === true, subject: `Your ${g.name || "Gemach"} Request — Confirmed` });
-  if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "reservation", requestId));
   return json({ success: true, request: req.id, requestId, manageUrl: url, loans: events.filter(e => e.eventType !== "Reservation Made").map(e => e.loanId), ...(emailSent === false ? { emailSent: false } : {}) });
 }
 
@@ -138,11 +138,11 @@ async function handleNewAppointment(c) {
   const req = await db.create(T.REQUESTS, { ...requestFields(g, v, { requestId, type: "Appointment", ids: items.ids, qty: items.qty, eventDate, notes }),
     "Appointment At": new Date(startMs).toISOString() });
   const url = await manageUrl(env, req.id);
-  logEvents(ctx, db, g, [{ eventType: "Appointment Booked", borrower: v.name, itemType: items.names.join(", ") || "Appointment", loanId: requestId, admin: c.adminName || null,
-    notes: `Appointment ${formatNy(startMs)}${notes ? `; ${notes}` : ""}` }]);
-  const emailSent = await sendNote(c, { to: v.email, message: withLink(body.message, url), sendMessage: body.sendMessage === true,
-    subject: `Your ${g.name || "Gemach"} Request — Confirmed`, ics: { req, startMs } });
+  const { ok: emailSent, emailId } = await sendNote(c, { to: v.email, message: withLink(body.message, url), sendMessage: body.sendMessage === true,
+    subject: `Your ${g.name || "Gemach"} Request — Confirmed`, ics: { req, startMs }, kind: "appointment" });
   if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "appointment", requestId));
+  logEvents(ctx, db, g, [{ eventType: "Appointment Booked", borrower: v.name, itemType: items.names.join(", ") || "Appointment", loanId: requestId, admin: c.adminName || null,
+    notes: `Appointment ${formatNy(startMs)}${notes ? `; ${notes}` : ""}`, emailId }]);
   return json({ success: true, request: req.id, requestId, manageUrl: url, appointmentAt: new Date(startMs).toISOString(), ...(emailSent === false ? { emailSent: false } : {}) });
 }
 

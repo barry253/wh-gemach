@@ -24,7 +24,8 @@ const T = {
   LOG: "tblC3PY7f5sXQDMJK", // Activity Log
   SEARCH_LOG: "tblpy91cyNSkKx1NL", // Search Log (network-wide, no gemach scope)
   PUSH: "Push Subscriptions",      // admin devices with notifications on (push.js; D1 only)
-  SITE_EVENTS: "Site Events",      // daily counts the public site reports (events.js; D1 only)
+  SITE_EVENTS: "Site Events",
+  SENT_EMAILS: "Sent Emails",      // copies of borrower emails for History (sentemails.js; D1 only)      // daily counts the public site reports (events.js; D1 only)
 };
 
 const ALLOWED_ORIGINS = new Set([

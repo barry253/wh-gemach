@@ -5,7 +5,8 @@ import { sendAlert } from "./alerts.js";
 import { LEGACY_SLUG, T } from "./config.js";
 import { addYearsDate, eventDates, isValidDate, nyToday } from "./dates.js";
 import { vacationProblem } from "./vacationrules.js";
-import { buildEmailHtml, escHtml, sendEmail, sendNotificationEmail } from "./email.js";
+import { buildEmailHtml, escHtml, sendNotificationEmail } from "./email.js";
+import { saveSentEmail, sendBorrowerEmail } from "./sentemails.js";
 import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
 import { json } from "./http.js";
 import { getNextRequestId } from "./ids.js";
@@ -275,7 +276,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
     }), { db });
   })().catch(e => console.error("request notifications failed:", e.message)));
 
-  logEvent(ctx, db, g, {
+  const logged = logEvent(ctx, db, g, {
     eventType: "Request Received",
     borrower: fields["Name"] || null,
     itemType: itemNames.join(", ") || (isAppt ? "Appointment" : null),
@@ -284,9 +285,18 @@ async function handleSubmitRequest(request, db, env, ctx) {
   });
 
   const link = created?.id ? await manageUrl(env, created.id) : null;
-  if (link && email) ctx.waitUntil(receiptAllowed(db, email, created.id)
-    .then(ok => ok ? sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test, paymentTier: addonsOnly ? null : paymentTier }) : console.warn(`receipt skipped: over ${RECEIPTS_PER_DAY} a day to one address`))
-    .catch(e => console.error("receipt email failed:", e.message)));
+  // The receipt goes out after the answer; its copy is then linked to the "Request Received" event (View email).
+  if (link && email) ctx.waitUntil((async () => {
+    const mail = receiptEmail(g, { email, name, requestId, itemNames, isAppt, link, test, paymentTier: addonsOnly ? null : paymentTier });
+    let emailId;
+    if (await receiptAllowed(db, email, created.id)) ({ emailId } = await sendBorrowerEmail(env, db, g, mail, { kind: "receipt" }));
+    else {
+      console.warn(`receipt skipped: over ${RECEIPTS_PER_DAY} a day to one address`);
+      emailId = await saveSentEmail(db, g, { ...mail, kind: "receipt", status: "Skipped", error: `Not sent: this address already got ${RECEIPTS_PER_DAY} receipts in the last 24 hours.` });
+    }
+    const ev = await logged;
+    if (ev?.id && emailId) await db.update(T.LOG, ev.id, { "Email ID": emailId });
+  })().catch(e => console.error("receipt email failed:", e.message)));
   return json({ success: true, requestId, ...(test ? { test: true } : {}), ...(link ? { manageUrl: link } : {}) });
 }
 
@@ -301,8 +311,8 @@ async function receiptAllowed(db, email, justSavedId) {
   return recent.filter(r => r.id !== justSavedId).length < RECEIPTS_PER_DAY;
 }
 
-/** "We got your request" to the borrower (only when they gave an email), with their manage link. */
-async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, isAppt, link, test, paymentTier = null }) {
+/** "We got your request" to the borrower (only when they gave an email), with their manage link: the email to send. */
+function receiptEmail(g, { email, name, requestId, itemNames, isAppt, link, test, paymentTier = null }) {
   const first = String(name || "").trim().split(/\s+/)[0] || "there";
   const what = isAppt ? "your appointment request" : `your request${itemNames.length ? ` for ${itemNames.join(", ")}` : ""}`;
   // Gemachs with a local payment tier: tell them which amount applies to them.
@@ -317,7 +327,7 @@ async function sendBorrowerReceipt(env, g, { email, name, requestId, itemNames, 
     (charge ? `<p style="margin:0 0 12px;"><strong>${e(chargeWord)}:</strong> ${e(charge).replace(/\r\n?|\n/g, "<br>")}</p>` : "") +
     `<p style="margin:18px 0;"><a href="${e(link)}" style="display:inline-block;background:#1B3A4B;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">View or cancel your request</a></p>` +
     `<p style="margin:0;color:#5e6b72;font-size:13px;">This link is private to you — please don't share it.</p>`;
-  return sendEmail(env, g, { to: email, subject: `${test ? "[TEST] " : ""}We got your request — ${g.name || "Gemach"} (${requestId})`, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true, bodyHtml }) });
+  return { to: email, subject: `${test ? "[TEST] " : ""}We got your request — ${g.name || "Gemach"} (${requestId})`, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true, bodyHtml }) };
 }
 
 export { clip, REQUEST_CONTACTS, formatPhone, handleSubmitRequest };

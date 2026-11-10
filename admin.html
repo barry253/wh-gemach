@@ -1346,6 +1346,21 @@
       font-style: italic;
     }
 
+    .history-email {
+      display: inline-block; margin-top: 0.3rem; padding: 0.2rem 0.55rem;
+      font: inherit; font-size: 0.75rem; font-weight: 600; color: var(--navy);
+      background: var(--white); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+    }
+    .history-email.bad { color: #B71C1C; border-color: #EF9A9A; }
+    .history-email.gone { border: none; padding: 0; font-weight: 400; color: var(--muted); cursor: default; }
+    .email-view-meta { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; margin: 0.5rem 0; font-size: 0.85rem; }
+    .email-view-meta dt { color: var(--muted); }
+    .email-view-meta dd { margin: 0; overflow-wrap: anywhere; }
+    .email-view-note { font-size: 0.8rem; color: var(--muted); margin: 0.25rem 0; }
+    .email-view-status.bad { background: #FDECEA; color: #B71C1C; border-radius: 6px; padding: 0.5rem 0.65rem; font-size: 0.82rem; margin: 0.25rem 0 0.5rem; }
+    .email-view-frame { width: 100%; height: 60vh; border: 1px solid var(--border); border-radius: 8px; background: #fff; margin-top: 0.5rem; }
+    .email-view-text { white-space: pre-wrap; font: inherit; font-size: 0.85rem; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; }
+
     .load-more-btn {
       width: 100%;
       padding: 0.6rem;
@@ -2115,6 +2130,16 @@
 </div>
 
 <!-- Return Sheet -->
+<div class="sheet-overlay" id="email-view-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" onclick="closeSheet('email-view-sheet')">×</button>
+    <h3>Email to the borrower</h3>
+    <p class="sheet-subtitle" id="email-view-subtitle"></p>
+    <div id="email-view-body"></div>
+  </div>
+</div>
+
 <div class="sheet-overlay" id="return-sheet">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -6286,7 +6311,7 @@
       if (choice === "email") { // sent by us, like confirmations
         if (!message.trim()) { showToast("Write a message first"); return; }
         btn.disabled = true; btn.textContent = "Sending…";
-        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message, photos }).catch(() => null);
+        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { via: "email", message, photos }).catch(() => null);
         btn.disabled = false; btn.textContent = "Send email";
         if (!res || !res.success) { showToast(res?.error || "The email didn't go through. Try again, or use WhatsApp or text."); return; }
         PI.sent = true;
@@ -6297,10 +6322,11 @@
       if (choice !== "none") openOutbound(choice, c, message); // before any await
       PI.sent = true;
       closeSheet("pickup-instructions-sheet");
-      if (emailCopy(choice, c) && message.trim()) {
-        const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { message, photos }).catch(() => null);
-        showToast(res && res.success ? "Pickup details · copy emailed" : "The email copy of the pickup details didn't send.", res && res.success ? undefined : 8000);
-      }
+      if (choice === "none") return; // "Don't send": nothing emailed, nothing logged
+      // Logged in History as "Pickup Info Sent" (and emailed as a copy when the borrower has an address).
+      const copy = emailCopy(choice, c) && !!message.trim();
+      const res = await api(`/admin/loans/${safeId(r.id)}/pickup-email`, "POST", { via: choice, emailCopy: copy, message, photos }).catch(() => null);
+      if (copy) showToast(res && res.success && res.emailSent !== false ? "Pickup details · copy emailed" : "The email copy of the pickup details didn't send.", res && res.success && res.emailSent !== false ? undefined : 8000);
     };
     // Closed without sending: the photos it uploaded are deleted right away.
     document.getElementById("pickup-instructions-sheet")._onClose = () => {
@@ -9698,7 +9724,7 @@
     "Reservation Cancelled", "Marked for Repair", "Restored",
     "Request Received", "Request Confirmed", "Request Declined", "Borrower Created",
     "Add-on Ordered", "Add-on Handed Over", "Request Cancelled", "Ready to Return", "Return Reminder Sent",
-    "Checked Out", "Visit Closed"
+    "Return Reminder Failed", "Pickup Info Sent", "Pickup Info Not Sent", "Checked Out", "Visit Closed"
   ];
 
   const HISTORY_DOT_COLORS = {
@@ -9717,6 +9743,9 @@
     "Request Cancelled":      "#9E9E9E",
     "Ready to Return":        "#2E7D32",
     "Return Reminder Sent":   "#B45309",
+    "Return Reminder Failed": "#C62828",
+    "Pickup Info Sent":       "#0277BD",
+    "Pickup Info Not Sent":   "#C62828",
     "Checked Out":            "#1B5E20",
     "Visit Closed":           "#9E9E9E",
   };
@@ -9835,12 +9864,51 @@
             <div class="history-event-type" style="color:${color}">${esc(e.eventType || "Unknown")}</div>
             ${meta.length ? `<div class="history-meta">${meta.map(m => `<span>${esc(m)}</span>`).join("")}</div>` : ""}
             ${e.notes ? `<div class="history-notes">💬 ${esc(e.notes)}</div>` : ""}
+            ${historyEmailLink(e)}
           </div>
           <div class="history-time">${esc(fmtHistoryTime(e.timestamp))}</div>
         </div>`;
     }).join("");
 
     loadMore.style.display = historyState.offset ? "block" : "none";
+  }
+
+  // "View email": the copy of the borrower email this event sent (kept a year; Gone after that).
+  function historyEmailLink(e) {
+    if (!e.emailId) return "";
+    if (e.emailStatus === "Gone") return `<div class="history-email gone">✉️ Email no longer available (copies are kept for a year)</div>`;
+    const label = e.emailStatus === "Failed" ? "Email didn't send · View" : e.emailStatus === "Skipped" ? "Email not sent · View" : "View email";
+    return `<button type="button" class="history-email${e.emailStatus === "Failed" || e.emailStatus === "Skipped" ? " bad" : ""}" onclick="openSentEmail('${safeId(e.emailId)}')">✉️ ${esc(label)}</button>`;
+  }
+
+  async function openSentEmail(id) {
+    const box = document.getElementById("email-view-body");
+    document.getElementById("email-view-subtitle").textContent = "";
+    box.innerHTML = '<div class="loading">Loading…</div>';
+    openSheet("email-view-sheet");
+    const res = await api(`/admin/emails/${safeId(id)}`).catch(() => null);
+    if (!document.getElementById("email-view-sheet").classList.contains("open")) return;
+    if (!res || !res.id) { // the copy itself has an "error" field when it failed to send, so look for its id
+      box.innerHTML = `<p class="email-view-note">${esc(res?.error || "Couldn't open this email. Please try again.")}</p>`;
+      return;
+    }
+    const when = res.sentAt ? new Date(res.sentAt).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+    document.getElementById("email-view-subtitle").textContent = when;
+    const status = res.status === "Failed" ? `<p class="email-view-status bad">This email didn't send${res.error ? ` — ${esc(res.error)}` : ""}. This is what was meant to go.</p>`
+      : res.status === "Skipped" ? `<p class="email-view-status bad">${esc(res.error || "This email wasn't sent.")} This is what it would have said.</p>` : "";
+    const extras = [
+      res.files?.length ? `📎 Attached: ${res.files.map(esc).join(", ")}` : null,
+      res.photos ? `📷 ${res.photos} pickup photo${res.photos === 1 ? " was" : "s were"} attached (not kept with this copy)` : null,
+    ].filter(Boolean);
+    box.innerHTML = `${status}
+      <dl class="email-view-meta"><dt>To</dt><dd>${esc(res.to || "")}</dd><dt>Subject</dt><dd>${esc(res.subject || "")}</dd></dl>
+      ${extras.map(x => `<p class="email-view-note">${x}</p>`).join("")}
+      ${res.html ? `<iframe class="email-view-frame" title="The email" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>`
+        : `<pre class="email-view-text"></pre>`}`;
+    if (res.html) {
+      // Sandboxed (no scripts, no access to admin); links open in a new tab.
+      box.querySelector("iframe").srcdoc = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'"><base target="_blank">` + res.html;
+    } else box.querySelector("pre").textContent = res.text || "";
   }
 
   async function loadMoreHistory() {

@@ -6,7 +6,8 @@ import { alertBorrowerEmailFailed } from "./alerts.js";
 import { findOrCreateBorrower } from "./borrowers.js";
 import { DATE_RE, T } from "./config.js";
 import { addDays, base64Utf8, buildIcs, formatNy, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
-import { buildEmailHtml, sendEmail } from "./email.js";
+import { buildEmailHtml } from "./email.js";
+import { sendBorrowerEmail } from "./sentemails.js";
 import { selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
@@ -148,6 +149,17 @@ async function handleRequestDecision(c, id, kind) {
     }
   }
 
+  let emailSent, emailId;
+  if (sendMessage && message && fields["Email"]) {
+    ({ ok: emailSent, emailId } = await sendBorrowerEmail(env, db, g, {
+      to: fields["Email"],
+      subject: kind === "confirm" ? `Your ${g.name || "Gemach"} Request — ${declinedList.length ? "Update" : "Confirmed"}` : `Your ${g.name || "Gemach"} Request`,
+      text: String(message) + emailSignature(g),
+      html: buildEmailHtml(g, String(message), { signature: true }),
+    }, { kind }));
+    if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, kind === "confirm" ? "confirmation" : "decline", fields["Request ID"] || id));
+  }
+
   logEvents(ctx, db, g, [{
     eventType: kind === "confirm" ? "Request Confirmed" : "Request Declined",
     borrower: fields["Name"] || null,
@@ -155,18 +167,8 @@ async function handleRequestDecision(c, id, kind) {
     loanId: fields["Request ID"] || id,
     admin: c.adminName || adminName || null,
     ...(declinedList.length ? { notes: "Not available: " + declinedList.map(d => d.note ? `${d.name} (${d.note})` : d.name).join("; ") } : {}),
+    emailId,
   }, ...events]);
-
-  let emailSent;
-  if (sendMessage && message && fields["Email"]) {
-    emailSent = await sendEmail(env, g, {
-      to: fields["Email"],
-      subject: kind === "confirm" ? `Your ${g.name || "Gemach"} Request — ${declinedList.length ? "Update" : "Confirmed"}` : `Your ${g.name || "Gemach"} Request`,
-      text: String(message) + emailSignature(g),
-      html: buildEmailHtml(g, String(message), { signature: true }),
-    });
-    if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, kind === "confirm" ? "confirmation" : "decline", fields["Request ID"] || id));
-  }
   return json({ success: true, reservations, ...(declinedList.length ? { declined: declinedList } : {}), ...(emailSent === false ? { emailSent: false } : {}) });
 }
 
@@ -186,16 +188,7 @@ async function confirmAppointment(c, rec, body) {
 
   if (!(await db.updateIf(T.REQUESTS, rec.id, [Q.eq("Status", "New")], { "Status": "Converted", "Appointment At": appointmentAt }))) return alreadyHandled(db, rec.id);
   const nameMap = await itemTypeNameMap(db, (f["Items Requested"] || []).map(linkedId), g);
-  logEvent(ctx, db, g, {
-    eventType: "Request Confirmed",
-    borrower: f["Name"] || null,
-    itemType: Object.values(nameMap).join(", ") || null,
-    loanId: f["Request ID"] || rec.id,
-    admin: c.adminName || body.adminName || null,
-    notes: `Appointment ${when}`,
-  });
-
-  let emailSent;
+  let emailSent, emailId;
   if (body.sendMessage && body.message && f["Email"]) {
     const title = `${g.name || "Gemach"} appointment`;
     const ics = buildIcs({
@@ -204,15 +197,24 @@ async function confirmAppointment(c, rec, body) {
       description: `${title}${g.phone ? ` · ${g.phone}` : ""}${g.email ? ` · ${g.email}` : ""}`,
       location: g.pickupAddress || null,
     });
-    emailSent = await sendEmail(env, g, {
+    ({ ok: emailSent, emailId } = await sendBorrowerEmail(env, db, g, {
       to: f["Email"],
       subject: `Your ${g.name || "Gemach"} Request — Confirmed`,
       text: String(body.message) + emailSignature(g),
       html: buildEmailHtml(g, String(body.message), { signature: true }),
       attachments: [{ filename: "appointment.ics", content: base64Utf8(ics) }],
-    });
+    }, { kind: "appointment" }));
     if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "appointment", f["Request ID"] || rec.id));
   }
+  logEvent(ctx, db, g, {
+    eventType: "Request Confirmed",
+    borrower: f["Name"] || null,
+    itemType: Object.values(nameMap).join(", ") || null,
+    loanId: f["Request ID"] || rec.id,
+    admin: c.adminName || body.adminName || null,
+    notes: `Appointment ${when}`,
+    emailId,
+  });
   return json({ success: true, reservations: [], appointmentAt, ...(emailSent === false ? { emailSent: false } : {}) });
 }
 

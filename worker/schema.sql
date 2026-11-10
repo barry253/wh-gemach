@@ -220,6 +220,22 @@ CREATE TABLE IF NOT EXISTS activity_log (
   loan_id TEXT,  -- Loan ID
   admin TEXT,  -- Admin
   notes TEXT,  -- Notes
+  email_id TEXT,  -- Email ID
+  gemach_id TEXT REFERENCES gemachs(id) ON DELETE SET NULL  -- Gemach
+);
+
+CREATE TABLE IF NOT EXISTS sent_emails (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  sent_at TEXT,  -- Sent At
+  kind TEXT,  -- Kind
+  to_email TEXT,  -- To
+  subject TEXT,  -- Subject
+  text TEXT,  -- Text
+  html TEXT,  -- HTML
+  attachments TEXT,  -- Attachments
+  status TEXT,  -- Status
+  error TEXT,  -- Error
   gemach_id TEXT REFERENCES gemachs(id) ON DELETE SET NULL  -- Gemach
 );
 
@@ -369,6 +385,12 @@ CREATE VIEW activity_log_v AS SELECT r.*,
   (SELECT g.slug FROM gemachs g WHERE g.id = r.gemach_id) AS gemach_slug
 FROM activity_log r;
 
+DROP VIEW IF EXISTS sent_emails_v;
+CREATE VIEW sent_emails_v AS SELECT r.*,
+  r.rowid AS _seq,
+  (SELECT g.slug FROM gemachs g WHERE g.id = r.gemach_id) AS gemach_slug
+FROM sent_emails r;
+
 DROP VIEW IF EXISTS push_subscriptions_v;
 CREATE VIEW push_subscriptions_v AS SELECT r.*,
   r.rowid AS _seq
@@ -406,6 +428,7 @@ CREATE INDEX IF NOT EXISTS loans_reserve ON loans(item_to_reserve_id);
 CREATE INDEX IF NOT EXISTS loans_source ON loans(source_request_id);
 CREATE INDEX IF NOT EXISTS loans_borrower ON loans(borrower_id);
 CREATE INDEX IF NOT EXISTS activity_gemach_time ON activity_log(gemach_id, timestamp);
+CREATE INDEX IF NOT EXISTS sent_emails_time ON sent_emails(sent_at);
 CREATE UNIQUE INDEX IF NOT EXISTS search_log_query ON search_log(query);
 CREATE INDEX IF NOT EXISTS search_log_last ON search_log(last_searched);
 CREATE INDEX IF NOT EXISTS search_log_first ON search_log(first_searched);

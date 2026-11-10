@@ -29,7 +29,8 @@ import { CONTACT_MAP } from "./borrowers.js";
 import { createLoans, EMAIL_RE, validateLending } from "./checkout.js";
 import { REC_RE, T } from "./config.js";
 import { addDays, base64Utf8, buildIcs, formatNy, isValidDate, nyLocalToUtc, nyToday } from "./dates.js";
-import { buildEmailHtml, sendEmail } from "./email.js";
+import { buildEmailHtml } from "./email.js";
+import { sendBorrowerEmail } from "./sentemails.js";
 import { selName } from "./gemachs.js";
 import { json, readJson } from "./http.js";
 import { getNextLoanId } from "./ids.js";
@@ -426,14 +427,16 @@ async function handlePatchBooking(c) {
   }
 
   const rid = rf["Request ID"] || b.loans[0]?.fields?.["Loan ID"] || null;
-  if (changes.length) events.push({ eventType: "Booking Updated", borrower: borrowerName, loanId: rid, admin: c.adminName || null, notes: changes.join("; ").slice(0, 1000) });
-  logEvents(ctx, db, g, events);
-
   // Optional note to the borrower (an appointment's new time comes with a calendar invite).
   const to = has(reqUpdate, "Email") ? reqUpdate.Email : has(borrowerUpdate, "Email") ? borrowerUpdate.Email : b.borrower?.fields?.Email || rf.Email || null;
-  const emailSent = await sendNote(c, { to, message: body.message, sendMessage: body.sendMessage === true, subject: `Your ${g.name || "Gemach"} ${kind === "appointment" ? "appointment" : kind === "request" ? "request" : kind === "loan" ? "loan" : "reservation"} — updated`,
-    ics: apptStartMs ? { req, startMs: apptStartMs } : null });
+  const { ok: emailSent, emailId } = await sendNote(c, { to, message: body.message, sendMessage: body.sendMessage === true, subject: `Your ${g.name || "Gemach"} ${kind === "appointment" ? "appointment" : kind === "request" ? "request" : kind === "loan" ? "loan" : "reservation"} — updated`,
+    ics: apptStartMs ? { req, startMs: apptStartMs } : null, kind: "update" });
   if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "update", rid || "booking"));
+
+  // The email (View email) goes on "Booking Updated"; a message with no changes still gets its own entry.
+  if (changes.length || emailId) events.push({ eventType: "Booking Updated", borrower: borrowerName, loanId: rid, admin: c.adminName || null,
+    notes: changes.length ? changes.join("; ").slice(0, 1000) : "Message only, no changes", emailId });
+  logEvents(ctx, db, g, events);
 
   const fresh = await loadBooking(db, g, req ? { requestId: req.id } : { loanId: b.loans[0].id });
   return json({ success: true, changes, ...(emailSent === false ? { emailSent: false } : {}), booking: fresh ? await bookingPayload(c, fresh) : null });
@@ -501,11 +504,14 @@ async function checkRequestedItems(db, g, raw, { allowEmpty }) {
   return { ids, qty, names };
 }
 
-/** Email the borrower when asked; true / false (failed) / undefined (not sent). */
-async function sendNote(c, { to, message, sendMessage, subject, ics = null }) {
+/**
+ * Email the borrower when asked, keeping a copy for History (kind). Returns { ok, emailId }:
+ * ok true / false (failed) / undefined (not sent); emailId = the copy (also when it failed), for the History event.
+ */
+async function sendNote(c, { to, message, sendMessage, subject, ics = null, kind = null }) {
   const text = String(message ?? "").trim().slice(0, MAX_MESSAGE);
   const addr = String(to || "").trim();
-  if (!sendMessage || !text || !addr) return undefined;
+  if (!sendMessage || !text || !addr) return { ok: undefined, emailId: null };
   const g = c.g;
   const mail = { to: addr, subject, text: text + emailSignature(g), html: buildEmailHtml(g, text, { signature: true }) };
   if (ics) {
@@ -517,7 +523,7 @@ async function sendNote(c, { to, message, sendMessage, subject, ics = null }) {
     });
     mail.attachments = [{ filename: "appointment.ics", content: base64Utf8(cal) }];
   }
-  return sendEmail(c.env, g, mail);
+  return sendBorrowerEmail(c.env, c.db, g, mail, { kind });
 }
 
 // ─── Cancel ───────────────────────────────────────────────────────────────────
@@ -543,15 +549,15 @@ async function handleCancelBooking(c) {
   const info = await itemTypeInfoMap(db, [...reserved.map(l => linkedId(firstLink(l.fields["Item to Reserve"]))), ...(rf["Items Requested"] || []).map(linkedId)].filter(Boolean), g);
   const rid = rf["Request ID"] || reserved[0]?.fields?.["Loan ID"] || null;
   const what = kind === "appointment" ? "Appointment" : kind === "request" ? "Request" : "Reservation";
+  const to = b.borrower?.fields?.Email || rf.Email || null;
+  const { ok: emailSent, emailId } = await sendNote(c, { to, message: body.message, sendMessage: body.sendMessage === true, subject: `Your ${g.name || "Gemach"} ${what.toLowerCase()} — cancelled`, kind: "cancel" });
+  if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "cancellation", rid || "booking"));
   logEvents(ctx, db, g, [
-    ...reserved.map(l => ({ eventType: "Reservation Cancelled", itemType: info[linkedId(firstLink(l.fields["Item to Reserve"]))]?.name || null, borrower: borrowerName, loanId: l.fields["Loan ID"] || null, admin: c.adminName || null })),
+    ...reserved.map(l => ({ eventType: "Reservation Cancelled", itemType: info[linkedId(firstLink(l.fields["Item to Reserve"]))]?.name || null, borrower: borrowerName, loanId: l.fields["Loan ID"] || null, admin: c.adminName || null, emailId })),
     ...(b.req && !active.length ? [{ eventType: "Request Cancelled", borrower: borrowerName, loanId: rid,
       itemType: (rf["Items Requested"] || []).map(linkedId).map(id => info[id]?.name).filter(Boolean).join(", ") || (isAppt(b.req) ? "Appointment" : null),
-      admin: c.adminName || null, notes: `${what} cancelled by the gemach` }] : []),
+      admin: c.adminName || null, notes: `${what} cancelled by the gemach`, emailId }] : []),
   ]);
-  const to = b.borrower?.fields?.Email || rf.Email || null;
-  const emailSent = await sendNote(c, { to, message: body.message, sendMessage: body.sendMessage === true, subject: `Your ${g.name || "Gemach"} ${what.toLowerCase()} — cancelled` });
-  if (emailSent === false) ctx.waitUntil(alertBorrowerEmailFailed(env, g, "cancellation", rid || "booking"));
   return json({ success: true, cancelled: reserved.length, requestCancelled: !!(b.req && !active.length), ...(emailSent === false ? { emailSent: false } : {}) });
 }
 

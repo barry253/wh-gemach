@@ -3,11 +3,13 @@ import { DbError, Q } from "./records.js";
 import { DATE_RE, T } from "./config.js";
 import { json } from "./http.js";
 import { typePhotos } from "./quantity.js";
+import { sentEmailStatuses } from "./sentemails.js";
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 
 // Fire-and-forget; never throws. Always stamps the gemach.
-function logEvent(ctx, db, g, { eventType, itemCode, itemType, borrower, loanId, admin, notes }) {
+// emailId: the borrower email this event sent (sentemails.js) — History shows "View email".
+function logEvent(ctx, db, g, { eventType, itemCode, itemType, borrower, loanId, admin, notes, emailId }) {
   const fields = { "Timestamp": new Date().toISOString(), "Event Type": eventType, "Gemach": [g.id] };
   if (itemCode) fields["Item Code"] = String(itemCode);
   if (itemType) fields["Item Type"] = String(itemType);
@@ -15,8 +17,10 @@ function logEvent(ctx, db, g, { eventType, itemCode, itemType, borrower, loanId,
   if (loanId)   fields["Loan ID"] = String(loanId);
   if (admin)    fields["Admin"] = String(admin);
   if (notes)    fields["Notes"] = String(notes);
-  const p = db.create(T.LOG, fields).catch(e => console.error("logEvent failed:", e.message));
+  if (emailId)  fields["Email ID"] = String(emailId);
+  const p = db.create(T.LOG, fields).catch(e => { console.error("logEvent failed:", e.message); return null; });
   if (ctx?.waitUntil) ctx.waitUntil(p);
+  return p; // the saved row (or null), for flows that add the email id once it has gone out
 }
 
 /** Several History rows in one write (D1: one statement per ~9 rows). Fire-and-forget like logEvent. */
@@ -24,7 +28,7 @@ function logEvents(ctx, db, g, events) {
   if (!events?.length) return;
   if (!db.createMany) { events.forEach(e => logEvent(ctx, db, g, e)); return; }
   const now = new Date().toISOString();
-  const rows = events.map(({ eventType, itemCode, itemType, borrower, loanId, admin, notes }) => {
+  const rows = events.map(({ eventType, itemCode, itemType, borrower, loanId, admin, notes, emailId }) => {
     const fields = { "Timestamp": now, "Event Type": eventType, "Gemach": [g.id] };
     if (itemCode) fields["Item Code"] = String(itemCode);
     if (itemType) fields["Item Type"] = String(itemType);
@@ -32,6 +36,7 @@ function logEvents(ctx, db, g, events) {
     if (loanId)   fields["Loan ID"] = String(loanId);
     if (admin)    fields["Admin"] = String(admin);
     if (notes)    fields["Notes"] = String(notes);
+    if (emailId)  fields["Email ID"] = String(emailId);
     return fields;
   });
   const p = db.createMany(T.LOG, rows).catch(e => console.error("logEvents failed:", e.message));
@@ -74,6 +79,7 @@ async function handleGetHistory({ db, g, url }) {
     loanId: r.fields["Loan ID"] || null,
     admin: r.fields["Admin"] || null,
     notes: r.fields["Notes"] || null,
+    emailId: r.fields["Email ID"] || null,
   }));
 
   if (search) {
@@ -87,6 +93,9 @@ async function handleGetHistory({ db, g, url }) {
     );
   }
   await attachPhotos(db, g, records);
+  // "View email": Sent / Failed / Skipped, or "Gone" once the copy was deleted (kept a year).
+  const statuses = await sentEmailStatuses(db, g, records.map(r => r.emailId));
+  if (statuses) for (const r of records) if (r.emailId) r.emailStatus = statuses[r.emailId] || "Gone";
   return json({ records, offset: page.offset || null });
 }
 

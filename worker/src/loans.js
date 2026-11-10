@@ -11,7 +11,8 @@ import { getNextLoanId } from "./ids.js";
 import { MAX_QTY, isAddonType, isQtyType, itemTypeInfoMap, loanQty, wholeNum } from "./quantity.js";
 import { itemTypeNameMap } from "./requests.js";
 import { manageUrl } from "./manage.js";
-import { buildEmailHtml, messageHtml, sendEmail } from "./email.js";
+import { buildEmailHtml, messageHtml } from "./email.js";
+import { sendBorrowerEmail } from "./sentemails.js";
 import { pickupPhotoAttachments, pickupPhotosHtml } from "./pickupphotos.js";
 import { emailSignature } from "./settings.js";
 
@@ -225,8 +226,11 @@ async function loanItemLabel(db, g, loan) {
   return (d.itemType || "item") + (!(loan.fields["Item"] || []).length && q > 1 ? ` × ${q}` : "");
 }
 
-/** Email the loan's borrower an admin-written message (the borrower's address comes from the Borrowers table, never the request). */
-async function emailBorrower(c, loan, message, subject, { attachments = null, extraHtml = "" } = {}) {
+/**
+ * Email the loan's borrower an admin-written message (the borrower's address comes from the Borrowers table, never the request).
+ * A copy is kept for History (kind); emailId is in the answer whenever it was attempted, even when it failed.
+ */
+async function emailBorrower(c, loan, message, subject, { attachments = null, extraHtml = "", kind = null } = {}) {
   const { db, g, env } = c;
   const text = String(message ?? "").trim();
   if (!text) return { error: "Write a message first.", status: 400 };
@@ -236,24 +240,48 @@ async function emailBorrower(c, loan, message, subject, { attachments = null, ex
   const to = String(b?.fields?.Email || "").trim();
   if (!to) return { error: "This borrower has no email address.", status: 400 };
   const html = buildEmailHtml(g, text, { signature: true, ...(extraHtml ? { bodyHtml: messageHtml(text, g) + extraHtml } : {}) });
-  const ok = await sendEmail(env, g, { to, subject, text: text + emailSignature(g), html, ...(attachments?.length ? { attachments } : {}) });
-  if (!ok) return { error: "The email didn't go through. Try again, or send it by WhatsApp or text.", status: 422 }; // the admin sees it right away; not a server error
-  return { ok: true, to };
+  const { ok, emailId } = await sendBorrowerEmail(env, db, g, { to, subject, text: text + emailSignature(g), html, ...(attachments?.length ? { attachments } : {}) }, { kind });
+  if (!ok) return { error: "The email didn't go through. Try again, or send it by WhatsApp or text.", status: 422, emailId }; // the admin sees it right away; not a server error
+  return { ok: true, to, emailId };
 }
 
-/** POST /admin/loans/:id/pickup-email — email the pickup details (admin-edited) to the borrower of a reservation. */
+/**
+ * POST /admin/loans/:id/pickup-email — pickup details (admin-edited) for a reservation, logged in History as
+ * "Pickup Info Sent". body.via: "email" (we send it; the default, as older admin pages send no via) or
+ * "whatsapp" / "sms" (sent from the admin's phone; with emailCopy: true the same message is also emailed when
+ * the borrower has an address). A failed email is logged as "Pickup Info Not Sent".
+ */
 async function handlePickupEmail(c, id) {
-  const { db, g } = c;
+  const { db, g, ctx } = c;
   const body = await readJson(c.request);
   const loan = await getOwned(db, T.LOANS, id, g);
   if (!loan) return json({ error: "Not found" }, 404);
   if (!["Reserved", "Active"].includes(selName(loan.fields.Status))) return json({ error: "This reservation isn't open any more." }, 409);
+  const byPhone = body.via === "whatsapp" || body.via === "sms";
+  const via = byPhone ? (body.via === "whatsapp" ? "WhatsApp" : "text message") : "email";
+  const wantEmail = !byPhone || body.emailCopy === true;
+  if (!byPhone && !String(body.message ?? "").trim()) return json({ error: "Write a message first." }, 400);
   // Pickup photos (pickupphotos.js): embedded under the message; the message itself carries the photo link too.
-  const pics = body.photos ? await pickupPhotoAttachments(c.env, g, String(body.photos)) : null;
-  const sent = await emailBorrower(c, loan, body.message, `Pickup details — ${g.name || "Gemach"}`,
-    pics ? { attachments: pics.attachments, extraHtml: pickupPhotosHtml(pics.cids) } : {});
-  if (sent.error) return json({ error: sent.error }, sent.status);
-  return json({ success: true, ...(pics ? { photos: pics.cids.length } : {}) });
+  const pics = wantEmail && body.photos ? await pickupPhotoAttachments(c.env, g, String(body.photos)) : null;
+  let sent = null;
+  if (wantEmail && String(body.message ?? "").trim()) {
+    sent = await emailBorrower(c, loan, body.message, `Pickup details — ${g.name || "Gemach"}`,
+      { kind: "pickup", ...(pics ? { attachments: pics.attachments, extraHtml: pickupPhotosHtml(pics.cids) } : {}) });
+  }
+  const photoNote = pics?.cids.length ? `${pics.cids.length} photo${pics.cids.length === 1 ? "" : "s"} attached` : null;
+  const failed = !byPhone && !sent?.ok;
+  if (!failed || sent?.emailId) {
+    const copy = byPhone && sent ? (sent.ok ? " (copy emailed)" : sent.emailId ? " (the email copy didn't send)" : "") : "";
+    logEvent(ctx, db, g, {
+      eventType: failed ? "Pickup Info Not Sent" : "Pickup Info Sent",
+      ...(await loanLogDetails(db, g, loan, body)),
+      admin: c.adminName || null,
+      notes: [failed ? "The email didn't go through" : `Sent by ${via}${copy}`, photoNote].filter(Boolean).join("; "),
+      emailId: sent?.emailId || null,
+    });
+  }
+  if (!byPhone && sent?.error) return json({ error: sent.error }, sent.status);
+  return json({ success: true, ...(pics ? { photos: pics.cids.length } : {}), ...(byPhone && sent ? { emailSent: !!sent.ok } : {}) });
 }
 
 /** An admin sent a "time to return" reminder (email from us, or WhatsApp / text from their phone): stamp the loan and log it. */
@@ -264,15 +292,22 @@ async function handleLoanReminder(c, id) {
   if (!loan) return json({ error: "Not found" }, 404);
   if (selName(loan.fields.Status) !== "Active") return json({ error: "This loan isn't out right now." }, 409);
   const via = { whatsapp: "WhatsApp", sms: "text message", email: "email" }[body.via] || null;
+  let emailId = null; // the copy kept for History (View email)
   // Email is sent by us (branded, from noreply, replies to the gemach); WhatsApp / text are sent from the admin's phone.
   if (body.via === "email") {
-    const sent = await emailBorrower(c, loan, body.message, `Reminder: please return the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`);
-    if (sent.error) return json({ error: sent.error }, sent.status);
+    const sent = await emailBorrower(c, loan, body.message, `Reminder: please return the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`, { kind: "reminder" });
+    if (sent.error) {
+      // A failed email (not a missing address): logged so History shows what was meant to go.
+      if (sent.emailId) logEvent(ctx, db, g, { eventType: "Return Reminder Failed", ...(await loanLogDetails(db, g, loan, body)), admin: c.adminName || null, notes: "The email didn't go through", emailId: sent.emailId });
+      return json({ error: sent.error }, sent.status);
+    }
+    emailId = sent.emailId;
   }
   // WhatsApp / text from the admin's phone: the same message is also emailed, as the borrower's record (when they have an address).
   let emailSent;
   if ((body.via === "whatsapp" || body.via === "sms") && body.emailCopy === true && String(body.message ?? "").trim()) {
-    const sent = await emailBorrower(c, loan, body.message, `Reminder: please return the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`);
+    const sent = await emailBorrower(c, loan, body.message, `Reminder: please return the ${await loanItemLabel(db, g, loan)} — ${g.name || "Gemach"}`, { kind: "reminder" });
+    emailId = sent.emailId || null;
     if (sent.ok) emailSent = true;
     else if (sent.status === 422) emailSent = false;    // no address or empty message: nothing to copy
   }
@@ -282,7 +317,8 @@ async function handleLoanReminder(c, id) {
     eventType: "Return Reminder Sent",
     ...(await loanLogDetails(db, g, loan, body)),
     admin: c.adminName || null,
-    notes: via ? `Sent by ${via}${emailSent ? " (copy emailed)" : ""}` : null,
+    notes: via ? `Sent by ${via}${emailSent ? " (copy emailed)" : emailSent === false && emailId ? " (the email copy didn't send)" : ""}` : null,
+    emailId,
   });
   return json({ success: true, reminderSentAt: now, reminderSentVia: via, ...(emailSent !== undefined ? { emailSent } : {}) });
 }
@@ -323,13 +359,14 @@ async function handleReturnLoan(c, id) {
 
   // "Item returned" message (Settings → Message templates): emailed by us when Email was chosen, or as the
   // email copy of a WhatsApp / text sent from the admin's phone. The return stands even if the email fails.
-  let emailSent, emailError;
+  let emailSent, emailError, emailId = null;
   const via = { whatsapp: "WhatsApp", sms: "text message", email: "email" }[body.via] || null;
   if (g.returnedMessageOn && (body.via === "email" || ((body.via === "whatsapp" || body.via === "sms") && body.emailCopy === true)) && String(body.message ?? "").trim()) {
     // itemsLabel: several items of a booking returned together, thanked for in one message ("Walker and Shower Seat").
     const label = typeof body.itemsLabel === "string" && body.itemsLabel.trim() ? body.itemsLabel.trim().slice(0, 200) : await loanItemLabel(db, g, loan);
-    const sent = await emailBorrower(c, loan, body.message, `Thank you for returning the ${label} — ${g.name || "Gemach"}`);
+    const sent = await emailBorrower(c, loan, body.message, `Thank you for returning the ${label} — ${g.name || "Gemach"}`, { kind: "returned" });
     emailSent = !!sent.ok;
+    emailId = sent.emailId || null;
     if (!sent.ok) emailError = sent.error;
   }
   const sentNote = g.returnedMessageOn && via ? `Thank-you sent by ${via}${body.via !== "email" && emailSent ? " (copy emailed)" : ""}${body.via === "email" && !emailSent ? " — email failed" : ""}` : null;
@@ -339,6 +376,7 @@ async function handleReturnLoan(c, id) {
     ...(await loanLogDetails(db, g, loan, body)),
     admin: c.adminName || body.adminName || null,
     notes: [notes, sentNote].filter(Boolean).join("; ") || null,
+    emailId,
   });
   return json({ success: true, ...(typeRec ? { missing } : {}), ...(emailSent !== undefined ? { emailSent } : {}), ...(emailError ? { emailError } : {}) });
 }
