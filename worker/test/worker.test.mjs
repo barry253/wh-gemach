@@ -56,7 +56,18 @@ let cfAnswer = () => new Response("{}", { status: 500 });
 // Web Push: messages "delivered" to push services, and what each endpoint answers (status code).
 const pushes = [];
 let pushStatusFor = () => 201;
-let resendFail = false, dbFail = null; // dbFail(method, table, id): make that data-layer call fail
+let resendFail = false, dbFail = null;
+// Resend's own list / retrieve (emailimport.js): RESEND_SENT is "their" log, newest first.
+let RESEND_SENT = [];
+const resendGet = url => {
+  const u = new URL(url);
+  const m = u.pathname.match(/^\/emails\/(.+)$/);
+  if (m) { const e = RESEND_SENT.find(x => x.id === m[1]); return new Response(JSON.stringify(e || { message: "not found" }), { status: e ? 200 : 404 }); }
+  const limit = Number(u.searchParams.get("limit") || 20), after = u.searchParams.get("after");
+  const start = after ? RESEND_SENT.findIndex(x => x.id === after) + 1 : 0;
+  const data = RESEND_SENT.slice(start, start + limit).map(({ html, text, ...rest }) => rest);
+  return new Response(JSON.stringify({ object: "list", has_more: start + limit < RESEND_SENT.length, data }));
+}; // dbFail(method, table, id): make that data-layer call fail
 
 
 // Turnstile siteverify (tests replace this): token "good" passes, anything else fails.
@@ -71,6 +82,7 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.startsWith("https://oauth2.googleapis.com/tokeninfo")) {
     return new Response(JSON.stringify({ email: "Barry@Example.com", email_verified: "true", aud: "802083328700-pa13f067g5lsf1uijm4nqp40ptivjbti.apps.googleusercontent.com" }));
   }
+  if (url.startsWith("https://api.resend.com") && method === "GET") return resendGet(url); // emailimport.js reads the list
   if (url.startsWith("https://api.resend.com")) {
     const to = JSON.parse(init.body).to?.[0];
     if (resendFail && to !== "alerts@example.com") return new Response('{"message":"boom"}', { status: 500 });
@@ -88,7 +100,7 @@ globalThis.fetch = async (input, init = {}) => {
 };
 
 const R2 = [];
-const env = { GEMACH_JWT: "test-secret", RESEND_API_KEY: "k", ALERT_EMAIL: "alerts@example.com", ASSETS_URL: "https://assets",
+const env = { GEMACH_JWT: "test-secret", RESEND_API_KEY: "k", RESEND_PAUSE_MS: 0, ALERT_EMAIL: "alerts@example.com", ASSETS_URL: "https://assets",
   ASSETS_BUCKET: { put: async (key, body, opts) => { R2.push({ key, size: body.byteLength, opts }); } } };
 const waits = [];
 const ctx = { waitUntil: p => waits.push(p) };
@@ -5459,6 +5471,71 @@ await t("sent emails: copies are deleted after a year; History then says Gone", 
   const hist = await (await call(`/admin/history?search=L-OLDMAIL&dateFrom=${old.slice(0, 10)}&dateTo=${old.slice(0, 10)}`, { headers: H })).json();
   const row = hist.records.find(x => x.loanId === "L-OLDMAIL");
   assert.equal(row.emailId, "recSENTOLD0000001"); assert.equal(row.emailStatus, "Gone");
+});
+
+await t("email import: preview then import of older borrower emails from Resend; sure matches only; pickup gets an entry; not twice", async () => {
+  const sc = { Gemach: [A.id], "Gemach Slug": [A.slug] };
+  const tokenNA = await sign({ email: "n@x", name: "N", role: "Network Admin", gemachs: [] });
+  const H = { ...auth(tokenNA), "Content-Type": "application/json" };
+  const LOG = DB["tblC3PY7f5sXQDMJK"];
+  DB.Requests.push(rec("recREQIMP00000001", { "Request ID": "R-777", Name: "Imp Person", Email: "Imp@Example.com", Status: "Converted", ...sc }));
+  LOG.push(rec("recLOGIMP00000001", { Timestamp: "2026-11-01T14:00:00.000Z", "Event Type": "Request Confirmed", Borrower: "Imp Person", "Loan ID": "R-777", ...sc }),
+    rec("recLOGIMP00000002", { Timestamp: "2026-10-30T09:00:01.000Z", "Event Type": "Request Received", Borrower: "Imp Person", "Loan ID": "R-777", ...sc }),
+    rec("recLOGIMP00000003", { Timestamp: "2026-10-28T10:00:00.000Z", "Event Type": "Request Cancelled", Borrower: "Imp Person", "Loan ID": "R-777", ...sc }),
+    rec("recLOGIMP00000004", { Timestamp: "2026-10-28T10:00:00.000Z", "Event Type": "Reservation Cancelled", Borrower: "Imp Person", "Loan ID": "L-777", ...sc }),
+    rec("recLOGIMP00000005", { Timestamp: "2026-10-27T10:00:00.000Z", "Event Type": "Request Declined", Borrower: "Someone Else", ...sc }));
+  const from = '"West Hempstead Medical Gemach" <noreply@whgemachs.org>';
+  const E = (id, created_at, to, subject, extra = {}) => ({ id, created_at, to: [to], from, subject, reply_to: ["wh@example.com"], html: `<p>${subject}</p>`, text: subject, ...extra });
+  RESEND_SENT = [
+    E("e-after-0000001", "2026-11-10 04:00:00.000000+00", "imp@example.com", "Your West Hempstead Medical Gemach Request — Confirmed"),
+    E("e-confirm-00001", "2026-11-01 14:00:04.512345+00", "imp@example.com", "Your West Hempstead Medical Gemach Request — Confirmed"),
+    E("e-notice-000001", "2026-11-01 13:59:00.000000+00", "wh@example.com", "New request R-777 — Imp Person"),
+    E("e-pickup-000001", "2026-10-31 12:00:00.000000+00", "imp@example.com", "Pickup details — West Hempstead Medical Gemach"),
+    E("e-receipt-00001", "2026-10-30 09:00:05.000000+00", "imp@example.com", "We got your request — West Hempstead Medical Gemach (R-777)"),
+    E("e-cancel-000001", "2026-10-28 10:00:02.000000+00", "imp@example.com", "Your West Hempstead Medical Gemach reservation — cancelled"),
+    E("e-decline-00001", "2026-10-27 10:00:01.000000+00", "imp@example.com", "Your West Hempstead Medical Gemach Request"),
+    E("e-stranger-0001", "2026-10-26 10:00:00.000000+00", "stranger@example.com", "Pickup details — West Hempstead Medical Gemach"),
+  ];
+  // only network admins
+  assert.equal((await call("/admin/network/email-import", { method: "POST", headers: { ...auth(tokenA), "Content-Type": "application/json" }, body: "{}" })).status, 403);
+  // preview: nothing written
+  const n0 = DB["Sent Emails"].length, l0 = LOG.length;
+  let r = await call("/admin/network/email-import", { method: "POST", headers: H, body: JSON.stringify({ dryRun: true }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  let p = await r.json();
+  assert.equal(p.done, true); assert.equal(p.seen, 8);
+  assert.deepEqual([p.linked, p.pickup, p.unsure, p.notBorrower], [3, 1, 1, 2], JSON.stringify(p));
+  assert.equal(DB["Sent Emails"].length, n0); assert.equal(LOG.length, l0);
+  assert.equal(p.rows.find(x => x.kind === "decline").reason, "no matching History entry", "a different borrower's decline isn't taken");
+  // import (small pages, cursor to the end)
+  let cursor = null, pages = 0, saved = 0;
+  do {
+    d1Queries = 0;
+    r = await call("/admin/network/email-import", { method: "POST", headers: H, body: JSON.stringify({ dryRun: false, cursor }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    p = await r.json(); cursor = p.cursor; saved += p.saved; pages++;
+    assert.ok(d1Queries <= 50, `${d1Queries} queries`);
+  } while (!p.done && pages < 5);
+  assert.equal(saved, 4);
+  const linkOf = id => LOG.find(l => l.id === id).fields["Email ID"];
+  const copy = id => DB["Sent Emails"].find(x => x.id === linkOf(id));
+  assert.equal(copy("recLOGIMP00000001").fields.Kind, "confirm");
+  assert.equal(copy("recLOGIMP00000001").fields["Sent At"], "2026-11-01T14:00:04.512Z");
+  assert.ok(copy("recLOGIMP00000001").fields.HTML.includes("Request — Confirmed"), "content from Resend");
+  assert.equal(copy("recLOGIMP00000002").fields.Kind, "receipt");
+  assert.ok(linkOf("recLOGIMP00000003") && linkOf("recLOGIMP00000003") === linkOf("recLOGIMP00000004"), "a cancel links each of its entries");
+  assert.ok(!linkOf("recLOGIMP00000005"));
+  const pick = LOG.find(l => l.fields["Event Type"] === "Pickup Info Sent" && l.fields.Timestamp === "2026-10-31T12:00:00.000Z");
+  assert.ok(pick && pick.fields.Borrower === "Imp Person" && pick.fields.Notes === "Sent by email" && pick.fields.Gemach[0] === A.id);
+  assert.equal(DB["Sent Emails"].find(x => x.id === pick.fields["Email ID"]).fields.To, "imp@example.com");
+  assert.ok(!DB["Sent Emails"].some(x => x.fields.To === "wh@example.com" || x.fields.To === "stranger@example.com"), "gemach notices / strangers never saved");
+  // running it again adds nothing
+  const n1 = DB["Sent Emails"].length, l1 = LOG.length;
+  r = await call("/admin/network/email-import", { method: "POST", headers: H, body: JSON.stringify({ dryRun: false }) });
+  p = await r.json();
+  assert.equal(p.saved, 0); assert.equal(DB["Sent Emails"].length, n1); assert.equal(LOG.length, l1);
+  RESEND_SENT = [];
+  DB.Requests = DB.Requests.filter(x => x.id !== "recREQIMP00000001");
 });
 
 {

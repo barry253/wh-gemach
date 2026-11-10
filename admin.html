@@ -1770,6 +1770,16 @@
         </div>
         <p class="stat-note" style="margin:0 0 .6rem">What people looked for on the home page that no gemach had, or that was all on loan. Useful for deciding what to add, or which gemach to invite next.</p>
         <div class="card" id="net-searches" style="margin-bottom:1.5rem"><div class="loading">Loading…</div></div>
+
+        <div class="net-toolbar" style="margin-top:.5rem">
+          <div class="section-label" style="margin:0;border:0;padding:0" id="net-sec-email-import">Older borrower emails</div>
+        </div>
+        <p class="stat-note" style="margin:0 0 .6rem">Copies of borrower emails are kept since Nov 9, 2026. The email service still has about the last 30 days before that: bring them in so History's "View email" works for them too. Only emails that match a History entry for sure are taken; nothing is sent.</p>
+        <div class="card" id="net-email-import" style="margin-bottom:1.5rem">
+          <div id="net-ei-result" class="stat-note" style="margin:0 0 .6rem">Preview first to see what would come in.</div>
+          <button type="button" class="btn btn-ghost" id="net-ei-preview" onclick="runEmailImport(true)">Preview</button>
+          <button type="button" class="btn btn-primary" id="net-ei-go" onclick="runEmailImport(false)" disabled>Add to History</button>
+        </div>
       </div>
     </div>
 
@@ -8011,6 +8021,36 @@
   function slugifyName(name) {
     return String(name || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
       .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50).replace(/-+$/g, "") || "gemach";
+  }
+
+  // One-off (Nov 2026): borrower emails sent before copies were kept, from the email service's ~30 days (emailimport.js).
+  async function runEmailImport(dryRun) {
+    const out = document.getElementById("net-ei-result");
+    const pv = document.getElementById("net-ei-preview"), go = document.getElementById("net-ei-go");
+    pv.disabled = go.disabled = true;
+    const tot = { seen: 0, linked: 0, pickup: 0, unsure: 0, notBorrower: 0, saved: 0, oldest: null, reasons: {} };
+    let cursor = null, pages = 0, res;
+    try {
+      do {
+        out.textContent = `${dryRun ? "Checking" : "Importing"}… ${tot.seen} looked at so far`;
+        res = await api("/admin/network/email-import", "POST", { dryRun, cursor });
+        if (!res || res.error) throw new Error(res?.error || "No answer");
+        for (const k of ["seen", "linked", "pickup", "unsure", "notBorrower", "saved"]) tot[k] += res[k] || 0;
+        if (res.oldest && (!tot.oldest || res.oldest < tot.oldest)) tot.oldest = res.oldest;
+        for (const r of res.rows || []) if (r.outcome === "unsure") tot.reasons[r.reason] = (tot.reasons[r.reason] || 0) + 1;
+        cursor = res.cursor; pages++;
+      } while (!res.done && cursor && pages < 200);
+    } catch (e) {
+      out.textContent = `Stopped: ${e.message}. ${dryRun ? "" : `${tot.saved} saved so far; running "Add to History" again carries on safely.`}`;
+      pv.disabled = false; go.disabled = dryRun;
+      return;
+    }
+    const since = tot.oldest ? new Date(tot.oldest).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+    const why = Object.entries(tot.reasons).map(([r, n]) => `${n} ${r}`).join(", ");
+    out.textContent = dryRun
+      ? `The email service has ${tot.seen} emails${since ? ` back to ${since}` : ""}. ${tot.linked} borrower emails match a History entry and ${tot.pickup} pickup emails would get a new "Pickup Info Sent" entry. ${tot.unsure} borrower emails can't be matched for sure and would be left out${why ? ` (${why})` : ""}. ${tot.notBorrower} weren't to borrowers (gemach notices, alerts) and are never taken.`
+      : `Done: ${tot.saved} emails saved and linked in History.${tot.unsure ? ` ${tot.unsure} left out (not sure which entry they belong to).` : ""}`;
+    pv.disabled = false; go.disabled = !dryRun || !(tot.linked + tot.pickup);
   }
 
   async function loadNetwork() {
