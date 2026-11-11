@@ -793,6 +793,7 @@
     .bk-line-sub { font-size: 0.75rem; color: var(--muted); margin-top: 1px; }
     .bk-line-sub.warn { color: var(--amber); font-weight: 600; }
     .bk-line-sub.good { color: var(--green); }
+    .bk-line-sub .clash { color: var(--red); font-weight: 600; }
     .bk-line > .btn { flex-shrink: 0; }
     /* Multi-item loan: a checklist (all checked) and one "Mark all returned" button */
     .bk-ret-box { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--navy); cursor: pointer; }
@@ -4126,6 +4127,19 @@
    * One booking on the Reservations (p = "res") or Loans (p = "loan") list: a compact row, and when opened
    * the request card's details with the actions.
    */
+  /** Reservations: "⚠ Double-booked: 24 promised, the gemach has 12 · also Chaya (R-111) × 12, Nov 12 – Nov 16". */
+  function clashText(l) {
+    const c = l.clash;
+    if (!c) return "";
+    const other = o => {
+      const who = [o.borrower || "someone", o.requestId ? `(${o.requestId})` : ""].filter(Boolean).join(" ");
+      const qty = l.isQuantity ? ` × ${o.quantity}` : "";
+      const when = o.status === "Active" ? (o.to ? `out on loan until ${fmt(o.to)}` : "out on loan, no due date")
+        : o.to ? `${fmt(o.from)} – ${fmt(o.to)}` : `from ${fmt(o.from)}`;
+      return `${who}${qty}, ${when}`;
+    };
+    return `⚠ Double-booked: ${c.booked} promised for these dates, the gemach has ${c.cap}${c.others?.length ? ` · also ${c.others.map(other).join("; ")}` : ""}`;
+  }
   function bookingRowHtml(b, p) {
     const isLoan = p === "loan";
     b.loans.forEach(l => keep(p, l));
@@ -4203,6 +4217,7 @@
       const subs = [];
       if (l.isAddon && l.price != null) subs.push(esc(`${fmtMoney(l.price)} each${l.quantity > 1 ? ` · ${fmtMoney(l.price * l.quantity)}` : ""}`));
       if (!datesSame) subs.push(isLoan ? loanDatesHtml(l) : esc(resDatesText(l)));
+      if (!isLoan && l.clash) subs.push(`<span class="clash">${esc(clashText(l))}</span>`);
       const box = `${isLoan ? "ret" : "pk"}-${id}-${j}`;
       return itemLineHtml({
         photo: l.photo, photos: l.photos, name: l.itemTypeName, qty: l.quantity, code: l.itemId,
@@ -4242,6 +4257,7 @@
             ${hasNote ? `<span class="note-indicator" title="Has notes" role="img" aria-label="Has notes">💬</span>` : ""}
             ${req?.test ? `<span class="tag tag-test loan-row-tag" title="Sent from the test link — not a real loan">Test</span>` : ""}
             ${backTag}
+            ${!isLoan && ls.some(l => l.clash) ? `<span class="tag tag-red loan-row-tag" title="${esc(ls.filter(l => l.clash).map(clashText).join(" | "))}">⚠ Double-booked</span>` : ""}
             ${isLoan && ready ? `<span class="tag tag-green loan-row-tag" title="The borrower said it's ready to return">Ready to return</span>` : ""}
             ${isLoan && reminded ? `<span class="tag tag-amber loan-row-tag" title="Return reminder ${esc(reminderVia(reminded.reminderSentVia))} ${esc(timeAgo(reminded.reminderSentAt))}">⏰ Reminded ${esc(timeAgo(reminded.reminderSentAt))}</span>` : ""}
           </span>
@@ -6121,6 +6137,7 @@
         { key: "week", label: "This week", test: (b, t) => { const s = start(b); return !!s && s >= t && s <= isoPlusDays(t, 6); }, always: true },
         // A start date gone by and still only reserved: not picked up yet.
         { key: "passed", label: "Pickup passed", color: "amber", test: (b, t) => b.loans.some(l => l.reservationStart && l.reservationStart < t) },
+        { key: "clash", label: "Double-booked", color: "red", test: b => b.loans.some(l => l.clash) },
       ],
       sortRep: (b, kind) => {
         const ls = b.loans;

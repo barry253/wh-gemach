@@ -1178,6 +1178,48 @@ await t("partial confirm: a request with one free and one taken item → confirm
   assert.equal(DB.Requests.find(x => x.id === "recPCREQ000000002").fields["Declined Items"], undefined);
 });
 
+await t("reservations: double-booked items carry clash (who else has them, how many promised)", async () => {
+  const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
+  const types = [
+    rec("recDBLTYPECLOTH01", { Name: "Taupe Round", Active: true, Tracking: "Quantity", "Quantity Owned": 12, ...Bf }),
+    rec("recDBLTYPEGOWN001", { Name: "Gown D", Active: true, ...Bf }),
+    rec("recDBLTYPEADDON01", { Name: "Sweatshirt", Active: true, Tracking: "Add-on", ...Bf }),
+  ];
+  const units = [rec("recDBLUNITGOWN001", { "Item ID": "GD-001", "Item Type": ["recDBLTYPEGOWN001"], Active: true, ...Bf })];
+  const people = [rec("recDBLBORROWER001", { Name: "Sisterhood", ...Bf }), rec("recDBLBORROWER002", { Name: "Chaya", ...Bf })];
+  const reqs = [rec("recDBLREQUEST0002", { "Request ID": "R-911", Name: "Chaya", Status: "Converted", ...Bf })];
+  const loan = (id, who, f) => rec(id, { Borrower: [who], ...Bf, ...f });
+  const loans = [
+    // Tablecloths: 12 owned, 12 + 12 promised over Aug 12–16 → both double-booked; the Aug 25 one is fine.
+    loan("recDBLLOAN0000001", "recDBLBORROWER001", { "Loan ID": "L-971", Status: "Reserved", "Item to Reserve": ["recDBLTYPECLOTH01"], Quantity: 12, "Reservation Start": "2027-08-12", "Reservation End": "2027-08-18" }),
+    loan("recDBLLOAN0000002", "recDBLBORROWER002", { "Loan ID": "L-972", Status: "Reserved", "Item to Reserve": ["recDBLTYPECLOTH01"], Quantity: 12, "Reservation Start": "2027-08-12", "Reservation End": "2027-08-16", "Source Request": ["recDBLREQUEST0002"] }),
+    loan("recDBLLOAN0000003", "recDBLBORROWER002", { "Loan ID": "L-973", Status: "Reserved", "Item to Reserve": ["recDBLTYPECLOTH01"], Quantity: 12, "Reservation Start": "2027-08-25", "Reservation End": "2027-08-27" }),
+    // A cancelled one never counts.
+    loan("recDBLLOAN0000004", "recDBLBORROWER002", { "Loan ID": "L-974", Status: "Cancelled", "Item to Reserve": ["recDBLTYPECLOTH01"], Quantity: 12, "Reservation Start": "2027-08-25", "Reservation End": "2027-08-27" }),
+    // One gown, out on loan with no due date (open-ended) → the reservation for it clashes.
+    loan("recDBLLOAN0000005", "recDBLBORROWER002", { "Loan ID": "L-975", Status: "Active", Item: ["recDBLUNITGOWN001"], "Date Borrowed": "2027-01-01" }),
+    loan("recDBLLOAN0000006", "recDBLBORROWER001", { "Loan ID": "L-976", Status: "Reserved", "Item to Reserve": ["recDBLTYPEGOWN001"], "Reservation Start": "2027-09-01", "Reservation End": "2027-09-03" }),
+    // Add-ons are never double-booked.
+    loan("recDBLLOAN0000007", "recDBLBORROWER001", { "Loan ID": "L-977", Status: "Reserved", "Item to Reserve": ["recDBLTYPEADDON01"], Quantity: 400, "Reservation Start": "2027-08-12" }),
+  ];
+  DB["Item Types"].push(...types); DB.Items.push(...units); DB.Borrowers.push(...people); DB.Requests.push(...reqs); DB.Loans.push(...loans);
+  try {
+    const rows = await (await call(`/admin/reservations`, { headers: jsonB })).json();
+    const row = id => rows.find(r => r.id === id);
+    const a = row("recDBLLOAN0000001").clash;
+    assert.equal(a.cap, 12); assert.equal(a.booked, 24);
+    assert.deepEqual(a.others, [{ id: "recDBLLOAN0000002", loanId: "L-972", status: "Reserved", borrower: "Chaya", requestId: "R-911", from: "2027-08-12", to: "2027-08-16", quantity: 12 }]);
+    assert.equal(row("recDBLLOAN0000002").clash.others[0].borrower, "Sisterhood", "flagged on both sides");
+    assert.equal(row("recDBLLOAN0000003").clash, null, "later dates are free");
+    const gown = row("recDBLLOAN0000006").clash;
+    assert.equal(gown.cap, 1); assert.equal(gown.others[0].status, "Active"); assert.equal(gown.others[0].to, null, "open-ended loan");
+    assert.equal(row("recDBLLOAN0000007").clash, null, "add-on");
+  } finally {
+    const drop = (tbl, xs) => xs.forEach(x => DB[tbl].splice(DB[tbl].indexOf(x), 1));
+    drop("Item Types", types); drop("Items", units); drop("Borrowers", people); drop("Requests", reqs); drop("Loans", loans);
+  }
+});
+
 await t("guards: pickup / return / cancel check the loan's state; unit pickups get a due date", async () => {
   const Bf = { Gemach: [B.id], "Gemach Slug": [B.slug] };
   DB["Item Types"].push(rec("recGUARDTYPEU0001", { Name: "Guard Chair", Active: true, ...Bf }), rec("recGUARDTYPEU0002", { Name: "Other Thing", Active: true, ...Bf }),

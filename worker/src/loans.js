@@ -1,4 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
+import { reservationClashes } from "./clashes.js";
 import { logEvent } from "./activity.js";
 import { DbError, Q, fetchByIds, firstLink, getOwned, linkedId, linkedName, today } from "./records.js";
 import { findOrCreateBorrower } from "./borrowers.js";
@@ -477,7 +478,9 @@ async function handleGetReservations({ db, g, env }) {
     sort: [{ field: "Reservation Start", direction: "asc" }],
     fields: LOAN_LIST_FIELDS,
   });
-  const rows = await reservationRecords(db, g, env, loans);
+  const [rows, clashes] = await Promise.all([reservationRecords(db, g, env, loans), reservationClashes(db, g, loans)]);
+  // Double-booked: more promised for its dates than the gemach can lend (clash.others = the other bookings).
+  rows.forEach(r => { r.clash = clashes[r.id] || null; });
   // Items of the same booking already picked up (out on loan, back again, or add-ons handed over): shown on its card.
   const reqMap = Object.fromEntries(rows.filter(r => r.requestRecId).map(r => [r.requestRecId, r.request]));
   const gone = await siblingLoans(db, g, loans, reqMap, ["Active", "Returned"]);

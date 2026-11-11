@@ -13,7 +13,11 @@ const TODAY = iso(0);
 const G = { id: "recA", slug: "tablecloths", name: "Tablecloth Gemach", canEdit: true, rawTemplates: {}, templates: {}, placeholders: [], primaryContact: "Text",
   phone: "5165551212", requestStyle: "Dates", eventLabel: "Event date", returnDaysAfter: 1, pickupDaysBefore: 1, defaultLoanDays: 14 };
 
-const RES = [{ id: "recRES00000000001", loanId: "L-116", borrowerName: "Sisterhood", itemTypeName: "Navy Round", isQuantity: true, quantity: 12, reservationStart: iso(1), reservationEnd: iso(7) }];
+const RES = [
+  { id: "recRES00000000001", loanId: "L-116", borrowerName: "Sisterhood", itemTypeName: "Navy Round", isQuantity: true, quantity: 12, reservationStart: iso(1), reservationEnd: iso(7),
+    clash: { cap: 12, booked: 24, others: [{ id: "recOTHER00000009", loanId: "L-189", status: "Reserved", borrower: "Chaya", requestId: "R-111", from: iso(1), to: iso(5), quantity: 12 }] } },
+  { id: "recRES00000000002", loanId: "L-117", borrowerName: "Fine Person", itemTypeName: "Ivory Round", isQuantity: true, quantity: 6, reservationStart: iso(2), reservationEnd: iso(4), clash: null },
+];
 const LOANS = [{ id: "recLOANACT0000001", loanId: "L-300", borrowerName: "Walk In", itemTypeName: "Navy Round", isQuantity: true, quantity: 6, dateBorrowed: iso(-2), expectedReturn: iso(3), daysOut: 2, overdue: false }];
 const BOOKINGS = {
   "loan=recRES00000000001": { kind: "reservation", requestStyle: "Dates", eventLabel: "Event date", defaultLoanDays: 14, today: TODAY,
@@ -75,10 +79,21 @@ await page.waitForTimeout(400);
 const rowText = n => page.textContent(`#bk-items .co-row >> nth=${n}`);
 const result = name => page.textContent(`#bk-results .co-result:has-text('${name}')`);
 
-// ── Reservation (days 1–7) ──
+// ── Reservations list: double-booked ones are flagged ──
 await page.click(".nav-tab:has-text('Reservations')");
 await page.waitForSelector("#res-row-recRES00000000001");
+ok(/⚠ Double-booked/.test(await page.textContent("#res-row-recRES00000000001")), "row tag on the double-booked reservation");
+ok(!/Double-booked/.test(await page.textContent("#res-row-recRES00000000002")), "no tag on the fine one");
+ok(/Double-booked\s*1/.test(await page.textContent("#res-pills")), "Double-booked pill with its count");
+await page.click("#res-pills button:has-text('Double-booked')");
+ok(await page.isVisible("#res-row-recRES00000000001") && !(await page.$("#res-row-recRES00000000002")), "pill shows only double-booked reservations");
+await page.click("#res-pills button:has-text('All upcoming')");
 await page.click("#res-row-recRES00000000001");
+const card = await page.textContent("#res-panel-recRES00000000001");
+ok(/⚠ Double-booked: 24 promised for these dates, the gemach has 12 · also Chaya \(R-111\) × 12, /.test(card), "opened card says who else has it: " + card.replace(/\s+/g, " ").slice(0, 300));
+await page.screenshot({ path: "shot-res-double-booked.png", fullPage: true });
+
+// ── Edit (days 1–7): the card is already open ──
 await page.click("#res-panel-recRES00000000001 button:has-text('Edit')");
 await page.waitForSelector("#bk-name");
 await page.waitForTimeout(200);
