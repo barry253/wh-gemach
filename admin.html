@@ -5134,10 +5134,12 @@
       ${notes !== null ? `<div class="bk-section"><div class="form-group"><label for="bk-notes">Notes</label><textarea id="bk-notes" rows="2" maxlength="1000" style="min-height:0">${esc(notes)}</textarea></div></div>` : ""}`;
     BK.orig = bkSnapshot();
     bkRenderItems();
+    if (bkHasLoans()) bkLoadTypes(); // for the "free for these dates" notes on the items
     if (act0) bkDueChips();
     refreshVacNotes(bkEl("bk-body"));
     bkEl("bk-body").addEventListener("input", bkAutoMessage);
     bkEl("bk-body").addEventListener("change", bkAutoMessage);
+    bkEl("bk-body").addEventListener("change", e => { if (BK_DATE_IDS.includes(e.target?.id)) bkRedraw(); });
     ["bk-phone", "bk-email", "bk-pref"].forEach(id => bkEl(id).addEventListener("change", bkSetupSendBy));
     bkEl("bk-foot").style.display = "";
     bkSetupSendBy();
@@ -5191,6 +5193,7 @@
           <div class="co-name">${esc(row.name)}</div>${sub ? `<div class="co-sub">${esc(sub)}</div>` : ""}
           ${row.removed ? `<div class="co-note warn">${row.status === "Active" ? "Will be removed (lent by mistake)" : "Will be removed"} — <button type="button" class="link-btn" onclick="bkUndo(${i})">undo</button></div>`
             : counted ? `<div class="co-ctl"><label class="muted-small" for="bk-qty-${i}">How many</label><input type="number" id="bk-qty-${i}" min="1" step="1" inputmode="numeric" value="${esc(row.qty ?? 1)}" onchange="bkSetQty(${i}, this.value)" /></div>` : ""}
+          ${(n => n ? `<div class="co-note ${n[0]}">${esc(n[1])}</div>` : "")(bkRowNote(row, i))}
           ${row.added && row.addAs === "active" && row.units?.length > 1 ? `<div class="co-ctl"><label class="muted-small" for="bk-unit-${i}">Which one</label><select id="bk-unit-${i}" onchange="BK.rows[${i}].unitId=this.value">${row.units.map(u => `<option value="${esc(u.id)}"${u.id === row.unitId ? " selected" : ""}>${esc(u.itemId)}</option>`).join("")}</select></div>` : ""}
           ${tag}
         </div>
@@ -5212,13 +5215,57 @@
     BK.loadingTypes = false;
     if (!d || !Array.isArray(d.types)) { bkEl("bk-results").innerHTML = '<p class="muted-small">Couldn’t load the inventory.</p>'; return; }
     BK.types = d.types;
+    BK.today = d.today || BK.b?.today;
     bkRenderResults();
+    if (BK.b) bkRenderItems();
   }
   function bkAddAs() {
     if (!bkHasLoans()) return "request";
     if (BK.b.kind === "loan") return "active";
     if (BK.b.kind === "reservation") return "reserved";
     return BK.ref.from === "loans" ? "active" : "reserved";
+  }
+
+  // ── Free for these dates (same counting as New reservation's nbFree) ──
+  const BK_DATE_IDS = ["bk-res-start", "bk-res-end", "bk-due", "bk-event"];
+  /** The window a row needs: reserved → the reservation dates; lent → today until due back (blank = open-ended). */
+  function bkWindow(asActive) {
+    const today = BK.b.today || BK.today;
+    if (asActive) return { from: today, to: bkVal("bk-due") || null };
+    const from = bkVal("bk-res-start") || today;
+    return { from: from < today ? today : from, to: bkVal("bk-res-end") || null };
+  }
+  const bkRowActive = row => (row.added ? row.addAs === "active" : row.status === "Active");
+  /** Free units / pieces of a type over [from, to], leaving out this booking's own loans (they're counted as "need"). */
+  function bkFree(t, from, to) {
+    const own = new Set(BK.b.loans.map(l => l.id));
+    const cap = t.tracking === "Units" ? t.units.length : t.lendable || 0;
+    const over = t.bookings.filter(b => !own.has(b.loanId) && coOverlap(b, from, to));
+    let peak = 0;
+    for (const p of [from, ...over.map(b => b.from).filter(d => d > from)]) {
+      peak = Math.max(peak, over.filter(b => b.from <= p && (b.to == null || b.to >= p)).reduce((n, b) => n + (b.quantity || 1), 0));
+    }
+    return { cap, free: Math.max(0, cap - peak), backBy: over.map(b => b.to).filter(Boolean).sort()[0] || null };
+  }
+  /** Note under an item row: [cls, text] or null. Added rows always say how many are free; existing rows only warn. */
+  function bkRowNote(row, i) {
+    if (!BK.types || row.removed || row.kind !== "loan" || row.tracking === "Add-on") return null;
+    const t = BK.types.find(x => x.id === row.typeId);
+    if (!t) return null;
+    // An older API (before loanId) can't tell this booking's own loans apart: only check what's being added.
+    if (!row.added && !t.bookings.every(b => "loanId" in b)) return null;
+    const active = bkRowActive(row);
+    // A unit already out with this borrower is theirs; nothing to check.
+    if (active && !row.added && t.tracking === "Units") return null;
+    const { from, to } = bkWindow(active);
+    const f = bkFree(t, from, to);
+    const need = BK.rows.slice(0, i + 1).filter(r => !r.removed && r.kind === "loan" && r.typeId === row.typeId && bkRowActive(r) === active)
+      .reduce((n, r) => n + (t.tracking === "Units" ? 1 : r.qty || 1), 0);
+    const when = active ? (to ? "until the due date" : "from today on") : to ? "for these dates" : "from that date on";
+    const verb = active ? "lend" : "reserve";
+    if (!f.cap) return row.added ? ["bad", t.tracking === "Units" ? "No numbered items for this in Inventory yet." : "None to lend."] : null;
+    if (need > f.free) return ["warn", `⚠ ${f.free ? `Only ${f.free} of ${f.cap} free` : `All ${f.cap} booked`} ${when}${f.backBy ? ` · one is due back ${fmtDay(f.backBy)}` : ""}. You can still ${verb} it.`];
+    return row.added ? ["info", `${f.free} of ${f.cap} free ${when}.`] : null;
   }
   function bkRenderResults() {
     const box = bkEl("bk-results");
@@ -5232,12 +5279,20 @@
       const free = t.units.filter(u => !out.has(u.id) && !taken.has(u.id));
       const inReq = mode === "request" && BK.rows.some(r => r.typeId === t.id);
       const blocked = inReq || (mode === "active" && t.tracking === "Units" && !free.length);
-      const status = inReq ? "Added" : t.tracking === "Units" ? (free.length ? (mode === "active" ? "In" : `${t.units.length} owned`) : mode === "active" ? "On loan" : `${t.units.length} owned`)
+      let status = inReq ? "Added" : t.tracking === "Units" ? (free.length ? (mode === "active" ? "In" : `${t.units.length} owned`) : mode === "active" ? "On loan" : `${t.units.length} owned`)
         : t.tracking === "Quantity" ? `${t.lendable} owned` : "Add-on";
+      let short = false;
+      if (!inReq && t.tracking !== "Add-on" && (mode === "reserved" || (mode === "active" && t.tracking === "Quantity"))) {
+        const { from, to } = bkWindow(mode === "active");
+        const f = bkFree(t, from, to);
+        const already = BK.rows.filter(r => r.added && !r.removed && r.typeId === t.id).reduce((n, r) => n + (t.tracking === "Units" ? 1 : r.qty || 1), 0);
+        const left = Math.max(0, f.free - already);
+        if (f.cap) { status = left ? `${left} of ${f.cap} free` : `All ${f.cap} booked`; short = !left; }
+      }
       return `<button type="button" class="co-result" onclick="bkAdd('${safeId(t.id)}')"${blocked ? " disabled" : ""}>
         ${t.photo ? `<img class="row-thumb" src="${esc(t.photo)}" alt="" loading="lazy" width="32" height="32" style="width:32px;height:32px;flex-basis:32px" />` : `<span class="row-thumb row-thumb-none" aria-hidden="true">▫</span>`}
         <span style="flex:1;min-width:0"><span class="co-name">${esc(t.name)}</span></span>
-        <span class="tag ${blocked ? "tag-red" : t.tracking === "Add-on" ? "tag-addon" : "tag-green"}">${esc(status)}</span></button>`;
+        <span class="tag ${blocked ? "tag-red" : short ? "tag-amber" : t.tracking === "Add-on" ? "tag-addon" : "tag-green"}">${esc(status)}</span></button>`;
     }).join("") + (!hits.length ? `<p class="muted-small" style="margin:0.25rem 0 0">Nothing in the inventory matches “${esc(q)}”.</p>` : "");
   }
   function bkAdd(typeId) {

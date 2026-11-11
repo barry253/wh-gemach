@@ -84,7 +84,7 @@ async function handleCheckoutOptions(c) {
     const w = loanWindow(f, t);
     if (selName(f.Status) === "Reserved" && w.to != null && w.to < t) continue; // reservation already in the past
     (bookingsByType[tid] ||= []).push({
-      status: selName(f.Status), unitId, from: w.from, to: w.to, quantity: loanQty(f),
+      loanId: l.id, status: selName(f.Status), unitId, from: w.from, to: w.to, quantity: loanQty(f),
       borrower: bName[linkedId(firstLink(f["Borrower"]))] || linkedName(firstLink(f["Borrower"])) || null,
     });
   }

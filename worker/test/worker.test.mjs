@@ -992,6 +992,8 @@ await t("checkout: the borrower's manage link shows what she borrowed (no cancel
   // The options now show SD-001 as out (an Active booking on that unit).
   const gA = opt.types.find(x => x.id === "recCOGOWNA0000001");
   assert.ok(gA.bookings.some(b => b.status === "Active" && b.unitId === "recCOUNITA0000001" && b.borrower === "Sally Katz"));
+  // Each booking carries its loan's record id (the Edit sheet leaves the booking's own loans out of the free count).
+  assert.ok(gA.bookings.every(b => /^rec/.test(b.loanId)), "bookings carry loanId");
 });
 
 await t("visit: nothing borrowed / no-show close the appointment; validation", async () => {
