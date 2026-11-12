@@ -16,6 +16,8 @@ name: D1 nightly backup
 #   repo secret  BACKUP_REPO_TOKEN = fine-grained token, Contents read/write on BACKUP_REPO only
 # After a successful copy, status/offsite-db.json in the backups bucket records it (the worker's daily check
 # emails an alert if it gets old). Decrypt: age -d -i key.txt file.sql.gz.age | gunzip > file.sql
+# Export, Store and the off-site status put retry up to 3 times (30s, then 60s) on transient failures
+# (a Cloudflare API 502 on wrangler d1 export broke the Nov 12, 2026 run).
 on:
   schedule:
     - cron: "17 7 * * *"   # ~3:17 am New York (7:17 UTC)
@@ -59,13 +61,15 @@ jobs:
         if: github.event_name == 'schedule' || inputs.task == 'backup'
         run: |
           set -e
+          retry() { local tries=3 delay=30 n=1; while true; do "$@" && return 0; [ $n -ge $tries ] && return 1; echo "::warning title=Retrying::attempt $n failed, retrying in ${delay}s"; sleep $delay; n=$((n+1)); delay=$((delay*2)); done; }
           stamp=$(date -u +%Y-%m-%dT%H%MZ)
           file="$RUNNER_TEMP/wh-gemach-$stamp.sql"
-          scripts/step.sh "Export" npx wrangler d1 export wh-gemach --remote --output="$file" --skip-confirmation
+          export_db() { rm -f "$file"; scripts/step.sh "Export" npx wrangler d1 export wh-gemach --remote --output="$file" --skip-confirmation; }
+          retry export_db || exit 1
           scripts/step.sh "Check" node --no-warnings scripts/d1-backup-check.mjs "$file"
           gzip -9 "$file"
           key="d1/$(date -u +%Y/%m)/wh-gemach-$stamp.sql.gz"
-          scripts/step.sh "Store" npx wrangler r2 object put "wh-gemach-backups/$key" --remote --file="$file.gz" --content-type=application/gzip
+          retry scripts/step.sh "Store" npx wrangler r2 object put "wh-gemach-backups/$key" --remote --file="$file.gz" --content-type=application/gzip || exit 1
           echo "::notice title=Backup stored::$key ($(stat -c %s "$file.gz") bytes)"
           echo "BACKUP_GZ=$file.gz" >> "$GITHUB_ENV"
           echo "BACKUP_STAMP=$stamp" >> "$GITHUB_ENV"
@@ -80,6 +84,7 @@ jobs:
           AGE_SHA256: 7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50
         run: |
           set -e
+          retry() { local tries=3 delay=30 n=1; while true; do "$@" && return 0; [ $n -ge $tries ] && return 1; echo "::warning title=Retrying::attempt $n failed, retrying in ${delay}s"; sleep $delay; n=$((n+1)); delay=$((delay*2)); done; }
           if [ -z "$GH_TOKEN" ] || [ -z "$AGE_RECIPIENTS" ]; then
             echo "::warning title=Off-site copy not set up::Add the AGE_RECIPIENTS variable and BACKUP_REPO_TOKEN secret (see the top of this file). The R2 backup above was stored."
             rm -f "$BACKUP_GZ"; exit 0
@@ -110,4 +115,4 @@ jobs:
           rm -f "$enc"
           node scripts/offsite.mjs db-prune
           printf '{"at":"%s","release":"%s","file":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tag" "wh-gemach-$BACKUP_STAMP.sql.gz.age" > "$RUNNER_TEMP/offsite-db.json"
-          scripts/step.sh "Record off-site copy" npx wrangler r2 object put "wh-gemach-backups/status/offsite-db.json" --remote --file="$RUNNER_TEMP/offsite-db.json" --content-type=application/json
+          retry scripts/step.sh "Record off-site copy" npx wrangler r2 object put "wh-gemach-backups/status/offsite-db.json" --remote --file="$RUNNER_TEMP/offsite-db.json" --content-type=application/json || exit 1
