@@ -141,7 +141,7 @@
       data = d; render();
     }).catch(function (e) {
       if (e && (e.status === 404 || e.status === 410)) {
-        if (e.status === 410) W.me.removeRequest(location.origin + "/r/" + token);
+        if (e.status === 410 || (e.data && e.data.gone)) W.me.removeRequest(location.origin + "/r/" + token);
         renderError(e.message || "Please contact the gemach.", e.status === 410);
       } else { renderError("Please check your connection and try again."); if (W.loadFailed) W.loadFailed("manage"); }
     });

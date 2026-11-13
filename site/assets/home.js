@@ -527,6 +527,23 @@
   }
   if ($("my-requests-forget")) $("my-requests-forget").addEventListener("click", function () { W.me.forget(); renderMine(); });
   renderMine();
+  // Quietly check the shown links once per visit: a request that was deleted (gone) or whose link expired (410)
+  // is dropped from the list. Anything else (offline, server trouble, hidden gemach) leaves the list alone.
+  (function checkMine() {
+    var list = W.me.requests().slice(0, 5);
+    var checked = {};
+    try { checked = JSON.parse(sessionStorage.getItem("whg_mine_checked") || "{}") || {}; } catch (e) { /* ignore */ }
+    list.forEach(function (r) {
+      if (checked[r.url]) return;
+      var token = r.url.slice(r.url.lastIndexOf("/r/") + 3);
+      W.fetchJSON("/public/manage/" + encodeURIComponent(token), { timeout: 10000, retry: false }).then(function () {
+        checked[r.url] = 1;
+        try { sessionStorage.setItem("whg_mine_checked", JSON.stringify(checked)); } catch (e) { /* ignore */ }
+      }).catch(function (e) {
+        if (e && (e.status === 410 || (e.status === 404 && e.data && e.data.gone))) { W.me.removeRequest(r.url); renderMine(); }
+      });
+    });
+  })();
 
   function renderAll() {
     renderHints();

@@ -68,7 +68,8 @@ async function loadManaged(db, env, token) {
   const recId = await verifyManageToken(env, token);
   if (!recId) return { status: 404, error: "This link isn't valid. Please contact the gemach." };
   const rec = await db.get(T.REQUESTS, recId);
-  if (!rec) return { status: 404, error: "We couldn't find this request. Please contact the gemach." };
+  // gone: the request was deleted, so the link will never work again (the site drops it from "Your requests").
+  if (!rec) return { status: 404, error: "We couldn't find this request. Please contact the gemach.", gone: true };
   const slug = (rec.fields["Gemach Slug"] || [])[0];
   const g = slug ? await loadGemachBySlug(db, String(slug)) : null;
   // A test request (sent from a Hidden gemach's test link) keeps working while the gemach is hidden.
@@ -175,7 +176,7 @@ async function managePayload(db, rec, g, loans) {
 
 async function handleGetManage(db, env, token) {
   const r = await loadManaged(db, env, token);
-  if (r.error) return json({ error: r.error }, r.status);
+  if (r.error) return json({ error: r.error, ...(r.gone ? { gone: true } : {}) }, r.status);
   if (expired(r.rec, r.loans)) return json({ error: "This link has expired. Please contact the gemach.", expired: true }, 410);
   return json(await managePayload(db, r.rec, r.g, r.loans));
 }
@@ -194,7 +195,7 @@ function whoLine(rec) {
 
 async function handleManageCancel(db, env, ctx, token) {
   const r = await loadManaged(db, env, token);
-  if (r.error) return json({ error: r.error }, r.status);
+  if (r.error) return json({ error: r.error, ...(r.gone ? { gone: true } : {}) }, r.status);
   const { rec, g, loans } = r;
   if (expired(rec, loans)) return json({ error: "This link has expired. Please contact the gemach.", expired: true }, 410);
   const payload = await managePayload(db, rec, g, loans);
@@ -274,7 +275,7 @@ async function handleManageCancel(db, env, ctx, token) {
 
 async function handleManageReady(db, env, ctx, token) {
   const r = await loadManaged(db, env, token);
-  if (r.error) return json({ error: r.error }, r.status);
+  if (r.error) return json({ error: r.error, ...(r.gone ? { gone: true } : {}) }, r.status);
   const { rec, g, loans } = r;
   if (expired(rec, loans)) return json({ error: "This link has expired. Please contact the gemach.", expired: true }, 410);
   const todo = loans.filter(l => selName(l.fields.Status) === "Active" && !l.fields["Ready To Return At"]);

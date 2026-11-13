@@ -65,7 +65,7 @@ const G = slug => directory.gemachs.find(g => g.slug === slug);
 
 
 
-const TOK = 'recREQMANAGE00001.AAAAAAAAAAAAAAAAAAAAAA', TOK_OUT = 'recREQMANAGE00002.BBBBBBBBBBBBBBBBBBBBBB', TOK_OLD = 'recREQMANAGE00003.CCCCCCCCCCCCCCCCCCCCCC', TOK_PART = 'recREQMANAGE00004.DDDDDDDDDDDDDDDDDDDDDD';
+const TOK = 'recREQMANAGE00001.AAAAAAAAAAAAAAAAAAAAAA', TOK_OUT = 'recREQMANAGE00002.BBBBBBBBBBBBBBBBBBBBBB', TOK_OLD = 'recREQMANAGE00003.CCCCCCCCCCCCCCCCCCCCCC', TOK_PART = 'recREQMANAGE00004.DDDDDDDDDDDDDDDDDDDDDD', TOK_GONE = 'recREQMANAGE00005.EEEEEEEEEEEEEEEEEEEEEE', TOK_HID = 'recREQMANAGE00006.FFFFFFFFFFFFFFFFFFFFFF';
 const G1 = { name: 'West Hempstead Medical Gemach', slug: 'wh-medical', phone: '(718) 986-7345', email: 'whmedicalgemach@gmail.com', whatsapp: '718-986-7345',
   primaryContact: 'Call', secondaryContact: 'WhatsApp', logoUrl: null, logoDarkUrl: null, themeColor: '#1B3A4B', accentColor: null, requestStyle: 'Dates', eventLabel: 'Event date' };
 const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
@@ -91,6 +91,8 @@ async function manageRoutes(ctx) {
     if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
     const [, tok, action] = u.pathname.match(/^\/public\/manage\/([^/]+)(?:\/(\w+))?$/) || [];
     const t = decodeURIComponent(tok || '');
+    if (t === TOK_GONE) return r.fulfill({ status: 404, json: { error: "We couldn't find this request. Please contact the gemach.", gone: true }, headers: cors });
+    if (t === TOK_HID) return r.fulfill({ status: 404, json: { error: "We couldn't find this request. Please contact the gemach." }, headers: cors });
     if (t === TOK_OLD) return r.fulfill({ status: 410, json: { error: 'This link has expired. Please contact the gemach.', expired: true }, headers: cors });
     const d = M[t];
     if (!d) return r.fulfill({ status: 404, json: { error: "This link isn't valid. Please contact the gemach." }, headers: cors });
@@ -141,6 +143,19 @@ const txt = (p, sel) => p.$eval(sel, e => e.innerText.replace(/\n+/g, ' / '));
       await page.goto(BASE + '/', { waitUntil: 'networkidle' });
       assert(await page.isVisible('#my-requests') && /West Hempstead Medical Gemach/.test(await txt(page, '#my-requests')) && /R-050/.test(await txt(page, '#my-requests')), `${label} home 'Your requests'`);
       assert(await page.getAttribute('.my-req', 'href') === 'https://whgemachs.org/r/' + TOK, `${label} links to the manage page`);
+
+      // 2b) Saved links to a deleted request (gone) or an expired one are dropped; other 404s (hidden gemach) stay
+      await page.evaluate(([a, b, c, d]) => {
+        const list = JSON.parse(localStorage.getItem('whg_my_requests_v1'));
+        for (const [tok, id] of [[a, 'R-090'], [b, 'R-091'], [c, 'R-092']]) list.push({ url: 'https://whgemachs.org/r/' + tok, gemach: 'Test Gemach', requestId: id, at: new Date().toISOString() });
+        localStorage.setItem('whg_my_requests_v1', JSON.stringify(list)); sessionStorage.removeItem('whg_mine_checked');
+      }, [TOK_GONE, TOK_HID, TOK_OLD]);
+      await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(200);
+      const mine = await txt(page, '#my-requests');
+      assert(/R-050/.test(mine) && /R-091/.test(mine) && !/R-090/.test(mine) && !/R-092/.test(mine), `${label} deleted + expired requests drop off 'Your requests'`);
+      assert(await page.evaluate(() => JSON.parse(localStorage.getItem('whg_my_requests_v1')).length) === 2, `${label} and from this device`);
+      await page.evaluate(t => { const l = JSON.parse(localStorage.getItem('whg_my_requests_v1')).filter(r => !r.url.endsWith(t)); localStorage.setItem('whg_my_requests_v1', JSON.stringify(l)); }, TOK_HID);
 
       // 3) Next request is pre-filled; "Not you? Forget me" clears it
       await page.goto(BASE + '/g/wh-medical', { waitUntil: 'networkidle' });
