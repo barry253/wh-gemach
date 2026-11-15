@@ -1145,6 +1145,8 @@
     .photo-tile { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
     .photo-tile.is-cover { border: 2px solid var(--navy); }
     .photo-tile img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; }
+    .photo-tile-img { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+    .photo-tile-img:focus-visible { outline: 2px solid var(--amber, #D97706); outline-offset: -2px; }
     .photo-cover-tag { position: absolute; top: 4px; left: 4px; background: var(--navy); color: #fff; font-size: 0.62rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
     .photo-tools { display: flex; justify-content: space-between; border-top: 1px solid var(--border); }
     .photo-tools button { flex: 1; border: 0; background: #fff; padding: 0.3rem 0; font-size: 0.75rem; cursor: pointer; color: var(--navy); min-height: 32px; }
@@ -3963,9 +3965,18 @@
       `<img class="row-thumb" src="${esc(list[0])}" alt="" loading="lazy" width="${size}" height="${size}"${size !== 40 ? ` style="width:${size}px;height:${size}px;flex-basis:${size}px"` : ""} onerror="this.parentNode.replaceWith(Object.assign(document.createElement('span'),{className:'row-thumb row-thumb-none',textContent:'▫'}))" />` +
       (list.length > 1 ? `<span class="row-thumb-count">${list.length}</span>` : "") + `</button>`;
   }
+  /** Registers (or reuses) a photo list under a PHOTO_SETS key for openPhotoViewer; null when there's nothing to show. */
+  function photoSetKey(rawList, name) {
+    const list = (rawList || []).filter(okPhoto).filter((u, i, a) => a.indexOf(u) === i);
+    if (!list.length) return null;
+    const sig = `${name || ""}|${list.join(" ")}`;
+    let key = PHOTO_KEYS.get(sig);
+    if (!key) { key = `p${PHOTO_KEYS.size + 1}`; PHOTO_KEYS.set(sig, key); PHOTO_SETS.set(key, { list, name: name || "" }); }
+    return key;
+  }
   // ── Photo viewer (full screen; arrows, swipe, Esc) ──
   let viewer = { list: [], i: 0, opener: null };
-  function openPhotoViewer(key, opener) {
+  function openPhotoViewer(key, opener, startIndex = 0) {
     const set = PHOTO_SETS.get(key);
     if (!set) return;
     viewer = { list: set.list, i: 0, opener };
@@ -3973,7 +3984,7 @@
     document.getElementById("pv-name").textContent = set.name;
     const many = set.list.length > 1;
     document.getElementById("pv-prev").hidden = document.getElementById("pv-next").hidden = !many;
-    showViewerPhoto(0);
+    showViewerPhoto(startIndex);
     const wasOpen = !el.hidden;
     el.hidden = false;
     document.body.style.overflow = "hidden";
@@ -9465,13 +9476,18 @@
     });
     itemAttrOriginal = itemAttrsJson();
   }
-  /** Small item-type photo for the Inventory row; a dashed "No photo" box (tap to add one) when missing. */
+  /**
+   * Small item-type photo for the Inventory row; a dashed "No photo" box (tap to add one) when missing.
+   * With a photo, tapping it opens the full-screen viewer at the cover, swipeable through all of this type's photos.
+   */
   function invThumb(type, tid) {
     const url = type.r2PhotoUrl || type.photoUrl;
     const safe = url && /^https:\/\//i.test(url) ? url : null;
-    return safe
-      ? `<img class="inv-thumb" src="${esc(safe)}" alt="" loading="lazy" width="36" height="36" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'inv-thumb inv-thumb-missing',textContent:'Broken',title:'Photo link is broken — edit to replace it'}))" />` + (type.morePhotos?.length ? `<span class="inv-photo-count" title="${type.morePhotos.length + 1} photos">${type.morePhotos.length + 1}📷</span>` : "")
-      : `<button type="button" class="inv-thumb inv-thumb-missing" title="No photo — tap to add one" aria-label="Add a photo for ${esc(type.name)}" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">No photo</button>`;
+    if (!safe) return `<button type="button" class="inv-thumb inv-thumb-missing" title="No photo — tap to add one" aria-label="Add a photo for ${esc(type.name)}" onclick="event.stopPropagation();openEditItemType(rec('type','${tid}'))">No photo</button>`;
+    const key = photoSetKey([safe, ...(type.morePhotos || [])], type.name);
+    return `<button type="button" class="row-thumb-btn" aria-label="View photos of ${esc(type.name)}" onclick="event.stopPropagation();openPhotoViewer('${key}', this)">` +
+      `<img class="inv-thumb" src="${esc(safe)}" alt="" loading="lazy" width="36" height="36" onerror="this.parentNode.replaceWith(Object.assign(document.createElement('span'),{className:'inv-thumb inv-thumb-missing',textContent:'Broken',title:'Photo link is broken — edit to replace it'}))" />` +
+      `</button>` + (type.morePhotos?.length ? `<span class="inv-photo-count" title="${type.morePhotos.length + 1} photos">${type.morePhotos.length + 1}📷</span>` : "");
   }
   function attrSummary(type) {
     const defs = GEMACH?.itemAttributes || [];
@@ -9707,7 +9723,9 @@
     const strip = document.getElementById("it-photos");
     strip.innerHTML = PHOTOS.map((u, i) => `
       <div class="photo-tile${i === 0 ? " is-cover" : ""}">
-        <img src="${esc(u)}" alt="Photo ${i + 1}" loading="lazy" />
+        <button type="button" class="photo-tile-img" aria-label="View photo ${i + 1} of ${PHOTOS.length}" onclick="openPhotoStripViewer(${i}, this)">
+          <img src="${esc(u)}" alt="Photo ${i + 1}" loading="lazy" />
+        </button>
         ${i === 0 ? '<span class="photo-cover-tag">Cover</span>' : ""}
         <div class="photo-tools">
           <button type="button" title="Move left" aria-label="Move photo ${i + 1} left" ${i === 0 ? "disabled" : ""} onclick="movePhoto(${i}, -1)">◀</button>
@@ -9720,6 +9738,12 @@
     const full = PHOTOS.length >= MAX_PHOTOS;
     document.getElementById("it-photo-add").disabled = full;
     document.getElementById("it-photo-add").textContent = full ? "10 photos — remove one to add more" : PHOTOS.length ? "📁 Add more photos" : "📁 Add photos";
+  }
+  /** Tapping a photo tile (not its ◀ ★ ▶ ✕ tools) opens the viewer at that photo, using the strip's current unsaved order. */
+  function openPhotoStripViewer(i, opener) {
+    const name = document.getElementById("it-name").value.trim() || document.getElementById("item-type-sheet-subtitle").textContent || "";
+    const key = photoSetKey(PHOTOS, name);
+    if (key) openPhotoViewer(key, opener, i);
   }
   function movePhoto(i, by) {
     const j = i + by;
