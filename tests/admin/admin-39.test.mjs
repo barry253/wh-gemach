@@ -58,7 +58,8 @@ ok(await page.$(`${R} .loan-row-side .loan-row-date`) && await page.$(`${R} .loa
 
 await page.evaluate(() => switchTab("dashboard"));
 await page.waitForSelector("#upcoming-body .up-items .nw");
-ok(await page.$$eval("#upcoming-body .up-items .nw", els => els.every(e => e.getClientRects().length === 1)), "dashboard: item codes not split");
+await page.evaluate(() => document.querySelectorAll("#upcoming-body .up-sec.closed .up-sec-toggle").forEach(b => b.click())); // Overdue starts closed
+ok(await page.$$eval("#upcoming-body .up-items .nw", els => els.length && els.every(e => e.getClientRects().length === 1)), "dashboard: item codes not split");
 
 await page.evaluate(() => switchTab("inventory"));
 await page.waitForSelector("button[onclick='openAddItemType()']");

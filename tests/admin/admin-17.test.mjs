@@ -82,55 +82,69 @@ async function run(G) {
   // Upcoming
   await page.waitForSelector("#upcoming-body .up-row");
   ok((await page.$eval("#upcoming-body", el => el.getBoundingClientRect().top)) < (await page.$eval("#stats-body", el => el.getBoundingClientRect().top)), "Upcoming sits above How it's going");
+  // Sections: Today (open), Next 7 days (open), Overdue (closed) — each with a count
+  const secs = await page.$$eval("#upcoming-body .up-sec", ss => ss.map(x => ({ id: x.id, closed: x.classList.contains("closed"),
+    title: x.querySelector(".up-sec-title").textContent, count: x.querySelector(".up-sec-count").textContent })));
+  ok(secs.map(x => x.id).join("|") === "up-sec-day|up-sec-next|up-sec-late" && secs[0].title === "Today" && secs[1].title === "Next" && secs[2].title === "Overdue",
+    "sections: Today, Next, Overdue: " + JSON.stringify(secs));
+  ok(!secs[0].closed && !secs[1].closed && secs[2].closed, "Today and Next start open, Overdue closed");
+  ok(secs[0].count === "2" && secs[2].count === "1", "each section shows its count: " + secs.map(x => x.count).join(","));
+  ok(await page.$eval("#up-sec-next #upcoming-days", e => e.value) === "7", "the day picker sits in the Next section");
   const heads = await page.$$eval("#upcoming-body .upcoming-day", hs => hs.map(h => h.textContent));
-  ok(heads[0].startsWith("Pickup date passed") && /^Today · /.test(heads[1]) && /^Tomorrow · /.test(heads[2]) && heads.length === 4, "grouped: late pickups, Today, Tomorrow, later: " + heads.join(" | "));
-  const rows = await page.$$eval("#upcoming-body .up-row", rs => rs.map(r => r.innerText.replace(/\s+/g, " ").trim()));
-  ok(/7:30 PM Appointment Tova Stein Navy gown · R-11 Appt/i.test(rows[1]), "today's appointment: time: " + rows[1]);
-  ok(/Pickup until .* Moshe Klein Wheelchair, Folding chairs × 20 · R-12 Reserved/i.test(rows[2]), "reservation row: items + until: " + rows[2]);
-  ok(/Pickup open-ended/.test(rows[3]) && /Pickup was due/.test(rows[0]), "open-ended and late rows");
-  ok(!(await page.isVisible("#up-panel-2")), "actions hidden until the row is tapped");
+  ok(/^Tomorrow · /.test(heads[0]) && heads[heads.length - 1].startsWith("Pickup date passed") && heads.length === 3, "Next grouped by day; late pickups under Overdue: " + heads.join(" | "));
+  const rows = await page.$$eval("#upcoming-body .up-row", rs => rs.map(r => r.textContent.replace(/\s+/g, " ").trim()));
+  ok(/7:30 PMAppointment Tova Stein Navy gown · R-11 Appt/i.test(rows[0]), "today's appointment: time: " + rows[0]);
+  ok(/Pickupuntil .* Moshe Klein Wheelchair, Folding chairs × 20 · R-12 Reserved/i.test(rows[1]), "reservation row: items + until: " + rows[1]);
+  ok(/Pickupopen-ended/.test(rows[2]) && /Pickup was due/.test(rows[rows.length - 1]), "open-ended and late rows: " + rows[2] + " / " + rows[rows.length - 1]);
+  ok(!(await page.isVisible("#up-sec-body-late")), "Overdue rows hidden while it's closed");
+  await page.click("#up-sec-late .up-sec-toggle");
+  ok(await page.isVisible("#up-sec-body-late") && (await page.getAttribute("#up-sec-late .up-sec-toggle", "aria-expanded")) === "true", "tapping Overdue opens it");
+  await page.click("#up-sec-day .up-sec-toggle");
+  ok(!(await page.isVisible("#up-sec-body-day")) && (await page.textContent("#up-sec-day .up-sec-count")) === "2", "Today collapses and still shows its count");
+  await page.click("#up-sec-day .up-sec-toggle");
+  ok(!(await page.isVisible("#up-panel-1")), "actions hidden until the row is tapped");
   await page.screenshot({ path: "shot-dash-upcoming.png", fullPage: true });
 
   // Tap a reservation: the Reservations page's actions, per item when there are several
-  await page.click("#up-2 .up-open");
-  ok(await page.isVisible("#up-panel-2") && (await page.getAttribute("#up-2 .up-open", "aria-expanded")) === "true", "tap opens its actions");
-  const panel = (await page.innerText("#up-panel-2")).replace(/\s+/g, " ");
+  await page.click("#up-1 .up-open");
+  ok(await page.isVisible("#up-panel-1") && (await page.getAttribute("#up-1 .up-open", "aria-expanded")) === "true", "tap opens its actions");
+  const panel = (await page.innerText("#up-panel-1")).replace(/\s+/g, " ");
   ok(/Wheelchair ✓ Mark picked up/.test(panel) && /Folding chairs × 20 ✓ Mark picked up/.test(panel), "each item has Mark picked up: " + panel);
   ok(/💬 Needs it for a wedding/.test(panel) && /Send pickup info/.test(panel) && /Edit/.test(panel) && /Cancel/.test(panel) && /Send a text/.test(panel), "notes, pickup info, edit, cancel, contact");
   await page.screenshot({ path: "shot-dash-upcoming-open.png", fullPage: true });
-  await page.click("#up-panel-2 .up-item >> nth=1 >> button");
+  await page.click("#up-panel-1 .up-item >> nth=1 >> button");
   await page.waitForFunction(() => document.getElementById("pickup-sheet").classList.contains("open"));
   ok((await page.textContent("#pickup-subtitle")) === "Moshe Klein · Folding chairs" && await page.isVisible("#pickup-qty") && (await page.inputValue("#pickup-qty")) === "20", "Mark picked up opens the pickup sheet for that item");
   await page.click("#pickup-sheet .sheet-close");
-  await page.click("#up-panel-2 button:has-text('Send pickup info')");
+  await page.click("#up-panel-1 button:has-text('Send pickup info')");
   await page.waitForFunction(() => document.getElementById("pickup-instructions-sheet").classList.contains("open"));
   ok(/Wheelchair and Folding chairs × 20/.test(await page.inputValue("#pickup-instructions-message")), "pickup info covers every item of the booking");
   await page.click("#pickup-instructions-sheet .sheet-close");
-  await page.click("#up-panel-2 button:has-text('Edit')");
+  await page.click("#up-panel-1 button:has-text('Edit')");
   await page.waitForFunction(() => document.getElementById("booking-sheet").classList.contains("open"));
   ok(reqs.some(r => r.path === "/admin/booking" && r.search === "?request=recREQMOSHE000001"), "Edit opens the Edit sheet");
   await page.click("#booking-sheet .sheet-close");
-  await page.click("#up-panel-2 button:has-text('Cancel')");
+  await page.click("#up-panel-1 button:has-text('Cancel')");
   await page.waitForFunction(() => document.body.textContent.includes("Reservation cancelled"));
   ok(reqs.some(r => r.path === "/admin/booking/cancel" && r.body.request === "recREQMOSHE000001"), "Cancel cancels the whole reservation");
 
   // Single item: one Mark picked up button
-  await page.waitForSelector("#up-3 .up-open");
-  await page.click("#up-3 .up-open");
-  ok(!(await page.$("#up-panel-3 .up-item")) && /✓ Mark picked up/.test(await page.innerText("#up-panel-3")), "single item: one Mark picked up");
-  ok(!(await page.isVisible("#up-panel-2")), "opening another row closes the first");
+  await page.waitForSelector("#up-2 .up-open");
+  await page.click("#up-2 .up-open");
+  ok(!(await page.$("#up-panel-2 .up-item")) && /✓ Mark picked up/.test(await page.innerText("#up-panel-2")), "single item: one Mark picked up");
+  ok(!(await page.isVisible("#up-panel-1")), "opening another row closes the first");
 
   // Appointment: Check out / Nothing borrowed / Edit
-  await page.click("#up-1 .up-open");
-  ok(/Check out/.test(await page.innerText("#up-panel-1")) && /Nothing borrowed/.test(await page.innerText("#up-panel-1")), "appointment: Check out + Nothing borrowed");
-  await page.click("#up-panel-1 button:has-text('Check out')");
+  await page.click("#up-0 .up-open");
+  ok(/Check out/.test(await page.innerText("#up-panel-0")) && /Nothing borrowed/.test(await page.innerText("#up-panel-0")), "appointment: Check out + Nothing borrowed");
+  await page.click("#up-panel-0 button:has-text('Check out')");
   await page.waitForFunction(() => document.getElementById("checkout-sheet").classList.contains("open"));
   ok(reqs.some(r => r.path === "/admin/checkout/options" && r.search === "?request=recAPPTTODAY00001"), "Check out from Upcoming");
   await page.click("#checkout-sheet .sheet-close");
   await page.selectOption("#upcoming-days", "14");
   await page.waitForFunction(() => true);
   await page.waitForTimeout(200);
-  ok((await page.textContent("#upcoming-range")) === `Today – ${await page.evaluate(d => fmtDay(d), plus(13))}`, "changing the period widens the list: " + await page.textContent("#upcoming-range"));
+  ok((await page.textContent("#upcoming-range")) === `Today – ${await page.evaluate(d => fmtDay(d), plus(14))}`, "changing the period widens the list: " + await page.textContent("#upcoming-range"));
   ok(await page.evaluate(() => localStorage.getItem("whg_upcoming_days")) === "14", "period remembered on this device");
 
   // New reservation from Quick actions

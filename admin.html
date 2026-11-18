@@ -428,6 +428,24 @@
     .upcoming-day { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0.9rem 0 0.4rem; }
     .upcoming-day.late { color: var(--amber); }
     .upcoming-day:first-child { margin-top: 0.2rem; }
+    /* Upcoming sections: chosen day, next N days, Overdue (collapsible; Overdue starts closed) */
+    .up-sec { border: 1px solid var(--border); border-radius: 12px; background: #FBFCFD; margin-bottom: 0.6rem; }
+    .up-sec-head { display: flex; align-items: center; gap: 0.4rem; padding-right: 0.6rem; }
+    .up-sec-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.45rem; padding: 0.65rem 0 0.65rem 0.7rem; border: 0; background: none;
+      font-family: inherit; color: var(--text); text-align: left; cursor: pointer; }
+    .up-sec-toggle:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; border-radius: 10px; }
+    .up-chev { flex: 0 0 auto; display: inline-block; width: 1rem; text-align: center; color: var(--muted); transition: transform 0.15s; }
+    .up-sec.closed .up-chev { transform: rotate(-90deg); }
+    .up-sec-title { font-size: 0.95rem; font-weight: 700; color: var(--navy); }
+    .up-sec-range { font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+    .up-sec-count { margin-left: auto; flex: 0 0 auto; min-width: 1.6rem; padding: 0.05rem 0.5rem; border-radius: 10px; background: #EEF1F3; color: #334155;
+      font-size: 0.8rem; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+    .up-sec.late .up-sec-title { color: var(--red); }
+    .up-sec.late .up-sec-count { background: #FEE2E2; color: #991B1B; }
+    .up-sec-head select { font-size: 0.85rem; }
+    .up-sec-body { padding: 0 0.6rem 0.3rem; }
+    .up-sec.closed .up-sec-body { display: none; }
+    .up-sec-body .up-empty { padding: 0 0.1rem 0.6rem; }
     .up-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.5rem; margin-bottom: 0.4rem; padding-right: 0.6rem; border: 1px solid var(--border); border-radius: 10px; background: var(--white); }
     .up-row.open { border-color: var(--navy); }
     .up-panel { display: none; flex: 1 0 100%; padding: 0.15rem 0 0.7rem 0.7rem; border-top: 1px solid var(--border); }
@@ -1609,12 +1627,6 @@
         <div><div class="section-label">Upcoming</div><div class="up-range" id="upcoming-range" aria-live="polite"></div></div>
         <div class="up-controls">
           <button type="button" class="link-btn" id="up-today" onclick="calToday()" hidden>Today</button>
-          <select id="upcoming-days" aria-label="How many days to show" onchange="setUpcomingDays(this.value)">
-            <option value="3">3 days</option>
-            <option value="7" selected>7 days</option>
-            <option value="14">2 weeks</option>
-            <option value="30">30 days</option>
-          </select>
         </div>
       </div>
       <div id="upcoming-body" style="margin-bottom:1.25rem"><div class="loading">Loading…</div></div>
@@ -3421,6 +3433,7 @@
     document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add("active");
     document.getElementById(`screen-${name}`).classList.add("active");
 
+    if (name === "dashboard" && fromTab !== "dashboard") resetUpcomingSections(); // Summary opens with Overdue closed again
     if (name === "dashboard")    loadDashboard();
     if (name === "requests")     loadRequests();
     if (name === "loans")        loadLoans();
@@ -5859,7 +5872,6 @@
     const slug = gemachSlug;
     if (!SUM || SUM.slug !== slug) SUM = { slug, up: null, loans: null, month: null, sel: null };
     try { localStorage.removeItem("whg_dash_view"); } catch (e) { /* the old Calendar | Overview choice */ }
-    nbEl("upcoming-days").value = String(upcomingDays());
     const upPath = `/admin/upcoming?days=${UP_SPAN}`;
     const savedUp = snapGet(upPath), savedLoans = snapGet("/admin/loans");
     if (savedUp && !savedUp.error) SUM.up = savedUp;
@@ -5911,7 +5923,7 @@
     if (!SUM.sel || SUM.sel < t) SUM.sel = t;
     if (!SUM.month) SUM.month = t.slice(0, 7);
     const n = upcomingDays();
-    const last = [isoAddDays(SUM.sel, n - 1), max].sort()[0];
+    const last = [isoAddDays(SUM.sel, n), max].sort()[0]; // the chosen day, then the next n days
     const entries = summaryEntries();
     const counts = {};
     for (const e of entries) {
@@ -5964,33 +5976,79 @@
   }
   function calToday() { calSelect(nyTodayStr()); }
 
-  /** The list: the chosen date and the days after it; today's starts with what's late. */
+  /** The list, in three collapsible sections: the chosen day (Today), the next N days after it, then Overdue
+   *  (loans still out past their due date, then pickups whose date passed). Overdue starts closed; the open/closed
+   *  choice resets each time the Summary tab is opened. Each section shows how many items it holds. */
+  var UP_OPEN; // set on first use (this part of the script can run after the dashboard starts drawing)
+  function upOpenDefaults() { return { day: true, next: true, late: false }; }
+  function upOpen() { return UP_OPEN || (UP_OPEN = upOpenDefaults()); }
+  function resetUpcomingSections() { UP_OPEN = upOpenDefaults(); }
+  function toggleUpSection(key) {
+    const st = upOpen();
+    st[key] = !st[key];
+    const sec = document.getElementById(`up-sec-${key}`);
+    if (!sec) return;
+    sec.classList.toggle("closed", !st[key]);
+    sec.querySelector(".up-sec-toggle")?.setAttribute("aria-expanded", String(st[key]));
+  }
   function renderUpcomingList(entries, t, last) {
     const box = nbEl("upcoming-body"), sel = SUM.sel, isToday = sel === t, n = upcomingDays();
-    const tomorrow = isoAddDays(t, 1);
+    const tomorrow = isoAddDays(t, 1), first = isoAddDays(sel, 1);
     const short = d => d === t ? "Today" : d === tomorrow ? "Tomorrow" : fmtDay(d);
     nbEl("upcoming-range").textContent = sel === last ? short(sel) : `${short(sel)} – ${fmtDay(last)}`;
     nbEl("up-today").hidden = isToday;
     const order = { appt: 0, pickup: 1, return: 2 };
-    const shown = entries.filter(e => e.late ? isToday : e.date >= sel && e.date <= last).sort((a, b) =>
-      (a.late === b.late ? 0 : a.late ? -1 : 1) || (a.late && a.kind !== b.kind ? (a.kind === "return" ? -1 : 1) : 0) ||
-      a.date.localeCompare(b.date) || order[a.kind] - order[b.kind] ||
-      String(a.up?.at || "").localeCompare(String(b.up?.at || "")) || entryName(a).localeCompare(entryName(b)));
+    const byTime = (a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind] ||
+      String(a.up?.at || "").localeCompare(String(b.up?.at || "")) || entryName(a).localeCompare(entryName(b));
+    const dayList = entries.filter(e => !e.late && e.date === sel).sort(byTime);
+    const nextList = entries.filter(e => !e.late && e.date > sel && e.date <= last).sort(byTime);
+    const lateList = entries.filter(e => e.late).sort((a, b) =>
+      (a.kind === b.kind ? 0 : a.kind === "return" ? -1 : 1) ||
+      String(a.loans?.[0]?.expectedReturn || a.date).localeCompare(String(b.loans?.[0]?.expectedReturn || b.date)) || entryName(a).localeCompare(entryName(b)));
     UPCOMING = []; RETURNS = [];
-    if (!shown.length) {
-      box.innerHTML = `<div class="up-empty">${isToday ? `Nothing booked in the next ${n} days.` : `Nothing booked ${esc(nbEl("upcoming-range").textContent)}.`}</div>`;
-      return;
+    const rowFor = e => e.kind === "return" ? returnRow(e, RETURNS.push(e) - 1) : upcomingRow(e.up, UPCOMING.push(e.up) - 1);
+    const dayLabel = d => d === tomorrow ? `Tomorrow · ${fmtDay(d)}` : fmtDay(d, true);
+    const section = (key, { title, range = "", control = "", body, count, cls = "" }) => {
+      const open = upOpen()[key] !== false;
+      return `<section class="up-sec${cls}${open ? "" : " closed"}" id="up-sec-${key}">
+        <div class="up-sec-head">
+          <button type="button" class="up-sec-toggle" onclick="toggleUpSection('${key}')" aria-expanded="${open}" aria-controls="up-sec-body-${key}">
+            <span class="up-chev" aria-hidden="true">▾</span><span class="up-sec-title">${esc(title)}</span>
+            ${range ? `<span class="up-sec-range">${range.split(" – ").map(x => `<span class="nw">${esc(x)}</span>`).join(" – ")}</span>` : ""}
+            <span class="up-sec-count" aria-label="${count} ${count === 1 ? "item" : "items"}">${count}</span>
+          </button>${control}
+        </div>
+        <div class="up-sec-body" id="up-sec-body-${key}">${body}</div>
+      </section>`;
+    };
+    let html = section("day", {
+      title: isToday ? "Today" : sel === tomorrow ? "Tomorrow" : fmtDay(sel, true), range: isToday || sel === tomorrow ? fmtDay(sel) : "",
+      count: dayList.length,
+      body: dayList.map(rowFor).join("") || `<div class="up-empty">Nothing booked ${isToday ? "today" : "that day"}.</div>`,
+    });
+    let nextBody = "", lastHead = null;
+    for (const e of nextList) {
+      if (e.date !== lastHead) { nextBody += `<div class="upcoming-day">${esc(dayLabel(e.date))}</div>`; lastHead = e.date; }
+      nextBody += rowFor(e);
     }
-    const dayLabel = d => d === t ? `Today · ${fmtDay(d)}` : d === tomorrow ? `Tomorrow · ${fmtDay(d)}` : fmtDay(d, true);
-    let html = "", lastHead = null;
-    for (const e of shown) {
-      const head = e.late ? `late-${e.kind}` : e.date;
-      if (head !== lastHead) {
-        html += e.late ? `<div class="upcoming-day late">${e.kind === "return" ? "Overdue — still out" : "Pickup date passed — not picked up yet"}</div>`
-          : `<div class="upcoming-day">${esc(dayLabel(e.date))}</div>`;
-        lastHead = head;
+    const days = [[3, "3 days"], [7, "7 days"], [14, "2 weeks"], [30, "30 days"]];
+    html += section("next", {
+      title: "Next", count: nextList.length,
+      range: first > last ? "" : first === last ? short(first) : `${short(first)} – ${fmtDay(last)}`,
+      control: `<select id="upcoming-days" aria-label="How many days to show" onchange="setUpcomingDays(this.value)">
+        ${days.map(([v, l]) => `<option value="${v}"${v === n ? " selected" : ""}>${l}</option>`).join("")}</select>`,
+      body: nextBody || `<div class="up-empty">Nothing booked.</div>`,
+    });
+    if (lateList.length) {
+      let lateBody = "", lateHead = null;
+      for (const e of lateList) {
+        if (e.kind !== lateHead) {
+          lateBody += `<div class="upcoming-day late">${e.kind === "return" ? "Overdue — still out" : "Pickup date passed — not picked up yet"}</div>`;
+          lateHead = e.kind;
+        }
+        lateBody += rowFor(e);
       }
-      html += e.kind === "return" ? returnRow(e, RETURNS.push(e) - 1) : upcomingRow(e.up, UPCOMING.push(e.up) - 1);
+      html += section("late", { title: "Overdue", count: lateList.length, body: lateBody, cls: " late" });
     }
     box.innerHTML = html;
   }

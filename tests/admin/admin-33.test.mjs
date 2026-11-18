@@ -61,11 +61,12 @@ ok(await page.$eval("#stat-grid", e => getComputedStyle(e).gridTemplateColumns.s
 ok(await page.isVisible("#stats-body"), "How it's going is shown");
 ok(reqs.some(r => r === "/admin/upcoming?days=60") && !reqs.some(r => r.startsWith("/admin/reservations")), "loads 60 days of Upcoming once");
 
-// Today, by default: late things first, then today + 6 days, with due-backs
+// Today, by default: Today, the next 7 days, then Overdue (closed), with due-backs
 ok(await cell(T).evaluate(e => e.classList.contains("sel") && e.getAttribute("aria-pressed") === "true"), "today is selected");
 ok((await page.textContent("#upcoming-range")).startsWith("Today – ") && await page.isHidden("#up-today"), "range says Today – …, no Today link");
-const heads = await page.$$eval("#upcoming-body .upcoming-day", h => h.map(x => x.textContent));
-ok(heads[0] === "Overdue — still out" && heads[1].startsWith("Pickup date passed"), "today starts with overdue loans, then missed pickups: " + heads.join(" | "));
+const lateHeads = await page.$$eval("#up-sec-late .upcoming-day", h => h.map(x => x.textContent));
+ok(lateHeads[0] === "Overdue — still out" && lateHeads[1].startsWith("Pickup date passed"), "Overdue: loans still out, then missed pickups: " + lateHeads.join(" | "));
+ok(await page.$eval("#upcoming-body .up-sec:last-child", e => e.id === "up-sec-late" && e.classList.contains("closed")), "Overdue is last and starts closed");
 const body = await page.textContent("#upcoming-body");
 ok(/Chana Klein/.test(body) && /Moshe Levy/.test(body) && !/Next Week/.test(body) && !/Far Away/.test(body) && !/Open Ended/.test(body), "7 days: D2's pickup + due-back; not day 8/9; open-ended loans never");
 ok(await page.$$eval("#upcoming-body .up-row .tag", t => t.filter(x => x.textContent === "Due back").length) === 1, "Moshe's two items due the same day are one Due back row");
@@ -91,14 +92,23 @@ await cell(iso(8)).click();
 ok(await cell(iso(8)).getAttribute("aria-pressed") === "true", "tapped date is selected");
 ok(!(await page.isHidden("#up-today")) && !(await page.textContent("#upcoming-range")).startsWith("Today"), "range starts at the tapped date; Today link shown: " + await page.textContent("#upcoming-range"));
 const body2 = await page.textContent("#upcoming-body");
-ok(/Next Week/.test(body2) && /Far Away/.test(body2) && !/Chana Klein/.test(body2) && !/Overdue/.test(body2), "list: day 8 onward, no late section");
+ok(/Next Week/.test(body2) && /Far Away/.test(body2) && !/Chana Klein/.test(body2), "list: day 8 onward");
+ok(await page.textContent("#up-sec-day .up-sec-title") === await page.evaluate(d => fmtDay(d, true), iso(8)) && await page.$("#up-sec-late"), "first section is the tapped day; Overdue still at the bottom");
 await toMonth(iso(9)); // day 9 can be in the next month (e.g. tapped Oct 31)
 ok(await page.$$eval(".cal-day-btn.inrange", e => e.length) >= 1 && await cell(iso(9)).evaluate(e => e.classList.contains("inrange")), "the following days are shaded");
 await page.selectOption("#upcoming-days", "3");
-ok((await page.textContent("#upcoming-range")).endsWith(await page.evaluate(d => fmtDay(d), iso(10))), "3 days: tapped date + 2");
+ok((await page.textContent("#upcoming-range")).endsWith(await page.evaluate(d => fmtDay(d), iso(11))), "3 days: tapped date, then the next 3");
 ok(await page.evaluate(() => localStorage.getItem("whg_upcoming_days")) === "3", "period remembered");
 await page.click("#up-today");
 ok((await page.textContent("#upcoming-range")).startsWith("Today"), "Today link goes back to today");
+
+// Opening Overdue lasts until you leave Summary; coming back starts it closed again
+await page.click("#up-sec-late .up-sec-toggle");
+ok(await page.isVisible("#up-sec-body-late"), "Overdue opens");
+await page.evaluate(() => { switchTab("requests"); switchTab("dashboard"); });
+await page.waitForSelector("#up-sec-late");
+ok(await page.$eval("#up-sec-late", e => e.classList.contains("closed")), "back on Summary: Overdue closed again");
+await page.screenshot({ path: "shot-upcoming-sections.png", fullPage: true });
 
 // 60-day limit; past days and days beyond can't be tapped
 while (!(await page.isDisabled("#cal-next"))) await page.click("#cal-next");
