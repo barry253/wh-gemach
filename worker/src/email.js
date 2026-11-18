@@ -70,7 +70,7 @@ function availabilityText(a, isQty) {
 const TEST_NOTE = "TEST REQUEST: sent from the gemach's test link before it went live. It isn't a real loan — try out confirming, pickup and return, then clear test data before going live.";
 
 async function sendNotificationEmail(env, g, data) {
-  const { requestId, name, phone, email, preferredContact, itemNames, neededFrom, neededUntil, openEnded, notes,
+  const { requestId, recId = null, name, phone, email, preferredContact, itemNames, neededFrom, neededUntil, openEnded, notes,
     requestType, eventDate, preferredTimes, partySize, depositAck, availability = null, test = false,
     town = null, paymentTier = null, addonsOnly = false } = data;
   // "Franklin Square · local rate" (gemachs with a local payment tier); the payment text that applies to them.
@@ -85,7 +85,9 @@ async function sendNotificationEmail(env, g, data) {
     : openEnded ? `${longDate(neededFrom)} — open-ended`
     : `${longDate(neededFrom)} → ${neededUntil ? longDate(neededUntil) : "no return date given"}`;
   const adminUrl = env.ADMIN_URL || DEFAULT_ADMIN_URL;
-  const link = `${adminUrl}${adminUrl.includes("?") ? "&" : "?"}g=${encodeURIComponent(g.slug)}`;
+  // Straight to the Requests tab with this request outlined (same deep link as the push notification).
+  const linkParams = new URLSearchParams({ g: g.slug, tab: "requests", ...(recId ? { req: recId } : {}) });
+  const link = `${adminUrl}${adminUrl.includes("?") ? "&" : "?"}${linkParams}`;
   const heading = isAppt ? `New appointment request — ${requestId}` : `New request — ${requestId}`;
   // No gemach Email → it goes to the network fallback address; say so, so whoever gets it knows why.
   const fallback = !g.email && !!env.NOTIFY_EMAIL;

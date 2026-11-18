@@ -252,7 +252,7 @@ async function handleSubmitRequest(request, db, env, ctx) {
   // Tell the gemach (email, then lock-screen push) AFTER answering the borrower: the request is already saved,
   // so a slow email service must never make the form say "couldn't send" (people would send it again).
   const notifyArgs = {
-    requestId, name: fields["Name"], phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes: fields["Notes"] || null,
+    requestId, recId: created?.id || null, name: fields["Name"], phone, email, preferredContact, itemNames, neededFrom: from, neededUntil: until, openEnded: isOpen, notes: fields["Notes"] || null,
     requestType: isAppt ? "Appointment" : "Loan", eventDate, preferredTimes, partySize,
     depositAck: fields["Deposit Acknowledged"], town: town ? [town, state].filter(Boolean).join(", ") : null, paymentTier, addonsOnly,
     items: itemIds.map(id => ({ id, name: typeMap[id].fields.Name || "Item", quantity: qtyMap[id] || null,

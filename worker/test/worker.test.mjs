@@ -2989,7 +2989,12 @@ await t("r5 legacy /inventory returns [] when wh-medical is inactive", async () 
     assert.ok(m.html.includes("<strong>× 20</strong>") && m.html.includes("<strong>× 4</strong>"));
     assert.ok(m.html.includes("may not be available for these dates:</strong> Walker, Folding Chair × 20, Bath Bench"));
     assert.ok(m.html.includes("line1<br>line2 &lt;b&gt;x&lt;/b&gt;"), "notes escaped");
-    assert.ok(m.html.includes("Review in admin") && m.html.includes("?g=notify-gemach"));
+    assert.ok(m.html.includes("Review in admin"));
+    // The button and the text link open the Requests tab with this request outlined (like the push notification).
+    const reqId = [...m.html.matchAll(/href="([^"]*\/admin\?[^"]*)"/g)].map(x => x[1].replace(/&amp;/g, "&")).find(h => h.includes("tab=requests"));
+    assert.ok(reqId, "admin link goes to the Requests tab");
+    assert.match(reqId, /\?g=notify-gemach&tab=requests&req=rec\w+$/);
+    assert.ok(m.text.includes(`Log in to review: ${reqId}`));
     assert.ok(!m.html.includes("<b>x</b>"));
   });
   await t("notify: everything available -> no warning; window outside bookings frees items", async () => {
