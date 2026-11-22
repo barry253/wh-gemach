@@ -21,6 +21,7 @@ import { effectiveTemplates, emailSignature } from "./settings.js";
 // Any reminder (automatic or sent by an admin) stamps Loans."Reminder Sent At", which is what keeps this
 // from repeating: at most one per loan per day, and a manual reminder counts.
 // Loans without an Expected Return (open-ended) are never reminded automatically.
+// Several items borrowed together (same request, due date and kind) get one email listing them all.
 
 /** "Fri, Oct 9" from "2026-10-09" (calendar date). */
 const dayLabel = s => (isValidDate(s)
@@ -84,15 +85,16 @@ function fillTemplate(template, vars) {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** {due_back}: "is due back on Fri, Oct 9" / "is due back today" / "was due back on Fri, Oct 2". */
-function dueBackText(expected, today) {
+/** {due_back}: "is due back on Fri, Oct 9" / "is due back today" / "was due back on Fri, Oct 2" ("are" / "were" for several items). */
+function dueBackText(expected, today, plural = false) {
   if (!isValidDate(expected)) return "";
-  if (expected === today) return "is due back today";
-  return `${expected > today ? "is" : "was"} due back on ${dayLabel(expected)}`;
+  const [now, past] = plural ? ["are", "were"] : ["is", "was"];
+  if (expected === today) return `${now} due back today`;
+  return `${expected > today ? now : past} due back on ${dayLabel(expected)}`;
 }
 
 /** The Return reminder text for one loan (the gemach's template, or the default). */
-function reminderMessage(g, { firstName, items, borrowed, expected, today, link }) {
+function reminderMessage(g, { firstName, items, borrowed, expected, today, link, plural = false }) {
   let tpl = effectiveTemplates(g).returnReminder;
   if (link && !tpl.includes("{manage_link}")) tpl = tpl.trimEnd() + "\n\nManage your loan: {manage_link}";
   return fillTemplate(tpl, {
@@ -106,9 +108,25 @@ function reminderMessage(g, { firstName, items, borrowed, expected, today, link 
     event_date: "", appointment_time: "",
     manage_link: link || "",
     borrowed_date: dayLabel(borrowed),
-    due_back: dueBackText(expected, today),
+    due_back: dueBackText(expected, today, plural),
     days_out: isValidDate(borrowed) ? String(Math.max(0, daysBetween(borrowed, today))) : "",
   });
+}
+
+/**
+ * {items} for one reminder: "Walker", "Chairs × 58 and Tables × 6", "Wheelchair × 2, Walker and Cane".
+ * Same item type on several loans (two numbered wheelchairs) is counted together.
+ */
+function itemsLabel(loans) {
+  const byName = new Map();
+  for (const x of loans) {
+    const cur = byName.get(x.typeName) || { n: 0, isQuantity: false };
+    cur.n += x.qty || 1;
+    cur.isQuantity = cur.isQuantity || x.isQuantity;
+    byName.set(x.typeName, cur);
+  }
+  const parts = [...byName].map(([name, v]) => (v.isQuantity || v.n > 1 ? `${name} × ${v.n}` : name));
+  return parts.length <= 1 ? (parts[0] || "item") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
 }
 
 const VALID_EMAIL = /^[^\s@<>()"',;:\\]+@[^\s@<>()"',;:\\]+\.[^\s@<>()"',;:\\]+$/;
@@ -144,13 +162,15 @@ async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = m
     }
   }
   const stamps = [], events = new Map(); // gemach id -> History rows
-  const copies = []; // { row: Sent Emails row, ev: its History row }
+  const copies = []; // { row: Sent Emails row, evs: its History rows }
   if (due.length) {
     // Loans from requests sent through a gemach's test link never get real reminders.
     const srcIds = due.map(d => linkedId(firstLink(d.l.fields["Source Request"]))).filter(Boolean);
     const testIds = new Set((await fetchByIds(db, T.REQUESTS, srcIds, { fields: ["Test"] })).filter(r => r.fields.Test).map(r => r.id));
     const { borrowerMap, itemMap, itemTypeMap, typeInfo } = await loadLoanRelations(db, null, due.map(d => d.l), { includeItemToReserve: true });
-    let emails = 0;
+    // 1. Work out each loan's part, then 2. group the loans of one borrowing (same gemach, borrower email, request,
+    // due date and kind) so the borrower gets one email listing everything, not one per item.
+    const groups = new Map();
     for (const { l, g, kind } of due) {
       const f = l.fields;
       try {
@@ -159,34 +179,52 @@ async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = m
         const src = linkedId(firstLink(f["Source Request"]));
         if (src && testIds.has(src)) { out.skippedTest++; continue; }
         const expected = f["Expected Return"];
-        const b = borrowerMap[linkedId(firstLink(f["Borrower"]))] || {};
+        const bId = linkedId(firstLink(f["Borrower"]));
+        const b = borrowerMap[bId] || {};
         const email = String(b.email || "").trim();
         if (!VALID_EMAIL.test(email)) { out.noEmail++; continue; }
         const item = itemMap[linkedId(firstLink(f["Item"]))] || {};
         const typeName = item.itemTypeName || itemTypeMap[linkedId(firstLink(f["Item to Reserve"]))] || "item";
-        const items = q.isQuantity && q.quantity ? `${typeName} × ${q.quantity}` : typeName;
+        // Loans made in admin without a request: the same borrower's loans picked up the same day count as one borrowing.
+        const key = [g.id, email.toLowerCase(), src || `b:${bId}|${f["Date Borrowed"] || ""}`, expected, kind].join("|");
+        if (!groups.has(key)) groups.set(key, { g, kind, expected, src, b, email, borrowed: f["Date Borrowed"], loans: [] });
+        groups.get(key).loans.push({ l, typeName, item, qty: q.isQuantity && q.quantity ? q.quantity : 1, isQuantity: !!(q.isQuantity && q.quantity) });
+      } catch (e) {
+        out.errors.push(`${g.slug} · ${f["Loan ID"] || l.id}: ${e.message}`);
+      }
+    }
+    let emails = 0;
+    for (const grp of groups.values()) {
+      const { g, kind, expected, src, b, email, loans } = grp;
+      const loanIds = loans.map(x => x.l.fields["Loan ID"] || x.l.id);
+      try {
+        const items = itemsLabel(loans);
+        const short = items.length > 60 ? `${loans.length} items` : items; // subject lines stay readable
         const link = src ? await manageUrl(env, src) : null;
-        const message = reminderMessage(g, { firstName: String(b.name || "").trim().split(/\s+/)[0], items, borrowed: f["Date Borrowed"], expected, today, link });
-        const entry = { gemach: g.slug, loanId: f["Loan ID"] || l.id, borrower: b.name || null, email, kind, due: expected };
+        const message = reminderMessage(g, { firstName: String(b.name || "").trim().split(/\s+/)[0], items, borrowed: grp.borrowed, expected, today, link, plural: new Set(loans.map(x => x.typeName)).size > 1 });
+        const entry = { gemach: g.slug, loanId: loanIds.join(", "), loanIds, borrower: b.name || null, email, kind, due: expected };
         if (dryRun) { out.sent.push({ ...entry, message }); continue; }
         if (emails >= MAX_EMAILS_PER_RUN) { out.deferred++; continue; }
         emails++;
-        const subject = kind === "overdue" ? `Reminder: please return the ${items} — ${g.name}` : `Reminder: ${items} due back ${dayLabel(expected)} — ${g.name}`;
+        const subject = kind === "overdue" ? `Reminder: please return the ${short} — ${g.name}` : `Reminder: ${short} due back ${dayLabel(expected)} — ${g.name}`;
         // The copies (History → View email) are saved together after the loop: one write per ~9, not one each.
         const { ok, row } = await sendBorrowerEmail(env, db, g, { to: email, subject, text: message + emailSignature(g), html: buildEmailHtml(g, message) }, { kind: "reminder", save: false });
         if (!events.has(g.id)) events.set(g.id, []);
-        const ev = { borrower: b.name || null, itemType: typeName, itemCode: item.itemId || null, loanId: f["Loan ID"] || null, admin: "Automatic" };
-        const logRow = ok
-          ? { ...ev, eventType: "Return Reminder Sent", notes: `Emailed to ${email}${kind === "overdue" ? " (overdue)" : ""}` }
-          // Still due, so it's tried again tomorrow; History shows the attempt (View email).
-          : { ...ev, eventType: "Return Reminder Failed", notes: `The email to ${email} didn't go through; it will be tried again tomorrow` };
-        events.get(g.id).push(logRow);
-        if (row) copies.push({ row, ev: logRow });
+        // History keeps one row per loan (each item's history shows it), all pointing at the one email.
+        const logRows = loans.map(({ l, typeName, item }) => {
+          const ev = { borrower: b.name || null, itemType: typeName, itemCode: item.itemId || null, loanId: l.fields["Loan ID"] || null, admin: "Automatic" };
+          return ok
+            ? { ...ev, eventType: "Return Reminder Sent", notes: `Emailed to ${email}${kind === "overdue" ? " (overdue)" : ""}` }
+            // Still due, so it's tried again tomorrow; History shows the attempt (View email).
+            : { ...ev, eventType: "Return Reminder Failed", notes: `The email to ${email} didn't go through; it will be tried again tomorrow` };
+        });
+        events.get(g.id).push(...logRows);
+        if (row) copies.push({ row, evs: logRows });
         if (!ok) { out.failed.push(entry); continue; }
-        stamps.push(l.id);
+        stamps.push(...loans.map(x => x.l.id));
         out.sent.push(entry);
       } catch (e) {
-        out.errors.push(`${g.slug} · ${f["Loan ID"] || l.id}: ${e.message}`);
+        out.errors.push(`${g.slug} · ${loanIds.join(", ")}: ${e.message}`);
       }
     }
   }
@@ -199,7 +237,7 @@ async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = m
   }
   if (copies.length) {
     const ids = await saveSentEmails(db, copies.map(x => x.row));
-    copies.forEach((x, i) => { if (ids[i]) x.ev.emailId = ids[i]; });
+    copies.forEach((x, i) => { if (ids[i]) x.evs.forEach(ev => { ev.emailId = ids[i]; }); });
   }
   if (!dryRun) for (const [gid, evs] of events) logEvents(ctx, db, byId.get(gid), evs);
   console.log(`reminders ${today}${dryRun ? " (dry run)" : ""}: ${out.sent.length} sent, ${out.failed.length} failed, ${out.noEmail} without email` +
@@ -226,4 +264,4 @@ async function handleRemindersPreview(c) {
   return json(r);
 }
 
-export { MAX_EMAILS_PER_RUN, reminderDue, fillTemplate, dueBackText, reminderMessage, runReminders, handleRemindersPreview, dayLabel };
+export { MAX_EMAILS_PER_RUN, itemsLabel, reminderDue, fillTemplate, dueBackText, reminderMessage, runReminders, handleRemindersPreview, dayLabel };

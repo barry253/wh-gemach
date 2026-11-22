@@ -4062,6 +4062,49 @@ await t("returned message: template in Settings; return can email a thank-you (o
     assert.equal(v && v.reminderSentVia, "Email (automatic)", "admin sees how it was sent");
     DB.Loans = DB.Loans.filter(l => !/^recREMLOAN/.test(l.id));
   });
+  await t("reminders: several items borrowed together get one email listing them all", async () => {
+    assert.equal(R.itemsLabel([{ typeName: "Chairs", qty: 58, isQuantity: true }, { typeName: "Tables", qty: 6, isQuantity: true }]), "Chairs × 58 and Tables × 6");
+    assert.equal(R.itemsLabel([{ typeName: "Wheelchair", qty: 1 }, { typeName: "Walker", qty: 1 }, { typeName: "Wheelchair", qty: 1 }, { typeName: "Cane", qty: 1 }]), "Wheelchair × 2, Walker and Cane");
+    assert.equal(R.itemsLabel([{ typeName: "Walker", qty: 1 }]), "Walker");
+    const G = { id: "recREMGRPGEMACH01", slug: "rem-grp" };
+    const sc = { Gemach: [G.id], "Gemach Slug": [G.slug] };
+    DB.Gemachs.push(rec(G.id, { Name: "Group Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "grp@example.com", "Auto Reminders": true, "Reminder Days Before": 2, "Reminder Repeat Days": 7 }));
+    DB["Item Types"].push(rec("recREMGRPTYPE0001", { Name: "Chairs", Active: true, Tracking: "Quantity", "Quantity Owned": 60, ...sc }),
+      rec("recREMGRPTYPE0002", { Name: "Tables", Active: true, Tracking: "Quantity", "Quantity Owned": 9, ...sc }),
+      rec("recREMGRPTYPE0003", { Name: "Urn", Active: true, ...sc }));
+    DB.Borrowers.push(rec("recREMGRPBORROW01", { Name: "Sara Gold", Email: "sara@example.com", ...sc }), rec("recREMGRPBORROW02", { Name: "Avi Stern", Email: "avi@example.com", ...sc }));
+    DB.Requests.push(rec("recREMGRPREQUEST1", { "Request ID": "R-G1", Name: "Sara Gold", Status: "Converted", ...sc }),
+      rec("recREMGRPREQUEST2", { "Request ID": "R-G2", Name: "Sara Gold", Status: "Converted", ...sc }));
+    const L = (id, f) => rec(id, { Status: "Active", Borrower: ["recREMGRPBORROW01"], "Date Borrowed": "2026-10-01", "Expected Return": "2026-10-07", ...sc, ...f });
+    DB.Loans.push(
+      L("recREMGRPLOAN0001", { "Loan ID": "L-G1", "Item to Reserve": ["recREMGRPTYPE0001"], Quantity: 58, "Source Request": ["recREMGRPREQUEST1"] }),
+      L("recREMGRPLOAN0002", { "Loan ID": "L-G2", "Item to Reserve": ["recREMGRPTYPE0002"], Quantity: 6, "Source Request": ["recREMGRPREQUEST1"] }),
+      L("recREMGRPLOAN0003", { "Loan ID": "L-G3", "Item to Reserve": ["recREMGRPTYPE0003"], "Source Request": ["recREMGRPREQUEST2"] }),   // another request: its own email
+      L("recREMGRPLOAN0004", { "Loan ID": "L-G4", "Item to Reserve": ["recREMGRPTYPE0001"], Quantity: 10, Borrower: ["recREMGRPBORROW02"] }), // admin-made, no request
+      L("recREMGRPLOAN0005", { "Loan ID": "L-G5", "Item to Reserve": ["recREMGRPTYPE0003"], Borrower: ["recREMGRPBORROW02"] }));
+    const now = Date.parse("2026-10-05T14:00:00Z");
+    const mark = resendCalls().length;
+    const run = await R.runReminders(env, ctx, { now });
+    await Promise.allSettled(waits);
+    const mails = resendCalls().slice(mark).filter(m => / — Group Gemach$/.test(m.subject || ""));
+    assert.equal(mails.length, 3, "one email per borrowing, not per item");
+    const sara = mails.filter(m => m.to[0] === "sara@example.com");
+    const both = sara.find(m => /Chairs/.test(m.subject));
+    assert.equal(both.subject, "Reminder: Chairs × 58 and Tables × 6 due back Wed, Oct 7 — Group Gemach");
+    assert.match(both.text, /the Chairs × 58 and Tables × 6 you borrowed on Thu, Oct 1 are due back on Wed, Oct 7\./);
+    assert.match(both.text, /Manage your loan: https:\/\/whgemachs\.org\/r\/recREMGRPREQUEST1\./);
+    assert.ok(sara.some(m => /^Reminder: Urn due back/.test(m.subject)), "a separate request gets its own email");
+    const avi = mails.find(m => m.to[0] === "avi@example.com");
+    assert.match(avi.subject, /^Reminder: Chairs × 10 and Urn due back/, "admin-made loans picked up together: one email");
+    assert.ok(["recREMGRPLOAN0001", "recREMGRPLOAN0002", "recREMGRPLOAN0004", "recREMGRPLOAN0005"].every(id => DB.Loans.find(l => l.id === id).fields["Reminder Sent At"]), "every loan stamped");
+    const lg = DB["tblC3PY7f5sXQDMJK"].filter(x => x.fields["Event Type"] === "Return Reminder Sent" && x.fields.Gemach?.[0] === G.id);
+    assert.deepEqual(lg.map(x => x.fields["Loan ID"]).sort(), ["L-G1", "L-G2", "L-G3", "L-G4", "L-G5"], "History: one row per loan");
+    const e1 = lg.find(x => x.fields["Loan ID"] === "L-G1").fields, e2 = lg.find(x => x.fields["Loan ID"] === "L-G2").fields;
+    assert.ok(e1["Email ID"] && e1["Email ID"] === e2["Email ID"], "both History rows open the same email");
+    assert.equal(run.sent.filter(x => x.gemach === G.slug).length, 3);
+    assert.deepEqual(run.sent.find(x => x.loanIds?.includes("L-G1")).loanIds, ["L-G1", "L-G2"]);
+    DB.Loans = DB.Loans.filter(l => !/^recREMGRP/.test(l.id));
+  });
   await t("reminders: many gemachs in one run stay under the query limit; test loans skipped; over 40 left for tomorrow with an alert", async () => {
     const now = Date.parse("2026-10-05T14:00:00Z");
     const mark = resendCalls().length;
