@@ -247,4 +247,34 @@ const openBell = async page => { await page.click("#btn-bell"); await page.waitF
   ok(opened.at(-1) === "/admin?g=kallah&tab=requests&req=recR", "SW: window gone → opens a new one at the link");
 }
 
+// 7. Firefox: windows can only be opened/focused within ~1 s of the click, so the fallback must come quickly.
+{
+  const vm = await import("node:vm");
+  const code = fs.readFileSync(new URL("../../site/admin-sw.js", import.meta.url), "utf8");
+  const handlers = {}, opened = [];
+  let windows = [], clickAt = 0;
+  const self = {
+    location: { origin: "https://whgemachs.org" },
+    addEventListener: (t, fn) => { handlers[t] = fn; },
+    skipWaiting() {},
+    clients: { claim: async () => {}, matchAll: async () => windows,
+      openWindow: async u => { if (Date.now() - clickAt > 1000) throw new TypeError("Not allowed to open a window."); opened.push(u); } },
+    registration: { showNotification: async () => {} },
+    navigator: { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0" },
+  };
+  vm.runInNewContext(code, { self, URL, Promise, Date, console: { warn() {}, log() {} }, MessageChannel, setTimeout });
+  const run = async ev => { let p; clickAt = Date.now(); handlers.notificationclick({ ...ev, waitUntil: x => { p = x; } }); await p; };
+  const clickEv = url => ({ notification: { data: { url }, close() {} } });
+  // Admin tab open but not answering and not ours to navigate (e.g. hard-refreshed) → still opens the request within 1 s.
+  windows = [{ url: "https://whgemachs.org/admin", focus: async () => {}, postMessage: () => {}, navigate: async () => { throw new TypeError("not controlled"); } }];
+  await run(clickEv("/admin?g=kallah&tab=requests&req=recF"));
+  ok(opened.at(-1) === "/admin?g=kallah&tab=requests&req=recF", "SW (Firefox): no answer + can't navigate → opens the request link before Firefox's 1 s limit");
+  // A refused openWindow doesn't throw out of the handler.
+  self.clients.openWindow = async () => { throw new TypeError("Not allowed to open a window."); };
+  windows = [];
+  let threw = false;
+  try { await run(clickEv("/admin?tab=requests")); } catch (e) { threw = true; }
+  ok(!threw, "SW: a refused openWindow is caught");
+}
+
 await browser.close();

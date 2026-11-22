@@ -52,6 +52,12 @@ function handOver(win, url, ms = 1500) {
   });
 }
 
+// Firefox lets a service worker open or focus a window only within ~1 s of the click
+// (dom.serviceWorkers.disable_open_click_delay); later, openWindow() is refused and nothing opens.
+// So on Firefox wait less for the page's answer, leaving time for the fallbacks.
+const IS_FIREFOX = /Firefox\//.test((self.navigator && self.navigator.userAgent) || "");
+const ANSWER_WAIT_MS = IS_FIREFOX ? 500 : 1500;
+
 self.addEventListener("notificationclick", event => {
   event.notification.close();
   const url = adminUrl(event.notification.data && event.notification.data.url);
@@ -61,10 +67,11 @@ self.addEventListener("notificationclick", event => {
     if (win) {
       // Admin is already open: bring it forward and let it go to the page (no reload unless the gemach changes).
       try { await win.focus(); } catch (e) { /* ignore */ }
-      if (await handOver(win, url)) return;
+      if (await handOver(win, url, ANSWER_WAIT_MS)) return;
       // No answer: load that window straight at the link, so it still opens on the request.
+      // (navigate() only works on a window this service worker controls; a hard-refreshed tab isn't.)
       try { if (win.navigate && await win.navigate(url)) return; } catch (e) { /* window gone or not ours */ }
     }
-    await self.clients.openWindow(url);
+    try { await self.clients.openWindow(url); } catch (e) { console.warn("Couldn't open admin:", e); }
   })());
 });
