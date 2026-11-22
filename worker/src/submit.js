@@ -6,6 +6,7 @@ import { LEGACY_SLUG, T } from "./config.js";
 import { addYearsDate, eventDates, isValidDate, nyToday } from "./dates.js";
 import { vacationProblem } from "./vacationrules.js";
 import { buildEmailHtml, escHtml, sendNotificationEmail } from "./email.js";
+import { itemsBullets } from "./itemlist.js";
 import { saveSentEmail, sendBorrowerEmail } from "./sentemails.js";
 import { DEFAULT_EVENT_LABEL, loadGemachBySlug } from "./gemachs.js";
 import { json } from "./http.js";
@@ -314,16 +315,25 @@ async function receiptAllowed(db, email, justSavedId) {
 /** "We got your request" to the borrower (only when they gave an email), with their manage link: the email to send. */
 function receiptEmail(g, { email, name, requestId, itemNames, isAppt, link, test, paymentTier = null }) {
   const first = String(name || "").trim().split(/\s+/)[0] || "there";
-  const what = isAppt ? "your appointment request" : `your request${itemNames.length ? ` for ${itemNames.join(", ")}` : ""}`;
+  // Items as a list, one per line (an appointment request lists none).
+  const list = isAppt ? [] : (itemNames || []).map(x => String(x || "").trim()).filter(Boolean);
+  const what = isAppt ? "your appointment request" : "your request";
   // Gemachs with a local payment tier: tell them which amount applies to them.
   const charge = paymentTier ? chargeTextFor(g, paymentTier === "Local") : "";
   const chargeWord = g.chargeType === "Payment" ? "Payment" : "Deposit";
-  const text = `Hi ${first},\n\nThanks — ${g.name || "the gemach"} received ${what} (${requestId}). They'll be in touch soon.\n\n` +
+  const gname = g.name || "the gemach";
+  const text = `Hi ${first},\n\n` +
+    (list.length ? `Thanks — ${gname} received your request (${requestId}) for the following:\n${itemsBullets(list)}\n\nThey'll be in touch soon.\n\n`
+      : `Thanks — ${gname} received ${what} (${requestId}). They'll be in touch soon.\n\n`) +
     (charge ? `${chargeWord}: ${charge}\n\n` : "") +
     `To check on it or cancel, use your private link:\n${link}\n\nPlease don't share this link.`;
   const e = escHtml;
   const bodyHtml = `<p style="margin:0 0 12px;">Hi ${e(first)},</p>` +
-    `<p style="margin:0 0 12px;">Thanks — ${e(g.name || "the gemach")} received ${e(what)} (${e(requestId)}). They'll be in touch soon.</p>` +
+    (list.length
+      ? `<p style="margin:0 0 4px;">Thanks — ${e(gname)} received your request (${e(requestId)}) for the following:</p>` +
+        `<ul style="margin:4px 0 12px 0;padding-left:22px;">${list.map(x => `<li>${e(x)}</li>`).join("")}</ul>` +
+        `<p style="margin:0 0 12px;">They'll be in touch soon.</p>`
+      : `<p style="margin:0 0 12px;">Thanks — ${e(gname)} received ${e(what)} (${e(requestId)}). They'll be in touch soon.</p>`) +
     (charge ? `<p style="margin:0 0 12px;"><strong>${e(chargeWord)}:</strong> ${e(charge).replace(/\r\n?|\n/g, "<br>")}</p>` : "") +
     `<p style="margin:18px 0;"><a href="${e(link)}" style="display:inline-block;background:#1B3A4B;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">View or cancel your request</a></p>` +
     `<p style="margin:0;color:#5e6b72;font-size:13px;">This link is private to you — please don't share it.</p>`;

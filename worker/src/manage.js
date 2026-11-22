@@ -19,7 +19,8 @@ import { purgePublicCache } from "./cache.js";
 import { REC_RE, T } from "./config.js";
 import { formatNy, nyToday } from "./dates.js";
 import { vacationOn } from "./vacationrules.js";
-import { longDate, sendEmail, buildEmailHtml, escHtml } from "./email.js";
+import { longDate, sendEmail, buildEmailHtml, paragraphsHtml } from "./email.js";
+import { itemsBullets } from "./itemlist.js";
 import { loadGemachBySlug, selName } from "./gemachs.js";
 import { json } from "./http.js";
 import { itemTypeInfoMap, loanQty, parseQtyMap, qtyLabel } from "./quantity.js";
@@ -184,7 +185,7 @@ async function handleGetManage(db, env, token) {
 /** Plain-text + HTML email to the gemach (falls back to NOTIFY_EMAIL like new-request emails). */
 async function notifyGemach(env, g, { subject, lines }) {
   const text = lines.join("\n");
-  const body = lines.map(l => (l ? `<p style="margin:0 0 10px;">${escHtml(l)}</p>` : "")).join("");
+  const body = paragraphsHtml(lines); // "• item" lines become a list
   return sendEmail(env, g, { to: g.email || env.NOTIFY_EMAIL, subject, text, html: buildEmailHtml(g, text, { signature: false, bodyHtml: body }) });
 }
 
@@ -252,7 +253,7 @@ async function handleManageCancel(db, env, ctx, token) {
     subject: `${isTestRequest(rec) ? "[TEST] " : ""}Cancelled: ${g.name || "Gemach"} request ${rid} — ${f["Name"] || "borrower"}`,
     lines: [
       `${f["Name"] || "The borrower"} cancelled request ${rid} using their manage link.`,
-      itemsText ? `Items: ${itemsText}` : "",
+      ...(payload.request.items.length ? ["Items:", itemsBullets(payload.request.items.map(i => qtyLabel(i.name, i.quantity)))] : []),
       when,
       cancelled.length ? `Released reservation${cancelled.length === 1 ? "" : "s"} ${cancelled.map(l => l.fields["Loan ID"]).filter(Boolean).join(", ")} — the items are available again.` : "",
       `Contact: ${whoLine(rec)}`,
@@ -302,7 +303,8 @@ async function handleManageReady(db, env, ctx, token) {
   ctx.waitUntil(notifyGemach(env, g, {
     subject: `${isTestRequest(rec) ? "[TEST] " : ""}Ready to return: ${names.join(", ")} — ${f["Name"] || "borrower"}`,
     lines: [
-      `${f["Name"] || "The borrower"} says they're ready to return: ${names.join(", ")} (request ${rid}).`,
+      `${f["Name"] || "The borrower"} says they're ready to return (request ${rid}):`,
+      itemsBullets(names),
       `Please get in touch to arrange the return: ${whoLine(rec)}`,
       "",
       "The loan is flagged “Ready to return” in admin under Loans.",

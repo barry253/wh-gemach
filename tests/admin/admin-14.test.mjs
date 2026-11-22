@@ -148,7 +148,7 @@ ok(/Reserved for Malka/.test(await page.textContent("#co-extra-list .co-row")), 
 await page.fill("#checkout-due", iso(9));
 await page.dispatchEvent("#checkout-due", "change");
 const msg = await page.inputValue("#checkout-message");
-ok(/You're borrowing Navy gown – size 8 and Black dress – size 6\./.test(msg), "message lists what's going out: " + msg);
+ok(/You're borrowing:\n• Navy gown – size 8\n• Black dress – size 6\n/.test(msg), "message lists what's going out, one bullet each: " + msg);
 ok(msg.includes("Due back:") && msg.includes("https://whgemachs.org/r/recSALLY00000001.sig"), "message has the due date and her manage link");
 ok(/2 items going out to Sally Katz/.test(await page.textContent("#checkout-summary")), "summary counts the items");
 ok((await page.textContent("#checkout-submit-btn")) === "Lend & email", "send by email (her preference)");

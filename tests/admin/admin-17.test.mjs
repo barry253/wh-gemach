@@ -118,7 +118,7 @@ async function run(G) {
   await page.click("#pickup-sheet .sheet-close");
   await page.click("#up-panel-1 button:has-text('Send pickup info')");
   await page.waitForFunction(() => document.getElementById("pickup-instructions-sheet").classList.contains("open"));
-  ok(/Wheelchair and Folding chairs × 20/.test(await page.inputValue("#pickup-instructions-message")), "pickup info covers every item of the booking");
+  ok(/:\n• Wheelchair\n• Folding chairs × 20\n/.test(await page.inputValue("#pickup-instructions-message")), "pickup info covers every item of the booking, one bullet each");
   await page.click("#pickup-instructions-sheet .sheet-close");
   await page.click("#up-panel-1 button:has-text('Edit')");
   await page.waitForFunction(() => document.getElementById("booking-sheet").classList.contains("open"));
@@ -180,7 +180,7 @@ async function run(G) {
   ok(true, "quantity items: free pieces for the dates");
   await page.fill("#nb-notes", "Called Sunday");
   const msg = await page.inputValue("#nb-message");
-  ok(/^Hi Chaya, great news — we have Wheelchair and Folding chairs × 25 available/.test(msg) && /Reserved for .* – /.test(msg) && msg.includes("{manage_link}"), "message from the confirm template + dates + link placeholder: " + msg);
+  ok(/^Hi Chaya, great news — the .* has the following available for you:\n• Wheelchair\n• Folding chairs × 25\n/.test(msg) && /Reserved for .* – /.test(msg) && msg.includes("{manage_link}"), "message from the confirm template + dates + link placeholder: " + msg);
   ok((await page.textContent("#nb-save-btn")) === "Save, then WhatsApp", "phone, no preference: WhatsApp first, like the other sheets");
 await page.click("#nb-send-by [data-send='sms']");
 ok((await page.textContent("#nb-save-btn")) === "Save, then text", "choose text instead");

@@ -1,4 +1,5 @@
 // Part of the Gemach Network worker (see index.js for routes and env vars).
+import { BULLET_LINE } from "./itemlist.js";
 import { DEFAULT_ADMIN_URL, DEFAULT_FROM_EMAIL } from "./config.js";
 import { dateToUtcMs, isValidDate } from "./dates.js";
 import { DEFAULT_EVENT_LABEL, DEFAULT_THEME, HEX_RE } from "./gemachs.js";
@@ -249,7 +250,47 @@ function messageHtml(message, g) {
     const href = escHtml(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`);
     html = html.split(esc).join(`<a href="${href}" style="${LINK_STYLE}">${esc}</a>`);
   }
-  return html.replace(/\r\n?|\n/g, "<br>");
+  return linesHtml(html.split(/\r\n?|\n/));
+}
+
+const UL_STYLE = "margin:4px 0 12px 0;padding-left:22px;";
+/**
+ * Already-escaped lines → HTML: runs of bullet lines ("• x", "* x", "- x") become a list, other lines are
+ * joined with <br>. A blank line next to a list is dropped (the list's own margin spaces it).
+ */
+function linesHtml(lines) {
+  const parts = []; // { li: [...] } or a text line
+  for (const line of lines) {
+    const m = BULLET_LINE.exec(line);
+    if (m) {
+      const last = parts.at(-1);
+      if (last && typeof last === "object") last.li.push(m[1]);
+      else { if (parts.at(-1) === "") parts.pop(); parts.push({ li: [m[1]] }); }
+    } else if (line.trim() === "" && parts.length && typeof parts.at(-1) === "object") {
+      continue;
+    } else parts.push(line);
+  }
+  let html = "";
+  parts.forEach((p, i) => {
+    if (typeof p === "object") { html += `<ul style="${UL_STYLE}">${p.li.map(x => `<li>${x}</li>`).join("")}</ul>`; return; }
+    if (i > 0 && typeof parts[i - 1] !== "object") html += "<br>";
+    html += p;
+  });
+  return html;
+}
+
+/** Plain lines → <p> paragraphs, with bullet runs as a list (gemach notification emails). */
+function paragraphsHtml(lines) {
+  let html = "", li = [];
+  const flush = () => { if (li.length) { html += `<ul style="${UL_STYLE}">${li.map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>`; li = []; } };
+  for (const l of lines.flatMap(x => String(x ?? "").split("\n"))) {
+    const m = BULLET_LINE.exec(l);
+    if (m) { li.push(m[1]); continue; }
+    flush();
+    if (l) html += `<p style="margin:0 0 10px;">${escHtml(l)}</p>`;
+  }
+  flush();
+  return html;
 }
 
 function buildEmailHtml(g, message, { signature = true, bodyHtml = null } = {}) {
@@ -362,4 +403,4 @@ function networkBarHtml() {
     `</tr></table></td></tr>`;
 }
 
-export { contactActions, messageHtml, sendEmail, longDate, shortDate, availabilityText, sendNotificationEmail, escHtml, relLuminance, contrastRatio, textColorFor, buildEmailHtml };
+export { contactActions, messageHtml, linesHtml, paragraphsHtml, sendEmail, longDate, shortDate, availabilityText, sendNotificationEmail, escHtml, relLuminance, contrastRatio, textColorFor, buildEmailHtml };

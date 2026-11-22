@@ -58,7 +58,7 @@ await page.click("#loans-list .loan-row:has-text('Moshe')");
 await page.click("button:has-text('Return reminder')");
 await page.waitForSelector("#reminder-sheet.open, #reminder-sheet[style*='flex']", { timeout: 3000 }).catch(() => {});
 const msg = await page.inputValue("#reminder-message");
-ok(/^Hi Moshe, a friendly reminder from the West Hempstead Medical Gemach: the Wheelchair you borrowed on \w{3}, \w{3} \d+ was due back on \w{3}, \w{3} \d+\./.test(msg), "overdue loan: message has the loan's dates: " + msg.split("\n")[0]);
+ok(/^Hi Moshe, a friendly reminder from the West Hempstead Medical Gemach about what you borrowed on \w{3}, \w{3} \d+:\n• Wheelchair\n\nYour loan was due back on \w{3}, \w{3} \d+\./.test(msg), "overdue loan: message has the loan's dates, item as a bullet: " + msg);
 ok(msg.includes("Manage your loan: https://whgemachs.org/r/recREQ00000000001.abcdefghijklmnopqrstuv"), "manage link included");
 ok(/due/.test(await page.textContent("#reminder-subtitle")) && /Moshe Wasserman/.test(await page.textContent("#reminder-subtitle")), "subtitle shows who, what, due date");
 ok((await page.textContent("#reminder-send-btn")).trim() === "Open WhatsApp", "prefers WhatsApp");
@@ -78,7 +78,7 @@ ok(/Reminded 2d ago/.test(await page.textContent("#loans-list .loan-row:has-text
 await page.click("#loans-list .loan-row:has-text('Leah')");
 await page.click("#loans-list button:has-text('Return reminder') >> nth=1").catch(async () => { await page.click("button:has-text('Return reminder') >> visible=true"); });
 const m2 = await page.inputValue("#reminder-message");
-ok(/the Folding Chair × 40 you borrowed on .* is due back on /.test(m2) && !/Manage your loan/.test(m2), "due soon: 'is due back on', no link when there's none: " + m2.split("\n")[0]);
+ok(/\n• Folding Chair × 40\n\nYour loan is due back on /.test(m2) && !/Manage your loan/.test(m2), "due soon: 'is due back on', no link when there's none: " + m2);
 ok((await page.textContent("#reminder-send-btn")).trim() === "Send email", "email-only borrower: email, sent by us");
 await page.click("#reminder-send-btn");
 await page.waitForFunction(() => document.body.textContent.includes("Reminder emailed"));

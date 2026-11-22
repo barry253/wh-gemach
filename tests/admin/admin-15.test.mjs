@@ -110,7 +110,7 @@ await page.click("#bk-results .co-result");
 await page.waitForSelector("#bk-items .co-row.added");
 ok(/will be reserved/.test(await page.textContent("#bk-items .co-row.added")), "added item will be reserved (no unit needed)");
 const msg = await page.inputValue("#bk-message");
-ok(/Hi Dana, we've updated your reservation/.test(msg) && /Items: Chairs × 4 and Gown W/.test(msg) && /Reserved: .* → /.test(msg) && msg.includes("https://whgemachs.org/r/recREQRES00000001.sig"), "message summarises the booking: " + msg);
+ok(/Hi Dana, we've updated your reservation/.test(msg) && /Items:\n• Chairs × 4\n• Gown W\n/.test(msg) && /Reserved: .* → /.test(msg) && msg.includes("https://whgemachs.org/r/recREQRES00000001.sig"), "message summarises the booking: " + msg);
 ok((await page.textContent("#bk-save-btn")) === "Save changes" && (await page.getAttribute("#bk-send-by [data-send='none']", "aria-checked")) === "true", "message is optional: 'Don't send' by default");
 await page.click("#bk-send-by [data-send='email']");
 await page.screenshot({ path: "shot-bk-reservation.png", fullPage: true });

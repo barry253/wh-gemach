@@ -432,7 +432,7 @@ await t("v2 GET /admin/gemach: private fields, default templates, placeholders, 
   assert.equal(d.templates.pickup, "SECRET TPL {first_name}");
   assert.deepEqual(d.rawTemplates, { confirm: null, decline: null, pickup: "SECRET TPL {first_name}", appointment: null, returnReminder: null, returned: null });
   assert.deepEqual(d.placeholders, ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link", "policies"]);
-  assert.match(d.templates.returnReminder, /^Hi \{first_name\}, a friendly reminder .*\{due_back\}/);
+  assert.match(d.templates.returnReminder, /^Hi \{first_name\}, a friendly reminder .*:\n\{items\}\n\nYour loan \{due_back\}\./);
   assert.equal(d.canEdit, true);
   const v = await (await call(`/admin/gemach`, { headers: { ...auth(tokenVol), "X-Gemach": A.slug } })).json();
   assert.equal(v.canEdit, false);
@@ -445,7 +445,7 @@ await t("v2 GET /admin/gemach: confirm default omits pickup sentence without add
   assert.ok(!d.templates.confirm.includes("Pickup is at"));
   assert.match(d.templates.confirm, /pickup details\.\n\nManage or cancel: \{manage_link\}\n\nThank you!$/);
   assert.ok(!d.templates.pickup.includes("{pickup_address}"));
-  assert.match(d.templates.pickup, /ready for pickup\. \{pickup_instructions\}/);
+  assert.match(d.templates.pickup, /ready for pickup:\n\{items\}\n\n\{pickup_instructions\}/);
   assert.equal(d.canEdit, true, "Network Admin can edit");
 });
 
@@ -492,7 +492,7 @@ await t("v2 PATCH /admin/gemach: writes only own record, clears with '', purges 
     assert.equal(d.hours, "Sun–Thu\nevenings");
     assert.equal(d.mode, "Full"); assert.equal(d.name, "West Hempstead Medical Gemach");
     assert.equal(d.rawTemplates.pickup, null);
-    assert.match(d.templates.pickup, /^Hi \{first_name\}, your \{items\} is ready/);
+    assert.match(d.templates.pickup, /^Hi \{first_name\}, the following is ready for pickup at \{pickup_address\}:\n\{items\}\n/);
     assert.equal(d.templates.confirm, "Hi {first_name}! {items} at {pickup_address}.");
     assert.equal(DB.Gemachs[1].fields.Tagline, undefined);
     await Promise.allSettled(waits);
@@ -3292,6 +3292,8 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     await Promise.allSettled(waits);
     const receipt = resendCalls().filter(x => x.to[0] === "rivka@example.com").at(-1);
     assert.ok(receipt && receipt.text.includes(d.manageUrl) && /We got your request/.test(receipt.subject));
+    assert.match(receipt.text, /received your request \(R-\d+\) for the following:\n• Walker\n\nThey'll be in touch soon\./, "items as a list");
+    assert.match(receipt.html, /for the following:<\/p><ul style="[^"]*"><li>Walker<\/li><\/ul>/);
     const g = await (await mg(tok)).json();
     assert.equal(g.request.status, "waiting"); assert.equal(g.request.firstName, "Rivka"); assert.equal(g.can.cancel, true);
     assert.ok(!("phone" in g.request) && !JSON.stringify(g).includes("5165559999"), "no borrower phone in the page data");
@@ -3313,6 +3315,8 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     const mail = resendCalls().slice(before).find(x => /^Cancelled:/.test(x.subject));
     assert.ok(mail, "gemach told");
     assert.match(mail.text, new RegExp(`cancelled request ${rid}`));
+    assert.match(mail.text, /\nItems:\n• Walker\n/, "items listed one per line");
+    assert.match(mail.html, /<p[^>]*>Items:<\/p><ul[^>]*><li>Walker<\/li><\/ul>/);
     assert.ok(logsFor(rid).includes("Request Cancelled"));
     assert.equal((await mg(tok, "cancel")).status, 409);
     const list = await (await call("/admin/requests", { headers: HA })).json();
@@ -3358,7 +3362,9 @@ await t("donation info: saved from Settings (trimmed, ≤2000, '' clears) and sh
     g = await r.json();
     assert.equal(g.can.readyToReturn, false); assert.ok(g.loans[0].readyToReturnAt);
     await Promise.allSettled(waits);
-    assert.ok(resendCalls().slice(before).some(x => /^Ready to return:/.test(x.subject) && /5165559999|\(516\) 555-9999/.test(x.text)));
+    const rmail = resendCalls().slice(before).find(x => /^Ready to return:/.test(x.subject));
+    assert.ok(rmail && /5165559999|\(516\) 555-9999/.test(rmail.text));
+    assert.match(rmail.text, /ready to return \(request R-\d+\):\n• Walker\n/, "items listed one per line");
     assert.ok(logsFor(loan.fields["Loan ID"]).includes("Ready to Return"));
     assert.equal((await mg(tok, "ready")).status, 409, "only once");
     const loans = await (await call("/admin/loans", { headers: HA })).json();
@@ -3986,6 +3992,18 @@ await t("returned message: template in Settings; return can email a thank-you (o
 });
 
 {
+  const E = await import("../src/email.js");
+  await t("email: bullet lines become a list in the HTML (•, * and - all count)", async () => {
+    assert.equal(E.messageHtml("For you:\n• Chairs × 58\n• Tables × 6\n\nThanks", {}),
+      'For you:<ul style="margin:4px 0 12px 0;padding-left:22px;"><li>Chairs × 58</li><li>Tables × 6</li></ul>Thanks');
+    assert.equal(E.messageHtml("Return Instructions\n* Wipe down\n* Re-cover\n\nDonation:\n- Chairs: $20", {}),
+      'Return Instructions<ul style="margin:4px 0 12px 0;padding-left:22px;"><li>Wipe down</li><li>Re-cover</li></ul>Donation:<ul style="margin:4px 0 12px 0;padding-left:22px;"><li>Chairs: $20</li></ul>');
+    assert.equal(E.messageHtml("a\nb\n\nc", {}), "a<br>b<br><br>c", "plain text unchanged");
+    assert.match(E.messageHtml("• <b>x</b>", {}), /<li>&lt;b&gt;x&lt;\/b&gt;<\/li>/, "still escaped");
+  });
+}
+
+{
   const R = await import("../src/reminders.js");
   await t("reminders: which reminder is due (before / overdue / repeat / never twice a day)", async () => {
     const due = (expected, today, lastSent, before = 2, repeat = 7) => R.reminderDue({ expected, today, lastSent, before, repeat });
@@ -4005,10 +4023,16 @@ await t("returned message: template in Settings; return can email a thank-you (o
   await t("reminders: template filling matches admin (dates, blanks dropped, link)", async () => {
     const g = { name: "WH Medical", rawTemplates: {} };
     const m = R.reminderMessage(g, { firstName: "Moshe", items: "Wheelchair", borrowed: "2026-09-04", expected: "2026-10-01", today: "2026-10-05", link: "https://whgemachs.org/r/x" });
-    assert.match(m, /^Hi Moshe, a friendly reminder from the WH Medical: the Wheelchair you borrowed on Fri, Sep 4 was due back on Thu, Oct 1\. Please let us know/);
+    assert.match(m, /^Hi Moshe, a friendly reminder from the WH Medical about what you borrowed on Fri, Sep 4:\n• Wheelchair\n\nYour loan was due back on Thu, Oct 1\. Please let us know/);
     assert.match(m, /Manage your loan: https:\/\/whgemachs\.org\/r\/x\n\nThank you!$/);
     const n = R.reminderMessage(g, { firstName: "Leah", items: "Chairs × 40", borrowed: "2026-10-03", expected: "2026-10-07", today: "2026-10-05", link: null });
-    assert.match(n, /Chairs × 40 you borrowed on Sat, Oct 3 is due back on Wed, Oct 7\./);
+    assert.match(n, /borrowed on Sat, Oct 3:\n• Chairs × 40\n\nYour loan is due back on Wed, Oct 7\./);
+    // Older / custom wording with {items} inside the sentence still reads as one sentence ("are" for several items).
+    const old = { name: "WH Medical", rawTemplates: { returnReminder: "Hi {first_name}: the {items} you borrowed on {borrowed_date} {due_back}." } };
+    assert.equal(R.reminderMessage(old, { firstName: "B", items: ["Walker", "Cane"], borrowed: "2026-10-03", expected: "2026-10-07", today: "2026-10-05", link: null, plural: true }),
+      "Hi B: the Walker and Cane you borrowed on Sat, Oct 3 are due back on Wed, Oct 7.");
+    const none = R.fillTemplate("Items:\n{items}\nBye", { items: [] });
+    assert.equal(none, "Items:\nBye", "no items: the list line goes away");
     assert.ok(!/Manage your loan/.test(n), "no link: the line is dropped");
     const c = R.reminderMessage({ name: "X", rawTemplates: { returnReminder: "Hi {first_name}, {items} {due_back}. Out {days_out} days." } }, { firstName: "A", items: "Walker", borrowed: "2026-10-01", expected: "2026-10-05", today: "2026-10-05", link: "https://l" });
     assert.equal(c, "Hi A, Walker is due back today. Out 4 days.\n\nManage your loan: https://l", "custom template; link line added when the template has none");
@@ -4045,7 +4069,8 @@ await t("returned message: template in Settings; return can email a thank-you (o
     const m1 = mails.find(m => /Walker/.test(m.subject));
     assert.equal(m1.to[0], "dina@example.com"); assert.equal(m1.reply_to, "rem@example.com");
     assert.match(m1.subject, /^Reminder: Walker due back Wed, Oct 7 — Reminder Gemach$/);
-    assert.match(m1.text, /^Hi Dina, a friendly reminder from the Reminder Gemach: the Walker you borrowed on Sun, Sep 20 is due back on Wed, Oct 7\./);
+    assert.match(m1.text, /^Hi Dina, a friendly reminder from the Reminder Gemach about what you borrowed on Sun, Sep 20:\n• Walker\n\nYour loan is due back on Wed, Oct 7\./);
+    assert.match(m1.html, /<ul style="[^"]*"><li>Walker<\/li><\/ul>Your loan is due back/, "the email shows a real list");
     const m2 = mails.find(m => /Folding Chair/.test(m.subject));
     assert.match(m2.subject, /^Reminder: please return the Folding Chair × 20/);
     assert.match(m2.text, /was due back on Sun, Oct 4/);
@@ -4066,6 +4091,7 @@ await t("returned message: template in Settings; return can email a thank-you (o
     assert.equal(R.itemsLabel([{ typeName: "Chairs", qty: 58, isQuantity: true }, { typeName: "Tables", qty: 6, isQuantity: true }]), "Chairs × 58 and Tables × 6");
     assert.equal(R.itemsLabel([{ typeName: "Wheelchair", qty: 1 }, { typeName: "Walker", qty: 1 }, { typeName: "Wheelchair", qty: 1 }, { typeName: "Cane", qty: 1 }]), "Wheelchair × 2, Walker and Cane");
     assert.equal(R.itemsLabel([{ typeName: "Walker", qty: 1 }]), "Walker");
+    assert.deepEqual(R.itemsList([{ typeName: "Chairs", qty: 58, isQuantity: true }, { typeName: "Tables", qty: 6, isQuantity: true }]), ["Chairs × 58", "Tables × 6"]);
     const G = { id: "recREMGRPGEMACH01", slug: "rem-grp" };
     const sc = { Gemach: [G.id], "Gemach Slug": [G.slug] };
     DB.Gemachs.push(rec(G.id, { Name: "Group Gemach", Slug: G.slug, Active: true, Mode: "Full", Email: "grp@example.com", "Auto Reminders": true, "Reminder Days Before": 2, "Reminder Repeat Days": 7 }));
@@ -4091,7 +4117,7 @@ await t("returned message: template in Settings; return can email a thank-you (o
     const sara = mails.filter(m => m.to[0] === "sara@example.com");
     const both = sara.find(m => /Chairs/.test(m.subject));
     assert.equal(both.subject, "Reminder: Chairs × 58 and Tables × 6 due back Wed, Oct 7 — Group Gemach");
-    assert.match(both.text, /the Chairs × 58 and Tables × 6 you borrowed on Thu, Oct 1 are due back on Wed, Oct 7\./);
+    assert.match(both.text, /about what you borrowed on Thu, Oct 1:\n• Chairs × 58\n• Tables × 6\n\nYour loan is due back on Wed, Oct 7\./);
     assert.match(both.text, /Manage your loan: https:\/\/whgemachs\.org\/r\/recREMGRPREQUEST1\./);
     assert.ok(sara.some(m => /^Reminder: Urn due back/.test(m.subject)), "a separate request gets its own email");
     const avi = mails.find(m => m.to[0] === "avi@example.com");

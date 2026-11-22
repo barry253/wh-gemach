@@ -62,7 +62,7 @@ const toasts = () => page.evaluate(() => [...document.querySelectorAll("body > d
 await page.evaluate(() => openReturn(allLoans.find(l => l.id === "recLOANDINA00001")));
 await page.waitForTimeout(150);
 let msg = await page.inputValue("#return-message");
-ok(/^Hi Dina, thank you for returning the Shower chair to the WH Medical Gemach/.test(msg), "message starts with the template: " + JSON.stringify(msg));
+ok(/^Hi Dina, thank you for returning the following to the WH Medical Gemach:\n• Shower chair\n\nIt's been marked as returned/.test(msg), "message starts with the template: " + JSON.stringify(msg));
 ok(msg.includes("Donations of any amount help us buy new equipment.") && msg.includes("Donate online: https://example.org/donate"), "donation info + link filled in");
 ok(await page.isHidden("#return-msg-note"), "no 'still out' note for a single-item booking");
 ok(await page.textContent("#return-submit-btn") === "Return & email", "button says Return & email: " + await page.textContent("#return-submit-btn"));

@@ -13,16 +13,17 @@ import { MAX_PLACES_TEXT, parseLocalPlaces } from "./places.js";
 
 const TEMPLATE_PLACEHOLDERS = ["first_name", "items", "gemach", "pickup_address", "pickup_instructions", "hours", "phone", "email", "appointment_time", "deposit_info", "event_date", "manage_link", "borrowed_date", "due_back", "days_out", "donation_info", "donation_link", "policies"];
 const DEFAULT_TEMPLATES = {
-  confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
-  confirmNoAddress: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
+  // {items} on a line by itself = one bullet per item ("• Chairs × 58"); inside a sentence = "Chairs × 58 and Tables × 6".
+  confirm: "Hi {first_name}, great news — the {gemach} has the following available for you:\n{items}\n\nWe'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
+  confirmNoAddress: "Hi {first_name}, great news — the {gemach} has the following available for you:\n{items}\n\nWe'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
   decline: "Hi {first_name}, thank you for reaching out to the {gemach}. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.",
-  pickup: "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
-  pickupNoAddress: "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+  pickup: "Hi {first_name}, the following is ready for pickup at {pickup_address}:\n{items}\n\n{pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+  pickupNoAddress: "Hi {first_name}, the following is ready for pickup:\n{items}\n\n{pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
   appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
   // Return reminder (admin Loans). {due_back} = "is due back on Fri, Oct 9" / "is due back today" / "was due back on Fri, Oct 2" (blank if no date).
-  returnReminder: "Hi {first_name}, a friendly reminder from the {gemach}: the {items} you borrowed on {borrowed_date} {due_back}. Please let us know when you can return it, or if you need it a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
+  returnReminder: "Hi {first_name}, a friendly reminder from the {gemach} about what you borrowed on {borrowed_date}:\n{items}\n\nYour loan {due_back}. Please let us know when you can return it, or if you need a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
   // Item returned (admin Return sheet). {donation_info} / {donation_link} come from Settings → Donations; their lines drop out when blank.
-  returned: "Hi {first_name}, thank you for returning the {items} to the {gemach} — it's been marked as returned. We hope it helped!\n\n{donation_info}\n\nDonate online: {donation_link}\n\nThank you!",
+  returned: "Hi {first_name}, thank you for returning the following to the {gemach}:\n{items}\n\nIt's been marked as returned. We hope it helped!\n\n{donation_info}\n\nDonate online: {donation_link}\n\nThank you!",
   appointmentNoAddress: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
 };
 

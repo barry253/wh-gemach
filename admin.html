@@ -2719,21 +2719,22 @@
 
   // Client copy of the contract's built-in defaults (fallback if /admin/gemach failed; placeholders in Settings)
   const DEFAULT_TEMPLATES = {
-    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
+    // {items} on a line by itself = one bullet per item ("• Chairs × 58"); inside a sentence = "Chairs × 58 and Tables × 6".
+    confirm: "Hi {first_name}, great news — the {gemach} has the following available for you:\n{items}\n\nWe'll be in touch shortly with pickup details.\n\nPickup is at {pickup_address}. {pickup_instructions}\n\nManage or cancel: {manage_link}\n\nThank you!",
     decline: "Hi {first_name}, thank you for reaching out to the {gemach}. Unfortunately we're unable to accommodate your request at this time. Please don't hesitate to reach out again in the future.",
-    pickup:  "Hi {first_name}, your {items} is ready for pickup at {pickup_address}. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+    pickup:  "Hi {first_name}, the following is ready for pickup at {pickup_address}:\n{items}\n\n{pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. The address is {pickup_address}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
-    returnReminder: "Hi {first_name}, a friendly reminder from the {gemach}: the {items} you borrowed on {borrowed_date} {due_back}. Please let us know when you can return it, or if you need it a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
+    returnReminder: "Hi {first_name}, a friendly reminder from the {gemach} about what you borrowed on {borrowed_date}:\n{items}\n\nYour loan {due_back}. Please let us know when you can return it, or if you need a little longer.\n\nManage your loan: {manage_link}\n\nThank you!",
     // Admin Return sheet. {donation_info} / {donation_link} = Settings → Donations; their lines drop out when blank.
-    returned: "Hi {first_name}, thank you for returning the {items} to the {gemach} — it's been marked as returned. We hope it helped!\n\n{donation_info}\n\nDonate online: {donation_link}\n\nThank you!",
+    returned: "Hi {first_name}, thank you for returning the following to the {gemach}:\n{items}\n\nIt's been marked as returned. We hope it helped!\n\n{donation_info}\n\nDonate online: {donation_link}\n\nThank you!",
     // Lending at the counter (Check out / New loan). {return_by} = "Fri, Oct 24" (the line drops out without a date).
-    checkout: "Hi {first_name}, thank you for coming to the {gemach}! You're borrowing {items}.\n\nDue back: {return_by}. {deposit_info}\n\nManage your loan: {manage_link}\n\nThank you!",
+    checkout: "Hi {first_name}, thank you for coming to the {gemach}! You're borrowing:\n{items}\n\nDue back: {return_by}. {deposit_info}\n\nManage your loan: {manage_link}\n\nThank you!",
   };
   // Used when the gemach has no pickup address (or /admin/gemach could not be loaded)
   const DEFAULT_TEMPLATES_NO_ADDRESS = {
-    confirm: "Hi {first_name}, great news — we have {items} available for you from the {gemach}. We'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
+    confirm: "Hi {first_name}, great news — the {gemach} has the following available for you:\n{items}\n\nWe'll be in touch shortly with pickup details.\n\nManage or cancel: {manage_link}\n\nThank you!",
     decline: DEFAULT_TEMPLATES.decline,
-    pickup:  "Hi {first_name}, your {items} is ready for pickup. {pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
+    pickup:  "Hi {first_name}, the following is ready for pickup:\n{items}\n\n{pickup_instructions} Please let us know when you plan to come by so we can make sure it's accessible. Thank you!\n\nManage your loan: {manage_link}",
     appointment: "Hi {first_name}, your appointment at the {gemach} is set for {appointment_time}. {pickup_instructions} Please let us know if you need to reschedule. Thank you!\n\nManage or cancel: {manage_link}",
     returnReminder: DEFAULT_TEMPLATES.returnReminder,
     returned: DEFAULT_TEMPLATES.returned,
@@ -3200,7 +3201,20 @@
   // Placeholders whose blank value makes the surrounding short sentence meaningless ("Pickup is at {pickup_address}.")
   const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date", "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "return_by", "donation_info", "donation_link", "policies"]);
 
+  // Items in messages: {items} on a line by itself becomes one bullet per item ("• Chairs × 58"); inside a
+  // sentence (older / custom templates: "your {items} is ready") it reads "Chairs × 58 and Tables × 6".
+  // Same rules as the worker (worker/src/itemlist.js). Callers pass the items as a list of labels.
+  const BULLET = "• ";
+  function itemsArr(x) { return (Array.isArray(x) ? x : [x]).map(v => String(v ?? "").trim()).filter(Boolean); }
+  function itemsInline(x) { return joinAndList(itemsArr(x)); }
+  function itemsBullets(x) { return itemsArr(x).map(v => BULLET + v).join("\n"); }
   function fillTemplate(template, vars) {
+    if (Array.isArray(vars.items)) {
+      const list = itemsArr(vars.items);
+      template = String(template || "").replace(/\r\n?/g, "\n").split("\n")
+        .flatMap(l => (l.trim() !== "{items}" ? [l] : list.length ? [itemsBullets(list)] : [])).join("\n");
+      vars = { ...vars, items: itemsInline(list) };
+    }
     const has = k => Object.prototype.hasOwnProperty.call(vars, k);
     const val = k => String(vars[k] ?? "").trim();
     const isBlank = k => has(k) && !val(k);
@@ -3644,19 +3658,18 @@
     const isOn = i => !boxOf(i) || boxOf(i).checked;
     const currentQty = () => Object.fromEntries(qtyItems.map(i => [i.id, parseInt(document.getElementById(`cq-${safeId(i.id)}`).value, 10)]));
     const labelFor = (i, q) => i.quantity != null ? `${i.name} × ${q[i.id] > 0 ? q[i.id] : i.quantity}` : i.name;
-    const joinAnd = list => list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list[list.length - 1] : list[0] || "";
-    const confirmedText = () => { const q = currentQty(); return joinAnd(allItems.filter(isOn).map(i => labelFor(i, q))) || joinAnd((r.itemNames || [])); };
+    const confirmedList = () => { const q = currentQty(); const on = allItems.filter(isOn).map(i => labelFor(i, q)); return on.length ? on : (r.itemNames || []); };
     const notAvailable = () => allItems.filter(i => !isOn(i)).map(i => ({ id: i.id, name: i.name, note: (noteOf(i)?.value || "").trim() }));
     // The one combined message: the usual confirmation for what's going out, then a short "not available" paragraph.
     const buildMessage = () => {
       const first = r.name.split(" ")[0];
-      let msg = renderMessage("confirm", first, confirmedText(), { eventDate: r.eventDate, manageUrl: r.manageUrl, paymentTier: r.paymentTier });
+      let msg = renderMessage("confirm", first, confirmedList(), { eventDate: r.eventDate, manageUrl: r.manageUrl, paymentTier: r.paymentTier });
       const na = notAvailable();
       if (!na.length) return msg;
       const item = d => d.note ? `${d.name} (${d.note.replace(/[.!\s]+$/, "")})` : d.name;
       const para = na.length === 1
         ? `Unfortunately we're not able to provide ${item(na[0])}.`
-        : `Unfortunately these aren't available: ${na.map(item).join("; ")}.`;
+        : `Unfortunately these aren't available:\n${itemsBullets(na.map(item))}`;
       const cut = msg.indexOf("\n\n");
       return cut === -1 ? msg + "\n\n" + para : msg.slice(0, cut) + "\n\n" + para + msg.slice(cut);
     };
@@ -3725,7 +3738,7 @@
   function openAppointmentConfirm(r) {
     currentRequest = r;
     const first = String(r.name || "").split(" ")[0];
-    const items = (r.itemNames || []).join(" and ");
+    const items = r.itemNames || [];
     document.getElementById("appointment-title").textContent = `Appointment — ${r.name || ""}`;
     document.getElementById("appointment-subtitle").textContent = [
       r.preferredTimes ? `Prefers: ${r.preferredTimes}` : "",
@@ -3786,7 +3799,7 @@
       [(r.itemNames || []).join(", ") || (r.requestType === "Appointment" ? "Appointment" : ""), r.requestId].filter(Boolean).join(" · ");
 
     document.getElementById("decline-message").value =
-      renderMessage("decline", String(r.name || "").split(" ")[0], (r.itemNames || []).join(" and "), { eventDate: r.eventDate, paymentTier: r.paymentTier });
+      renderMessage("decline", String(r.name || "").split(" ")[0], r.itemNames || [], { eventDate: r.eventDate, paymentTier: r.paymentTier });
 
     setupSendBy("decline", r, "decline-submit-btn", {
       whatsapp: "Decline & open WhatsApp", sms: "Decline & open text message", email: "Decline & email", none: "Decline without message",
@@ -4128,6 +4141,7 @@
   function bkLabel(l) { return `${l.itemTypeName || "Item"}${l.quantity != null ? ` × ${l.quantity}` : ""}`; }
   function joinAndList(a) { return a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : (a[0] || ""); }
   function bookingItemsText(b) { return joinAndList(b.loans.map(bkLabel)); }
+  function bookingItemsList(b) { return b.loans.map(bkLabel); }
   function sameAll(ls, key) { return ls.every(l => (l[key] || null) === (ls[0][key] || null)); }
   function minDate(list) { return list.filter(Boolean).sort()[0] || null; }
   function maxDate(list) { return list.filter(Boolean).sort().at(-1) || null; }
@@ -4357,14 +4371,14 @@
   }
   function bkPickupInfo(id) {
     const b = bk("res", id);
-    if (b) openPickupInstructions(b.loans[0], bookingItemsText(b));
+    if (b) openPickupInstructions(b.loans[0], bookingItemsList(b));
   }
   function bkReminder(id) {
     const b = bk("loan", id);
     if (!b) return;
     // The reminder is noted on the item due back first (its due date goes in the message).
     const l = [...b.loans].sort((a, c) => (a.expectedReturn || "9999") < (c.expectedReturn || "9999") ? -1 : 1)[0];
-    openReturnReminder(l, b.loans.length > 1 ? bookingItemsText(b) : null);
+    openReturnReminder(l, b.loans.length > 1 ? bookingItemsList(b) : null);
   }
   /** Cancel a whole reservation booking (asks first). Single items are removed through Edit. */
   function openCancelBooking(id) {
@@ -4497,7 +4511,7 @@
     document.getElementById("return-msg-group").hidden = !msgOn;
     document.getElementById("return-send-by").hidden = !msgOn;
     const stillOut = !msgOn ? 0 : (allLoans || []).filter(x => x.id !== l.id && bookingKey(x) === bookingKey(l)).length;
-    document.getElementById("return-message").value = renderMessage("returned", String(l.borrowerName || "").split(" ")[0], l.itemTypeName || "item", {});
+    document.getElementById("return-message").value = renderMessage("returned", String(l.borrowerName || "").split(" ")[0], [l.itemTypeName || "item"], {});
     const msgNote = document.getElementById("return-msg-note");
     msgNote.hidden = !stillOut;
     msgNote.textContent = stillOut ? `${stillOut} other item${stillOut === 1 ? " is" : "s are"} from this booking still out — you may want to send this with the last one.` : "";
@@ -4549,7 +4563,7 @@
   function openReturnMany(list) {
     const l = list[0];
     currentLoan = l;
-    const names = joinAndList(list.map(bkLabel));
+    const names = list.map(bkLabel);
     document.getElementById("return-subtitle").textContent = `${l.borrowerName} · ${list.length} items`;
     document.getElementById("return-date").value = nyTodayStr();
     document.getElementById("return-qty-group").style.display = "none";
@@ -4840,9 +4854,9 @@
   function coChosen() {
     return CO.rows.filter(r => r.on && !coRowState(r).blocked);
   }
+  /** What's going out, one label each: ["Chairs × 4", "Gown Y"]. */
   function coItemsText(rows) {
-    const labels = rows.map(r => { const t = coType(r.typeId); return t.tracking === "Units" ? t.name : `${t.name} × ${r.qty}`; });
-    return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+    return rows.map(r => { const t = coType(r.typeId); return t.tracking === "Units" ? t.name : `${t.name} × ${r.qty}`; });
   }
   function coAutoMessage() {
     const tpl = GEMACH?.templates?.checkout || defaultTemplate("checkout");
@@ -5353,10 +5367,9 @@
     bkRenderItems();
   }
 
-  /** The current items, in words: "Chairs × 4 and Gown Y". */
+  /** The current items, one label each: ["Chairs × 4", "Gown Y"]. */
   function bkItemsText() {
-    const labels = BK.rows.filter(r => !r.removed).map(r => (r.tracking !== "Units" && r.qty ? `${r.name} × ${r.qty}` : r.name));
-    return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+    return BK.rows.filter(r => !r.removed).map(r => (r.tracking !== "Units" && r.qty ? `${r.name} × ${r.qty}` : r.name));
   }
   function bkAutoMessage() {
     if (!BK?.b) return;
@@ -5364,7 +5377,7 @@
     const first = (s.name || "").split(/\s+/)[0];
     const lines = [];
     const items = bkItemsText();
-    if (items) lines.push(`Items: ${items}`);
+    if (items.length) lines.push("Items:", itemsBullets(items));
     if (b.kind === "appointment" && s.apptDate && s.apptTime) lines.push(`Appointment: ${fmtAppointment(s.apptDate, s.apptTime)}`);
     if (s.event) lines.push(`${b.eventLabel || "Event date"}: ${fmtDay(s.event, true)}`);
     if (b.kind === "request" && s.from) lines.push(`Dates: ${fmtDay(s.from, true)} → ${s.open ? "open-ended" : s.until ? fmtDay(s.until, true) : "—"}`);
@@ -5444,7 +5457,10 @@
     const b = BK.b, word = BK_WORD[b.kind];
     if (!confirm(b.kind === "mixed" ? "Cancel the items that haven't been picked up? Items already out stay on loan." : `Cancel this ${word}? ${b.kind === "reservation" ? "The items become available for others." : ""}`)) return;
     const first = (bkVal("bk-name") || "").split(/\s+/)[0];
-    const message = `Hi ${first || "there"}, your ${word} with the ${GEMACH?.name || "gemach"} has been cancelled${bkItemsText() ? ` (${bkItemsText()})` : ""}. Please reach out if you have any questions.`;
+    const gone = bkItemsText();
+    const message = gone.length
+      ? `Hi ${first || "there"}, your ${word} with the ${GEMACH?.name || "gemach"} has been cancelled:\n${itemsBullets(gone)}\n\nPlease reach out if you have any questions.`
+      : `Hi ${first || "there"}, your ${word} with the ${GEMACH?.name || "gemach"} has been cancelled. Please reach out if you have any questions.`;
     const { choice, c } = SEND_BY.bk || { choice: "none" };
     if (choice === "whatsapp" || choice === "sms") openOutbound(choice, c, message);
     const body = BK.ref.request ? { request: BK.ref.request } : { loan: BK.ref.loan };
@@ -5754,9 +5770,9 @@
     nbRender();
     nbEl("nb-search").focus();
   }
+  /** The new booking's items, one label each. */
   function nbItemsText() {
-    const labels = NB.rows.map(r => { const t = NB.types.get(r.typeId); return t.tracking === "Units" ? t.name : `${t.name} × ${r.qty}`; });
-    return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+    return NB.rows.map(r => { const t = NB.types.get(r.typeId); return t.tracking === "Units" ? t.name : `${t.name} × ${r.qty}`; });
   }
   function nbAutoMessage() {
     if (!NB?.data) return;
@@ -5767,7 +5783,7 @@
       const when = fmtAppointment(nbVal("nb-appt-date"), nbVal("nb-appt-time"));
       auto = renderMessage("appointment", first, nbItemsText(), { appointmentTime: when || "[date & time]", eventDate: ev, manageUrl: "{manage_link}" });
     } else {
-      auto = renderMessage("confirm", first, nbItemsText() || "[items]", { eventDate: ev, manageUrl: "{manage_link}" });
+      auto = renderMessage("confirm", first, nbItemsText().length ? nbItemsText() : ["[items]"], { eventDate: ev, manageUrl: "{manage_link}" });
       const { from, to } = nbWindow();
       const line = `Reserved for ${fmtDay(from, true)}${to ? ` – ${fmtDay(to, true)}` : " (no return date yet)"}.`;
       const parts = auto.split("\n\n");
@@ -6109,7 +6125,7 @@
     const ls = RETURNS[k]?.loans;
     if (!ls?.length) return;
     const labels = ls.map(loanLabel);
-    openReturnReminder(ls[0], labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`);
+    openReturnReminder(ls[0], labels);
   }
   /** The same actions as on the Reservations page (or the appointment cards), for one Upcoming row. */
   function upcomingPanel(x, i) {
@@ -6159,7 +6175,7 @@
     const x = UPCOMING[i];
     if (!x?.loans?.length) return;
     const labels = x.loans.map(l => (l.quantity != null ? `${l.itemTypeName} × ${l.quantity}` : l.itemTypeName));
-    openPickupInstructions(x.loans[0], labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`);
+    openPickupInstructions(x.loans[0], labels);
   }
   async function upcomingCancel(i) {
     const x = UPCOMING[i];
@@ -6439,10 +6455,10 @@
   }
   // "Time to return" reminder: the gemach's Return reminder template filled with this loan's details,
   // editable, sent from the admin's own WhatsApp / texts / email; the server stamps the loan and logs it.
-  /** itemsText: every item of the booking ("Toile × 12 and Navy × 6"); default = this one loan. */
+  /** itemsText: every item of the booking (["Toile × 12", "Navy × 6"]); default = this one loan. */
   function openReturnReminder(l, itemsText) {
-    const items = itemsText || (l.isQuantity && l.quantity ? `${l.itemTypeName} × ${l.quantity}` : (l.itemTypeName || "item"));
-    document.getElementById("reminder-subtitle").textContent = [l.borrowerName, items,
+    const items = itemsArr(itemsText || (l.isQuantity && l.quantity ? `${l.itemTypeName} × ${l.quantity}` : (l.itemTypeName || "item")));
+    document.getElementById("reminder-subtitle").textContent = [l.borrowerName, itemsInline(items),
       l.expectedReturn ? `due ${fmtDay(l.expectedReturn, true)}` : (l.dateBorrowed ? `out since ${fmtDay(l.dateBorrowed, true)}` : "")].filter(Boolean).join(" · ");
     document.getElementById("reminder-last").textContent = l.reminderSentAt ? `Last reminder ${reminderVia(l.reminderSentVia)} ${timeAgo(l.reminderSentAt)}.` : "";
     document.getElementById("reminder-message").value = renderMessage("returnReminder", String(l.borrowerName || "").split(" ")[0], items,
@@ -6480,10 +6496,10 @@
     openSheet("reminder-sheet");
   }
 
-  /** itemsText: all the items of a booking ("Wheelchair and Folding chairs × 20"); default = this one item. */
+  /** itemsText: all the items of a booking (["Wheelchair", "Folding chairs × 20"]); default = this one item. */
   function openPickupInstructions(r, itemsText) {
-    const items = itemsText || (r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName);
-    document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${items}`;
+    const items = itemsArr(itemsText || (r.isQuantity ? `${r.itemTypeName} × ${r.quantity}` : r.itemTypeName));
+    document.getElementById("pickup-instructions-subtitle").textContent = `${r.borrowerName} · ${itemsInline(items)}`;
     const msg = renderMessage("pickup", String(r.borrowerName || "").split(" ")[0], items, { manageUrl: r.manageUrl });
     document.getElementById("pickup-instructions-message").value = msg;
     resetPickupPhotos(r.id);
@@ -7359,7 +7375,7 @@
       <div class="set-area" id="set-area-messages" role="tabpanel" aria-labelledby="set-tab-messages">
       ${areaGroups("messages")}
       <div class="section-label" id="settings-sec-templates">Message templates</div>
-      <p class="settings-help">Tap a message to edit it. Placeholders: ${placeholders}. Blank values are left out.</p>
+      <p class="settings-help">Tap a message to edit it. Placeholders: ${placeholders}. Blank values are left out. Put <code>{items}</code> on a line by itself to list each item as a bullet point.</p>
       ${SETTINGS_TEMPLATES.map(t => `<details class="tpl-item" id="tpl-${t.kind}">
           <summary><span class="tpl-name">${t.label}</span> <span class="tpl-state" id="set-${t.key}-state"></span></summary>
           <div class="tpl-body">

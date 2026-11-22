@@ -12,6 +12,7 @@ import { json } from "./http.js";
 import { LOAN_LIST_FIELDS, loadLoanRelations, loanQtyInfo } from "./loans.js";
 import { manageUrl } from "./manage.js";
 import { effectiveTemplates, emailSignature } from "./settings.js";
+import { expandItems, itemsInline, itemsOnOwnLine } from "./itemlist.js";
 
 // ─── Automatic return reminders (daily cron) ──────────────────────────────────
 // For each gemach with "Auto Reminders" on: email borrowers who gave an email address, using the gemach's
@@ -50,7 +51,13 @@ function reminderDue({ expected, today, lastSent, before, repeat }) {
 // info placeholder is dropped, "… at {x}" loses " at {x}" when x is blank, spacing is tidied.
 const INFO_PLACEHOLDERS = new Set(["pickup_address", "pickup_instructions", "hours", "phone", "email", "deposit_info", "event_date",
   "appointment_time", "manage_link", "borrowed_date", "due_back", "days_out", "policies"]);
+// {items} may be a list: on a line by itself it becomes one bullet per item, inside a sentence "A, B and C".
 function fillTemplate(template, vars) {
+  if (Array.isArray(vars.items)) {
+    const x = expandItems(template, vars.items);
+    template = x.template;
+    vars = { ...vars, items: x.inline };
+  }
   const has = k => Object.prototype.hasOwnProperty.call(vars, k);
   const val = k => String(vars[k] ?? "").trim();
   const isBlank = k => has(k) && !val(k);
@@ -96,10 +103,12 @@ function dueBackText(expected, today, plural = false) {
 /** The Return reminder text for one loan (the gemach's template, or the default). */
 function reminderMessage(g, { firstName, items, borrowed, expected, today, link, plural = false }) {
   let tpl = effectiveTemplates(g).returnReminder;
+  // "are due back" only reads right when {items} sits in the sentence; the list layout says "Your loan is due back".
+  if (itemsOnOwnLine(tpl)) plural = false;
   if (link && !tpl.includes("{manage_link}")) tpl = tpl.trimEnd() + "\n\nManage your loan: {manage_link}";
   return fillTemplate(tpl, {
     first_name: firstName || "",
-    items: items || "",
+    items: Array.isArray(items) ? items : [items || "item"], // one bullet per item when {items} is on its own line
     gemach: g.name || "gemach",
     pickup_address: g.pickupAddress || "", pickup_instructions: g.pickupInstructions || "",
     hours: g.hours || "", phone: g.phone || "", email: g.email || "",
@@ -114,10 +123,10 @@ function reminderMessage(g, { firstName, items, borrowed, expected, today, link,
 }
 
 /**
- * {items} for one reminder: "Walker", "Chairs × 58 and Tables × 6", "Wheelchair × 2, Walker and Cane".
- * Same item type on several loans (two numbered wheelchairs) is counted together.
+ * The items of one reminder, one label each: ["Chairs × 58", "Tables × 6"], ["Wheelchair × 2", "Walker"].
+ * The same item type on several loans (two numbered wheelchairs) is counted together.
  */
-function itemsLabel(loans) {
+function itemsList(loans) {
   const byName = new Map();
   for (const x of loans) {
     const cur = byName.get(x.typeName) || { n: 0, isQuantity: false };
@@ -126,8 +135,10 @@ function itemsLabel(loans) {
     byName.set(x.typeName, cur);
   }
   const parts = [...byName].map(([name, v]) => (v.isQuantity || v.n > 1 ? `${name} × ${v.n}` : name));
-  return parts.length <= 1 ? (parts[0] || "item") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+  return parts.length ? parts : ["item"];
 }
+/** "Chairs × 58 and Tables × 6" (subject lines, and templates that use {items} inside a sentence). */
+const itemsLabel = loans => itemsInline(itemsList(loans));
 
 const VALID_EMAIL = /^[^\s@<>()"',;:\\]+@[^\s@<>()"',;:\\]+\.[^\s@<>()"',;:\\]+$/;
 
@@ -198,10 +209,10 @@ async function runReminders(env, ctx, { now = Date.now(), dryRun = false, db = m
       const { g, kind, expected, src, b, email, loans } = grp;
       const loanIds = loans.map(x => x.l.fields["Loan ID"] || x.l.id);
       try {
-        const items = itemsLabel(loans);
-        const short = items.length > 60 ? `${loans.length} items` : items; // subject lines stay readable
+        const list = itemsList(loans), inline = itemsInline(list);
+        const short = inline.length > 60 ? `${list.length} items` : inline; // subject lines stay readable
         const link = src ? await manageUrl(env, src) : null;
-        const message = reminderMessage(g, { firstName: String(b.name || "").trim().split(/\s+/)[0], items, borrowed: grp.borrowed, expected, today, link, plural: new Set(loans.map(x => x.typeName)).size > 1 });
+        const message = reminderMessage(g, { firstName: String(b.name || "").trim().split(/\s+/)[0], items: list, borrowed: grp.borrowed, expected, today, link, plural: list.length > 1 });
         const entry = { gemach: g.slug, loanId: loanIds.join(", "), loanIds, borrower: b.name || null, email, kind, due: expected };
         if (dryRun) { out.sent.push({ ...entry, message }); continue; }
         if (emails >= MAX_EMAILS_PER_RUN) { out.deferred++; continue; }
@@ -264,4 +275,4 @@ async function handleRemindersPreview(c) {
   return json(r);
 }
 
-export { MAX_EMAILS_PER_RUN, itemsLabel, reminderDue, fillTemplate, dueBackText, reminderMessage, runReminders, handleRemindersPreview, dayLabel };
+export { MAX_EMAILS_PER_RUN, itemsLabel, itemsList, reminderDue, fillTemplate, dueBackText, reminderMessage, runReminders, handleRemindersPreview, dayLabel };
